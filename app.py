@@ -187,9 +187,8 @@ if "watchlist" not in st.session_state:
 if "search_results" not in st.session_state:
     st.session_state.search_results = []
 # ==================== API KEYS ====================
-# Versucht erst st.secrets (Streamlit Cloud/Lokal), dann os.getenv (Railway)
-FMP_API_KEY = st.secrets.get("FMP_API_KEY", os.getenv("FMP_API_KEY", ""))
-NEWS_API_KEY = st.secrets.get("NEWS_API_KEY", os.getenv("NEWS_API_KEY", ""))
+FMP_API_KEY = os.getenv("FMP_API_KEY", "")
+NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
 # ==================== LOGO HELPER ====================
 @st.cache_data(ttl=86400)
 def get_company_logo_url(ticker: str, domain: str = "") -> str:
