@@ -173,7 +173,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================== API KEY ====================
-FMP_API_KEY = st.secrets.get("FMP_API_KEY", "")
+FMP_API_KEY = os.getenv("FMP_API_KEY", "")
 
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
