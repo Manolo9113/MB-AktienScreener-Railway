@@ -746,9 +746,15 @@ with tabs[0]:
     fig.add_hrect(y0=0, y1=30, fillcolor="rgba(34,197,94,0.08)", line_width=0, row=3, col=1)
     fig.add_hline(y=70, line_color="#ef4444", line_dash="dot", line_width=1, opacity=0.4, row=3, col=1)
     fig.add_hline(y=30, line_color="#22c55e", line_dash="dot", line_width=1, opacity=0.4, row=3, col=1)
-
-    fig.update_layout(**PLOTLY_LAYOUT, height=640, showlegend=True,
-                      legend=dict(orientation="h", y=1.02, x=0))
+    # KORRIGIERT – verhindert den "multiple values for keyword argument 'legend'" Fehler
+    layout = PLOTLY_LAYOUT.copy()
+    layout["legend"] = dict(orientation="h", y=1.02, x=0)
+    
+    fig.update_layout(
+        **layout,
+        height=640,
+        showlegend=True
+    )
     fig.update_xaxes(rangeslider_visible=False)
     fig.update_yaxes(tickprefix=f"{currency} ", row=1, col=1)
     st.plotly_chart(fig, use_container_width=True)
