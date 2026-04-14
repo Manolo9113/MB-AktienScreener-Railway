@@ -1414,12 +1414,13 @@ with tab7:
 st.markdown("<div class='section-header'>💡 Investor Insights</div>", unsafe_allow_html=True)
 
 insights = []
-if rule_of_40 >= 40:
-    insights.append(f"✅ <strong>Rule of 40:</strong> {rule_of_40:.0f} — hervorragendes Wachstum+Profitabilitäts-Gleichgewicht.")
-elif rule_of_40 >= 20:
-    insights.append(f"🟡 <strong>Rule of 40:</strong> {rule_of_40:.0f} — solide, aber Potenzial nach oben.")
-else:
-    insights.append(f"🔴 <strong>Rule of 40:</strong> {rule_of_40:.0f} — Wachstum und/oder Profitabilität schwach.")
+if show_rule_of_40:
+    if rule_of_40 >= 40:
+        insights.append(f"✅ <strong>Rule of 40:</strong> {rule_of_40:.0f} — hervorragendes Wachstum+Profitabilitäts-Gleichgewicht.")
+    elif rule_of_40 >= 20:
+        insights.append(f"🟡 <strong>Rule of 40:</strong> {rule_of_40:.0f} — solide, aber Potenzial nach oben.")
+    else:
+        insights.append(f"🔴 <strong>Rule of 40:</strong> {rule_of_40:.0f} — Wachstum und/oder Profitabilität schwach.")
 
 if roic_val and roic_val >= 20:
     insights.append(f"✅ <strong>ROIC {roic_val:.1f}%:</strong> Exzellente Kapitalallokation — Burggrabenindikator.")
