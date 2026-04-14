@@ -307,122 +307,127 @@ def dcf_valuation(fcf, shares, growth_rate, terminal_growth, discount_rate, year
     total = sum(cashflows) + terminal_pv
     return total / shares
 
-
-
-
 # ==================== SMART SEARCH ====================
-import re
 
 def is_isin(q: str) -> bool:
-    """ISIN: 2 Buchstaben + 10 alphanumerische Zeichen"""
-    return bool(re.match(r'^[A-Z]{2}[A-Z0-9]{10}$', q.strip().upper()))
+    """ISIN: 2 Buchstaben + 10 Ziffern/Buchstaben, z.B. US0378331005"""
+    import re
+    return bool(re.match(r'^[A-Z]{2}[A-Z0-9]{10}$', q))
 
 def is_wkn(q: str) -> bool:
-    """WKN: genau 6 alphanumerische Zeichen (nicht nur Buchstaben)"""
-    q = q.strip().upper()
+    """WKN: genau 6 alphanumerische Zeichen, z.B. 865985"""
+    import re
     return bool(re.match(r'^[A-Z0-9]{6}$', q)) and not q.isalpha()
 
 @st.cache_data(ttl=86400)
-def resolve_isin_to_ticker_fmp(isin: str) -> tuple[str, str]:
-    """Versucht zuerst FMP, dann OpenFIGI als Fallback"""
-    if not FMP_API_KEY:
-        return resolve_isin_to_ticker(isin)  # dein alter OpenFIGI
-
+def resolve_isin_to_ticker(isin: str) -> tuple[str, str]:
+    """Löst ISIN via OpenFIGI API in Ticker auf. Gibt (ticker, name) zurück."""
     try:
-        r = requests.get(
-            f"https://financialmodelingprep.com/api/v3/search/isin?isin={isin}&apikey={FMP_API_KEY}",
-            timeout=8
+        resp = requests.post(
+            "https://api.openfigi.com/v3/mapping",
+            json=[{"idType": "ID_ISIN", "idValue": isin}],
+            headers={"Content-Type": "application/json"},
+            timeout=10
         )
-        if r.status_code == 200:
-            data = r.json()
-            if data and isinstance(data, list) and len(data) > 0:
-                item = data[0]
-                ticker = item.get("symbol")
-                name = item.get("name") or item.get("companyName") or ""
-                if ticker:
-                    return ticker, name
+        if resp.status_code == 200:
+            data = resp.json()
+            if data and "data" in data[0]:
+                results = data[0]["data"]
+                # Bevorzuge US-Börsen, dann andere
+                for r in results:
+                    if r.get("exchCode") in ("US", "UN", "UQ", "UA"):
+                        return r.get("ticker", ""), r.get("name", "")
+                # Fallback: ersten nehmen
+                if results:
+                    return results[0].get("ticker", ""), results[0].get("name", "")
     except:
         pass
-    # Fallback auf OpenFIGI
-    return resolve_isin_to_ticker(isin)
-
+    return "", ""
 
 @st.cache_data(ttl=86400)
-def search_by_name_fmp(query: str) -> list[dict]:
-    """Bessere Namenssuche über FMP"""
-    if not FMP_API_KEY:
-        return search_by_name(query)  # alter yfinance fallback
-
+def resolve_wkn_to_ticker(wkn: str) -> tuple[str, str]:
+    """Löst WKN via OpenFIGI API in Ticker auf."""
     try:
-        r = requests.get(
-            f"https://financialmodelingprep.com/api/v3/search?query={query}&limit=8&apikey={FMP_API_KEY}",
-            timeout=8
+        resp = requests.post(
+            "https://api.openfigi.com/v3/mapping",
+            json=[{"idType": "ID_WERTPAPIER", "idValue": wkn}],
+            headers={"Content-Type": "application/json"},
+            timeout=10
         )
-        if r.status_code == 200:
-            data = r.json()
-            out = []
-            for item in data:
-                ticker = item.get("symbol")
-                name = item.get("name") or item.get("companyName") or ""
-                if ticker and name:
-                    out.append({
-                        "ticker": ticker,
-                        "name": name,
-                        "exchange": item.get("exchangeShortName") or item.get("exchange") or ""
-                    })
-            return out[:8]
+        if resp.status_code == 200:
+            data = resp.json()
+            if data and "data" in data[0]:
+                results = data[0]["data"]
+                for r in results:
+                    if r.get("exchCode") in ("US", "UN", "UQ", "UA"):
+                        return r.get("ticker", ""), r.get("name", "")
+                if results:
+                    return results[0].get("ticker", ""), results[0].get("name", "")
     except:
         pass
-    return search_by_name(query)  # Fallback
+    return "", ""
 
+@st.cache_data(ttl=3600)
+def search_by_name(query: str) -> list[dict]:
+    """Suche nach Firmenname via yFinance search. Gibt Liste von {ticker, name, exchange} zurück."""
+    try:
+        results = yf.Search(query, max_results=6)
+        quotes = results.quotes if hasattr(results, "quotes") else []
+        out = []
+        for q in quotes:
+            t = q.get("symbol", "")
+            n = q.get("longname") or q.get("shortname") or t
+            e = q.get("exchange", "")
+            qt = q.get("quoteType", "")
+            if t and qt in ("EQUITY", "ETF", ""):
+                out.append({"ticker": t, "name": n, "exchange": e})
+        return out[:6]
+    except:
+        return []
 
 def resolve_search_input(raw: str) -> tuple[str, str, list]:
     """
     Hauptfunktion: Gibt (ticker, info_msg, suggestions) zurück.
+    suggestions = [] wenn eindeutig, sonst Liste von Kandidaten.
     """
-    q = raw.strip()
+    q = raw.strip().upper()
     if not q:
         return "", "", []
 
-    q_upper = q.upper()
-
-    # 1. ISIN
-    if is_isin(q_upper):
-        ticker, name = resolve_isin_to_ticker_fmp(q_upper)
+    # 1) ISIN erkennen (12 Zeichen, 2 Buchstaben + 10 alphanumerisch)
+    if is_isin(q):
+        ticker, name = resolve_isin_to_ticker(q)
         if ticker:
-            return ticker, f"ISIN **{q_upper}** → **{ticker}** ({name})", []
-        return "", f"❌ ISIN **{q_upper}** konnte nicht aufgelöst werden.", []
+            return ticker, f"ISIN {q} → **{ticker}** ({name})", []
+        return "", f"❌ ISIN {q} nicht auflösbar.", []
 
-    # 2. WKN
-    if is_wkn(q_upper):
-        ticker, name = resolve_wkn_to_ticker(q_upper)
+    # 2) WKN erkennen (genau 6 alphanumerisch, nicht rein alphabetisch)
+    if is_wkn(q):
+        ticker, name = resolve_wkn_to_ticker(q)
         if ticker:
-            return ticker, f"WKN **{q_upper}** → **{ticker}** ({name})", []
+            return ticker, f"WKN {q} → **{ticker}** ({name})", []
         # Fallback: als Ticker versuchen
         pass
 
-    # 3. Direkter Ticker-Versuch
-    if len(q_upper) <= 8 and q_upper.replace(".", "").replace("-", "").isalnum():
+    # 3) Direkter Ticker-Versuch (kurz, nur Buchstaben/Punkte)
+    if len(q) <= 6 and q.replace(".", "").replace("-", "").isalpha():
+        test = yf.Ticker(q)
         try:
-            test = yf.Ticker(q_upper)
             info = test.info
             if info.get("regularMarketPrice") or info.get("currentPrice") or info.get("marketCap"):
-                return q_upper, f"Direkter Ticker: **{q_upper}**", []
+                return q, "", []
         except:
             pass
 
-    # 4. Namenssuche (FMP bevorzugt)
-    suggestions = search_by_name_fmp(q)
-    
+    # 4) Firmenname-Suche
+    suggestions = search_by_name(raw.strip())
     if len(suggestions) == 1:
-        s = suggestions[0]
-        return s["ticker"], f"Gefunden: **{s['name']}** ({s['ticker']})", []
-    
-    elif len(suggestions) > 1:
+        return suggestions[0]["ticker"], f"Gefunden: **{suggestions[0]['name']}** ({suggestions[0]['ticker']})", []
+    elif suggestions:
         return "", "", suggestions
 
-    # 5. Letzter Fallback: Eingabe direkt als Ticker
-    return q_upper, f"Versuche direkten Ticker: **{q_upper}**", []
+    # 5) Letzter Fallback: Eingabe direkt als Ticker
+    return q, "", []
 
 
 # ==================== SESSION ====================
@@ -447,48 +452,13 @@ with st.sidebar:
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-    # ... dein Logo etc.
-    
-    # ==================== Smarte Suche ====================
+    # Smarte Suche
     search_raw = st.text_input(
-        "Suche nach Aktie",
-        value=st.session_state.get("search_input", "AAPL"),
+        "Suche",
+        value=st.session_state["search_input"],
         label_visibility="collapsed",
-        placeholder="Ticker (AAPL), Name (Apple), ISIN oder WKN …"
+        placeholder="Ticker, Name, ISIN oder WKN…"
     )
-
-    if st.button("🔍 Suchen", use_container_width=True, type="primary"):
-        with st.spinner("Suche läuft..."):
-            resolved, msg, sugg = resolve_search_input(search_raw)
-        
-        st.session_state["search_input"] = search_raw
-        st.session_state["search_msg"] = msg
-        st.session_state["suggestions"] = sugg
-
-        if resolved:
-            st.session_state["ticker"] = resolved
-            st.session_state["suggestions"] = []
-            st.rerun()
-
-    # Info-Meldung
-    if st.session_state.get("search_msg"):
-        st.markdown(f"""
-        <div style="color:#64b5f6; font-size:0.85rem; padding:8px 0;">
-            {st.session_state['search_msg']}
-        </div>
-        """, unsafe_allow_html=True)
-
-    # Vorschläge bei mehreren Treffern
-    if st.session_state.get("suggestions"):
-        st.markdown("**Mehrere Treffer – bitte auswählen:**")
-        for s in st.session_state["suggestions"]:
-            label = f"**{s['ticker']}** — {s['name'][:40]}"
-            if st.button(label, use_container_width=True, key=f"sugg_{s['ticker']}"):
-                st.session_state["ticker"] = s["ticker"]
-                st.session_state["search_input"] = s["ticker"]
-                st.session_state["suggestions"] = []
-                st.session_state["search_msg"] = f"Ausgewählt: **{s['name']}** ({s['ticker']})"
-                st.rerun()
 
     search_btn = st.button("🔍 Suchen", use_container_width=True)
 
