@@ -448,7 +448,7 @@ with st.sidebar:
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
     # ... dein Logo etc.
-
+    # ==================== Smarte Suche ====================
     search_raw = st.text_input(
         "Suche nach Aktie",
         value=st.session_state.get("search_input", "AAPL"),
@@ -468,6 +468,26 @@ with st.sidebar:
             st.session_state["ticker"] = resolved
             st.session_state["suggestions"] = []
             st.rerun()
+
+    # Info-Meldung anzeigen
+    if st.session_state.get("search_msg"):
+        st.markdown(f"""
+        <div style="color:#64b5f6; font-size:0.85rem; padding:8px 0;">
+            {st.session_state['search_msg']}
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Vorschläge bei mehreren Treffern
+    if st.session_state.get("suggestions"):
+        st.markdown("**Mehrere Treffer – bitte auswählen:**")
+        for s in st.session_state["suggestions"]:
+            label = f"**{s['ticker']}** — {s['name'][:40]}"
+            if st.button(label, use_container_width=True, key=f"sugg_{s['ticker']}"):
+                st.session_state["ticker"] = s["ticker"]
+                st.session_state["search_input"] = s["ticker"]
+                st.session_state["suggestions"] = []
+                st.session_state["search_msg"] = f"Ausgewählt: **{s['name']}** ({s['ticker']})"
+                st.rerun()
 
     # Info-Meldung
     if st.session_state.get("search_msg"):
