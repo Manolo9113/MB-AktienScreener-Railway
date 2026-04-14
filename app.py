@@ -187,6 +187,8 @@ if "watchlist" not in st.session_state:
 if "search_results" not in st.session_state:
     st.session_state.search_results = []
 # ==================== API KEYS ====================
+import os
+
 FMP_API_KEY = os.getenv("FMP_API_KEY", "")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
 # ==================== LOGO HELPER ====================
