@@ -307,7 +307,7 @@ def dcf_valuation(fcf, shares, growth_rate, terminal_growth, discount_rate, year
     total = sum(cashflows) + terminal_pv
     return total / shares
 
-# ==================== SMART SEARCH ====================
+
 
 
 # ==================== SMART SEARCH ====================
@@ -448,11 +448,48 @@ with st.sidebar:
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
     # Smarte Suche
+ with st.sidebar:
+    # ... dein Logo etc.
+
     search_raw = st.text_input(
-        "Suche",
-        value=st.session_state["search_input"],
+        "Suche nach Aktie",
+        value=st.session_state.get("search_input", "AAPL"),
         label_visibility="collapsed",
-        placeholder="Ticker, Name, ISIN oder WKN…"
+        placeholder="Ticker (AAPL), Name (Apple), ISIN oder WKN …"
+    )
+
+    if st.button("🔍 Suchen", use_container_width=True, type="primary"):
+        with st.spinner("Suche läuft..."):
+            resolved, msg, sugg = resolve_search_input(search_raw)
+        
+        st.session_state["search_input"] = search_raw
+        st.session_state["search_msg"] = msg
+        st.session_state["suggestions"] = sugg
+
+        if resolved:
+            st.session_state["ticker"] = resolved
+            st.session_state["suggestions"] = []
+            st.rerun()
+
+    # Info-Meldung
+    if st.session_state.get("search_msg"):
+        st.markdown(f"""
+        <div style="color:#64b5f6; font-size:0.85rem; padding:8px 0;">
+            {st.session_state['search_msg']}
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Vorschläge bei mehreren Treffern
+    if st.session_state.get("suggestions"):
+        st.markdown("**Mehrere Treffer – bitte auswählen:**", unsafe_allow_html=True)
+        for s in st.session_state["suggestions"]:
+            label = f"**{s['ticker']}** — {s['name'][:35]}"
+            if st.button(label, use_container_width=True, key=f"sugg_{s['ticker']}"):
+                st.session_state["ticker"] = s["ticker"]
+                st.session_state["search_input"] = s["ticker"]
+                st.session_state["suggestions"] = []
+                st.session_state["search_msg"] = f"Ausgewählt: **{s['name']}** ({s['ticker']})"
+                st.rerun()
     )
 
     search_btn = st.button("🔍 Suchen", use_container_width=True)
