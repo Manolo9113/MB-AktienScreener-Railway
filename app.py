@@ -174,14 +174,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================== API KEY ====================
+import os
+
 try:
     FMP_API_KEY = st.secrets["FMP_API_KEY"]
 except Exception:
     FMP_API_KEY = os.getenv("FMP_API_KEY", "")
+
 if not FMP_API_KEY:
     st.sidebar.warning("⚠️ Kein FMP API Key gefunden. ISIN/WKN-Suche und Peer-Vergleich sind eingeschränkt.")
 else:
-    st.sidebar.success
+    st.sidebar.success("✅ FMP API Key geladen")
 
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
