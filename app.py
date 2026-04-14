@@ -316,8 +316,8 @@ if "watchlist" not in st.session_state:
     st.session_state.watchlist = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"]
 
 # ==================== API KEYS ====================
-FMP_API_KEY = os.getenv("FMP_API_KEY", "")
-NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
+FMP_API_KEY = nDMiO8SB2a3sBH6mqxr0jhk75qpnZiYJ
+NEWS_API_KEY = os.getenv 2882d428504e477aafcd883273084a73
 
 # ==================== CACHE / DATA LOADERS ====================
 @st.cache_data(ttl=3600)
