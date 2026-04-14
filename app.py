@@ -174,7 +174,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================== API KEY ====================
-FMP_API_KEY = st.secrets.get("FMP_API_KEY", "")
+FMP_API_KEY = (
+    st.secrets.get("FMP_API_KEY") 
+    or os.getenv("FMP_API_KEY", "")
+)
+
+if not FMP_API_KEY:
+    st.sidebar.warning("⚠️ Kein FMP API Key gefunden. ISIN/WKN-Suche und Peer-Vergleich sind eingeschränkt.")
+else:
+    st.sidebar.success
 
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
