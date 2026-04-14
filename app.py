@@ -22,7 +22,6 @@ st.set_page_config(
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
-
 :root {
     --bg: #0a0d14;
     --surface: #111520;
@@ -38,21 +37,17 @@ st.markdown("""
     --muted: #6b7599;
     --muted2: #4a5270;
 }
-
 html, body, [class*="css"] {
     font-family: 'DM Sans', sans-serif;
     background: var(--bg) !important;
     color: var(--text) !important;
 }
-
 .stApp {
     background: var(--bg) !important;
 }
-
 /* Hide Streamlit chrome */
 #MainMenu, footer, header { visibility: hidden; }
 .block-container { padding: 1.5rem 2rem 3rem; max-width: 1600px; }
-
 /* ---- HEADER ---- */
 .eq-header {
     display: flex;
@@ -105,7 +100,6 @@ html, body, [class*="css"] {
 .eq-change-pos { font-family: 'DM Mono', monospace; font-size: 1.1rem; color: var(--green); }
 .eq-change-neg { font-family: 'DM Mono', monospace; font-size: 1.1rem; color: var(--red); }
 .eq-sector { font-size: 0.85rem; color: var(--muted); }
-
 /* ---- CARDS ---- */
 .eq-card {
     background: var(--surface);
@@ -134,7 +128,6 @@ html, body, [class*="css"] {
     color: var(--muted);
     margin-top: 0.35rem;
 }
-
 /* ---- METRIC ROW ---- */
 .eq-metric {
     display: flex;
@@ -147,7 +140,6 @@ html, body, [class*="css"] {
 .eq-metric:last-child { border-bottom: none; }
 .eq-metric-label { color: var(--muted); }
 .eq-metric-value { font-family: 'DM Mono', monospace; color: var(--text); font-size: 0.85rem; }
-
 /* ---- GAUGE BAR ---- */
 .gauge-wrap { margin: 0.3rem 0 0.1rem; }
 .gauge-track {
@@ -160,7 +152,6 @@ html, body, [class*="css"] {
     height: 100%;
     border-radius: 2px;
 }
-
 /* ---- SECTION LABELS ---- */
 .eq-section {
     font-family: 'DM Serif Display', serif;
@@ -170,7 +161,6 @@ html, body, [class*="css"] {
     padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--border);
 }
-
 /* ---- NEWS ---- */
 .news-item {
     padding: 0.8rem 0;
@@ -182,7 +172,6 @@ html, body, [class*="css"] {
 .news-sentiment-pos { color: var(--green); font-weight: 600; }
 .news-sentiment-neg { color: var(--red); font-weight: 600; }
 .news-sentiment-neu { color: var(--muted); font-weight: 600; }
-
 /* ---- FAIR VALUE ---- */
 .fv-positive { color: var(--green); }
 .fv-negative { color: var(--red); }
@@ -203,7 +192,6 @@ html, body, [class*="css"] {
     font-size: 0.85rem;
     color: var(--muted);
 }
-
 /* ---- TABS ---- */
 .stTabs [data-baseweb="tab-list"] {
     gap: 0;
@@ -231,7 +219,6 @@ html, body, [class*="css"] {
 .stTabs [data-baseweb="tab-panel"] {
     padding-top: 1.5rem;
 }
-
 /* ---- INPUTS ---- */
 .stTextInput > div > div {
     background: var(--surface) !important;
@@ -241,32 +228,26 @@ html, body, [class*="css"] {
     font-family: 'DM Mono', monospace !important;
 }
 .stTextInput label { color: var(--muted) !important; font-size: 0.75rem !important; }
-
 /* ---- SELECTBOX ---- */
 .stSelectbox > div > div {
     background: var(--surface) !important;
     border: 1px solid var(--border2) !important;
     border-radius: 8px !important;
 }
-
 /* ---- SIDEBAR ---- */
 section[data-testid="stSidebar"] {
     background: var(--surface) !important;
     border-right: 1px solid var(--border) !important;
 }
 section[data-testid="stSidebar"] .block-container { padding: 1rem 1.2rem; }
-
 /* ---- DIVIDER ---- */
 hr { border-color: var(--border) !important; margin: 1.5rem 0 !important; }
-
 /* ---- SCROLLBAR ---- */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-
 /* ---- PLOTLY OVERRIDE ---- */
 .js-plotly-plot .plotly { background: transparent !important; }
-
 /* ---- SIGNAL BADGE ---- */
 .signal {
     display: inline-block;
@@ -280,7 +261,6 @@ hr { border-color: var(--border) !important; margin: 1.5rem 0 !important; }
 .signal-buy { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
 .signal-sell { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
 .signal-hold { background: rgba(245,158,11,0.15); color: var(--amber); border: 1px solid rgba(245,158,11,0.3); }
-
 /* ---- SCORE RING ---- */
 .score-ring-wrap { text-align: center; }
 .score-number {
@@ -289,7 +269,6 @@ hr { border-color: var(--border) !important; margin: 1.5rem 0 !important; }
     line-height: 1;
 }
 .score-label { font-size: 0.75rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
-
 /* ---- WATCHLIST ---- */
 .wl-item {
     display: flex;
@@ -306,7 +285,6 @@ hr { border-color: var(--border) !important; margin: 1.5rem 0 !important; }
 .wl-ticker { font-family: 'DM Mono', monospace; font-weight: 500; color: var(--accent); }
 .wl-change-pos { font-family: 'DM Mono', monospace; color: var(--green); font-size: 0.8rem; }
 .wl-change-neg { font-family: 'DM Mono', monospace; color: var(--red); font-size: 0.8rem; }
-
 /* ---- STMETRIC OVERRIDE ---- */
 [data-testid="stMetric"] {
     background: var(--surface);
@@ -314,8 +292,8 @@ hr { border-color: var(--border) !important; margin: 1.5rem 0 !important; }
     border-radius: 10px;
     padding: 1rem 1.2rem;
 }
-[data-testid="stMetricLabel"] p { 
-    font-size: 0.7rem !important; 
+[data-testid="stMetricLabel"] p {
+    font-size: 0.7rem !important;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--muted) !important;
@@ -330,6 +308,12 @@ hr { border-color: var(--border) !important; margin: 1.5rem 0 !important; }
 }
 </style>
 """, unsafe_allow_html=True)
+
+# ==================== SESSION STATE INITIALISIERUNG (WICHTIG!) ====================
+if "ticker" not in st.session_state:
+    st.session_state.ticker = "AAPL"
+if "watchlist" not in st.session_state:
+    st.session_state.watchlist = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"]
 
 # ==================== API KEYS ====================
 FMP_API_KEY = os.getenv("FMP_API_KEY", "")
@@ -369,7 +353,6 @@ def load_yfinance(ticker: str):
 def load_fmp_metrics(ticker: str):
     if not FMP_API_KEY:
         return {}, {}, []
-    headers = {}
     try:
         url = f"https://financialmodelingprep.com/api/v3/key-metrics-ttm/{ticker}?apikey={FMP_API_KEY}"
         r = requests.get(url, timeout=10)
@@ -402,7 +385,6 @@ def load_news(ticker: str, company: str):
                 articles = r.json().get("articles", [])
         except:
             pass
-    # Fallback: yfinance news
     if not articles:
         try:
             stock = yf.Ticker(ticker)
@@ -432,8 +414,8 @@ def fmt(value):
     except:
         return "N/A"
     if abs(value) >= 1e12: return f"{value/1e12:.2f}T"
-    if abs(value) >= 1e9:  return f"{value/1e9:.2f}B"
-    if abs(value) >= 1e6:  return f"{value/1e6:.2f}M"
+    if abs(value) >= 1e9: return f"{value/1e9:.2f}B"
+    if abs(value) >= 1e6: return f"{value/1e6:.2f}M"
     return f"{value:.2f}"
 
 def safe_pct(a, b):
@@ -480,14 +462,10 @@ def compute_fair_value(info, hist):
         growth = info.get("earningsGrowth") or info.get("revenueGrowth") or 0.08
         pe = info.get("trailingPE") or 20
         shares = info.get("sharesOutstanding", 1)
-
-        # Graham Number
         bvps = info.get("bookValue", 0)
         graham = None
         if eps and bvps and float(eps) > 0 and float(bvps) > 0:
             graham = (22.5 * float(eps) * float(bvps)) ** 0.5
-
-        # Simple DCF (10yr, terminal PE)
         dcf = None
         fcf = info.get("freeCashflow")
         if fcf and shares:
@@ -500,17 +478,12 @@ def compute_fair_value(info, hist):
                 pv += fcf_ps * (1 + g) ** yr / (1 + discount) ** yr
             terminal = fcf_ps * (1 + g) ** 10 * terminal_pe / (1 + discount) ** 10
             dcf = pv + terminal
-
-        # PE-based target
         pe_target = None
         if eps and pe:
-            sector_pe = float(pe) * 1.0
-            pe_target = float(eps) * min(sector_pe, 30)
-
+            pe_target = float(eps) * min(float(pe) * 1.0, 30)
         values = [v for v in [graham, dcf, pe_target] if v and v > 0]
         if not values:
             return None, None, None
-
         fair = np.mean(values)
         lo = fair * 0.80
         hi = fair * 1.20
@@ -521,33 +494,24 @@ def compute_fair_value(info, hist):
 # ==================== TECHNICALS ====================
 def compute_technicals(hist):
     df = hist.copy()
-    df["MA20"]  = df["Close"].rolling(20).mean()
-    df["MA50"]  = df["Close"].rolling(50).mean()
+    df["MA20"] = df["Close"].rolling(20).mean()
+    df["MA50"] = df["Close"].rolling(50).mean()
     df["MA200"] = df["Close"].rolling(200).mean()
-
-    # RSI
     delta = df["Close"].diff()
     gain = delta.clip(lower=0).rolling(14).mean()
     loss = (-delta.clip(upper=0)).rolling(14).mean()
     rs = gain / loss.replace(0, np.nan)
     df["RSI"] = 100 - 100 / (1 + rs)
-
-    # MACD
     ema12 = df["Close"].ewm(span=12).mean()
     ema26 = df["Close"].ewm(span=26).mean()
     df["MACD"] = ema12 - ema26
     df["Signal"] = df["MACD"].ewm(span=9).mean()
-    df["Hist"]   = df["MACD"] - df["Signal"]
-
-    # Bollinger
+    df["Hist"] = df["MACD"] - df["Signal"]
     df["BB_mid"] = df["Close"].rolling(20).mean()
     std = df["Close"].rolling(20).std()
-    df["BB_up"]  = df["BB_mid"] + 2 * std
-    df["BB_dn"]  = df["BB_mid"] - 2 * std
-
-    # Volume MA
+    df["BB_up"] = df["BB_mid"] + 2 * std
+    df["BB_dn"] = df["BB_mid"] - 2 * std
     df["Vol_MA20"] = df["Volume"].rolling(20).mean()
-
     return df
 
 # ==================== PLOTLY THEME ====================
@@ -563,36 +527,50 @@ PLOTLY_LAYOUT = dict(
     legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="rgba(0,0,0,0)"),
 )
 
-# ==================== SIDEBAR ====================
+# ==================== SIDEBAR (KORRIGIERT) ====================
 with st.sidebar:
     st.markdown('<div class="eq-logo">⬡ Equitas</div>', unsafe_allow_html=True)
     st.markdown("---")
-
-    ticker = st.text_input("", value="AAPL", placeholder="Ticker eingeben…", label_visibility="collapsed").upper().strip()
-
+    
+    # Ticker Input – jetzt mit Label + Key (kein KeyError mehr!)
+    ticker_input = st.text_input(
+        "Ticker Symbol",
+        value=st.session_state.ticker,
+        placeholder="z. B. AAPL",
+        label_visibility="collapsed",
+        key="ticker_input"
+    )
+    ticker = ticker_input.upper().strip()
+    
+    # Ticker in Session State speichern
+    if ticker and ticker != st.session_state.ticker:
+        st.session_state.ticker = ticker
+    
     period_map = {"1M": "1mo", "3M": "3mo", "6M": "6mo", "1J": "1y", "2J": "2y", "5J": "5y"}
     period_label = st.radio("Zeitraum", list(period_map.keys()), horizontal=True, index=3)
     chart_period = period_map[period_label]
-
+    
     st.markdown("---")
     st.markdown('<div style="font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:0.5rem">Watchlist</div>', unsafe_allow_html=True)
-
-    if "watchlist" not in st.session_state:
-        st.session_state.watchlist = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"]
-
+    
     wl_cols = st.columns([4, 1])
-    new_wl = wl_cols[0].text_input("", placeholder="Hinzufügen…", label_visibility="collapsed", key="wl_input")
+    new_wl = wl_cols[0].text_input(
+        "Neues Symbol hinzufügen",
+        placeholder="Hinzufügen…",
+        label_visibility="collapsed",
+        key="wl_input"
+    )
     if wl_cols[1].button("＋", use_container_width=True) and new_wl:
         t = new_wl.upper().strip()
-        if t not in st.session_state.watchlist:
+        if t and t not in st.session_state.watchlist:
             st.session_state.watchlist.append(t)
-
-    for wt in st.session_state.watchlist:
+    
+    for wt in st.session_state.watchlist[:]:
         try:
             _info, _hist, *_ = load_yfinance(wt)
             if not _hist.empty:
-                _p = _hist["Close"].iloc[-1]
-                _pp = _hist["Close"].iloc[-2] if len(_hist) > 1 else _p
+                _p = float(_hist["Close"].iloc[-1])
+                _pp = float(_hist["Close"].iloc[-2]) if len(_hist) > 1 else _p
                 _chg = safe_pct(_p, _pp)
                 chg_cls = "wl-change-pos" if _chg >= 0 else "wl-change-neg"
                 arrow = "▲" if _chg >= 0 else "▼"
@@ -603,7 +581,7 @@ with st.sidebar:
                 </div>""", unsafe_allow_html=True)
         except:
             pass
-
+    
     st.markdown("---")
     st.markdown(f'<div style="font-size:0.7rem;color:var(--muted2)">API Status<br>'
                 f'FMP: {"🟢" if FMP_API_KEY else "🔴"} &nbsp; News: {"🟢" if NEWS_API_KEY else "🔴"}</div>',
@@ -622,26 +600,23 @@ if hist is None or hist.empty:
     st.stop()
 
 # ==================== DERIVED ====================
-price   = float(hist["Close"].iloc[-1])
-prev    = float(hist["Close"].iloc[-2]) if len(hist) > 1 else price
-change  = price - prev
+price = float(hist["Close"].iloc[-1])
+prev = float(hist["Close"].iloc[-2]) if len(hist) > 1 else price
+change = price - prev
 chg_pct = safe_pct(price, prev)
-high52  = float(hist["High"].rolling(252).max().iloc[-1]) if len(hist) > 252 else float(hist["High"].max())
-low52   = float(hist["Low"].rolling(252).min().iloc[-1])  if len(hist) > 252 else float(hist["Low"].min())
+high52 = float(hist["High"].rolling(252).max().iloc[-1]) if len(hist) > 252 else float(hist["High"].max())
+low52 = float(hist["Low"].rolling(252).min().iloc[-1]) if len(hist) > 252 else float(hist["Low"].min())
 fair_val, fv_lo, fv_hi = compute_fair_value(info, hist)
 df_tech = compute_technicals(hist)
-
 company = info.get("longName", ticker)
-sector  = info.get("sector", "")
+sector = info.get("sector", "")
 industry = info.get("industry", "")
 currency = info.get("currency", "USD")
-
 rsi_now = float(df_tech["RSI"].iloc[-1]) if not df_tech["RSI"].isna().all() else None
 
 # ==================== HEADER ====================
 arrow = "▲" if change >= 0 else "▼"
 chg_color = "var(--green)" if change >= 0 else "var(--red)"
-
 st.markdown(f"""
 <div class="eq-header">
     <div>
@@ -688,15 +663,14 @@ tabs = st.tabs(["📈 Chart & Technicals", "📊 Fundamentals", "⚖️ Fair Val
 # TAB 1 — CHART & TECHNICALS
 # ================================================================
 with tabs[0]:
-    # Period filter
     try:
         cutoff = {
             "1mo": hist.index[-1] - timedelta(days=30),
             "3mo": hist.index[-1] - timedelta(days=90),
             "6mo": hist.index[-1] - timedelta(days=180),
-            "1y":  hist.index[-1] - timedelta(days=365),
-            "2y":  hist.index[-1] - timedelta(days=730),
-            "5y":  hist.index[-1] - timedelta(days=1825),
+            "1y": hist.index[-1] - timedelta(days=365),
+            "2y": hist.index[-1] - timedelta(days=730),
+            "5y": hist.index[-1] - timedelta(days=1825),
         }[chart_period]
         df_view = df_tech[df_tech.index >= cutoff]
     except:
@@ -707,7 +681,6 @@ with tabs[0]:
         label_visibility="collapsed"
     )
 
-    # Main Price Chart
     fig = make_subplots(
         rows=3, cols=1,
         shared_xaxes=True,
@@ -716,7 +689,6 @@ with tabs[0]:
         subplot_titles=("", "Volumen", "RSI (14)")
     )
 
-    # Candlestick
     fig.add_trace(go.Candlestick(
         x=df_view.index,
         open=df_view["Open"], high=df_view["High"],
@@ -726,7 +698,6 @@ with tabs[0]:
         name="OHLC", showlegend=False, line_width=1
     ), row=1, col=1)
 
-    # Overlays
     colors = {"MA20": "#f59e0b", "MA50": "#4f8ef7", "MA200": "#7c5cfc"}
     for ma in ["MA20", "MA50", "MA200"]:
         if ma in overlay_opts:
@@ -747,7 +718,6 @@ with tabs[0]:
             fill="tonexty", fillcolor="rgba(107,117,153,0.06)", showlegend=False
         ), row=1, col=1)
 
-    # Fair Value band
     if fair_val and fv_lo and fv_hi:
         fig.add_hrect(y0=fv_lo, y1=fv_hi, fillcolor="rgba(79,142,247,0.08)",
                       line_width=0, row=1, col=1,
@@ -757,7 +727,6 @@ with tabs[0]:
         fig.add_hline(y=fair_val, line_color="#4f8ef7", line_dash="dash",
                       line_width=1, opacity=0.6, row=1, col=1)
 
-    # Volume
     vol_colors = ["#22c55e" if c >= o else "#ef4444"
                   for c, o in zip(df_view["Close"], df_view["Open"])]
     fig.add_trace(go.Bar(
@@ -769,13 +738,12 @@ with tabs[0]:
         line=dict(color="#f59e0b", width=1), name="Vol MA20", showlegend=False
     ), row=2, col=1)
 
-    # RSI
     fig.add_trace(go.Scatter(
         x=df_view.index, y=df_view["RSI"],
         line=dict(color="#7c5cfc", width=1.5), name="RSI", showlegend=False
     ), row=3, col=1)
     fig.add_hrect(y0=70, y1=100, fillcolor="rgba(239,68,68,0.08)", line_width=0, row=3, col=1)
-    fig.add_hrect(y0=0,  y1=30,  fillcolor="rgba(34,197,94,0.08)",  line_width=0, row=3, col=1)
+    fig.add_hrect(y0=0, y1=30, fillcolor="rgba(34,197,94,0.08)", line_width=0, row=3, col=1)
     fig.add_hline(y=70, line_color="#ef4444", line_dash="dot", line_width=1, opacity=0.4, row=3, col=1)
     fig.add_hline(y=30, line_color="#22c55e", line_dash="dot", line_width=1, opacity=0.4, row=3, col=1)
 
@@ -785,10 +753,8 @@ with tabs[0]:
     fig.update_yaxes(tickprefix=f"{currency} ", row=1, col=1)
     st.plotly_chart(fig, use_container_width=True)
 
-    # Technical Summary
     section("Technische Signale")
     t1, t2, t3, t4 = st.columns(4)
-
     with t1:
         rsi_color = "var(--red)" if (rsi_now and rsi_now > 70) else "var(--green)" if (rsi_now and rsi_now < 30) else "var(--amber)"
         rsi_label = "Überkauft" if (rsi_now and rsi_now > 70) else "Überverkauft" if (rsi_now and rsi_now < 30) else "Neutral"
@@ -797,19 +763,17 @@ with tabs[0]:
             <div class="eq-card-value" style="color:{rsi_color}">{safe(rsi_now)}</div>
             <div class="eq-card-sub">{rsi_label}</div>
         </div>""", unsafe_allow_html=True)
-
     with t2:
         macd_now = df_tech["MACD"].iloc[-1]
-        sig_now  = df_tech["Signal"].iloc[-1]
+        sig_now = df_tech["Signal"].iloc[-1]
         macd_bull = macd_now > sig_now
         st.markdown(f"""<div class="eq-card">
             <div class="eq-card-title">MACD</div>
             <div class="eq-card-value" style="color:{'var(--green)' if macd_bull else 'var(--red)'}">{safe(macd_now)}</div>
             <div class="eq-card-sub">Signal: {safe(sig_now)} — {'Bullish' if macd_bull else 'Bearish'}</div>
         </div>""", unsafe_allow_html=True)
-
     with t3:
-        ma50  = df_tech["MA50"].iloc[-1]
+        ma50 = df_tech["MA50"].iloc[-1]
         ma200 = df_tech["MA200"].iloc[-1]
         above = price > ma50 and price > ma200
         golden = ma50 > ma200
@@ -818,7 +782,6 @@ with tabs[0]:
             <div class="eq-card-value" style="color:{'var(--green)' if above else 'var(--red)'}">{safe(ma50)}</div>
             <div class="eq-card-sub">{'Golden Cross ✓' if golden else 'Death Cross ✗'} · MA50/MA200</div>
         </div>""", unsafe_allow_html=True)
-
     with t4:
         pos52 = (price - low52) / (high52 - low52) * 100 if (high52 - low52) != 0 else 50
         st.markdown(f"""<div class="eq-card">
@@ -832,7 +795,6 @@ with tabs[0]:
             </div>
         </div>""", unsafe_allow_html=True)
 
-    # Performance Returns
     section("Performance")
     periods = {"1W": 5, "1M": 21, "3M": 63, "6M": 126, "1J": 252, "3J": 756, "5J": 1260}
     perf_data = {}
@@ -840,9 +802,7 @@ with tabs[0]:
         if len(hist) > days:
             p0 = float(hist["Close"].iloc[-days-1])
             perf_data[label] = safe_pct(price, p0)
-
     if perf_data:
-        perf_df = pd.DataFrame.from_dict(perf_data, orient="index", columns=["Return %"])
         fig_perf = go.Figure(go.Bar(
             x=list(perf_data.keys()),
             y=list(perf_data.values()),
@@ -860,7 +820,6 @@ with tabs[0]:
 # ================================================================
 with tabs[1]:
     col_l, col_r = st.columns([1, 1])
-
     with col_l:
         section("Bewertung")
         metric_row("P/E (TTM)", safe(info.get("trailingPE")))
@@ -869,7 +828,6 @@ with tabs[1]:
         metric_row("P/S (TTM)", safe(info.get("priceToSalesTrailing12Months")))
         metric_row("EV/EBITDA", safe(fmp_metrics.get("enterpriseValueOverEBITDATTM") or info.get("enterpriseToEbitda")))
         metric_row("PEG Ratio", safe(info.get("pegRatio")))
-
         section("Profitabilität")
         metric_row("Bruttomarge", safe(info.get("grossMargins"), suffix="%") if info.get("grossMargins") else
                    safe(fmp_metrics.get("grossProfitMarginTTM"), suffix="%"))
@@ -878,13 +836,11 @@ with tabs[1]:
         metric_row("ROE", safe(info.get("returnOnEquity"), suffix="%"))
         metric_row("ROA", safe(info.get("returnOnAssets"), suffix="%"))
         metric_row("ROIC (TTM)", safe(fmp_metrics.get("returnOnInvestedCapitalTTM"), suffix="%"))
-
     with col_r:
         section("Wachstum")
         metric_row("Umsatzwachstum (YoY)", safe(info.get("revenueGrowth"), suffix="%"))
         metric_row("Gewinnwachstum (YoY)", safe(info.get("earningsGrowth"), suffix="%"))
         metric_row("EPS Wachstum (5J)", safe(info.get("earningsQuarterlyGrowth"), suffix="%"))
-
         section("Finanzkraft")
         metric_row("Total Debt", fmt(info.get("totalDebt")))
         metric_row("Cash & Equivalents", fmt(info.get("totalCash")))
@@ -892,14 +848,12 @@ with tabs[1]:
         metric_row("Current Ratio", safe(info.get("currentRatio")))
         metric_row("Quick Ratio", safe(info.get("quickRatio")))
         metric_row("Free Cash Flow", fmt(info.get("freeCashflow")))
-
         section("Dividende")
         metric_row("Dividendenrendite", safe(info.get("dividendYield"), suffix="%"))
         metric_row("Dividende (annual)", safe(info.get("dividendRate"), suffix=f" {currency}"))
         metric_row("Payout Ratio", safe(info.get("payoutRatio"), suffix="%"))
         metric_row("5J Div. Wachstum", safe(info.get("fiveYearAvgDividendYield"), suffix="%"))
 
-    # Revenue/Earnings Chart
     if not fins.empty:
         section("Umsatz & Gewinn Verlauf")
         rev_row = [r for r in fins.index if "Revenue" in str(r) or "Total Revenue" in str(r)]
@@ -927,14 +881,12 @@ with tabs[1]:
 # ================================================================
 with tabs[2]:
     fv_col, dcf_col = st.columns([1, 1])
-
     with fv_col:
         section("Fair Value Schätzung")
         if fair_val:
             upside = safe_pct(fair_val, price)
             fv_color = "var(--green)" if upside > 0 else "var(--red)"
             label = "Unterbewertet" if upside > 10 else "Überbewertet" if upside < -10 else "Fair bewertet"
-
             st.markdown(f"""
             <div class="eq-card">
                 <div class="fv-label">Intrinsic Value Estimate</div>
@@ -960,7 +912,6 @@ with tabs[2]:
             </div>
             """, unsafe_allow_html=True)
 
-            # Visual gauge
             fig_fv = go.Figure()
             fig_fv.add_trace(go.Indicator(
                 mode="gauge+number+delta",
@@ -986,21 +937,18 @@ with tabs[2]:
             fig_fv.update_layout(**PLOTLY_LAYOUT, height=280)
             st.plotly_chart(fig_fv, use_container_width=True)
         else:
-            st.info("Nicht genug Daten für eine Fair Value Schätzung. Bitte EPS und Buchwert verfügbar haben.")
+            st.info("Nicht genug Daten für eine Fair Value Schätzung.")
 
     with dcf_col:
         section("DCF Sensitivitäts-Analyse")
         st.markdown('<div style="font-size:0.8rem;color:var(--muted);margin-bottom:1rem">Passe Wachstums- und Diskontierungsannahmen an, um den inneren Wert zu simulieren.</div>', unsafe_allow_html=True)
-
         fcf = info.get("freeCashflow")
         shares = info.get("sharesOutstanding")
-
         if fcf and shares:
             g_min = st.slider("Wachstumsrate Min (%)", 0, 20, 5)
             g_max = st.slider("Wachstumsrate Max (%)", 5, 40, 20)
-            disc  = st.slider("Diskontierungsrate (%)", 6, 15, 10)
+            disc = st.slider("Diskontierungsrate (%)", 6, 15, 10)
             term_pe = st.slider("Terminal PE", 10, 30, 15)
-
             growth_rates = np.linspace(g_min/100, g_max/100, 6)
             dcf_vals = []
             for g in growth_rates:
@@ -1008,7 +956,6 @@ with tabs[2]:
                 pv = sum(fcf_ps * (1+g)**yr / (1+disc/100)**yr for yr in range(1,11))
                 terminal = fcf_ps * (1+g)**10 * term_pe / (1+disc/100)**10
                 dcf_vals.append(pv + terminal)
-
             fig_dcf = go.Figure()
             bar_colors = ["#22c55e" if v > price else "#ef4444" for v in dcf_vals]
             fig_dcf.add_trace(go.Bar(
@@ -1035,25 +982,21 @@ with tabs[2]:
 with tabs[3]:
     news = load_news(ticker, company)
     section("Aktuelle Nachrichten")
-
     if news:
         for art in news:
             title = art.get("title", "")
-            url   = art.get("url", "#")
-            src   = art.get("source", {}).get("name", "") if isinstance(art.get("source"), dict) else ""
-            pub   = art.get("publishedAt", "")[:10] if art.get("publishedAt") else ""
-
-            # Naive sentiment
+            url = art.get("url", "#")
+            src = art.get("source", {}).get("name", "") if isinstance(art.get("source"), dict) else ""
+            pub = art.get("publishedAt", "")[:10] if art.get("publishedAt") else ""
+            title_l = title.lower()
             neg_words = ["fall", "drop", "crash", "loss", "decline", "down", "cut", "miss", "risk", "fail", "warn"]
             pos_words = ["rise", "gain", "beat", "growth", "profit", "surge", "record", "buy", "upgrade", "strong"]
-            title_l = title.lower()
             if any(w in title_l for w in pos_words):
                 sent_label, sent_cls = "Positiv", "news-sentiment-pos"
             elif any(w in title_l for w in neg_words):
                 sent_label, sent_cls = "Negativ", "news-sentiment-neg"
             else:
                 sent_label, sent_cls = "Neutral", "news-sentiment-neu"
-
             st.markdown(f"""
             <div class="news-item">
                 <div class="news-headline"><a href="{url}" target="_blank" style="color:var(--text);text-decoration:none">{title}</a></div>
@@ -1063,22 +1006,19 @@ with tabs[3]:
                 </div>
             </div>""", unsafe_allow_html=True)
     else:
-        st.info("Keine Nachrichten gefunden. NewsAPI Key für bessere Ergebnisse empfohlen.")
+        st.info("Keine Nachrichten gefunden.")
 
 # ================================================================
 # TAB 5 — ANALYST ESTIMATES
 # ================================================================
 with tabs[4]:
     section("Analyst-Konsensus & Schätzungen")
-
-    # Analyst target
     est_col1, est_col2, est_col3 = st.columns(3)
     target = info.get("targetMeanPrice")
     target_lo = info.get("targetLowPrice")
     target_hi = info.get("targetHighPrice")
     rec = info.get("recommendationKey", "").upper().replace("_", " ")
     num_analysts = info.get("numberOfAnalystOpinions", "N/A")
-
     with est_col1:
         t_upside = safe_pct(target, price) if target else None
         card("Analyst Kursziel", f"{currency} {target:,.2f}" if target else "N/A",
@@ -1095,7 +1035,6 @@ with tabs[4]:
              f"{currency} {target_lo:,.0f} – {currency} {target_hi:,.0f}" if target_lo and target_hi else "N/A",
              "Niedrig – Hoch")
 
-    # Analyst price target bar
     if target and target_lo and target_hi:
         fig_est = go.Figure()
         fig_est.add_trace(go.Scatter(
@@ -1113,7 +1052,6 @@ with tabs[4]:
                               xaxis_tickprefix=f"{currency} ", yaxis_visible=False)
         st.plotly_chart(fig_est, use_container_width=True)
 
-    # FMP Estimates
     if fmp_estimates:
         section("Umsatz & EPS Prognosen")
         est_rows = []
@@ -1132,7 +1070,6 @@ with tabs[4]:
                 hide_index=True
             )
 
-    # Insider / Short
     section("Weitere Signale")
     s1, s2, s3 = st.columns(3)
     with s1:
