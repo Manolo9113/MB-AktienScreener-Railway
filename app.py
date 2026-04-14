@@ -317,6 +317,7 @@ def is_isin(q: str) -> bool:
     import re
     return bool(re.match(r'^[A-Z]{2}[A-Z0-9]{10}$', q))
 
+
 def is_wkn(q: str) -> bool:
     """WKN: genau 6 alphanumerische Zeichen, z.B. 865985"""
     import re
