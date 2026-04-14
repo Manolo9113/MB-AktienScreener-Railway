@@ -5,6 +5,7 @@ from plotly.subplots import make_subplots
 import numpy as np
 import pandas as pd
 import requests
+import os
 
 # ==================== CONFIG ====================
 st.set_page_config(
