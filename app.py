@@ -447,8 +447,6 @@ with st.sidebar:
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-    # Smarte Suche
- with st.sidebar:
     # ... dein Logo etc.
 
     search_raw = st.text_input(
