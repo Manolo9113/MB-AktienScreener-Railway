@@ -5,7 +5,6 @@ from plotly.subplots import make_subplots
 import numpy as np
 import pandas as pd
 import requests
-import os
 
 # ==================== CONFIG ====================
 st.set_page_config(
@@ -180,11 +179,6 @@ try:
     FMP_API_KEY = st.secrets["FMP_API_KEY"]
 except Exception:
     FMP_API_KEY = os.getenv("FMP_API_KEY", "")
-
-if not FMP_API_KEY:
-    st.sidebar.warning("⚠️ Kein FMP API Key gefunden. ISIN/WKN-Suche und Peer-Vergleich sind eingeschränkt.")
-else:
-    st.sidebar.success("✅ FMP API Key geladen")
 
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
