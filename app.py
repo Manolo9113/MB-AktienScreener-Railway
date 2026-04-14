@@ -181,11 +181,11 @@ hr { border-color: var(--border) !important; margin: 1.5rem 0 !important; }
 """, unsafe_allow_html=True)
 # ==================== SESSION STATE ====================
 if "ticker" not in st.session_state:
-st.session_state.ticker = "AAPL"
+    st.session_state.ticker = "AAPL"
 if "watchlist" not in st.session_state:
-st.session_state.watchlist = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"]
+    st.session_state.watchlist = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"]
 if "search_results" not in st.session_state:
-st.session_state.search_results = []
+    st.session_state.search_results = []
 # ==================== API KEYS ====================
 FMP_API_KEY = os.getenv("FMP_API_KEY", "")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
