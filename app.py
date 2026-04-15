@@ -349,10 +349,11 @@ def dcf_valuation(fcf, shares, growth_rate, terminal_growth, discount_rate, year
     cashflows = []
     cf = fcf
     for i in range(1, years + 1):
-        cf = cf * (1 + growth_rate / 100)
-        pv = cf / ((1 + discount_rate / 100) ** i)
+        cf = cf * (1 + growth_rate / 100)           # cf = nominaler FCF in Jahr i
+        pv = cf / ((1 + discount_rate / 100) ** i)  # Barwert
         cashflows.append(pv)
-    terminal = cashflows[-1] * (1 + terminal_growth / 100) / ((discount_rate - terminal_growth) / 100)
+    # Terminal Value auf Basis des NOMINALEN CF in Jahr N (nicht des Barwerts!)
+    terminal = cf * (1 + terminal_growth / 100) / ((discount_rate - terminal_growth) / 100)
     terminal_pv = terminal / ((1 + discount_rate / 100) ** years)
     total = sum(cashflows) + terminal_pv
     return total / shares
@@ -576,14 +577,18 @@ price_change_pct = (price_change / price_prev * 100) if price_prev != 0 else 0
 
 fcf = yf_info.get("freeCashflow")
 market_cap = yf_info.get("marketCap")
+revenue = yf_info.get("totalRevenue")
 fcf_yield = (fcf / market_cap * 100) if fcf and market_cap else 0
+# FCF Margin = FCF / Umsatz (operative Unternehmenskennzahl für Rule of 40)
+fcf_margin = (fcf / revenue * 100) if fcf and revenue else None
 
 rev_growth = (yf_info.get("revenueGrowth") or 0) * 100
 earnings_growth = (yf_info.get("earningsGrowth") or 0) * 100
 profit_margin = (yf_info.get("profitMargins") or 0) * 100
 gross_margin = (yf_info.get("grossMargins") or 0) * 100
 operating_margin = (yf_info.get("operatingMargins") or 0) * 100
-rule_of_40 = rev_growth + fcf_yield
+# Rule of 40 = Rev Growth % + FCF Margin % (Branchenstandard für SaaS)
+rule_of_40 = (rev_growth + fcf_margin) if fcf_margin is not None else None
 
 trailing_pe = yf_info.get("trailingPE")
 forward_pe = yf_info.get("forwardPE")
@@ -605,19 +610,8 @@ target_mean = yf_info.get("targetMeanPrice")
 recommendation = yf_info.get("recommendationKey", "").replace("_", " ").title()
 sector = yf_info.get("sector", "")
 industry = yf_info.get("industry", "")
-# Logo: yfinance logo_url oft leer → Clearbit als primäre Quelle
-_website = yf_info.get("website", "")
-_domain = ""
-if _website:
-    try:
-        from urllib.parse import urlparse
-        _domain = urlparse(_website).netloc.lstrip("www.")
-    except Exception:
-        pass
-if _domain:
-    logo_url = f"https://logo.clearbit.com/{_domain}"
-else:
-    logo_url = yf_info.get("logo_url", "") or yf_info.get("logoUrl", "")
+# Logo: FMP Image-Endpoint (öffentlich, kein API-Key nötig)
+logo_url = f"https://financialmodelingprep.com/image-stock/{ticker}.png"
 
 # Rule of 40 nur für SaaS/Tech/Cyber relevant
 show_rule_of_40 = is_saas_or_cyber(sector, industry)
@@ -671,7 +665,7 @@ net_cash = (total_cash - total_debt) if total_cash is not None else None
 net_cash_per_share = (net_cash / shares_outstanding) if net_cash is not None and shares_outstanding else None
 price_to_fcf = (market_cap / fcf) if fcf and fcf > 0 and market_cap else None
 short_pct_float = yf_info.get("shortPercentOfFloat")
-total_shareholder_yield = fcf_yield + dividend_yield if fcf_yield else dividend_yield
+total_shareholder_yield = (fcf_yield + dividend_yield) if (fcf and market_cap) else (dividend_yield if dividend_yield else None)
 earnings_ts = yf_info.get("earningsTimestamp") or yf_info.get("earningsDate")
 earnings_date_str = ""
 try:
@@ -713,18 +707,14 @@ change_class = "header-change-pos" if price_change >= 0 else "header-change-neg"
 change_arrow = "▲" if price_change >= 0 else "▼"
 company_name = yf_info.get("longName", ticker)
 
-# Logo HTML — server-side check (onerror wird von Streamlit nicht ausgeführt)
-logo_html = ""
-if logo_url:
-    try:
-        r = requests.head(logo_url, timeout=2, allow_redirects=True)
-        if r.status_code == 200:
-            logo_html = f'<img src="{logo_url}" style="height:48px; width:auto; margin-right:16px; border-radius:8px; background:#fff; padding:4px; object-fit:contain;">'
-    except Exception:
-        pass
-if not logo_html:
-    initials = "".join(w[0] for w in company_name.split()[:2]).upper() if company_name else ticker[:2]
-    logo_html = f'<div style="height:48px;width:48px;background:#1a3a5c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#64b5f6;margin-right:16px;flex-shrink:0;">{initials}</div>'
+# Logo HTML — FMP Image-Endpoint direkt einbinden
+initials = "".join(w[0] for w in company_name.split()[:2]).upper() if company_name else ticker[:2]
+logo_html = f"""
+<div style="position:relative;height:52px;width:52px;margin-right:16px;flex-shrink:0;">
+    <div style="position:absolute;inset:0;background:#1a3a5c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#64b5f6;">{initials}</div>
+    <img src="{logo_url}" style="position:absolute;inset:0;height:52px;width:52px;border-radius:8px;background:#fff;padding:4px;object-fit:contain;"
+         onerror="this.style.visibility='hidden'">
+</div>"""
 
 st.markdown(f"""
 <div class="header-wrap">
