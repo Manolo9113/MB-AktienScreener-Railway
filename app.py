@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import yfinance as yf
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -8,7 +9,7 @@ import requests
 
 # ==================== CONFIG ====================
 st.set_page_config(
-    page_title="Aktien-Tool Bäumer",
+    page_title="StocksMB",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -562,20 +563,21 @@ def _go_to_ticker(t):
     st.session_state["search_input"] = t
     st.session_state["search_msg"] = ""
     st.session_state["suggestions"] = []
+    st.session_state["_open_sidebar"] = True
 
 # ==================== SIDEBAR ====================
 with st.sidebar:
     st.markdown("""
     <div style='text-align:center; padding: 20px 0 10px 0;'>
         <span style='font-size:2rem;'>📈</span>
-        <div style='color:#64b5f6; font-size:1.3rem; font-weight:700; margin-top:6px;'>Bäumer</div>
-        <div style='color:#37474f; font-size:0.75rem;'>Aktien Analyse Tool</div>
+        <div style='color:#64b5f6; font-size:1.3rem; font-weight:700; margin-top:6px;'>StocksMB</div>
+        <div style='color:#37474f; font-size:0.75rem;'>Aktienanalyse Tool</div>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-    # Smarte Suche
+    # Smarte Suche mit Autofill
     search_raw = st.text_input(
         "Suche",
         value=st.session_state["search_input"],
@@ -583,9 +585,20 @@ with st.sidebar:
         placeholder="Ticker, Name, ISIN oder WKN…"
     )
 
+    # Autofill: Live-Vorschläge ab 2 Zeichen (vor dem Suchen-Button)
+    _sb_q = search_raw.strip()
+    if len(_sb_q) >= 2:
+        _sb_ac = search_by_name(_sb_q)
+        if _sb_ac:
+            for _s in _sb_ac[:5]:
+                _lbl = f"{_s['ticker']} — {_s['name'][:24]}"
+                if st.button(_lbl, use_container_width=True, key=f"sbac_{_s['ticker']}_{_sb_q}"):
+                    _go_to_ticker(_s["ticker"])
+                    st.rerun()
+
     search_btn = st.button("🔍 Suchen", use_container_width=True)
 
-    if search_btn and search_raw.strip():
+    if search_btn and _sb_q:
         with st.spinner("Suche…"):
             resolved, msg, sugg = resolve_search_input(search_raw)
         st.session_state["search_input"] = search_raw
@@ -595,19 +608,8 @@ with st.sidebar:
             _go_to_ticker(resolved)
             st.rerun()
 
-    # Auflösungs-Info anzeigen
     if st.session_state["search_msg"]:
         st.markdown(f"<div style='color:#64b5f6; font-size:0.8rem; padding:6px 4px;'>{st.session_state['search_msg']}</div>", unsafe_allow_html=True)
-
-    # Mehrere Treffer → Auswahl anzeigen
-    if st.session_state["suggestions"]:
-        st.markdown("<div style='color:#ffd600; font-size:0.78rem; padding:4px 0 6px 0;'>Mehrere Treffer — bitte auswählen:</div>", unsafe_allow_html=True)
-        for s in st.session_state["suggestions"]:
-            label = f"{s['ticker']}  ·  {s['name'][:22]}  [{s['exchange']}]"
-            if st.button(label, use_container_width=True, key=f"sugg_{s['ticker']}"):
-                _go_to_ticker(s["ticker"])
-                st.session_state["search_msg"] = f"Ausgewählt: **{s['name']}** ({s['ticker']})"
-                st.rerun()
 
     st.markdown("<div class='section-header'>⚡ Schnellauswahl</div>", unsafe_allow_html=True)
     quick = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "SAP"]
@@ -632,7 +634,7 @@ if st.session_state["show_landing"]:
     st.markdown("""
     <div style="text-align:center; padding:48px 0 32px 0;">
         <div style="font-size:3rem; font-weight:800; color:#fff; letter-spacing:-1px;">
-            📈 Bäumer <span style="color:#00e5ff;">Aktien</span>screener
+            📈 <span style="color:#00e5ff;">Stocks</span>MB
         </div>
         <div style="color:#64b5f6; font-size:1.1rem; margin-top:10px;">
             Professionelle Aktienanalyse — Ticker, Name, ISIN oder WKN eingeben
@@ -640,7 +642,7 @@ if st.session_state["show_landing"]:
     </div>
     """, unsafe_allow_html=True)
 
-    # Prominente Suche
+    # Prominente Suche mit Autofill
     lc1, lc2, lc3 = st.columns([1, 3, 1])
     with lc2:
         landing_search = st.text_input(
@@ -649,16 +651,33 @@ if st.session_state["show_landing"]:
             placeholder="z.B.  NVDA  ·  Siemens  ·  DE0007164600  ·  723610",
             key="landing_search_input"
         )
+
+        # Autofill: Live-Vorschläge ab 2 Zeichen
+        _ls = landing_search.strip()
+        if len(_ls) >= 2:
+            _ac_results = search_by_name(_ls)
+            if _ac_results:
+                for _s in _ac_results[:5]:
+                    _lbl = f"**{_s['ticker']}** — {_s['name']}"
+                    if _s.get('exchange'):
+                        _lbl += f" · {_s['exchange']}"
+                    if st.button(_lbl, key=f"ac_land_{_s['ticker']}_{_ls}", use_container_width=True):
+                        _go_to_ticker(_s["ticker"])
+                        st.rerun()
+
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         if st.button("🔍  Aktie analysieren", use_container_width=True, type="primary"):
-            if landing_search.strip():
+            if _ls:
                 with st.spinner("Suche…"):
                     resolved, msg, sugg = resolve_search_input(landing_search)
                 if resolved:
                     _go_to_ticker(resolved)
                     st.rerun()
                 elif sugg:
-                    st.session_state["suggestions"] = sugg
-                    st.rerun()
+                    for _s in sugg[:5]:
+                        if st.button(f"**{_s['ticker']}** — {_s['name']}", key=f"ac_land2_{_s['ticker']}", use_container_width=True):
+                            _go_to_ticker(_s["ticker"])
+                            st.rerun()
                 else:
                     st.warning("Kein Ergebnis. Bitte Ticker oder Firmenname prüfen.")
 
@@ -716,6 +735,13 @@ if st.session_state["show_landing"]:
     st.stop()
 
 # ==================== MAIN DATA ====================
+# Auto-open sidebar when navigating from landing page
+if st.session_state.pop("_open_sidebar", False):
+    components.html("""<script>
+        var btn = window.parent.document.querySelector('[data-testid="collapsedControl"]');
+        if (btn) { setTimeout(function(){ btn.click(); }, 300); }
+    </script>""", height=0, width=0)
+
 ticker = st.session_state["ticker"]
 
 with st.spinner(f"Lade Daten für {ticker}..."):
@@ -1712,4 +1738,4 @@ with st.expander("🔍 Debug: Rohdaten"):
         st.caption("FMP Metrics")
         st.json(fmp_metrics)
 
-st.markdown('<div class="caption-text">Aktien-Tool Bäumer v4 · yFinance + FMP · Alle Daten ohne Gewähr</div>', unsafe_allow_html=True)
+st.markdown('<div class="caption-text">StocksMB · yFinance + FMP · Alle Daten ohne Gewähr</div>', unsafe_allow_html=True)
