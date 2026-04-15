@@ -982,6 +982,8 @@ def load_indices():
         "Hang Seng":   ("^HSI",     ""),
         "FTSE 100":    ("^FTSE",    ""),
         "Euro Stoxx":  ("^STOXX50E",""),
+        "Bitcoin":     ("BTC-USD",  "$"),
+        "Gold":        ("GC=F",     "$"),
     }
     result = {}
     for name, (sym, cur) in symbols.items():
