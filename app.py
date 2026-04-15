@@ -333,6 +333,55 @@ def fmt_large(value):
         return f"{value/1e6:.1f}M$"
     return f"{value:,.0f}"
 
+# ==================== SECTOR BENCHMARKS ====================
+# Typische Medianwerte je Sektor (S&P 500 historische Durchschnitte)
+SECTOR_BENCHMARKS = {
+    "Technology": {
+        "Bruttomarge": 65.0, "Op. Marge": 22.0, "Gewinnmarge": 18.0,
+        "ROIC": 22.0, "Umsatzwachstum": 12.0, "FCF Yield": 2.5,
+    },
+    "Healthcare": {
+        "Bruttomarge": 60.0, "Op. Marge": 18.0, "Gewinnmarge": 14.0,
+        "ROIC": 16.0, "Umsatzwachstum": 8.0, "FCF Yield": 3.0,
+    },
+    "Consumer Cyclical": {
+        "Bruttomarge": 38.0, "Op. Marge": 10.0, "Gewinnmarge": 7.0,
+        "ROIC": 14.0, "Umsatzwachstum": 6.0, "FCF Yield": 3.5,
+    },
+    "Consumer Defensive": {
+        "Bruttomarge": 40.0, "Op. Marge": 12.0, "Gewinnmarge": 9.0,
+        "ROIC": 18.0, "Umsatzwachstum": 5.0, "FCF Yield": 4.0,
+    },
+    "Financial Services": {
+        "Bruttomarge": 55.0, "Op. Marge": 28.0, "Gewinnmarge": 22.0,
+        "ROIC": 12.0, "Umsatzwachstum": 8.0, "FCF Yield": 4.0,
+    },
+    "Energy": {
+        "Bruttomarge": 35.0, "Op. Marge": 14.0, "Gewinnmarge": 10.0,
+        "ROIC": 10.0, "Umsatzwachstum": 5.0, "FCF Yield": 5.0,
+    },
+    "Industrials": {
+        "Bruttomarge": 32.0, "Op. Marge": 12.0, "Gewinnmarge": 8.0,
+        "ROIC": 12.0, "Umsatzwachstum": 6.0, "FCF Yield": 3.5,
+    },
+    "Communication Services": {
+        "Bruttomarge": 55.0, "Op. Marge": 18.0, "Gewinnmarge": 14.0,
+        "ROIC": 14.0, "Umsatzwachstum": 7.0, "FCF Yield": 3.0,
+    },
+    "Utilities": {
+        "Bruttomarge": 48.0, "Op. Marge": 20.0, "Gewinnmarge": 12.0,
+        "ROIC": 7.0, "Umsatzwachstum": 4.0, "FCF Yield": 2.0,
+    },
+    "Real Estate": {
+        "Bruttomarge": 52.0, "Op. Marge": 28.0, "Gewinnmarge": 18.0,
+        "ROIC": 7.0, "Umsatzwachstum": 6.0, "FCF Yield": 3.0,
+    },
+    "Basic Materials": {
+        "Bruttomarge": 28.0, "Op. Marge": 10.0, "Gewinnmarge": 7.0,
+        "ROIC": 10.0, "Umsatzwachstum": 5.0, "FCF Yield": 4.0,
+    },
+}
+
 def score_color(s):
     if s >= 75:
         return "#00e676"
@@ -1749,6 +1798,79 @@ with tab1:
     with c3:
         st.markdown(mini_card("Dividend Yield", dividend_yield, 3, 1, ".2f", "%"), unsafe_allow_html=True)
 
+    # ── Branchenvergleich ──────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🌍 Branchenvergleich</div>", unsafe_allow_html=True)
+    _bench = SECTOR_BENCHMARKS.get(sector)
+    if _bench:
+        _stock_vals = {
+            "Bruttomarge":    gross_margin,
+            "Op. Marge":      operating_margin,
+            "Gewinnmarge":    profit_margin,
+            "ROIC":           roic_val,
+            "Umsatzwachstum": rev_growth,
+            "FCF Yield":      fcf_yield,
+        }
+        _mnames  = list(_bench.keys())
+        _svals   = [_stock_vals.get(m) for m in _mnames]
+        _bvals   = [_bench[m] for m in _mnames]
+        _colors  = []
+        for _sv, _bv in zip(_svals, _bvals):
+            if _sv is None:
+                _colors.append("rgba(100,100,100,0.5)")
+            elif _sv >= _bv * 1.1:
+                _colors.append("#00e676")
+            elif _sv >= _bv * 0.85:
+                _colors.append("#ffd600")
+            else:
+                _colors.append("#ff5252")
+
+        _fig_b = go.Figure()
+        _fig_b.add_trace(go.Bar(
+            name=ticker,
+            y=_mnames,
+            x=[v if v is not None else 0 for v in _svals],
+            orientation="h",
+            marker_color=_colors,
+            text=[f"{v:.1f}%" if v is not None else "N/A" for v in _svals],
+            textposition="outside",
+            textfont=dict(size=11),
+        ))
+        _fig_b.add_trace(go.Bar(
+            name=f"{sector} ∅",
+            y=_mnames,
+            x=_bvals,
+            orientation="h",
+            marker_color="rgba(100,181,246,0.2)",
+            marker_line=dict(color="#64b5f6", width=1),
+            text=[f"{v:.1f}%" for v in _bvals],
+            textposition="outside",
+            textfont=dict(size=11, color="#64b5f6"),
+        ))
+        _fig_b.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(13,21,38,0.8)",
+            height=340,
+            margin=dict(l=0, r=90, t=10, b=0),
+            barmode="group",
+            bargap=0.25,
+            bargroupgap=0.08,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                        font=dict(size=11)),
+            xaxis=dict(showgrid=True, gridcolor="#1e2d45", ticksuffix="%", tickfont=dict(size=10)),
+            yaxis=dict(showgrid=False, tickfont=dict(size=11)),
+        )
+        st.plotly_chart(_fig_b, use_container_width=True)
+
+        _above = [m for m, sv, bv in zip(_mnames, _svals, _bvals) if sv is not None and sv >= bv * 1.1]
+        _below = [m for m, sv, bv in zip(_mnames, _svals, _bvals) if sv is not None and sv < bv * 0.85]
+        if _above:
+            st.markdown(f'<div class="insight-box">✅ <strong>Über Sektordurchschnitt ({sector}):</strong> {", ".join(_above)}</div>', unsafe_allow_html=True)
+        if _below:
+            st.markdown(f'<div class="insight-box">⚠️ <strong>Unter Sektordurchschnitt ({sector}):</strong> {", ".join(_below)}</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="insight-box">ℹ️ Keine Branchenbenchmarks für <strong>{sector or "unbekannter Sektor"}</strong> hinterlegt.</div>', unsafe_allow_html=True)
+
 with tab2:
     st.markdown("<div class='section-header'>Wachstum</div>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
@@ -2195,24 +2317,52 @@ with tab6:
             for pt in peer_tickers:
                 try:
                     pi = yf.Ticker(pt).info
+                    _fcf_p  = pi.get("freeCashflow")
+                    _mc_p   = pi.get("marketCap")
+                    _fcy_p  = (_fcf_p / _mc_p * 100) if _fcf_p and _mc_p else None
+                    _roe_p  = pi.get("returnOnEquity")
                     peer_data.append({
-                        "Ticker": pt,
-                        "Kurs": pi.get("currentPrice") or pi.get("regularMarketPrice"),
-                        "P/E": pi.get("trailingPE"),
-                        "Mkt Cap": pi.get("marketCap"),
-                        "Rev Growth": (pi.get("revenueGrowth") or 0) * 100,
-                        "Profit Mg": (pi.get("profitMargins") or 0) * 100,
+                        "Ticker":     pt,
+                        "Kurs":       pi.get("currentPrice") or pi.get("regularMarketPrice"),
+                        "Mkt Cap":    _mc_p,
+                        "P/E":        pi.get("trailingPE"),
+                        "Gross Mg%":  (pi.get("grossMargins") or 0) * 100,
+                        "Op. Mg%":    (pi.get("operatingMargins") or 0) * 100,
+                        "Rev Gr%":    (pi.get("revenueGrowth") or 0) * 100,
+                        "FCF Yield%": _fcy_p,
+                        "ROE%":       (_roe_p * 100) if _roe_p else None,
                     })
                 except:
                     pass
 
             if peer_data:
                 pdf = pd.DataFrame(peer_data).set_index("Ticker")
-                pdf["Mkt Cap"] = pdf["Mkt Cap"].apply(fmt_large)
-                pdf["P/E"] = pdf["P/E"].apply(lambda v: f"{v:.1f}" if v else "N/A")
-                pdf["Rev Growth"] = pdf["Rev Growth"].apply(lambda v: f"{v:.1f}%")
-                pdf["Profit Mg"] = pdf["Profit Mg"].apply(lambda v: f"{v:.1f}%")
-                pdf["Kurs"] = pdf["Kurs"].apply(lambda v: f"${v:.2f}" if v else "N/A")
+                # Sector benchmark row
+                _bench_p = SECTOR_BENCHMARKS.get(sector, {})
+                if _bench_p:
+                    pdf.loc[f"∅ {sector[:14]}"] = {
+                        "Kurs":       None,
+                        "Mkt Cap":    None,
+                        "P/E":        None,
+                        "Gross Mg%":  _bench_p.get("Bruttomarge"),
+                        "Op. Mg%":    _bench_p.get("Op. Marge"),
+                        "Rev Gr%":    _bench_p.get("Umsatzwachstum"),
+                        "FCF Yield%": _bench_p.get("FCF Yield"),
+                        "ROE%":       None,
+                    }
+                # Format columns
+                def _pct(v):
+                    return f"{v:.1f}%" if isinstance(v, float) and not pd.isna(v) else "—"
+                def _pr(v):
+                    return f"${v:.2f}" if isinstance(v, float) and not pd.isna(v) else "—"
+                pdf["Kurs"]       = pdf["Kurs"].apply(_pr)
+                pdf["Mkt Cap"]    = pdf["Mkt Cap"].apply(lambda v: fmt_large(v) if isinstance(v, float) and not pd.isna(v) else "—")
+                pdf["P/E"]        = pdf["P/E"].apply(lambda v: f"{v:.1f}x" if isinstance(v, float) and not pd.isna(v) else "—")
+                pdf["Gross Mg%"]  = pdf["Gross Mg%"].apply(_pct)
+                pdf["Op. Mg%"]    = pdf["Op. Mg%"].apply(_pct)
+                pdf["Rev Gr%"]    = pdf["Rev Gr%"].apply(_pct)
+                pdf["FCF Yield%"] = pdf["FCF Yield%"].apply(_pct)
+                pdf["ROE%"]       = pdf["ROE%"].apply(_pct)
                 st.dataframe(pdf, use_container_width=True)
         elif not FMP_API_KEY:
             st.markdown('<div class="insight-box">FMP API Key erforderlich für Peer-Daten.</div>', unsafe_allow_html=True)
