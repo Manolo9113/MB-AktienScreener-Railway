@@ -175,6 +175,56 @@ st.markdown("""
     }
     .insider-buy { color: #00e676; font-weight: 600; }
     .insider-sell { color: #ff5252; font-weight: 600; }
+
+    /* Grok AI Analysis */
+    .grok-box {
+        background: linear-gradient(135deg, #0a1628, #0d1f3c);
+        border: 1px solid #1e3a5f;
+        border-left: 3px solid #7c3aed;
+        border-radius: 14px;
+        padding: 22px 26px;
+        margin: 16px 0;
+    }
+    .grok-box h4 {
+        color: #a78bfa;
+        font-size: 1.05rem;
+        font-weight: 700;
+        margin: 0 0 6px 0;
+    }
+    .grok-box p {
+        color: #b0bec5;
+        font-size: 0.88rem;
+        line-height: 1.7;
+        margin: 0 0 10px 0;
+    }
+    .grok-box ul {
+        color: #b0bec5;
+        font-size: 0.88rem;
+        line-height: 1.7;
+        padding-left: 18px;
+        margin: 0 0 10px 0;
+    }
+    .grok-box li { margin-bottom: 4px; }
+    .grok-section-title {
+        color: #64b5f6;
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin: 14px 0 6px 0;
+        border-bottom: 1px solid #1e3a5f;
+        padding-bottom: 4px;
+    }
+    .grok-badge {
+        display: inline-block;
+        background: #1e1b4b;
+        color: #a78bfa;
+        border-radius: 6px;
+        padding: 2px 10px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        margin-right: 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -183,6 +233,7 @@ import os
 
 FMP_API_KEY = os.getenv("FMP_API_KEY", "")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
+XAI_API_KEY  = os.getenv("XAI_API_KEY", "")
 
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
@@ -838,6 +889,126 @@ def load_market_news():
             pass
     return headlines[:4]
 
+# ==================== GROK AI ====================
+def call_grok_api(system_prompt: str, user_message: str, api_key: str) -> str:
+    """Ruft die xAI Grok API auf und gibt den Antworttext zurück."""
+    if not api_key:
+        return "⚠️ Kein XAI_API_KEY konfiguriert. Bitte in den Railway-Umgebungsvariablen setzen."
+    try:
+        resp = requests.post(
+            "https://api.x.ai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "grok-3",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": user_message},
+                ],
+                "temperature": 0.4,
+                "max_tokens": 1800,
+            },
+            timeout=45,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.Timeout:
+        return "⚠️ Grok API Timeout — bitte erneut versuchen."
+    except Exception as e:
+        return f"⚠️ Grok API Fehler: {e}"
+
+
+def build_grok_prompt(
+    company_name, ticker, sector, industry,
+    price, market_cap, quality_score,
+    rev_growth, gross_margin, roic_val, fcf_yield,
+    profit_margin, operating_margin, peg_ratio,
+    rule_of_40, show_rule_of_40,
+    net_cash_per_share, price_to_fcf, short_pct_float,
+    total_shareholder_yield, dilution_pct,
+    moat, piotroski,
+    dcf_fair_val,
+) -> tuple[str, str]:
+    """Baut System-Prompt und User-Message für die Grok-Analyse."""
+
+    system = """Du bist ein erfahrener Aktienanalyst mit CFA-Zertifizierung und 20 Jahren Erfahrung.
+Analysiere Aktien prägnant, ehrlich und auf Deutsch.
+Strukturiere deine Antwort IMMER exakt so (Markdown-frei, nur diese Abschnitte):
+
+BULL CASE
+- [3 konkrete Stärken des Unternehmens]
+
+BEAR CASE
+- [3 konkrete Risiken oder Schwächen]
+
+INVESTMENT THESE
+[2-3 Sätze: Kernthese — warum kaufen oder nicht kaufen?]
+
+BEWERTUNG
+[1-2 Sätze zum aktuellen Kurs vs. fairen Wert / Wachstumserwartungen]
+
+ROT-FLAGS
+- [maximal 3 klare Warnsignale — oder "Keine kritischen Warnsignale erkannt"]
+
+Sei direkt. Vermeide Marketing-Floskeln. Wenn Daten fehlen, schreib kurz warum."""
+
+    def _fmt(v, suffix="%", decimals=1):
+        if v is None:
+            return "N/A"
+        return f"{v:.{decimals}f}{suffix}"
+
+    mc_str = f"${market_cap/1e9:.1f}B" if market_cap else "N/A"
+    dcf_str = f"${dcf_fair_val:.2f}" if dcf_fair_val else "N/A"
+    moat_str = moat["moat_width"] if moat else "N/A"
+    moat_types_str = ", ".join(t[0] for t in moat["moat_types"]) if moat and moat["moat_types"] else "keine erkannt"
+    piotroski_str = f"{piotroski['score']}/{piotroski['available']}" if piotroski else "N/A"
+
+    r40_line = f"Rule of 40: {_fmt(rule_of_40)}" if show_rule_of_40 else ""
+    dilution_line = f"Verwässerung (5J): {_fmt(dilution_pct)}" if dilution_pct is not None else ""
+    short_line = f"Short Interest: {_fmt(short_pct_float * 100 if short_pct_float else None)}" if short_pct_float else ""
+    net_cash_line = f"Net Cash/Aktie: {_fmt(net_cash_per_share, suffix='$', decimals=2)}" if net_cash_per_share is not None else ""
+
+    user_msg = f"""Analysiere {company_name} ({ticker}):
+
+STAMMDATEN
+Sektor: {sector} | Branche: {industry}
+Kurs: ${price:.2f} | Marktkapitalisierung: {mc_str}
+
+QUALITÄT
+Qualitäts-Score: {quality_score}/100
+Bruttomarge: {_fmt(gross_margin)}
+ROIC: {_fmt(roic_val)}
+FCF Yield: {_fmt(fcf_yield)}
+Gewinnmarge: {_fmt(profit_margin)}
+Operative Marge: {_fmt(operating_margin)}
+Umsatzwachstum: {_fmt(rev_growth)}
+{r40_line}
+
+BEWERTUNG
+PEG Ratio: {_fmt(peg_ratio, suffix='x', decimals=2)}
+Price/FCF: {_fmt(price_to_fcf, suffix='x', decimals=1)}
+DCF Fair Value (konservativ): {dcf_str}
+Total Shareholder Yield: {_fmt(total_shareholder_yield)}
+
+BURGGRABEN
+Moat-Breite: {moat_str}
+Moat-Treiber: {moat_types_str}
+
+RISIKEN
+Piotroski F-Score: {piotroski_str}
+{dilution_line}
+{short_line}
+
+BILANZ
+{net_cash_line}
+
+Gib deine Analyse gemäß der vorgegebenen Struktur."""
+
+    return system, user_msg
+
+
 # ==================== SESSION ====================
 if "ticker" not in st.session_state:
     st.session_state["ticker"] = ""
@@ -849,6 +1020,10 @@ if "search_msg" not in st.session_state:
     st.session_state["search_msg"] = ""
 if "suggestions" not in st.session_state:
     st.session_state["suggestions"] = []
+if "grok_analysis" not in st.session_state:
+    st.session_state["grok_analysis"] = ""
+if "grok_ticker" not in st.session_state:
+    st.session_state["grok_ticker"] = ""
 
 def _go_to_ticker(t):
     st.session_state["ticker"] = t
@@ -1282,6 +1457,87 @@ if week52_pos is not None:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+# ==================== KI-ANALYSE (GROK) ====================
+st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+# Wenn Ticker wechselt, alte Analyse löschen
+if st.session_state.get("grok_ticker") != ticker:
+    st.session_state["grok_analysis"] = ""
+    st.session_state["grok_ticker"] = ticker
+
+_col_btn, _col_hint = st.columns([1, 4])
+with _col_btn:
+    _run_grok = st.button("🤖 KI-Analyse", key="btn_grok",
+                          help="Grok-3 analysiert alle Kennzahlen und liefert Bull/Bear-Case, Investment-These und Risiko-Flags")
+with _col_hint:
+    if not XAI_API_KEY:
+        st.caption("⚠️ XAI_API_KEY nicht gesetzt — bitte in Railway-Umgebungsvariablen eintragen.")
+
+if _run_grok:
+    _dcf_for_grok = dcf_valuation(fcf, shares_outstanding,
+                                   min(max(rev_growth or 3, 3), 30), 2.5, 10, 10)
+    _piotroski_data = load_piotroski(ticker)
+    with st.spinner("Grok analysiert..."):
+        _sys, _usr = build_grok_prompt(
+            company_name=company_name, ticker=ticker,
+            sector=sector, industry=industry,
+            price=price, market_cap=market_cap,
+            quality_score=quality_score,
+            rev_growth=rev_growth, gross_margin=gross_margin,
+            roic_val=roic_val, fcf_yield=fcf_yield,
+            profit_margin=profit_margin, operating_margin=operating_margin,
+            peg_ratio=peg_ratio, rule_of_40=rule_of_40,
+            show_rule_of_40=show_rule_of_40,
+            net_cash_per_share=net_cash_per_share,
+            price_to_fcf=price_to_fcf,
+            short_pct_float=short_pct_float,
+            total_shareholder_yield=total_shareholder_yield,
+            dilution_pct=dilution_pct,
+            moat=moat, piotroski=_piotroski_data,
+            dcf_fair_val=_dcf_for_grok,
+        )
+        st.session_state["grok_analysis"] = call_grok_api(_sys, _usr, XAI_API_KEY)
+
+# Analyse anzeigen (bleibt bis Ticker-Wechsel)
+if st.session_state.get("grok_analysis"):
+    _raw = st.session_state["grok_analysis"]
+    _sections = {
+        "BULL CASE": ("🟢", "#00e676"),
+        "BEAR CASE": ("🔴", "#ff5252"),
+        "INVESTMENT THESE": ("💡", "#ffd600"),
+        "BEWERTUNG": ("⚖️", "#64b5f6"),
+        "ROT-FLAGS": ("⚠️", "#ff8f00"),
+    }
+    _html_parts = [f"<div class='grok-box'><div style='display:flex;align-items:center;gap:10px;margin-bottom:14px;'>"
+                   f"<span style='font-size:1.4rem;'>🤖</span>"
+                   f"<div><div style='color:#a78bfa;font-size:1.0rem;font-weight:700;'>KI-Analyse · {company_name}</div>"
+                   f"<div style='color:#546e7a;font-size:0.75rem;'>Powered by Grok-3 · xAI</div></div></div>"]
+    _current_section = None
+    _current_lines = []
+    def _flush_section(sec, lines, parts, sections):
+        if sec and lines:
+            icon, color = sections.get(sec, ("📌", "#64b5f6"))
+            parts.append(f"<div class='grok-section-title'>{icon} {sec}</div>")
+            text = "\n".join(lines).strip()
+            # Bullet-Punkte als HTML-Liste
+            if text.startswith("-"):
+                items = [l.lstrip("- ").strip() for l in text.splitlines() if l.strip().startswith("-")]
+                parts.append("<ul>" + "".join(f"<li>{i}</li>" for i in items if i) + "</ul>")
+            else:
+                parts.append(f"<p>{text}</p>")
+    for _line in _raw.splitlines():
+        _stripped = _line.strip()
+        if _stripped in _sections:
+            _flush_section(_current_section, _current_lines, _html_parts, _sections)
+            _current_section = _stripped
+            _current_lines = []
+        else:
+            if _stripped:
+                _current_lines.append(_stripped)
+    _flush_section(_current_section, _current_lines, _html_parts, _sections)
+    _html_parts.append("</div>")
+    st.markdown("".join(_html_parts), unsafe_allow_html=True)
 
 # ==================== CHART ====================
 st.markdown("<div class='section-header'>📉 Kurs & Fair Value Kanal</div>", unsafe_allow_html=True)
