@@ -364,6 +364,130 @@ def dcf_valuation(fcf, shares, growth_rate, terminal_growth, discount_rate, year
     total = sum(cashflows) + terminal_pv
     return total / shares
 
+# ==================== MOAT ANALYSIS ====================
+def compute_moat(sector, industry, gross_margin, roic_val, operating_margin,
+                 profit_margin, rev_growth, market_cap, debt, employees=None):
+    ind = industry.lower()
+    sec = sector.lower()
+
+    # ── Moat-Treiber erkennen ──────────────────────────────────────────
+    moat_types = []
+
+    # Network Effects
+    _net = ["internet", "social", "marketplace", "platform", "payment",
+            "exchange", "gaming", "search", "e-commerce", "advertising"]
+    if any(k in ind or k in sec for k in _net):
+        moat_types.append(("🌐 Netzwerkeffekte",
+            "Das Produkt wird wertvoller je mehr Nutzer es hat. Starker Verteidigungswall gegen Konkurrenz."))
+
+    # Switching Costs
+    _sw = ["software", "cloud", "saas", "data", "it service", "financial data",
+           "information technology", "enterprise", "erp", "crm", "database"]
+    if any(k in ind for k in _sw):
+        moat_types.append(("🔒 Wechselkosten",
+            "Kunden sind tief integriert — der Wechsel zu Konkurrenz ist teuer und riskant (Datenverlust, Schulungen, Kompatibilität)."))
+
+    # Intangible Assets (Brands, Patents)
+    _int = ["pharma", "biotech", "drug", "brand", "luxury", "beverage", "tobacco",
+            "cosmetic", "media", "entertainment", "semiconductor", "aerospace"]
+    if any(k in ind for k in _int):
+        moat_types.append(("💡 Immaterielle Assets",
+            "Patente, Marken oder Lizenzen schützen das Geschäftsmodell. Wettbewerber können das Produkt nicht einfach kopieren."))
+
+    # Cost Advantages
+    _cost = ["retail", "logistic", "transport", "shipping", "distribution",
+             "mining", "steel", "commodity", "energy", "oil", "gas", "wholesale"]
+    if any(k in ind for k in _cost):
+        moat_types.append(("💰 Kostenvorteile",
+            "Grosse Skalierung oder Zugang zu günstigen Ressourcen ermöglicht tiefere Preise als Konkurrenten."))
+
+    # Efficient Scale (Natural Monopolies)
+    _esc = ["utilit", "railroad", "airport", "infrastructure", "telecom",
+            "water", "waste", "pipeline", "grid"]
+    if any(k in ind or k in sec for k in _esc):
+        moat_types.append(("⚖️ Effiziente Skalierung",
+            "Natürliches Monopol oder regulierter Markt — ein zweiter Anbieter würde den Markt unrentabel machen."))
+
+    # Falls keine Kategorie zutrifft, auf Margen basieren
+    if not moat_types:
+        if gross_margin and gross_margin > 55:
+            moat_types.append(("💎 Preissetzungsmacht",
+                "Aussergewöhnlich hohe Bruttomargen deuten auf Pricing Power und schwache Konkurrenz hin."))
+
+    # ── Marktstruktur heuristisch ───────────────────────────────────────
+    _mono = ["utilit", "railroad", "water supply", "postal"]
+    _oligo = ["semiconductor", "aerospace", "defense", "integrated oil",
+              "pharmaceutical", "auto", "airline", "wireless telecom"]
+    _duo  = ["credit service", "payment process", "rating agency", "operating system"]
+
+    if any(k in ind for k in _mono) or any(k in sec for k in ["utilities"]):
+        market_structure = "Monopol / Reguliert"
+        market_color = "#64b5f6"
+    elif any(k in ind for k in _duo):
+        market_structure = "Duopol"
+        market_color = "#00e5ff"
+    elif any(k in ind for k in _oligo):
+        market_structure = "Oligopol"
+        market_color = "#ffd600"
+    else:
+        market_structure = "Wettbewerb"
+        market_color = "#90a4ae"
+
+    # ── Burggraben-Breite ───────────────────────────────────────────────
+    points = 0
+    max_pts = 0
+
+    def _chk(val, good, ok, w):
+        nonlocal points, max_pts
+        if val is None:
+            return
+        max_pts += w
+        if val >= good:
+            points += w
+        elif val >= ok:
+            points += w * 0.5
+
+    _chk(gross_margin,    60, 40, 30)
+    _chk(roic_val,        20, 10, 30)
+    _chk(operating_margin,25, 15, 20)
+    _chk(profit_margin,   15,  5, 10)
+    _chk(rev_growth,      10,  3, 10)
+
+    moat_score = round(points / max_pts * 100) if max_pts else 0
+
+    # Bonus: bekannte Moat-Treiber vorhanden
+    if len(moat_types) >= 2:
+        moat_score = min(100, moat_score + 8)
+    if len(moat_types) >= 1:
+        moat_score = min(100, moat_score + 4)
+
+    if moat_score >= 65:
+        moat_width = "Wide Moat"
+        moat_color = "#00e676"
+        moat_icon  = "🏰"
+        moat_desc  = "Breiter, nachhaltiger Wettbewerbsvorteil. Das Unternehmen kann voraussichtlich über 20+ Jahre überdurchschnittliche Renditen erwirtschaften."
+    elif moat_score >= 35:
+        moat_width = "Narrow Moat"
+        moat_color = "#ffd600"
+        moat_icon  = "🛡️"
+        moat_desc  = "Schmaler Wettbewerbsvorteil. Vorteil vorhanden, aber Risiko der Erosion durch Technologie- oder Marktveränderungen."
+    else:
+        moat_width = "No Moat"
+        moat_color = "#ff5252"
+        moat_icon  = "⚠️"
+        moat_desc  = "Kein klar erkennbarer struktureller Wettbewerbsvorteil. Margen und Renditen unter Druck durch Konkurrenz."
+
+    return {
+        "moat_width": moat_width,
+        "moat_color": moat_color,
+        "moat_icon":  moat_icon,
+        "moat_desc":  moat_desc,
+        "moat_score": moat_score,
+        "moat_types": moat_types,
+        "market_structure": market_structure,
+        "market_color": market_color,
+    }
+
 # ==================== SMART SEARCH ====================
 
 def is_isin(q: str) -> bool:
@@ -878,6 +1002,10 @@ quality_score = compute_score(rev_growth, fcf_yield, gross_margin, roic_val,
                                profit_margin, rule_of_40, peg_ratio, debt, operating_margin,
                                use_rule_of_40=show_rule_of_40)
 
+moat = compute_moat(sector, industry, gross_margin, roic_val, operating_margin,
+                    profit_margin, rev_growth, market_cap, debt,
+                    employees=yf_info.get("fullTimeEmployees"))
+
 # 52-week position
 week52_pos = None
 if week52_high and week52_low and week52_high != week52_low:
@@ -1124,9 +1252,9 @@ if len(hist_plot) >= 2:
 
 # ==================== TABS ====================
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "📊 Kennzahlen", "📈 Wachstum", "🏦 Fundamental", "⚖️ Bewertung",
-    "📉 Chart Analyse", "🔍 Insider & Peers", "📰 News"
+    "📉 Chart Analyse", "🔍 Insider & Peers", "📰 News", "🏰 Burggraben"
 ])
 
 with tab1:
@@ -1696,6 +1824,167 @@ with tab7:
                 st.info("Keine News über yFinance verfügbar. Für mehr News: NEWS_API_KEY setzen.")
         except:
             st.info("News konnten nicht geladen werden.")
+
+# ==================== TAB 8: BURGGRABEN ====================
+with tab8:
+    # ── Header: Moat-Breite ────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🏰 Burggraben-Einschätzung</div>", unsafe_allow_html=True)
+    mc1, mc2, mc3 = st.columns([1, 1, 2])
+    with mc1:
+        st.markdown(f"""
+        <div class="score-section">
+            <div class="score-title">Moat Score</div>
+            <div class="score-num" style="color:{moat['moat_color']};">{moat['moat_score']}</div>
+            <div class="score-label">{moat['moat_icon']} {moat['moat_width']}</div>
+        </div>""", unsafe_allow_html=True)
+    with mc2:
+        st.markdown(f"""
+        <div class="metric-card" style="text-align:center; padding:28px 16px;">
+            <div class="metric-label">Marktstruktur</div>
+            <div style="font-size:1.3rem; font-weight:700; color:{moat['market_color']}; margin:10px 0;">
+                {moat['market_structure']}
+            </div>
+            <div class="metric-sub">{sector} · {industry}</div>
+        </div>""", unsafe_allow_html=True)
+    with mc3:
+        st.markdown(f"""
+        <div class="insight-box" style="height:100%; display:flex; align-items:center;">
+            <div>
+                <strong style="color:{moat['moat_color']};">{moat['moat_icon']} {moat['moat_width']}</strong><br>
+                <span style="color:#b0bec5; font-size:0.9rem; line-height:1.6;">{moat['moat_desc']}</span>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── Unternehmensübersicht ──────────────────────────────────────────
+    st.markdown("<div class='section-header'>🏢 Unternehmensübersicht</div>", unsafe_allow_html=True)
+    _summary = yf_info.get("longBusinessSummary", "")
+    _employees = yf_info.get("fullTimeEmployees")
+    _founded = yf_info.get("founded") or yf_info.get("incorporationDate", "")
+    _country = yf_info.get("country", "")
+    _city = yf_info.get("city", "")
+    _website = yf_info.get("website", "")
+
+    oc1, oc2, oc3, oc4 = st.columns(4)
+    with oc1:
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">Land / Sitz</div>
+            <div class="metric-value" style="font-size:1.1rem;">{_country}</div>
+            <div class="metric-sub">{_city}</div>
+        </div>""", unsafe_allow_html=True)
+    with oc2:
+        emp_str = f"{_employees:,}".replace(",", ".") if _employees else "N/A"
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">Mitarbeiter</div>
+            <div class="metric-value" style="font-size:1.1rem;">{emp_str}</div>
+            <div class="metric-sub">Vollzeitstellen</div>
+        </div>""", unsafe_allow_html=True)
+    with oc3:
+        mc_str = fmt_large(market_cap) if market_cap else "N/A"
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">Marktkapitalisierung</div>
+            <div class="metric-value" style="font-size:1.1rem;">{mc_str}</div>
+            <div class="metric-sub">Market Cap</div>
+        </div>""", unsafe_allow_html=True)
+    with oc4:
+        rev_str = fmt_large(yf_info.get("totalRevenue")) if yf_info.get("totalRevenue") else "N/A"
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">Umsatz (TTM)</div>
+            <div class="metric-value" style="font-size:1.1rem;">{rev_str}</div>
+            <div class="metric-sub">Total Revenue</div>
+        </div>""", unsafe_allow_html=True)
+
+    if _summary:
+        # Kürze auf ~4 Sätze
+        _sentences = _summary.replace("  ", " ").split(". ")
+        _short = ". ".join(_sentences[:4]) + ("." if len(_sentences) > 4 else "")
+        st.markdown(f"""
+        <div class="insight-box" style="line-height:1.7; color:#b0bec5; font-size:0.92rem;">
+            {_short}
+            {'<details style="margin-top:8px;"><summary style="color:#64b5f6;cursor:pointer;font-size:0.82rem;">Vollständige Beschreibung</summary><div style="margin-top:8px;">' + _summary + '</div></details>' if len(_sentences) > 4 else ''}
+        </div>""", unsafe_allow_html=True)
+
+    # ── Moat-Treiber ──────────────────────────────────────────────────
+    if moat["moat_types"]:
+        st.markdown("<div class='section-header'>⚙️ Erkannte Moat-Treiber</div>", unsafe_allow_html=True)
+        tcols = st.columns(min(len(moat["moat_types"]), 3))
+        for col, (title, desc) in zip(tcols, moat["moat_types"]):
+            col.markdown(f"""
+            <div class="metric-card" style="height:100%;">
+                <div style="font-size:1.1rem; font-weight:700; color:#00e5ff; margin-bottom:10px;">{title}</div>
+                <div style="color:#90a4ae; font-size:0.83rem; line-height:1.6;">{desc}</div>
+            </div>""", unsafe_allow_html=True)
+        # Wenn mehr als 3 Treiber
+        if len(moat["moat_types"]) > 3:
+            tcols2 = st.columns(len(moat["moat_types"]) - 3)
+            for col, (title, desc) in zip(tcols2, moat["moat_types"][3:]):
+                col.markdown(f"""
+                <div class="metric-card">
+                    <div style="font-size:1.1rem; font-weight:700; color:#00e5ff; margin-bottom:10px;">{title}</div>
+                    <div style="color:#90a4ae; font-size:0.83rem; line-height:1.6;">{desc}</div>
+                </div>""", unsafe_allow_html=True)
+
+    # ── Qualitative Indikatoren ────────────────────────────────────────
+    st.markdown("<div class='section-header'>📐 Finanzielle Moat-Indikatoren</div>", unsafe_allow_html=True)
+    qc1, qc2, qc3, qc4, qc5 = st.columns(5)
+    _moat_metrics = [
+        (qc1, "Bruttomargen", gross_margin, "%", 60, 40, False,
+         "Pricing Power — >60% deutet auf Burggraben hin"),
+        (qc2, "ROIC", roic_val, "%", 20, 10, False,
+         "Kapitalrendite — Bester Einzelindikator für nachhaltigen Moat"),
+        (qc3, "Operativmargen", operating_margin, "%", 25, 15, False,
+         "Operative Effizienz — zeigt Skalierbarkeit des Geschäftsmodells"),
+        (qc4, "Profitmargen", profit_margin, "%", 15, 5, False,
+         "Gesamtprofitabilität — nach Steuern und Zinsen"),
+        (qc5, "Umsatzwachstum", rev_growth, "%", 10, 3, False,
+         "Nachfragedominanz — konsistentes Wachstum trotz Konkurrenz"),
+    ]
+    for col, lbl, val, suf, good, ok, inv, hint in _moat_metrics:
+        v_str = f"{val:.1f}{suf}" if val is not None else "N/A"
+        b_cls = "green" if (val is not None and val >= good) else \
+                "yellow" if (val is not None and val >= ok) else \
+                "red" if val is not None else "gray"
+        col.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">{lbl}</div>
+            <div class="metric-value">{v_str}</div>
+            <div style="margin-top:6px;">
+                <span class="metric-badge-{b_cls}">{v_str}</span>
+            </div>
+            <div class="metric-sub" style="margin-top:8px; font-size:0.7rem;">{hint}</div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── Zusammenfassung ────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📋 Fazit</div>", unsafe_allow_html=True)
+    _moat_bullets = []
+    if gross_margin and gross_margin > 60:
+        _moat_bullets.append(f"✅ <strong>Bruttomargen {gross_margin:.1f}%</strong> — starke Preissetzungsmacht, Kunden zahlen Premium.")
+    elif gross_margin and gross_margin < 30:
+        _moat_bullets.append(f"⚠️ <strong>Bruttomargen {gross_margin:.1f}%</strong> — niedrig, Commodity-ähnliches Geschäft.")
+    if roic_val and roic_val > 20:
+        _moat_bullets.append(f"✅ <strong>ROIC {roic_val:.1f}%</strong> — exzellente Kapitalallokation, klassischer Buffett-Indikator für Wide Moat.")
+    elif roic_val and roic_val < 10:
+        _moat_bullets.append(f"⚠️ <strong>ROIC {roic_val:.1f}%</strong> — unter Kapitalkosten, kein struktureller Vorteil erkennbar.")
+    if moat["moat_types"]:
+        _types_str = ", ".join(t[0] for t in moat["moat_types"])
+        _moat_bullets.append(f"🔍 <strong>Erkannte Moat-Treiber:</strong> {_types_str}")
+    if moat["market_structure"] in ("Monopol / Reguliert", "Duopol", "Oligopol"):
+        _moat_bullets.append(f"🏛️ <strong>Marktstruktur {moat['market_structure']}:</strong> strukturell begrenzte Konkurrenz schützt Margen.")
+    if not _moat_bullets:
+        _moat_bullets.append("ℹ️ Für eine tiefere Moat-Analyse empfehlen sich Geschäftsberichte, Patentdatenbanken und Branchenanalysen.")
+
+    st.markdown(f"""
+    <div class="insight-box">
+        <strong style="color:{moat['moat_color']};">{moat['moat_icon']} {moat['moat_width']} — Score {moat['moat_score']}/100</strong><br><br>
+        {"<br>".join(_moat_bullets)}
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="color:#37474f; font-size:0.75rem; margin-top:16px; padding:12px 16px;
+                background:#0a1628; border-radius:8px; border-left:3px solid #1e3a5f;">
+        ⚠️ <em>Hinweis: Diese Einschätzung basiert auf quantitativen Finanzkennzahlen und Branchenheuristiken.
+        Eine vollständige Moat-Analyse erfordert qualitative Recherche (Geschäftsberichte, Patente,
+        Kundenbindung, Managementqualität). Keine Anlageberatung.</em>
+    </div>""", unsafe_allow_html=True)
 
 # ==================== INSIGHTS ====================
 st.markdown("<div class='section-header'>💡 Investor Insights</div>", unsafe_allow_html=True)
