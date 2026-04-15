@@ -500,7 +500,7 @@ def load_piotroski(ticker: str):
               "Kapitalstruktur",
               (delta_cr > 0)    if delta_cr is not None else None,
               f"{delta_cr:+.2f}" if delta_cr is not None else "N/A",
-              f"Current Ratio {fy_t}: {cr_t:.2f if cr_t else 'N/A'} vs {fy_t1}: {cr_t1:.2f if cr_t1 else 'N/A'}"),
+              f"Current Ratio {fy_t}: {f'{cr_t:.2f}' if cr_t else 'N/A'} vs {fy_t1}: {f'{cr_t1:.2f}' if cr_t1 else 'N/A'}"),
 
         _crit("Keine Aktienverwässerung",
               "Kapitalstruktur",
