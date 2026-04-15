@@ -1969,31 +1969,58 @@ with tab7:
             st.warning(f"News konnten nicht geladen werden: {e}")
     else:
         try:
-            from datetime import datetime
+            from datetime import datetime, timezone
             stock_obj = yf.Ticker(ticker)
-            news_items = stock_obj.news
-            if news_items:
-                for item in news_items[:8]:
-                    title = item.get("title", "")
+            news_items = stock_obj.news or []
+
+            parsed = []
+            for item in news_items[:10]:
+                # Neues yfinance-Format (>=0.2.52): Felder in item["content"]
+                content = item.get("content") or {}
+                if content:
+                    title     = content.get("title", "")
+                    publisher = (content.get("provider") or {}).get("displayName", "") or \
+                                (content.get("provider") or {}).get("displayName", "")
+                    link      = (content.get("canonicalUrl") or {}).get("url", "") or \
+                                (content.get("clickThroughUrl") or {}).get("url", "#")
+                    pub_raw   = content.get("pubDate", "")
+                    try:
+                        pub_str = pub_raw[:10] if pub_raw else ""
+                    except Exception:
+                        pub_str = ""
+                    summary = content.get("summary", "")
+                else:
+                    # Altes Format
+                    title     = item.get("title", "")
                     publisher = item.get("publisher", "")
-                    pub_time = item.get("providerPublishTime", 0)
-                    link = item.get("link", "#")
-                    pub_str = datetime.fromtimestamp(pub_time).strftime("%Y-%m-%d") if pub_time else ""
+                    link      = item.get("link", "#")
+                    pub_time  = item.get("providerPublishTime", 0)
+                    pub_str   = datetime.fromtimestamp(pub_time, tz=timezone.utc).strftime("%Y-%m-%d") if pub_time else ""
+                    summary   = item.get("summary", "")
+
+                if title:
+                    parsed.append({"title": title, "publisher": publisher,
+                                   "link": link, "pub_str": pub_str, "summary": summary})
+
+            if parsed:
+                for p in parsed:
+                    desc_html = f'<div style="color:#78909c; font-size:0.78rem; margin-top:6px; line-height:1.4;">{p["summary"][:180]}{"…" if len(p["summary"]) > 180 else ""}</div>' if p["summary"] else ""
                     st.markdown(f"""
                     <div class="metric-card" style="margin-bottom:10px;">
                         <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                            <span style="color:#64b5f6; font-size:0.75rem; font-weight:600;">{publisher}</span>
-                            <span style="color:#546e7a; font-size:0.72rem;">{pub_str}</span>
+                            <span style="color:#64b5f6; font-size:0.75rem; font-weight:600;">{p['publisher']}</span>
+                            <span style="color:#546e7a; font-size:0.72rem;">{p['pub_str']}</span>
                         </div>
-                        <a href="{link}" target="_blank" style="color:#eceff1; font-size:0.9rem; font-weight:600; text-decoration:none; line-height:1.4;">
-                            {title}
+                        <a href="{p['link']}" target="_blank" style="color:#eceff1; font-size:0.9rem; font-weight:600; text-decoration:none; line-height:1.4;">
+                            {p['title']}
                         </a>
+                        {desc_html}
                     </div>
                     """, unsafe_allow_html=True)
             else:
                 st.info("Keine News über yFinance verfügbar. Für mehr News: NEWS_API_KEY setzen.")
-        except:
-            st.info("News konnten nicht geladen werden.")
+        except Exception as ex:
+            st.info(f"News konnten nicht geladen werden: {ex}")
 
 # ==================== TAB 8: BURGGRABEN ====================
 with tab8:
