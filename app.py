@@ -1217,8 +1217,23 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     fmp_metrics, peers, analyst_data = load_fmp_metrics(ticker)
     hist_weekly, hist_monthly, share_history, splits_data = load_yfinance_extended(ticker)
 
-if hist.empty:
-    st.error(f"❌ Keine Kursdaten für **{ticker}** gefunden. Bitte prüfe das Ticker-Symbol.")
+if hist.empty or not yf_info:
+    st.markdown(f"""
+    <div style="background:#0d1526; border:1px solid #ff5252; border-radius:14px; padding:32px 36px; margin:32px 0; text-align:center;">
+        <div style="font-size:2.5rem; margin-bottom:12px;">🔍</div>
+        <div style="color:#ff5252; font-size:1.3rem; font-weight:700; margin-bottom:10px;">Aktie nicht gefunden: <code>{ticker}</code></div>
+        <div style="color:#78909c; font-size:0.9rem; line-height:1.7; margin-bottom:20px;">
+            Mögliche Ursachen:<br>
+            • Ticker falsch geschrieben (z.B. <strong>AAPL</strong> statt <em>Apple</em>)<br>
+            • Europäische Aktien benötigen Börsen-Suffix: <strong>SAP.DE</strong>, <strong>NOVN.SW</strong>, <strong>ASML.AS</strong><br>
+            • Delisted oder OTC-Aktie — yFinance hat keine Daten
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("← Zurück zur Startseite", key="err_back"):
+        st.session_state["show_landing"] = True
+        st.session_state["ticker"] = ""
+        st.rerun()
     st.stop()
 
 # ==================== DERIVED METRICS ====================
@@ -1411,11 +1426,26 @@ with col_score:
     </div>
     """, unsafe_allow_html=True)
 
-def mini_card(label, value, good, ok, fmt=".1f", suffix="", inverse=False):
+_METRIC_TOOLTIPS = {
+    "ROIC":         "Return on Invested Capital — Wie viel Gewinn erzielt das Unternehmen pro investiertem Kapital. >20% = exzellent, >10% = gut.",
+    "FCF Yield":    "Free Cashflow Yield — FCF / Marktkapitalisierung. Zeigt, wie viel realen Cashflow man pro investiertem Euro erhält. >5% = attraktiv.",
+    "Gross Margin": "Bruttomarge — Umsatz minus direkte Herstellkosten. Hohe Marge (>60%) deutet auf Preissetzungsmacht hin.",
+    "Rev. Growth":  "Umsatzwachstum — Jährliches Wachstum des Umsatzes. >15% = stark, >5% = solide.",
+    "Rule of 40":   "SaaS-Kennzahl: Umsatzwachstum % + FCF-Marge % sollte ≥40 sein. Balanciert Wachstum und Profitabilität.",
+    "PEG Ratio":    "Price/Earnings-to-Growth — KGV geteilt durch Gewinnwachstum. <1 = günstig, >2 = teuer relativ zum Wachstum.",
+    "Op. Margin":   "Operative Marge — Operatives Ergebnis / Umsatz. Misst die Effizienz des Kerngeschäfts.",
+    "Net Margin":   "Gewinnmarge — Nettogewinn / Umsatz. Zeigt, wie viel vom Umsatz als Reingewinn bleibt.",
+    "Qualitäts-Score": "Gesamtbewertung basierend auf Marge, ROIC, Wachstum, FCF Yield und Bewertungskennzahlen. 0–100.",
+}
+
+def mini_card(label, value, good, ok, fmt=".1f", suffix="", inverse=False, tooltip=None):
     b = badge(value, good, ok, fmt, inverse)
     val_str = f"{value:{fmt}}{suffix}" if value is not None else "N/A"
+    tip = tooltip or _METRIC_TOOLTIPS.get(label, "")
+    title_attr = f' title="{tip}"' if tip else ""
+    cursor = ' style="cursor:help;"' if tip else ""
     return f"""
-    <div class="metric-card">
+    <div class="metric-card"{cursor}{title_attr}>
         <div class="metric-label">{label}</div>
         <div class="metric-value">{val_str}</div>
         <div style="margin-top:6px;">{b}</div>
@@ -2600,4 +2630,27 @@ with st.expander("🔍 Debug: Rohdaten"):
         st.caption("FMP Metrics")
         st.json(fmp_metrics)
 
-st.markdown('<div class="caption-text">StocksMB · yFinance + FMP · Alle Daten ohne Gewähr</div>', unsafe_allow_html=True)
+st.markdown("""
+<div style="margin-top:60px; border-top:1px solid #1e2d45; padding:28px 0 16px 0;">
+    <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:16px;">
+        <div>
+            <div style="color:#64b5f6; font-size:1.0rem; font-weight:700; margin-bottom:4px;">📈 StocksMB</div>
+            <div style="color:#37474f; font-size:0.75rem;">Aktienanalyse Tool · v7</div>
+        </div>
+        <div style="color:#37474f; font-size:0.75rem; line-height:1.6; max-width:480px; text-align:right;">
+            Datenquellen: <span style="color:#546e7a;">Yahoo Finance (yFinance) · Financial Modeling Prep (FMP)</span>
+        </div>
+    </div>
+    <div style="background:#0d1526; border:1px solid #1e2d45; border-radius:10px; padding:14px 18px;">
+        <div style="color:#ff8f00; font-size:0.75rem; font-weight:700; margin-bottom:6px; text-transform:uppercase; letter-spacing:1px;">⚠️ Disclaimer — Keine Anlageberatung</div>
+        <div style="color:#546e7a; font-size:0.75rem; line-height:1.6;">
+            Alle Inhalte auf StocksMB dienen ausschließlich zu Informations- und Bildungszwecken. Die dargestellten Kennzahlen, Analysen, KI-Einschätzungen und Bewertungsmodelle stellen <strong style="color:#78909c;">keine Anlageberatung, Kaufempfehlung oder Aufforderung zum Handel</strong> dar.
+            Investitionen in Wertpapiere sind mit Risiken verbunden — der Wert einer Anlage kann steigen oder fallen. Vergangene Wertentwicklungen sind kein verlässlicher Indikator für zukünftige Ergebnisse.
+            Bitte konsultiere einen zugelassenen Finanzberater, bevor du Anlageentscheidungen triffst. Alle Daten werden ohne Gewähr bereitgestellt.
+        </div>
+    </div>
+    <div style="text-align:center; color:#263238; font-size:0.7rem; margin-top:14px;">
+        © 2025 StocksMB · Erstellt mit Streamlit · Daten von yFinance &amp; FMP
+    </div>
+</div>
+""", unsafe_allow_html=True)
