@@ -199,10 +199,11 @@ def load_yfinance(ticker: str):
 
 @st.cache_data(ttl=3600)
 def load_yfinance_extended(ticker: str):
-    """Lädt zusätzliche Daten: Wöchentliche + monatliche Kerzen, Share count history"""
+    """Lädt zusätzliche Daten: Wöchentliche + monatliche Kerzen, Share count history, Splits"""
     stock = yf.Ticker(ticker)
     hist_weekly, hist_monthly = pd.DataFrame(), pd.DataFrame()
     share_history = pd.DataFrame()
+    splits_data = pd.Series(dtype=float)
     try:
         hist_weekly = stock.history(period="2y", interval="1wk")
     except:
@@ -212,13 +213,17 @@ def load_yfinance_extended(ticker: str):
     except:
         pass
     try:
-        share_history = stock.get_shares_full(start="2020-01-01")
+        share_history = stock.get_shares_full(start="2019-01-01")
     except:
         try:
             share_history = stock.shares
         except:
             pass
-    return hist_weekly, hist_monthly, share_history
+    try:
+        splits_data = stock.splits
+    except:
+        pass
+    return hist_weekly, hist_monthly, share_history, splits_data
 
 @st.cache_data(ttl=86400)
 def load_fmp_metrics(ticker: str):
@@ -559,7 +564,7 @@ ticker = st.session_state["ticker"]
 with st.spinner(f"Lade Daten für {ticker}..."):
     yf_info, hist, insider_df = load_yfinance(ticker)
     fmp_metrics, peers, analyst_data = load_fmp_metrics(ticker)
-    hist_weekly, hist_monthly, share_history = load_yfinance_extended(ticker)
+    hist_weekly, hist_monthly, share_history, splits_data = load_yfinance_extended(ticker)
 
 if hist.empty:
     st.error(f"❌ Keine Kursdaten für **{ticker}** gefunden. Bitte prüfe das Ticker-Symbol.")
@@ -607,16 +612,24 @@ logo_url = yf_info.get("logo_url", "") or yf_info.get("logoUrl", "")
 # Rule of 40 nur für SaaS/Tech/Cyber relevant
 show_rule_of_40 = is_saas_or_cyber(sector, industry)
 
-# Verwässerung berechnen
+# Verwässerung berechnen — split-bereinigt, 5-Jahres-Fenster
 dilution_pct = None
 if share_history is not None and not (isinstance(share_history, pd.DataFrame) and share_history.empty):
     try:
         if isinstance(share_history, pd.Series):
-            sh = share_history.dropna()
+            sh = share_history.dropna().sort_index()
         elif isinstance(share_history, pd.DataFrame) and len(share_history.columns) > 0:
-            sh = share_history.iloc[:, 0].dropna()
+            sh = share_history.iloc[:, 0].dropna().sort_index()
         else:
             sh = pd.Series(dtype=float)
+        # Split-Bereinigung: historische Aktienanzahl mit Splitfaktor normalisieren
+        if len(sh) > 0 and splits_data is not None and len(splits_data) > 0:
+            for split_date, ratio in splits_data.items():
+                if ratio > 0:
+                    sh.loc[sh.index < split_date] = sh.loc[sh.index < split_date] * ratio
+        # Nur letzte 5 Jahre
+        five_years_ago = pd.Timestamp.now(tz=sh.index.tz) - pd.DateOffset(years=5)
+        sh = sh[sh.index >= five_years_ago]
         if len(sh) >= 2:
             oldest = sh.iloc[0]
             newest = sh.iloc[-1]
@@ -624,6 +637,25 @@ if share_history is not None and not (isinstance(share_history, pd.DataFrame) an
                 dilution_pct = (newest - oldest) / oldest * 100
     except:
         pass
+
+# Neue Investor-Kennzahlen
+total_cash = yf_info.get("totalCash")
+total_debt = yf_info.get("totalDebt") or 0
+net_cash = (total_cash - total_debt) if total_cash is not None else None
+net_cash_per_share = (net_cash / shares_outstanding) if net_cash is not None and shares_outstanding else None
+price_to_fcf = (market_cap / fcf) if fcf and fcf > 0 and market_cap else None
+short_pct_float = yf_info.get("shortPercentOfFloat")
+total_shareholder_yield = fcf_yield + dividend_yield if fcf_yield else dividend_yield
+earnings_ts = yf_info.get("earningsTimestamp") or yf_info.get("earningsDate")
+earnings_date_str = ""
+try:
+    from datetime import datetime
+    if isinstance(earnings_ts, (int, float)) and earnings_ts > 0:
+        earnings_date_str = datetime.fromtimestamp(earnings_ts).strftime("%d.%m.%Y")
+    elif isinstance(earnings_ts, list) and earnings_ts:
+        earnings_date_str = pd.Timestamp(earnings_ts[0]).strftime("%d.%m.%Y")
+except:
+    pass
 
 peg_ratio = next(
     (fmp_metrics.get(k) for k in ["priceToEarningsGrowthRatioTTM", "pegRatioTTM", "pegRatio"]
@@ -667,8 +699,9 @@ st.markdown(f"""
         <div>
             <div class="header-title">{company_name}</div>
             <div class="header-sub">{ticker} · {sector} · {industry}</div>
-            <div style="margin-top:10px;">
+            <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                 <span style="background:#1a2744; color:#64b5f6; border-radius:6px; padding:3px 10px; font-size:0.8rem; font-weight:600;">{recommendation}</span>
+                {'<span style="background:#1a2e1a; color:#00e676; border-radius:6px; padding:3px 10px; font-size:0.78rem; font-weight:600;">📅 Earnings: ' + earnings_date_str + '</span>' if earnings_date_str else ''}
             </div>
         </div>
     </div>
@@ -1026,6 +1059,30 @@ with tab3:
             <div class="metric-sub">{inst_pct} Institutionen</div>
         </div>""", unsafe_allow_html=True)
 
+    c5, c6 = st.columns(2)
+    with c5:
+        ncp_str = f"${net_cash_per_share:.2f}" if net_cash_per_share is not None else "N/A"
+        ncp_color = "#00e676" if net_cash_per_share and net_cash_per_share > 0 else "#ff5252"
+        ncp_badge = f'<span style="color:{ncp_color}; font-weight:700;">{ncp_str}</span>'
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Net Cash / Aktie</div>
+            <div class="metric-value">{ncp_str}</div>
+            <div style="margin-top:6px;">{ncp_badge}</div>
+            <div class="metric-sub">Kasse minus Schulden je Aktie</div>
+        </div>""", unsafe_allow_html=True)
+    with c6:
+        short_str = f"{short_pct_float*100:.1f}%" if short_pct_float else "N/A"
+        short_color = "#ff5252" if short_pct_float and short_pct_float > 0.15 else "#ffd600" if short_pct_float and short_pct_float > 0.07 else "#00e676"
+        short_badge = f'<span style="color:{short_color}; font-weight:700;">{short_str}</span>' if short_pct_float else '<span class="metric-badge-gray">N/A</span>'
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Short Interest</div>
+            <div class="metric-value">{short_str}</div>
+            <div style="margin-top:6px;">{short_badge}</div>
+            <div class="metric-sub">% des Free Float leerverkauft</div>
+        </div>""", unsafe_allow_html=True)
+
     # Share count history chart
     if share_history is not None:
         try:
@@ -1096,11 +1153,33 @@ with tab4:
     with c4:
         st.markdown(mini_card("Debt/Equity", debt, 50, 100, ".1f", "", inverse=True), unsafe_allow_html=True)
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(mini_card("Beta", beta, 0.8, 1.5, ".2f", ""), unsafe_allow_html=True)
     with c2:
         st.markdown(mini_card("Dividend Yield", dividend_yield, 3, 1, ".2f", "%"), unsafe_allow_html=True)
+    with c3:
+        pfcf_str = f"{price_to_fcf:.1f}x" if price_to_fcf else "N/A"
+        pfcf_color = "#00e676" if price_to_fcf and price_to_fcf < 20 else "#ffd600" if price_to_fcf and price_to_fcf < 35 else "#ff5252"
+        pfcf_badge = f'<span style="color:{pfcf_color}; font-weight:700;">{pfcf_str}</span>' if price_to_fcf else '<span class="metric-badge-gray">N/A</span>'
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Price / FCF</div>
+            <div class="metric-value">{pfcf_str}</div>
+            <div style="margin-top:6px;">{pfcf_badge}</div>
+            <div class="metric-sub">&lt;20x = attraktiv</div>
+        </div>""", unsafe_allow_html=True)
+    with c4:
+        tsy_str = f"{total_shareholder_yield:.1f}%" if total_shareholder_yield else "N/A"
+        tsy_color = "#00e676" if total_shareholder_yield and total_shareholder_yield > 5 else "#ffd600" if total_shareholder_yield and total_shareholder_yield > 2 else "#78909c"
+        tsy_badge = f'<span style="color:{tsy_color}; font-weight:700;">{tsy_str}</span>' if total_shareholder_yield else '<span class="metric-badge-gray">N/A</span>'
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Total Shareholder Yield</div>
+            <div class="metric-value">{tsy_str}</div>
+            <div style="margin-top:6px;">{tsy_badge}</div>
+            <div class="metric-sub">FCF Yield + Dividende</div>
+        </div>""", unsafe_allow_html=True)
 
     # Analyst target
     if target_mean and price:
