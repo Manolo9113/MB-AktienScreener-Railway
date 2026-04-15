@@ -225,6 +225,47 @@ st.markdown("""
         font-weight: 600;
         margin-right: 8px;
     }
+
+    /* Grok Chat */
+    .chat-wrap {
+        background: #0a1628;
+        border: 1px solid #1e3a5f;
+        border-radius: 14px;
+        padding: 18px 20px;
+        margin: 12px 0;
+        max-height: 420px;
+        overflow-y: auto;
+    }
+    .chat-user-msg {
+        display: flex;
+        justify-content: flex-end;
+        margin: 8px 0;
+    }
+    .chat-user-bubble {
+        background: #1a2744;
+        border-radius: 12px 12px 4px 12px;
+        border-right: 3px solid #64b5f6;
+        padding: 9px 14px;
+        max-width: 82%;
+        color: #e0e0e0;
+        font-size: 0.87rem;
+        line-height: 1.5;
+    }
+    .chat-ai-msg {
+        display: flex;
+        justify-content: flex-start;
+        margin: 8px 0;
+    }
+    .chat-ai-bubble {
+        background: #0d1f3c;
+        border-radius: 12px 12px 12px 4px;
+        border-left: 3px solid #a78bfa;
+        padding: 9px 14px;
+        max-width: 90%;
+        color: #b0bec5;
+        font-size: 0.87rem;
+        line-height: 1.6;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -969,6 +1010,30 @@ def call_grok_api(system_prompt: str, user_message: str, api_key: str) -> str:
         return f"⚠️ Grok API Fehler: {e}"
 
 
+def call_grok_chat(system_prompt: str, messages: list, api_key: str) -> str:
+    """Multi-Turn Chat mit Grok — sendet volles Gesprächsprotokoll."""
+    if not api_key:
+        return "⚠️ Kein XAI_API_KEY konfiguriert."
+    try:
+        resp = requests.post(
+            "https://api.x.ai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "grok-3",
+                "messages": [{"role": "system", "content": system_prompt}] + messages,
+                "temperature": 0.5,
+                "max_tokens": 900,
+            },
+            timeout=45,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.Timeout:
+        return "⚠️ Timeout — bitte erneut versuchen."
+    except Exception as e:
+        return f"⚠️ Fehler: {e}"
+
+
 def build_grok_prompt(
     company_name, ticker, sector, industry,
     price, market_cap, quality_score,
@@ -1073,6 +1138,10 @@ if "grok_analysis" not in st.session_state:
     st.session_state["grok_analysis"] = ""
 if "grok_ticker" not in st.session_state:
     st.session_state["grok_ticker"] = ""
+if "grok_chat" not in st.session_state:
+    st.session_state["grok_chat"] = []
+if "grok_chat_ctx" not in st.session_state:
+    st.session_state["grok_chat_ctx"] = ""
 
 def _go_to_ticker(t):
     st.session_state["ticker"] = t
@@ -1540,10 +1609,12 @@ if week52_pos is not None:
 # ==================== KI-ANALYSE (GROK) ====================
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-# Wenn Ticker wechselt, alte Analyse löschen
+# Wenn Ticker wechselt, Analyse + Chat löschen
 if st.session_state.get("grok_ticker") != ticker:
     st.session_state["grok_analysis"] = ""
     st.session_state["grok_ticker"] = ticker
+    st.session_state["grok_chat"] = []
+    st.session_state["grok_chat_ctx"] = ""
 
 _col_btn, _col_hint = st.columns([1, 4])
 with _col_btn:
@@ -1577,6 +1648,8 @@ if _run_grok:
             dcf_fair_val=_dcf_for_grok,
         )
         st.session_state["grok_analysis"] = call_grok_api(_sys, _usr, XAI_API_KEY)
+        st.session_state["grok_chat"] = []   # Chat bei neuer Analyse zurücksetzen
+        st.session_state["grok_chat_ctx"] = _usr  # Kontext für Chat speichern
 
 # Analyse anzeigen (bleibt bis Ticker-Wechsel)
 if st.session_state.get("grok_analysis"):
@@ -1617,6 +1690,60 @@ if st.session_state.get("grok_analysis"):
     _flush_section(_current_section, _current_lines, _html_parts, _sections)
     _html_parts.append("</div>")
     st.markdown("".join(_html_parts), unsafe_allow_html=True)
+
+    # ── Chat-Modus ────────────────────────────────────────────────────
+    st.markdown("""
+    <div style='display:flex; align-items:center; gap:10px; margin:18px 0 6px 0;'>
+        <div style='color:#a78bfa; font-size:0.95rem; font-weight:700;'>💬 Folgefragen an Grok</div>
+        <div style='color:#37474f; font-size:0.75rem;'>Stelle eigene Fragen zu {cn}</div>
+    </div>
+    """.replace("{cn}", company_name), unsafe_allow_html=True)
+
+    # Chatverlauf rendern
+    _chat_hist = st.session_state.get("grok_chat", [])
+    if _chat_hist:
+        _chat_html = ["<div class='chat-wrap'>"]
+        for _msg in _chat_hist:
+            if _msg["role"] == "user":
+                _chat_html.append(
+                    f"<div class='chat-user-msg'><div class='chat-user-bubble'>{_msg['content']}</div></div>")
+            else:
+                _chat_html.append(
+                    f"<div class='chat-ai-msg'><div class='chat-ai-bubble'>{_msg['content']}</div></div>")
+        _chat_html.append("</div>")
+        st.markdown("".join(_chat_html), unsafe_allow_html=True)
+
+    # Eingabe-Formular (clear_on_submit verhindert Doppelabsenden)
+    with st.form("grok_chat_form", clear_on_submit=True):
+        _fc1, _fc2, _fc3 = st.columns([5, 1, 1])
+        with _fc1:
+            _chat_q = st.text_input(
+                "", placeholder=f"z.B. 'Wie stark ist das Moat wirklich?' oder 'Vergleich mit {peers[0] if peers else 'Wettbewerber'}'",
+                label_visibility="collapsed")
+        with _fc2:
+            _chat_send = st.form_submit_button("Senden →", use_container_width=True)
+        with _fc3:
+            _chat_clear = st.form_submit_button("Löschen", use_container_width=True)
+
+    if _chat_clear:
+        st.session_state["grok_chat"] = []
+        st.rerun()
+
+    if _chat_send and _chat_q.strip():
+        _hist = st.session_state.get("grok_chat", [])
+        _hist.append({"role": "user", "content": _chat_q.strip()})
+        # System-Prompt für Chat: Kontext + kurze Anweisungen
+        _chat_sys = (
+            f"Du bist ein erfahrener Aktienanalyst und beantwortest Fragen zu {company_name} ({ticker}) auf Deutsch. "
+            f"Antworte präzise, direkt und ohne Floskeln. Keine langen Einleitungen.\n\n"
+            f"UNTERNEHMENSKONTEXT:\n{st.session_state.get('grok_chat_ctx', '')}"
+        )
+        # Nur letzte 8 Nachrichten senden (Tokenlimit)
+        with st.spinner("Grok denkt..."):
+            _answer = call_grok_chat(_chat_sys, _hist[-8:], XAI_API_KEY)
+        _hist.append({"role": "assistant", "content": _answer})
+        st.session_state["grok_chat"] = _hist
+        st.rerun()
 
 # ==================== CHART ====================
 st.markdown("<div class='section-header'>📉 Kurs & Fair Value Kanal</div>", unsafe_allow_html=True)
