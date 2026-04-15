@@ -295,17 +295,15 @@ def score_label(s):
     return "Kritisch 🔴"
 
 def is_saas_or_cyber(sector: str, industry: str) -> bool:
-    """Prüft ob Rule of 40 relevant ist (SaaS/Tech/Cybersecurity)"""
-    relevant_sectors = ["Technology", "Communication Services"]
-    relevant_industries = [
-        "Software", "Software-Infrastructure", "Software-Application",
-        "Internet Content & Information", "Cloud Computing", "Cybersecurity",
-        "Security Software", "Data Storage", "SaaS"
+    """Rule of 40 gilt nur für Software/SaaS/Cybersecurity — NICHT für Hardware/Consumer Electronics"""
+    saas_keywords = [
+        "software", "cloud", "saas", "cybersecurity", "security software",
+        "internet content", "internet services", "data storage",
+        "information technology services",
     ]
-    if sector in relevant_sectors:
-        return True
-    for ind in relevant_industries:
-        if ind.lower() in industry.lower():
+    industry_lower = industry.lower()
+    for kw in saas_keywords:
+        if kw in industry_lower:
             return True
     return False
 
@@ -634,14 +632,30 @@ if share_history is not None and not (isinstance(share_history, pd.DataFrame) an
             sh = share_history.iloc[:, 0].dropna().sort_index()
         else:
             sh = pd.Series(dtype=float)
-        # Split-Bereinigung: historische Aktienanzahl mit Splitfaktor normalisieren
+        # Split-Bereinigung: timezone-sicher (beide Seiten als naive)
+        def _naive(ts):
+            t = pd.Timestamp(ts)
+            return t.tz_localize(None) if t.tzinfo is None else t.tz_convert(None)
+        def _naive_index(idx):
+            if hasattr(idx, "tz") and idx.tz is not None:
+                return idx.tz_convert(None)
+            return idx
         if len(sh) > 0 and splits_data is not None and len(splits_data) > 0:
+            sh = sh.copy()
+            sh_idx_naive = _naive_index(sh.index)
             for split_date, ratio in splits_data.items():
-                if ratio > 0:
-                    sh.loc[sh.index < split_date] = sh.loc[sh.index < split_date] * ratio
+                if ratio <= 0:
+                    continue
+                try:
+                    sd = _naive(split_date)
+                    mask = sh_idx_naive < sd
+                    sh.iloc[mask.values] = sh.iloc[mask.values].values * ratio
+                except Exception:
+                    continue
         # Nur letzte 5 Jahre
-        five_years_ago = pd.Timestamp.now(tz=sh.index.tz) - pd.DateOffset(years=5)
-        sh = sh[sh.index >= five_years_ago]
+        sh_idx_naive = _naive_index(sh.index)
+        five_years_ago = pd.Timestamp.now().replace(tzinfo=None) - pd.DateOffset(years=5)
+        sh = sh[sh_idx_naive >= five_years_ago]
         if len(sh) >= 2:
             oldest = sh.iloc[0]
             newest = sh.iloc[-1]
@@ -699,10 +713,18 @@ change_class = "header-change-pos" if price_change >= 0 else "header-change-neg"
 change_arrow = "▲" if price_change >= 0 else "▼"
 company_name = yf_info.get("longName", ticker)
 
-# Logo HTML
+# Logo HTML — server-side check (onerror wird von Streamlit nicht ausgeführt)
 logo_html = ""
 if logo_url:
-    logo_html = f'<img src="{logo_url}" style="height:48px; width:auto; margin-right:16px; border-radius:8px; background:#fff; padding:4px; object-fit:contain;" onerror="this.style.display=\'none\'">'
+    try:
+        r = requests.head(logo_url, timeout=2, allow_redirects=True)
+        if r.status_code == 200:
+            logo_html = f'<img src="{logo_url}" style="height:48px; width:auto; margin-right:16px; border-radius:8px; background:#fff; padding:4px; object-fit:contain;">'
+    except Exception:
+        pass
+if not logo_html:
+    initials = "".join(w[0] for w in company_name.split()[:2]).upper() if company_name else ticker[:2]
+    logo_html = f'<div style="height:48px;width:48px;background:#1a3a5c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#64b5f6;margin-right:16px;flex-shrink:0;">{initials}</div>'
 
 st.markdown(f"""
 <div class="header-wrap">
