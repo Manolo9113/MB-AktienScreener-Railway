@@ -266,6 +266,30 @@ st.markdown("""
         font-size: 0.87rem;
         line-height: 1.6;
     }
+
+    /* Watchlist */
+    .wl-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #0d1f3c;
+        border: 1px solid #1e3a5f;
+        border-radius: 8px;
+        padding: 5px 10px;
+        font-size: 0.82rem;
+        color: #b0bec5;
+        margin: 3px 0;
+        width: 100%;
+    }
+    .wl-chip strong { color: #64b5f6; font-size: 0.85rem; }
+    .wl-compare-box {
+        background: #0a1628;
+        border: 1px solid #1e3a5f;
+        border-top: 3px solid #00e5ff;
+        border-radius: 14px;
+        padding: 20px 22px;
+        margin: 16px 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -349,6 +373,31 @@ def load_fmp_metrics(ticker: str):
     except:
         pass
     return metrics, peers, analyst
+
+# ==================== WATCHLIST DATA ====================
+@st.cache_data(ttl=3600)
+def load_watchlist_metrics(t: str) -> dict:
+    """Kompakte Kennzahlen für Watchlist-Vergleich (gecacht)."""
+    try:
+        info = yf.Ticker(t).info
+        mc  = info.get("marketCap")
+        fcf = info.get("freeCashflow")
+        return {
+            "name":     info.get("shortName", t),
+            "price":    info.get("currentPrice") or info.get("regularMarketPrice"),
+            "mkt_cap":  mc,
+            "gm":       (info.get("grossMargins") or 0) * 100,
+            "op_mg":    (info.get("operatingMargins") or 0) * 100,
+            "net_mg":   (info.get("profitMargins") or 0) * 100,
+            "rev_gr":   (info.get("revenueGrowth") or 0) * 100,
+            "fcf_y":    (fcf / mc * 100) if fcf and mc else 0.0,
+            "roe":      (info.get("returnOnEquity") or 0) * 100,
+            "pe":       info.get("trailingPE"),
+        }
+    except Exception:
+        return {"name": t, "price": None, "mkt_cap": None,
+                "gm": 0, "op_mg": 0, "net_mg": 0,
+                "rev_gr": 0, "fcf_y": 0, "roe": 0, "pe": None}
 
 # ==================== HELPERS ====================
 def badge(v, good, ok, fmt=".1f", inverse=False):
@@ -1142,6 +1191,10 @@ if "grok_chat" not in st.session_state:
     st.session_state["grok_chat"] = []
 if "grok_chat_ctx" not in st.session_state:
     st.session_state["grok_chat_ctx"] = ""
+if "watchlist" not in st.session_state:
+    st.session_state["watchlist"] = []
+if "show_wl_compare" not in st.session_state:
+    st.session_state["show_wl_compare"] = False
 
 def _go_to_ticker(t):
     st.session_state["ticker"] = t
@@ -1214,6 +1267,35 @@ with st.sidebar:
     show_peers = st.toggle("Peer-Vergleich anzeigen", value=True)
     show_insider = st.toggle("Insider-Transaktionen", value=True)
     show_dcf = st.toggle("DCF Rechner", value=True)
+
+    # ── Watchlist ──────────────────────────────────────────────────────
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>⭐ Watchlist</div>", unsafe_allow_html=True)
+    _sb_wl = st.session_state.get("watchlist", [])
+    if _sb_wl:
+        for _w in list(_sb_wl):
+            _wc1, _wc2 = st.columns([5, 1])
+            with _wc1:
+                if st.button(f"📈 **{_w['ticker']}** — {_w['name'][:18]}",
+                             key=f"wl_nav_{_w['ticker']}", use_container_width=True):
+                    _go_to_ticker(_w["ticker"])
+                    st.rerun()
+            with _wc2:
+                if st.button("✕", key=f"wl_del_{_w['ticker']}", help="Entfernen"):
+                    st.session_state["watchlist"] = [
+                        x for x in st.session_state["watchlist"] if x["ticker"] != _w["ticker"]]
+                    st.rerun()
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        _cmp_lbl = "📊 Vergleich ausblenden" if st.session_state["show_wl_compare"] else "📊 Vergleich anzeigen"
+        if st.button(_cmp_lbl, use_container_width=True, key="wl_toggle_cmp",
+                     disabled=len(_sb_wl) < 2,
+                     help="Mindestens 2 Aktien merken" if len(_sb_wl) < 2 else ""):
+            st.session_state["show_wl_compare"] = not st.session_state["show_wl_compare"]
+            st.rerun()
+        if len(_sb_wl) < 2:
+            st.caption("Mindestens 2 Aktien merken für Vergleich.")
+    else:
+        st.caption("Noch keine Aktien gemerkt — bei einer Aktie auf ⭐ Merken klicken.")
 
 # ==================== LANDING PAGE ====================
 if st.session_state["show_landing"]:
@@ -1526,6 +1608,21 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# ── Watchlist-Button ──────────────────────────────────────────────
+_wl_curr = st.session_state.get("watchlist", [])
+_in_wl   = any(w["ticker"] == ticker for w in _wl_curr)
+_wl_b1, _ = st.columns([1, 6])
+with _wl_b1:
+    if _in_wl:
+        if st.button("✅ Gemerkt", key="wl_rm", help="Aus Watchlist entfernen"):
+            st.session_state["watchlist"] = [w for w in _wl_curr if w["ticker"] != ticker]
+            st.rerun()
+    else:
+        if st.button("⭐ Merken", key="wl_add", help="Zur Watchlist hinzufügen"):
+            st.session_state["watchlist"] = _wl_curr + [
+                {"ticker": ticker, "name": company_name}]
+            st.rerun()
+
 # ==================== SCORE + KEY METRICS ROW ====================
 if show_rule_of_40:
     col_score, col_r40, col_roic, col_fcf, col_gm = st.columns([1.2, 1, 1, 1, 1])
@@ -1605,6 +1702,65 @@ if week52_pos is not None:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+# ==================== WATCHLIST VERGLEICH ====================
+if st.session_state.get("show_wl_compare") and len(st.session_state.get("watchlist", [])) >= 2:
+    _wl_tickers = [w["ticker"] for w in st.session_state["watchlist"]]
+    st.markdown("<div class='wl-compare-box'>", unsafe_allow_html=True)
+    st.markdown(f"<div style='color:#00e5ff; font-size:1.0rem; font-weight:700; margin-bottom:14px;'>📊 Watchlist-Vergleich — {' · '.join(_wl_tickers)}</div>", unsafe_allow_html=True)
+
+    with st.spinner("Lade Vergleichsdaten..."):
+        _wl_data = {t: load_watchlist_metrics(t) for t in _wl_tickers}
+
+    # ── Vergleichstabelle ──
+    _cmp_rows = []
+    for _t, _d in _wl_data.items():
+        _cmp_rows.append({
+            "Ticker":       _t,
+            "Name":         _d.get("name", _t)[:22],
+            "Kurs":         f"${_d['price']:.2f}" if _d.get("price") else "—",
+            "Mkt Cap":      fmt_large(_d.get("mkt_cap")),
+            "KGV":          f"{_d['pe']:.1f}x" if _d.get("pe") else "—",
+            "Bruttomarge":  f"{_d['gm']:.1f}%",
+            "Op. Marge":    f"{_d['op_mg']:.1f}%",
+            "Nettomarge":   f"{_d['net_mg']:.1f}%",
+            "Umsatzwachst.":f"{_d['rev_gr']:.1f}%",
+            "FCF Yield":    f"{_d['fcf_y']:.1f}%",
+            "ROE":          f"{_d['roe']:.1f}%",
+        })
+    st.dataframe(pd.DataFrame(_cmp_rows).set_index("Ticker"), use_container_width=True)
+
+    # ── Vergleichs-Chart (5 Kernkennzahlen) ──
+    _cmp_metrics = ["Bruttomarge", "Op. Marge", "Nettomarge", "Umsatzwachst.", "FCF Yield"]
+    _cmp_keys    = ["gm",          "op_mg",     "net_mg",     "rev_gr",        "fcf_y"]
+    _cmp_colors  = ["#00e5ff", "#a78bfa", "#00e676", "#ffd600", "#ff9100",
+                    "#ff5252", "#64b5f6", "#69f0ae", "#ff80ab"]
+    _fig_wl = go.Figure()
+    for _i, (_t, _d) in enumerate(_wl_data.items()):
+        _fig_wl.add_trace(go.Bar(
+            name=_t,
+            x=_cmp_metrics,
+            y=[_d.get(k, 0) or 0 for k in _cmp_keys],
+            marker_color=_cmp_colors[_i % len(_cmp_colors)],
+            text=[f"{_d.get(k,0):.1f}%" for k in _cmp_keys],
+            textposition="outside",
+            textfont=dict(size=10),
+        ))
+    _fig_wl.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(13,21,38,0.8)",
+        height=320,
+        margin=dict(l=0, r=0, t=10, b=0),
+        barmode="group",
+        bargap=0.2,
+        bargroupgap=0.06,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=11)),
+        xaxis=dict(showgrid=False, tickfont=dict(size=11)),
+        yaxis=dict(showgrid=True, gridcolor="#1e2d45", ticksuffix="%", tickfont=dict(size=10)),
+    )
+    st.plotly_chart(_fig_wl, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ==================== KI-ANALYSE (GROK) ====================
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
