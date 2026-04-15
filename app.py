@@ -35,12 +35,17 @@ st.markdown("""
         background: linear-gradient(135deg, #0d1f3c 0%, #0a1628 100%);
         border: 1px solid #1e3a5f;
         border-radius: 20px;
-        padding: 32px 40px;
+        padding: 24px 28px;
         margin-bottom: 28px;
         display: flex;
-        justify-content: space-between;
-        align-items: center;
+        align-items: flex-start;
         box-shadow: 0 8px 32px rgba(0,120,255,0.15);
+        overflow: hidden;
+    }
+    @media (max-width: 640px) {
+        .header-wrap { padding: 18px 16px; border-radius: 14px; }
+        .header-title { font-size: 1.4rem !important; }
+        .header-price { font-size: 1.6rem !important; }
     }
     .header-title { color: #fff; font-size: 2rem; font-weight: 700; margin: 0; }
     .header-sub { color: #64b5f6; font-size: 1rem; margin-top: 4px; }
@@ -718,21 +723,21 @@ logo_html = f"""
 
 st.markdown(f"""
 <div class="header-wrap">
-    <div style="display:flex; align-items:center;">
+    <div style="display:flex; align-items:center; flex:1; min-width:0;">
         {logo_html}
-        <div>
-            <div class="header-title">{company_name}</div>
+        <div style="min-width:0; flex:1;">
+            <div class="header-title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{company_name}</div>
             <div class="header-sub">{ticker} · {sector} · {industry}</div>
             <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                 <span style="background:#1a2744; color:#64b5f6; border-radius:6px; padding:3px 10px; font-size:0.8rem; font-weight:600;">{recommendation}</span>
                 {'<span style="background:#1a2e1a; color:#00e676; border-radius:6px; padding:3px 10px; font-size:0.78rem; font-weight:600;">📅 Earnings: ' + earnings_date_str + '</span>' if earnings_date_str else ''}
             </div>
+            <div style="margin-top:12px;">
+                <div class="header-price" style="font-size:1.8rem; text-align:left;">${price:.2f}</div>
+                <div class="{change_class}">{change_arrow} {abs(price_change):.2f} ({abs(price_change_pct):.2f}%)</div>
+                {'<div style="color:#546e7a; font-size:0.78rem; margin-top:2px;">Ziel: $' + f'{target_mean:.2f}' + ' <span style="color:' + ('#00e676' if upside and upside > 0 else '#ff5252') + '">(' + ('+' if upside and upside > 0 else '') + f'{upside:.1f}%)' + '</span></div>' if upside else ''}
+            </div>
         </div>
-    </div>
-    <div>
-        <div class="header-price">${price:.2f}</div>
-        <div class="{change_class}" style="text-align:right;">{change_arrow} {abs(price_change):.2f} ({abs(price_change_pct):.2f}%)</div>
-        {'<div style="color:#546e7a; font-size:0.78rem; text-align:right; margin-top:4px;">Ziel: $' + f'{target_mean:.2f}' + ' <span style="color:' + ('#00e676' if upside and upside > 0 else '#ff5252') + '">(' + ('+' if upside and upside > 0 else '') + f'{upside:.1f}%)' + '</span></div>' if upside else ''}
     </div>
 </div>
 """, unsafe_allow_html=True)
