@@ -519,7 +519,7 @@ def load_piotroski(ticker: str):
               "Operative Effizienz",
               (delta_at > 0)    if delta_at is not None else None,
               f"{delta_at:+.3f}" if delta_at is not None else "N/A",
-              f"Umsatz/Anfangs-Aktiva {fy_t}: {at_t:.3f if at_t else 'N/A'} vs {fy_t1}: {at_t1:.3f if at_t1 else 'N/A'}"),
+              f"Umsatz/Anfangs-Aktiva {fy_t}: {f'{at_t:.3f}' if at_t else 'N/A'} vs {fy_t1}: {f'{at_t1:.3f}' if at_t1 else 'N/A'}"),
     ]
 
     score     = sum(1 for c in criteria if c["passed"] is True)
