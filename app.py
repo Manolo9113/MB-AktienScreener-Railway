@@ -364,6 +364,175 @@ def dcf_valuation(fcf, shares, growth_rate, terminal_growth, discount_rate, year
     total = sum(cashflows) + terminal_pv
     return total / shares
 
+# ==================== PIOTROSKI F-SCORE ====================
+@st.cache_data(ttl=86400)
+def load_piotroski(ticker: str):
+    """Lädt Jahresabschlüsse und berechnet den Piotroski F-Score (0-9)."""
+    try:
+        stock = yf.Ticker(ticker)
+        income  = stock.income_stmt
+        balance = stock.balance_sheet
+        cashflow = stock.cash_flow
+    except Exception:
+        return None
+
+    def _get(df, keys, col=0):
+        if df is None or df.empty or col >= len(df.columns):
+            return None
+        for k in keys:
+            if k in df.index:
+                try:
+                    v = df.loc[k].iloc[col]
+                    return float(v) if pd.notna(v) else None
+                except Exception:
+                    pass
+        return None
+
+    # ── Jahreswerte holen ───────────────────────────────────────────────
+    # Spalte 0 = aktuellstes Geschäftsjahr (T), Spalte 1 = Vorjahr (T-1)
+    ta_t  = _get(balance, ["Total Assets"])
+    ta_t1 = _get(balance, ["Total Assets"], 1)
+
+    ni_t  = _get(income, ["Net Income"])
+    ni_t1 = _get(income, ["Net Income"], 1)
+
+    cfo_t  = _get(cashflow, ["Operating Cash Flow", "Total Cash From Operating Activities"])
+    cfo_t1 = _get(cashflow, ["Operating Cash Flow", "Total Cash From Operating Activities"], 1)
+
+    rev_t  = _get(income, ["Total Revenue", "Revenue"])
+    rev_t1 = _get(income, ["Total Revenue", "Revenue"], 1)
+
+    gp_t   = _get(income, ["Gross Profit"])
+    gp_t1  = _get(income, ["Gross Profit"], 1)
+
+    ltd_t  = _get(balance, ["Long Term Debt", "Long-Term Debt"]) or 0
+    ltd_t1 = _get(balance, ["Long Term Debt", "Long-Term Debt"], 1) or 0
+
+    ca_t   = _get(balance, ["Current Assets",     "Total Current Assets"])
+    ca_t1  = _get(balance, ["Current Assets",     "Total Current Assets"], 1)
+    cl_t   = _get(balance, ["Current Liabilities","Total Current Liabilities"])
+    cl_t1  = _get(balance, ["Current Liabilities","Total Current Liabilities"], 1)
+
+    sh_t   = _get(balance, ["Ordinary Shares Number", "Share Issued", "Common Stock"])
+    sh_t1  = _get(balance, ["Ordinary Shares Number", "Share Issued", "Common Stock"], 1)
+
+    # ── Abgeleitete Kennzahlen ─────────────────────────────────────────
+    roa_t   = ni_t  / ta_t  if ni_t  is not None and ta_t  and ta_t  > 0 else None
+    roa_t1  = ni_t1 / ta_t1 if ni_t1 is not None and ta_t1 and ta_t1 > 0 else None
+    cfo_ta  = cfo_t / ta_t  if cfo_t is not None and ta_t  and ta_t  > 0 else None
+
+    # Leverage = LTD / Ø Total Assets
+    avg_ta    = (ta_t + ta_t1) / 2 if ta_t and ta_t1 else ta_t
+    avg_ta_t1 = (ta_t1 + (_get(balance, ["Total Assets"], 2) or ta_t1)) / 2
+    lev_t   = ltd_t  / avg_ta    if avg_ta    and avg_ta    > 0 else None
+    lev_t1  = ltd_t1 / avg_ta_t1 if avg_ta_t1 and avg_ta_t1 > 0 else None
+
+    cr_t    = ca_t  / cl_t  if ca_t  and cl_t  and cl_t  > 0 else None
+    cr_t1   = ca_t1 / cl_t1 if ca_t1 and cl_t1 and cl_t1 > 0 else None
+
+    gm_t    = gp_t  / rev_t  if gp_t  is not None and rev_t  and rev_t  > 0 else None
+    gm_t1   = gp_t1 / rev_t1 if gp_t1 is not None and rev_t1 and rev_t1 > 0 else None
+
+    # Asset Turnover: Umsatz / Anfangsbestand Gesamtkapital (= TA Vorjahr)
+    at_t  = rev_t  / ta_t1 if rev_t  and ta_t1 and ta_t1 > 0 else None
+    ta_t2 = _get(balance, ["Total Assets"], 2)
+    at_t1 = rev_t1 / ta_t2 if rev_t1 and ta_t2 and ta_t2 > 0 else (
+            rev_t1 / ta_t1 if rev_t1 and ta_t1 and ta_t1 > 0 else None)
+
+    fy_t  = balance.columns[0].year if not balance.empty else "T"
+    fy_t1 = balance.columns[1].year if not balance.empty and len(balance.columns) > 1 else "T-1"
+
+    # ── 9 Kriterien ────────────────────────────────────────────────────
+    def _crit(name, group, passed, val_str, hint):
+        return {"name": name, "group": group,
+                "passed": passed, "value": val_str, "hint": hint}
+
+    def _pct(v):
+        return f"{v*100:.1f}%" if v is not None else "N/A"
+    def _pp(v):
+        return f"{v*100:+.1f}pp" if v is not None else "N/A"
+    def _fmt(v):
+        return fmt_large(v) if v is not None else "N/A"
+
+    delta_roa = (roa_t - roa_t1)   if roa_t  is not None and roa_t1 is not None else None
+    delta_lev = (lev_t - lev_t1)   if lev_t  is not None and lev_t1 is not None else None
+    delta_cr  = (cr_t  - cr_t1)    if cr_t   is not None and cr_t1  is not None else None
+    delta_gm  = (gm_t  - gm_t1)    if gm_t   is not None and gm_t1  is not None else None
+    delta_at  = (at_t  - at_t1)    if at_t   is not None and at_t1  is not None else None
+
+    share_chg = ((sh_t / sh_t1) - 1) if sh_t and sh_t1 and sh_t1 > 0 else None
+    no_dilution = (sh_t <= sh_t1 * 1.01) if share_chg is not None else None
+
+    criteria = [
+        # ── Rentabilität ──
+        _crit("ROA positiv",
+              "Rentabilität",
+              (roa_t > 0)       if roa_t  is not None else None,
+              _pct(roa_t),
+              f"ROA {fy_t}: {_pct(roa_t)} — Nettogewinn / Gesamtkapital > 0"),
+
+        _crit("Operativer Cashflow > 0",
+              "Rentabilität",
+              (cfo_t > 0)       if cfo_t  is not None else None,
+              _fmt(cfo_t),
+              f"CFO {fy_t}: {_fmt(cfo_t)} — Operatives Geschäft generiert echten Cash"),
+
+        _crit("ΔROA positiv",
+              "Rentabilität",
+              (delta_roa > 0)   if delta_roa is not None else None,
+              _pp(delta_roa),
+              f"ROA {fy_t}: {_pct(roa_t)} vs {fy_t1}: {_pct(roa_t1)} → {_pp(delta_roa)}"),
+
+        _crit("Gewinnqualität (Accruals)",
+              "Rentabilität",
+              (cfo_ta > roa_t)  if cfo_ta is not None and roa_t is not None else None,
+              f"CFO/TA {_pct(cfo_ta)} vs ROA {_pct(roa_t)}",
+              "CFO/Gesamtkapital > ROA — Gewinne sind durch Cash gedeckt, nicht durch Bilanzierungstricks"),
+
+        # ── Kapitalstruktur ──
+        _crit("Verschuldung gesunken",
+              "Kapitalstruktur",
+              (delta_lev < 0)   if delta_lev is not None else None,
+              _pp(delta_lev),
+              f"LTD/Ø-Aktiva {fy_t}: {_pct(lev_t)} vs {fy_t1}: {_pct(lev_t1)} → {_pp(delta_lev)}"),
+
+        _crit("Liquidität gestiegen",
+              "Kapitalstruktur",
+              (delta_cr > 0)    if delta_cr is not None else None,
+              f"{delta_cr:+.2f}" if delta_cr is not None else "N/A",
+              f"Current Ratio {fy_t}: {cr_t:.2f if cr_t else 'N/A'} vs {fy_t1}: {cr_t1:.2f if cr_t1 else 'N/A'}"),
+
+        _crit("Keine Aktienverwässerung",
+              "Kapitalstruktur",
+              no_dilution,
+              f"{share_chg*100:+.1f}%" if share_chg is not None else "N/A",
+              "Keine neuen Aktien ausgegeben (≤1% Toleranz) — Schutz des Anteilswertes"),
+
+        # ── Operative Effizienz ──
+        _crit("Bruttomarge gestiegen",
+              "Operative Effizienz",
+              (delta_gm > 0)    if delta_gm is not None else None,
+              _pp(delta_gm),
+              f"Gross Margin {fy_t}: {_pct(gm_t)} vs {fy_t1}: {_pct(gm_t1)} → {_pp(delta_gm)}"),
+
+        _crit("Asset Turnover gestiegen",
+              "Operative Effizienz",
+              (delta_at > 0)    if delta_at is not None else None,
+              f"{delta_at:+.3f}" if delta_at is not None else "N/A",
+              f"Umsatz/Anfangs-Aktiva {fy_t}: {at_t:.3f if at_t else 'N/A'} vs {fy_t1}: {at_t1:.3f if at_t1 else 'N/A'}"),
+    ]
+
+    score     = sum(1 for c in criteria if c["passed"] is True)
+    available = sum(1 for c in criteria if c["passed"] is not None)
+
+    return {
+        "criteria": criteria,
+        "score": score,
+        "available": available,
+        "fy_t":  fy_t,
+        "fy_t1": fy_t1,
+    }
+
 # ==================== MOAT ANALYSIS ====================
 def compute_moat(sector, industry, gross_margin, roic_val, operating_margin,
                  profit_margin, rev_growth, market_cap, debt, employees=None):
@@ -1252,9 +1421,10 @@ if len(hist_plot) >= 2:
 
 # ==================== TABS ====================
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "📊 Kennzahlen", "📈 Wachstum", "🏦 Fundamental", "⚖️ Bewertung",
-    "📉 Chart Analyse", "🔍 Insider & Peers", "📰 News", "🏰 Burggraben"
+    "📉 Chart Analyse", "🔍 Insider & Peers", "📰 News", "🏰 Burggraben",
+    "🔬 Piotroski F-Score"
 ])
 
 with tab1:
@@ -1985,6 +2155,126 @@ with tab8:
         Eine vollständige Moat-Analyse erfordert qualitative Recherche (Geschäftsberichte, Patente,
         Kundenbindung, Managementqualität). Keine Anlageberatung.</em>
     </div>""", unsafe_allow_html=True)
+
+# ==================== TAB 9: PIOTROSKI F-SCORE ====================
+with tab9:
+    with st.spinner("Lade Jahresabschlüsse für F-Score…"):
+        piotroski = load_piotroski(ticker)
+
+    if piotroski is None:
+        st.warning("Jahresabschlussdaten konnten nicht geladen werden.")
+    else:
+        fs   = piotroski["score"]
+        fa   = piotroski["available"]
+        fy_t = piotroski["fy_t"]
+        fy_t1= piotroski["fy_t1"]
+
+        # ── Score + Interpretation ──────────────────────────────────────
+        if fs >= 8:
+            fs_color = "#00e676"; fs_label = "Starke Bilanzqualität 🏆"
+            fs_text  = "Hohe operative Qualität und finanzielle Substanz. Die Fundamentaldaten stützen das Investment-Narrativ. Klassischer Buffett/Piotroski-Favorit."
+        elif fs >= 6:
+            fs_color = "#69f0ae"; fs_label = "Solide Substanz ✅"
+            fs_text  = "Gute finanzielle Gesundheit mit einzelnen Schwächen. Unternehmen zeigt mehrheitlich positive Bilanzsignale."
+        elif fs >= 4:
+            fs_color = "#ffd600"; fs_label = "Gemischte Signale ⚠️"
+            fs_text  = "Mehrere Kriterien nicht erfüllt. Sorgfältige Prüfung der Schwachstellen empfohlen bevor eine Investitionsentscheidung getroffen wird."
+        elif fs >= 2:
+            fs_color = "#ff9100"; fs_label = "Schwache Bilanzqualität 🔴"
+            fs_text  = "Deutliche Warnsignale in Rentabilität oder Kapitalstruktur. Narrativ möglicherweise nicht durch Bilanzzahlen gedeckt."
+        else:
+            fs_color = "#ff1744"; fs_label = "Kritisch — Finger weg ⛔"
+            fs_text  = "Fundamentale Bilanzprobleme. Marketing-Narrative ohne reale Substanz. Hohe Short-Selling-Anfälligkeit."
+
+        sc1, sc2 = st.columns([1, 2])
+        with sc1:
+            st.markdown(f"""
+            <div class="score-section">
+                <div class="score-title">Piotroski F-Score</div>
+                <div class="score-num" style="color:{fs_color};">{fs}<span style="font-size:1.5rem; color:#546e7a;">/{fa}</span></div>
+                <div class="score-label">{fs_label}</div>
+                <div style="color:#546e7a; font-size:0.75rem; margin-top:8px;">
+                    Basis: GJ {fy_t} vs {fy_t1}
+                </div>
+            </div>""", unsafe_allow_html=True)
+        with sc2:
+            # Score-Balken
+            bar_segments = ""
+            for i in range(1, 10):
+                if i <= fs:
+                    seg_color = fs_color
+                else:
+                    seg_color = "#1e2d45"
+                bar_segments += f'<div style="flex:1; height:28px; background:{seg_color}; border-radius:4px; margin:0 2px; display:flex; align-items:center; justify-content:center; font-size:0.72rem; font-weight:700; color:#000a;">{i}</div>'
+            st.markdown(f"""
+            <div style="display:flex; margin-bottom:16px; padding:8px 0;">{bar_segments}</div>
+            <div class="insight-box" style="font-size:0.88rem; line-height:1.6; color:#b0bec5;">{fs_text}</div>
+            """, unsafe_allow_html=True)
+
+        # ── 3 Gruppen ──────────────────────────────────────────────────
+        groups = {}
+        for c in piotroski["criteria"]:
+            groups.setdefault(c["group"], []).append(c)
+
+        group_icons = {
+            "Rentabilität":       "💰",
+            "Kapitalstruktur":    "🏗️",
+            "Operative Effizienz":"⚙️",
+        }
+
+        for grp_name, items in groups.items():
+            grp_pts = sum(1 for c in items if c["passed"] is True)
+            grp_max = sum(1 for c in items if c["passed"] is not None)
+            icon = group_icons.get(grp_name, "")
+            st.markdown(
+                f"<div class='section-header'>{icon} {grp_name} — {grp_pts}/{grp_max}</div>",
+                unsafe_allow_html=True)
+
+            cols = st.columns(len(items))
+            for col, c in zip(cols, items):
+                if c["passed"] is True:
+                    dot   = "✅"
+                    bdr   = "#00e676"
+                    badge = '<span class="metric-badge-green">✓ Erfüllt</span>'
+                elif c["passed"] is False:
+                    dot   = "❌"
+                    bdr   = "#ff5252"
+                    badge = '<span class="metric-badge-red">✗ Nicht erfüllt</span>'
+                else:
+                    dot   = "⬜"
+                    bdr   = "#37474f"
+                    badge = '<span class="metric-badge-gray">N/A</span>'
+
+                col.markdown(f"""
+                <div class="metric-card" style="border-left:3px solid {bdr};">
+                    <div class="metric-label">{c['name']}</div>
+                    <div style="font-size:1.15rem; font-weight:700; color:#eceff1; margin:8px 0;">{c['value']}</div>
+                    <div>{badge}</div>
+                    <div class="metric-sub" style="margin-top:8px; font-size:0.71rem; line-height:1.4;">{c['hint']}</div>
+                </div>""", unsafe_allow_html=True)
+
+        # ── Vigilance-Fazit ────────────────────────────────────────────
+        st.markdown("<div class='section-header'>🔍 Vigilance-Check</div>", unsafe_allow_html=True)
+        vigilance = []
+        for c in piotroski["criteria"]:
+            if c["passed"] is False:
+                vigilance.append(f"⚠️ <strong>{c['name']}:</strong> {c['hint']}")
+        if not vigilance:
+            vigilance.append("✅ Alle verfügbaren Kriterien erfüllt — keine Warnsignale in den Bilanzdaten.")
+        st.markdown(f"""
+        <div class="insight-box">
+            <strong>F-Score {fs}/{fa} — {fs_label}</strong><br><br>
+            {"<br>".join(vigilance)}
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("""
+        <div style="color:#37474f; font-size:0.73rem; margin-top:12px; padding:10px 14px;
+                    background:#0a1628; border-radius:8px; border-left:3px solid #1e3a5f;">
+            ℹ️ <em>Der Piotroski F-Score wurde 2000 von Joseph Piotroski (Stanford) entwickelt.
+            Er eignet sich besonders als Screening-Filter für Value-Investoren.
+            Score 8–9: hohe Substanz · 4–7: gemischt · 0–3: Warnsignal.
+            Datenquelle: Jahresabschlüsse via yFinance. Keine Anlageberatung.</em>
+        </div>""", unsafe_allow_html=True)
 
 # ==================== INSIGHTS ====================
 st.markdown("<div class='section-header'>💡 Investor Insights</div>", unsafe_allow_html=True)
