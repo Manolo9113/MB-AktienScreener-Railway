@@ -607,7 +607,19 @@ target_mean = yf_info.get("targetMeanPrice")
 recommendation = yf_info.get("recommendationKey", "").replace("_", " ").title()
 sector = yf_info.get("sector", "")
 industry = yf_info.get("industry", "")
-logo_url = yf_info.get("logo_url", "") or yf_info.get("logoUrl", "")
+# Logo: yfinance logo_url oft leer → Clearbit als primäre Quelle
+_website = yf_info.get("website", "")
+_domain = ""
+if _website:
+    try:
+        from urllib.parse import urlparse
+        _domain = urlparse(_website).netloc.lstrip("www.")
+    except Exception:
+        pass
+if _domain:
+    logo_url = f"https://logo.clearbit.com/{_domain}"
+else:
+    logo_url = yf_info.get("logo_url", "") or yf_info.get("logoUrl", "")
 
 # Rule of 40 nur für SaaS/Tech/Cyber relevant
 show_rule_of_40 = is_saas_or_cyber(sector, industry)
