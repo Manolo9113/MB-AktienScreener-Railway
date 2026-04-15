@@ -486,15 +486,81 @@ def resolve_search_input(raw: str) -> tuple[str, str, list]:
     # 5) Letzter Fallback: Eingabe direkt als Ticker
     return q, "", []
 
+# ==================== INDICES + NEWS ====================
+@st.cache_data(ttl=300)
+def load_indices():
+    symbols = {
+        "S&P 500":     ("^GSPC",    "$"),
+        "Dow Jones":   ("^DJI",     "$"),
+        "Nasdaq":      ("^IXIC",    "$"),
+        "DAX":         ("^GDAXI",   ""),
+        "Nikkei 225":  ("^N225",    "¥"),
+        "Hang Seng":   ("^HSI",     ""),
+        "FTSE 100":    ("^FTSE",    ""),
+        "Euro Stoxx":  ("^STOXX50E",""),
+    }
+    result = {}
+    for name, (sym, cur) in symbols.items():
+        try:
+            h = yf.Ticker(sym).history(period="2d", interval="1d")
+            if len(h) >= 2:
+                px = h["Close"].iloc[-1]
+                prev = h["Close"].iloc[-2]
+                chg = px - prev
+                pct = chg / prev * 100
+            elif len(h) == 1:
+                px = h["Close"].iloc[-1]
+                chg, pct = 0.0, 0.0
+            else:
+                continue
+            result[name] = {"sym": sym, "price": px, "change": chg, "pct": pct, "cur": cur}
+        except Exception:
+            pass
+    return result
+
+@st.cache_data(ttl=600)
+def load_market_news():
+    headlines = []
+    try:
+        news = yf.Ticker("^GSPC").news or []
+        for item in news[:6]:
+            title = item.get("content", {}).get("title") or item.get("title", "")
+            provider = (item.get("content", {}).get("provider", {}) or {}).get("displayName") or item.get("publisher", "")
+            if title:
+                headlines.append({"title": title, "source": provider})
+        if not headlines:
+            raise ValueError("empty")
+    except Exception:
+        pass
+    if not headlines:
+        try:
+            news = yf.Ticker("SPY").news or []
+            for item in news[:6]:
+                title = item.get("content", {}).get("title") or item.get("title", "")
+                provider = (item.get("content", {}).get("provider", {}) or {}).get("displayName") or item.get("publisher", "")
+                if title:
+                    headlines.append({"title": title, "source": provider})
+        except Exception:
+            pass
+    return headlines[:4]
 
 # ==================== SESSION ====================
 if "ticker" not in st.session_state:
-    st.session_state["ticker"] = "AAPL"
+    st.session_state["ticker"] = ""
+if "show_landing" not in st.session_state:
+    st.session_state["show_landing"] = True
 if "search_input" not in st.session_state:
-    st.session_state["search_input"] = "AAPL"
+    st.session_state["search_input"] = ""
 if "search_msg" not in st.session_state:
     st.session_state["search_msg"] = ""
 if "suggestions" not in st.session_state:
+    st.session_state["suggestions"] = []
+
+def _go_to_ticker(t):
+    st.session_state["ticker"] = t
+    st.session_state["show_landing"] = False
+    st.session_state["search_input"] = t
+    st.session_state["search_msg"] = ""
     st.session_state["suggestions"] = []
 
 # ==================== SIDEBAR ====================
@@ -526,8 +592,7 @@ with st.sidebar:
         st.session_state["search_msg"] = msg
         st.session_state["suggestions"] = sugg
         if resolved:
-            st.session_state["ticker"] = resolved
-            st.session_state["suggestions"] = []
+            _go_to_ticker(resolved)
             st.rerun()
 
     # Auflösungs-Info anzeigen
@@ -540,9 +605,7 @@ with st.sidebar:
         for s in st.session_state["suggestions"]:
             label = f"{s['ticker']}  ·  {s['name'][:22]}  [{s['exchange']}]"
             if st.button(label, use_container_width=True, key=f"sugg_{s['ticker']}"):
-                st.session_state["ticker"] = s["ticker"]
-                st.session_state["search_input"] = s["ticker"]
-                st.session_state["suggestions"] = []
+                _go_to_ticker(s["ticker"])
                 st.session_state["search_msg"] = f"Ausgewählt: **{s['name']}** ({s['ticker']})"
                 st.rerun()
 
@@ -551,16 +614,106 @@ with st.sidebar:
     cols = st.columns(2)
     for i, t in enumerate(quick):
         if cols[i % 2].button(t, use_container_width=True, key=f"q_{t}"):
-            st.session_state["ticker"] = t
-            st.session_state["search_input"] = t
-            st.session_state["search_msg"] = ""
-            st.session_state["suggestions"] = []
+            _go_to_ticker(t)
             st.rerun()
+
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    if not st.session_state["show_landing"] and st.button("🏠 Startseite", use_container_width=True):
+        st.session_state["show_landing"] = True
+        st.rerun()
 
     st.markdown("<div class='section-header'>⚙️ Einstellungen</div>", unsafe_allow_html=True)
     show_peers = st.toggle("Peer-Vergleich anzeigen", value=True)
     show_insider = st.toggle("Insider-Transaktionen", value=True)
     show_dcf = st.toggle("DCF Rechner", value=True)
+
+# ==================== LANDING PAGE ====================
+if st.session_state["show_landing"]:
+    st.markdown("""
+    <div style="text-align:center; padding:48px 0 32px 0;">
+        <div style="font-size:3rem; font-weight:800; color:#fff; letter-spacing:-1px;">
+            📈 Bäumer <span style="color:#00e5ff;">Aktien</span>screener
+        </div>
+        <div style="color:#64b5f6; font-size:1.1rem; margin-top:10px;">
+            Professionelle Aktienanalyse — Ticker, Name, ISIN oder WKN eingeben
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Prominente Suche
+    lc1, lc2, lc3 = st.columns([1, 3, 1])
+    with lc2:
+        landing_search = st.text_input(
+            "Aktie suchen",
+            label_visibility="collapsed",
+            placeholder="z.B.  NVDA  ·  Siemens  ·  DE0007164600  ·  723610",
+            key="landing_search_input"
+        )
+        if st.button("🔍  Aktie analysieren", use_container_width=True, type="primary"):
+            if landing_search.strip():
+                with st.spinner("Suche…"):
+                    resolved, msg, sugg = resolve_search_input(landing_search)
+                if resolved:
+                    _go_to_ticker(resolved)
+                    st.rerun()
+                elif sugg:
+                    st.session_state["suggestions"] = sugg
+                    st.rerun()
+                else:
+                    st.warning("Kein Ergebnis. Bitte Ticker oder Firmenname prüfen.")
+
+    st.markdown("<div style='height:36px'></div>", unsafe_allow_html=True)
+
+    # ── Marktüberblick ──
+    st.markdown("<div class='section-header'>🌍 Marktüberblick</div>", unsafe_allow_html=True)
+    with st.spinner("Lade Indizes…"):
+        indices_data = load_indices()
+
+    if indices_data:
+        idx_cols = st.columns(len(indices_data))
+        for col, (name, d) in zip(idx_cols, indices_data.items()):
+            pct = d["pct"]
+            clr = "#00e676" if pct >= 0 else "#ff5252"
+            arrow = "▲" if pct >= 0 else "▼"
+            px_str = f"{d['cur']}{d['price']:,.0f}"
+            col.markdown(f"""
+            <div class="metric-card" style="text-align:center; padding:14px 8px; cursor:default;">
+                <div class="metric-label" style="font-size:0.7rem;">{name}</div>
+                <div style="color:#eceff1; font-size:1.05rem; font-weight:700; margin:4px 0;">{px_str}</div>
+                <div style="color:{clr}; font-size:0.82rem; font-weight:600;">{arrow} {abs(pct):.2f}%</div>
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+
+    # ── Schlagzeilen ──
+    st.markdown("<div class='section-header'>📰 Aktuelle Marktschlagzeilen</div>", unsafe_allow_html=True)
+    with st.spinner("Lade Nachrichten…"):
+        headlines = load_market_news()
+
+    if headlines:
+        for h in headlines:
+            src = f"<span style='color:#546e7a; font-size:0.72rem; margin-left:8px;'>{h['source']}</span>" if h['source'] else ""
+            st.markdown(f"""
+            <div class="metric-card" style="padding:14px 18px;">
+                <div style="color:#eceff1; font-size:0.92rem; line-height:1.4;">📌 {h['title']}{src}</div>
+            </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="metric-card" style="color:#546e7a; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
+
+    # ── Schnellauswahl auf Landing ──
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>⚡ Beliebte Aktien</div>", unsafe_allow_html=True)
+    popular = [
+        ("AAPL","Apple"), ("MSFT","Microsoft"), ("NVDA","NVIDIA"), ("AMZN","Amazon"),
+        ("GOOGL","Alphabet"), ("META","Meta"), ("TSLA","Tesla"), ("SAP","SAP"),
+    ]
+    pop_cols = st.columns(len(popular))
+    for col, (t, name) in zip(pop_cols, popular):
+        if col.button(f"**{t}**\n{name}", use_container_width=True, key=f"lp_{t}"):
+            _go_to_ticker(t)
+            st.rerun()
+
+    st.stop()
 
 # ==================== MAIN DATA ====================
 ticker = st.session_state["ticker"]
