@@ -3000,45 +3000,131 @@ with tab4:
 
     # DCF
     if show_dcf:
-        st.markdown("<div class='section-header'>💰 DCF Rechner</div>", unsafe_allow_html=True)
-        default_growth = min(max(int(rev_growth), 5), 30)
-        st.markdown(f"""
-        <div class="insight-box" style="margin-bottom:12px;">
-            <strong>ℹ️ DCF Hinweis:</strong> Der DCF-Wert reagiert stark auf die Eingaben.
-            Bei High-Growth-Aktien wie Halbleiter/KI-Unternehmen empfiehlt sich eine
-            <strong>konservative Wachstumsrate</strong> (10–20%) und ein höherer Diskontsatz (10–12%),
-            um Euphorie-Prämien zu vermeiden. Akt. Rev. Growth: <strong>{rev_growth:.1f}%</strong>.
-        </div>
-        """, unsafe_allow_html=True)
-        d1, d2, d3, d4 = st.columns(4)
-        with d1:
-            g_rate = st.slider("Wachstumsrate (%)", 0, 40, default_growth, 1, key="dcf_g")
-        with d2:
-            t_rate = st.slider("Terminal Growth (%)", 1, 5, 2, 1, key="dcf_t")
-        with d3:
-            d_rate = st.slider("Diskontrate (%)", 5, 15, 10, 1, key="dcf_d")
-        with d4:
-            yrs = st.slider("Jahre", 5, 15, 10, 1, key="dcf_y")
+        st.markdown("<div class='section-header'>💰 DCF Szenarien — Bull / Base / Bear</div>", unsafe_allow_html=True)
 
-        fair_val = dcf_valuation(fcf, shares_outstanding, g_rate, t_rate, d_rate, yrs)
-        if fair_val:
-            margin = (fair_val - price) / price * 100
-            m_color = "#00e676" if margin > 0 else "#ff5252"
-            m_label = "Margin of Safety" if margin > 0 else "Überbewertung"
+        # ── Szenario-Annahmen (basierend auf Rev. Growth) ──────────────
+        _rg = rev_growth or 5
+        _scenarios = {
+            "🐻 Bear": {
+                "growth": max(2.0,  round(_rg * 0.35, 1)),
+                "terminal": 1.5, "discount": 11.0,
+                "accent": "#ff5252", "bg": "rgba(255,82,82,0.07)",
+                "label": "Konservativ",
+            },
+            "⚖️ Base": {
+                "growth": max(5.0,  round(min(_rg * 0.65, 20), 1)),
+                "terminal": 2.5, "discount": 10.0,
+                "accent": "#64b5f6", "bg": "rgba(100,181,246,0.07)",
+                "label": "Realistisch",
+            },
+            "🐂 Bull": {
+                "growth": max(10.0, round(min(_rg * 0.90, 35), 1)),
+                "terminal": 3.5, "discount":  9.0,
+                "accent": "#00e676", "bg": "rgba(0,230,118,0.07)",
+                "label": "Optimistisch",
+            },
+        }
+
+        _sc_cols = st.columns(3)
+        _sc_vals = {}
+        for (_name, _sc), _col in zip(_scenarios.items(), _sc_cols):
+            _fv = dcf_valuation(fcf, shares_outstanding,
+                                _sc["growth"], _sc["terminal"], _sc["discount"], 10)
+            _sc_vals[_name] = _fv
+            if _fv:
+                _mg = (_fv - price) / price * 100
+                _mg_label = f"{'▲' if _mg > 0 else '▼'} {abs(_mg):.1f}% {'Upside' if _mg > 0 else 'Downside'}"
+                _mg_clr   = _sc["accent"] if _mg > 0 else "#ff5252"
+            else:
+                _mg_label, _mg_clr = "N/A", "#546e7a"
+            _col.markdown(f"""
+            <div style='background:{_sc["bg"]};border:1px solid {_sc["accent"]}33;
+                 border-top:3px solid {_sc["accent"]};border-radius:14px;
+                 padding:18px 14px;text-align:center;'>
+              <div style='color:{_sc["accent"]};font-size:0.78rem;font-weight:700;
+                   text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;'>
+                {_name}</div>
+              <div style='color:#78909c;font-size:0.7rem;margin-bottom:10px;'>{_sc["label"]}</div>
+              <div style='color:#eceff1;font-size:1.9rem;font-weight:800;'>
+                {"${:,.0f}".format(_fv) if _fv else "N/A"}</div>
+              <div style='color:{_mg_clr};font-size:0.85rem;font-weight:600;margin:6px 0;'>
+                {_mg_label}</div>
+              <div style='color:#37474f;font-size:0.68rem;line-height:1.6;margin-top:8px;
+                   border-top:1px solid #1e2d45;padding-top:8px;text-align:left;'>
+                Wachstum: {_sc["growth"]}%<br>
+                Terminal: {_sc["terminal"]}%<br>
+                Diskont:  {_sc["discount"]}%
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+        # ── Vergleichsbalken ───────────────────────────────────────────
+        _fv_values = [v for v in _sc_vals.values() if v]
+        if _fv_values and price:
+            _bar_labels = list(_sc_vals.keys()) + ["📍 Kurs"]
+            _bar_vals   = [v if v else 0 for v in _sc_vals.values()] + [price]
+            _bar_clrs   = [_scenarios[n]["accent"] for n in _sc_vals] + ["#ffd600"]
+            _fig_dcf = go.Figure(go.Bar(
+                x=_bar_labels, y=_bar_vals,
+                marker_color=_bar_clrs,
+                text=[f"${v:,.0f}" for v in _bar_vals],
+                textposition="outside",
+                textfont=dict(size=11, color="#90a4ae"),
+            ))
+            _fig_dcf.add_hline(y=price, line_dash="dot", line_color="#ffd600",
+                               line_width=1.5,
+                               annotation_text=f"Kurs ${price:.0f}",
+                               annotation_font_color="#ffd600")
+            _fig_dcf.update_layout(
+                template="plotly_dark",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(13,21,38,0.8)",
+                height=260, showlegend=False,
+                margin=dict(l=0, r=0, t=30, b=0),
+                yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False,
+                           tickprefix="$"),
+                xaxis=dict(showgrid=False),
+            )
+            st.plotly_chart(_fig_dcf, use_container_width=True)
+
+        # ── Manueller Rechner (aufklappbar) ────────────────────────────
+        with st.expander("⚙️ Eigenes Szenario berechnen", expanded=False):
             st.markdown(f"""
-            <div style="background:linear-gradient(135deg, #0d2137, #0a1a2e); border:1px solid #1e3a5f; border-radius:16px; padding:22px; margin-top:10px; text-align:center;">
-                <div style="color:#78909c; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">DCF Fairer Wert</div>
-                <div style="color:#eceff1; font-size:2.5rem; font-weight:800;">${fair_val:.2f}</div>
-                <div style="color:{m_color}; font-size:1rem; margin-top:6px; font-weight:600;">
-                    {'▲' if margin > 0 else '▼'} {abs(margin):.1f}% {m_label}
-                </div>
-                <div style="color:#546e7a; font-size:0.78rem; margin-top:6px;">
-                    Aktueller Kurs: ${price:.2f} | FCF: {fmt_large(fcf)}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.info("Nicht genug Daten für DCF-Berechnung (FCF oder Shares fehlen).")
+            <div class="insight-box" style="margin-bottom:12px;">
+                <strong>ℹ️ DCF Hinweis:</strong> Der Wert reagiert stark auf Eingaben.
+                Konservative Wachstumsrate (10–20%) und höherer Diskontsatz (10–12%)
+                vermeiden Euphorie-Prämien. Akt. Rev. Growth: <strong>{rev_growth:.1f}%</strong>.
+            </div>""", unsafe_allow_html=True)
+            default_growth = min(max(int(_rg), 5), 30)
+            d1, d2, d3, d4 = st.columns(4)
+            with d1:
+                g_rate = st.slider("Wachstumsrate (%)", 0, 40, default_growth, 1, key="dcf_g")
+            with d2:
+                t_rate = st.slider("Terminal Growth (%)", 1, 5, 2, 1, key="dcf_t")
+            with d3:
+                d_rate = st.slider("Diskontrate (%)", 5, 15, 10, 1, key="dcf_d")
+            with d4:
+                yrs = st.slider("Jahre", 5, 15, 10, 1, key="dcf_y")
+
+            fair_val = dcf_valuation(fcf, shares_outstanding, g_rate, t_rate, d_rate, yrs)
+            if fair_val:
+                margin = (fair_val - price) / price * 100
+                m_color = "#00e676" if margin > 0 else "#ff5252"
+                m_label = "Margin of Safety" if margin > 0 else "Überbewertung"
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,#0d2137,#0a1a2e);border:1px solid #1e3a5f;
+                     border-radius:16px;padding:22px;margin-top:10px;text-align:center;">
+                    <div style="color:#78909c;font-size:0.8rem;text-transform:uppercase;
+                         letter-spacing:1px;margin-bottom:8px;">Eigenes Szenario</div>
+                    <div style="color:#eceff1;font-size:2.5rem;font-weight:800;">${fair_val:.2f}</div>
+                    <div style="color:{m_color};font-size:1rem;margin-top:6px;font-weight:600;">
+                        {'▲' if margin > 0 else '▼'} {abs(margin):.1f}% {m_label}
+                    </div>
+                    <div style="color:#546e7a;font-size:0.78rem;margin-top:6px;">
+                        Kurs: ${price:.2f} | FCF: {fmt_large(fcf)}
+                    </div>
+                </div>""", unsafe_allow_html=True)
+            else:
+                st.info("Nicht genug Daten für DCF-Berechnung (FCF oder Shares fehlen).")
 
 # ==================== TAB 5: CHART ANALYSE ====================
 with tab5:
