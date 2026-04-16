@@ -1869,6 +1869,7 @@ if hist.empty or not yf_info:
             Mögliche Ursachen:<br>
             • Ticker falsch geschrieben (z.B. <strong>AAPL</strong> statt <em>Apple</em>)<br>
             • Europäische Aktien benötigen Börsen-Suffix: <strong>SAP.DE</strong>, <strong>NOVN.SW</strong>, <strong>ASML.AS</strong><br>
+            • Japanische Aktien: 4-stellige Nummer + <strong>.T</strong> (z.B. <strong>7203.T</strong> für Toyota, <strong>6758.T</strong> für Sony)<br>
             • Delisted oder OTC-Aktie — yFinance hat keine Daten
         </div>
     </div>
@@ -2007,7 +2008,7 @@ except:
 peg_ratio = next(
     (fmp_metrics.get(k) for k in ["priceToEarningsGrowthRatioTTM", "pegRatioTTM", "pegRatio"]
      if fmp_metrics.get(k) is not None),
-    yf_info.get("pegRatio")
+    yf_info.get("trailingPegRatio") or yf_info.get("pegRatio")
 )
 
 roic_val = fmp_metrics.get("returnOnInvestedCapitalTTM")
@@ -2107,15 +2108,29 @@ with col_score:
     """, unsafe_allow_html=True)
 
 _METRIC_TOOLTIPS = {
-    "ROIC":         "Return on Invested Capital — Wie viel Gewinn erzielt das Unternehmen pro investiertem Kapital. >20% = exzellent, >10% = gut.",
-    "FCF Yield":    "Free Cashflow Yield — FCF / Marktkapitalisierung. Zeigt, wie viel realen Cashflow man pro investiertem Euro erhält. >5% = attraktiv.",
-    "Gross Margin": "Bruttomarge — Umsatz minus direkte Herstellkosten. Hohe Marge (>60%) deutet auf Preissetzungsmacht hin.",
-    "Rev. Growth":  "Umsatzwachstum — Jährliches Wachstum des Umsatzes. >15% = stark, >5% = solide.",
-    "Rule of 40":   "SaaS-Kennzahl: Umsatzwachstum % + FCF-Marge % sollte ≥40 sein. Balanciert Wachstum und Profitabilität.",
-    "PEG Ratio":    "Price/Earnings-to-Growth — KGV geteilt durch Gewinnwachstum. <1 = günstig, >2 = teuer relativ zum Wachstum.",
-    "Op. Margin":   "Operative Marge — Operatives Ergebnis / Umsatz. Misst die Effizienz des Kerngeschäfts.",
-    "Net Margin":   "Gewinnmarge — Nettogewinn / Umsatz. Zeigt, wie viel vom Umsatz als Reingewinn bleibt.",
-    "Qualitäts-Score": "Gesamtbewertung basierend auf Marge, ROIC, Wachstum, FCF Yield und Bewertungskennzahlen. 0–100.",
+    "ROIC":              "Return on Invested Capital — Wie viel Gewinn erzielt das Unternehmen pro investiertem Kapital. >20% = exzellent, >10% = gut.",
+    "FCF Yield":         "Free Cashflow Yield — FCF / Marktkapitalisierung. Zeigt, wie viel realen Cashflow man pro investiertem Euro erhält. >5% = attraktiv.",
+    "Gross Margin":      "Bruttomarge — Umsatz minus direkte Herstellkosten. Hohe Marge (>60%) deutet auf Preissetzungsmacht hin.",
+    "Rev. Growth":       "Umsatzwachstum (YoY) — Jährliches Wachstum des Umsatzes. >15% = stark, >5% = solide, <0% = schrumpfend.",
+    "Rule of 40":        "SaaS-Kennzahl: Umsatzwachstum % + FCF-Marge % sollte ≥40 sein. Balanciert Wachstum und Profitabilität.",
+    "PEG Ratio":         "Price/Earnings-to-Growth — KGV geteilt durch Gewinnwachstum. <1 = günstig, 1–2 = fair, >2 = teuer relativ zum Wachstum.",
+    "Op. Margin":        "Operative Marge — Operatives Ergebnis / Umsatz. Misst die Effizienz des Kerngeschäfts. >20% = stark.",
+    "Net Margin":        "Gewinnmarge — Nettogewinn / Umsatz. Zeigt, wie viel vom Umsatz als Reingewinn bleibt. >15% = ausgezeichnet.",
+    "Qualitäts-Score":   "Gesamtbewertung basierend auf Marge, ROIC, Wachstum, FCF Yield und Bewertungskennzahlen. 0–100.",
+    "P/E (trailing)":    "Kurs-Gewinn-Verhältnis (trailing) — Aktueller Kurs / Gewinn der letzten 12 Monate. Vergleich: S&P-500-Median ~22x.",
+    "P/E (forward)":     "Kurs-Gewinn-Verhältnis (forward) — Aktueller Kurs / Gewinnschätzung nächstes Jahr. Niedriger als trailing = Gewinnwachstum erwartet.",
+    "EV/EBITDA":         "Enterprise Value / EBITDA — Bewertungsmultiple unabhängig von Kapitalstruktur. <10x = günstig, >20x = teuer.",
+    "Debt/Equity":       "Verschuldungsgrad — Fremdkapital / Eigenkapital. <1 = konservativ, >3 = hohes Risiko. Sektorabhängig.",
+    "Beta":              "Markt-Sensitivität — Beta 1.0 = bewegt sich wie der Markt. >1 = volatiler, <1 = defensiver. Negativ = gegenläufig.",
+    "Div. Yield":        "Dividendenrendite — Jährliche Dividende / Aktueller Kurs. >3% = attraktiv für Einkommensinvestoren.",
+    "Dividend Yield":    "Dividendenrendite — Jährliche Dividende / Aktueller Kurs. >3% = attraktiv für Einkommensinvestoren.",
+    "Payout Ratio":      "Ausschüttungsquote — Anteil des Gewinns, der als Dividende ausgezahlt wird. <60% = nachhaltig, >90% = potenziell gefährdet.",
+    "Market Cap":        "Marktkapitalisierung — Aktienkurs × Anzahl Aktien. Micro <300M$, Small <2B$, Mid <10B$, Large <200B$, Mega >200B$.",
+    "Short Float":       "Leerverkaufsquote — Anteil der verfügbaren Aktien, die aktuell leerverkauft sind. >20% = hohe Skepsis im Markt.",
+    "52W Position":      "Position im 52-Wochen-Korridor — 0% = am Jahrestief, 100% = am Jahreshoch. Zeigt relativen Kursstand.",
+    "Price/FCF":         "Kurs / Free Cashflow per Aktie. Niedriger als P/E ist ein gutes Zeichen (echte Cashgenerierung). <20x = fair.",
+    "EPS Growth":        "Gewinn je Aktie Wachstum (YoY) — Zeigt, ob das Unternehmen profitabler wird. >15% = stark.",
+    "Net Cash/Share":    "Netto-Cash je Aktie — (Cash - Schulden) / Aktienanzahl. Positiv = Netto-Gläubiger. Sicherheitspuffer bei Abschwüngen.",
 }
 
 def mini_card(label, value, good, ok, fmt=".1f", suffix="", inverse=False, tooltip=None):
@@ -2330,7 +2345,7 @@ if st.session_state.get("grok_analysis"):
         # ── Chat-Modus (nur bei erfolgreicher Analyse) ────────────────
         st.markdown("""
         <div style='display:flex; align-items:center; gap:10px; margin:18px 0 6px 0;'>
-            <div style='color:#a78bfa; font-size:0.95rem; font-weight:700;'>💬 Folgefragen an Grok</div>
+            <div style='color:#a78bfa; font-size:0.95rem; font-weight:700;'>💬 Folgefragen an KI</div>
             <div style='color:#37474f; font-size:0.75rem;'>Stelle eigene Fragen zu {cn}</div>
         </div>
         """.replace("{cn}", company_name), unsafe_allow_html=True)
@@ -2369,13 +2384,16 @@ if st.session_state.get("grok_analysis"):
         if _chat_send and _chat_q.strip():
             _hist = st.session_state.get("grok_chat", [])
             _hist.append({"role": "user", "content": _chat_q.strip()})
+            # Limit context to avoid oversized prompts (max 1500 chars)
+            _ctx_raw = st.session_state.get("grok_chat_ctx", "")
+            _ctx_trimmed = _ctx_raw[:1500] + ("…" if len(_ctx_raw) > 1500 else "")
             _chat_sys = (
                 f"Du bist ein erfahrener Aktienanalyst und beantwortest Fragen zu {company_name} ({ticker}) auf Deutsch. "
                 f"Antworte präzise, direkt und ohne Floskeln. Keine langen Einleitungen.\n\n"
-                f"UNTERNEHMENSKONTEXT:\n{st.session_state.get('grok_chat_ctx', '')}"
+                f"UNTERNEHMENSKONTEXT:\n{_ctx_trimmed}"
             )
-            with st.spinner("Grok denkt..."):
-                _answer = call_ki_chat(_chat_sys, _hist[-8:], GEMINI_API_KEY)
+            with st.spinner("KI denkt..."):
+                _answer = call_ki_chat(_chat_sys, _hist[-6:], GEMINI_API_KEY)
             _hist.append({"role": "assistant", "content": _answer})
             st.session_state["grok_chat"] = _hist
             st.rerun()
@@ -2887,8 +2905,19 @@ with tab3:
             )
             st.plotly_chart(_fig_es, use_container_width=True)
     else:
-        st.markdown('<div class="metric-card" style="color:#546e7a;text-align:center;">'
-                    'Earnings-Daten nicht verfügbar</div>', unsafe_allow_html=True)
+        _fwd_eps = yf_info.get("forwardEps")
+        _trail_eps = yf_info.get("trailingEps")
+        _eps_hint = ""
+        if _trail_eps:
+            _eps_hint += f"&nbsp;·&nbsp;Trailing EPS: <strong>${_trail_eps:.2f}</strong>"
+        if _fwd_eps:
+            _eps_hint += f"&nbsp;·&nbsp;Forward EPS (Schätzung): <strong>${_fwd_eps:.2f}</strong>"
+        st.markdown(
+            f'<div class="insight-box" style="color:#78909c;">'
+            f'📭 Historische EPS-Überraschungen für <strong>{ticker}</strong> nicht verfügbar '
+            f'(yfinance liefert keine earnings_dates für diesen Titel).'
+            f'{_eps_hint}</div>',
+            unsafe_allow_html=True)
 
     # ── Quartalsergebnisse ─────────────────────────────────────────────
     st.markdown("<div class='section-header'>📊 Quartalsergebnisse</div>", unsafe_allow_html=True)
@@ -3214,26 +3243,38 @@ with tab5:
                 fill="tozeroy", fillcolor="rgba(0,229,255,0.04)",
             ), row=1, col=1)
 
-        # ── S&P 500 comparison (normalised) ────────────────────────────
-        if show_sp500 and chart_type == "Linie":
-            try:
-                _sp_hist = yf.Ticker("^GSPC").history(
-                    period="2y" if "Wöchentlich" in chart_mode else "5y",
-                    interval="1wk" if "Wöchentlich" in chart_mode else
-                             "1mo" if "Monatlich"   in chart_mode else "1d"
-                )
-                if not _sp_hist.empty:
-                    _idx = chart_data.index
-                    _sp  = _sp_hist["Close"].reindex(_idx, method="ffill").dropna()
-                    _stock_norm = (close / close.iloc[0] * 100).reindex(_sp.index)
-                    _sp_norm    = (_sp   / _sp.iloc[0]   * 100)
-                    fig_ta.add_trace(go.Scatter(
-                        x=_sp_norm.index, y=_sp_norm,
-                        name="S&P 500 (norm.)",
-                        line=dict(color="#78909c", width=1.5, dash="dot"),
-                    ), row=1, col=1)
-            except Exception:
-                pass
+        # ── S&P 500 comparison (scaled to stock's start price) ─────────
+        if show_sp500:
+            if chart_type == "Candlestick":
+                st.caption("ℹ️ S&P 500 Vergleich nur im Linie-Modus verfügbar")
+            else:
+                try:
+                    _sp_hist = yf.Ticker("^GSPC").history(
+                        period="2y" if "Wöchentlich" in chart_mode else "5y",
+                        interval="1wk" if "Wöchentlich" in chart_mode else
+                                 "1mo" if "Monatlich"   in chart_mode else "1d"
+                    )
+                    if not _sp_hist.empty:
+                        # Normalize both series to date-only to avoid tz mismatch
+                        _sp_close = _sp_hist["Close"].copy()
+                        _sp_close.index = pd.to_datetime(_sp_close.index).normalize().tz_localize(None)
+                        _cd_index_norm  = pd.to_datetime(chart_data.index).normalize().tz_localize(None)
+                        _sp_reindexed   = _sp_close.reindex(_cd_index_norm, method="ffill").dropna()
+                        if not _sp_reindexed.empty and not close.empty:
+                            # Scale S&P so it starts at the same price as the stock
+                            _stock_start = float(close.iloc[0])
+                            _sp_start    = float(_sp_reindexed.iloc[0])
+                            _sp_scaled   = _sp_reindexed * (_stock_start / _sp_start)
+                            # Re-attach original chart_data dates for x-axis
+                            _valid_mask  = _cd_index_norm.isin(_sp_reindexed.index)
+                            _x_dates     = chart_data.index[_valid_mask]
+                            fig_ta.add_trace(go.Scatter(
+                                x=_x_dates, y=_sp_scaled.values,
+                                name="S&P 500 (relativ)",
+                                line=dict(color="#78909c", width=1.5, dash="dot"),
+                            ), row=1, col=1)
+                except Exception:
+                    pass
 
         # ── EMAs ──────────────────────────────────────────────────────
         for ema_name in ema_options:
@@ -3358,6 +3399,28 @@ with tab5:
             <div class="insight-box">
                 <strong>📊 Indikator-Analyse ({title_suffix}):</strong><br>
                 {'&nbsp;&nbsp;|&nbsp;&nbsp;'.join(_insights)}
+            </div>""", unsafe_allow_html=True)
+
+        if show_fib:
+            _fib_high_v = float(chart_data["High"].max())
+            _fib_low_v  = float(chart_data["Low"].min())
+            _curr_p     = float(close.iloc[-1])
+            _fib_lvls_e = compute_fibonacci(_fib_high_v, _fib_low_v)
+            _nearest    = min(_fib_lvls_e.items(), key=lambda kv: abs(kv[1] - _curr_p))
+            st.markdown(f"""
+            <div class="insight-box" style="margin-top:8px;">
+                <strong>📐 Fibonacci Retracement — Erklärung</strong><br>
+                Die Fibonacci-Levels markieren potenzielle <strong>Unterstützungs- und Widerstandszonen</strong>
+                basierend auf mathematischen Verhältnissen der Fibonacci-Folge.
+                Berechnet vom <strong>Hoch (${_fib_high_v:.2f})</strong> bis zum
+                <strong>Tief (${_fib_low_v:.2f})</strong> des dargestellten Zeitraums.<br><br>
+                <span style="color:#ffd600;">▸ 23.6 %</span> — Schwache Korrektur, typisch bei starken Trends<br>
+                <span style="color:#00e676;">▸ 38.2 %</span> — Klassische erste Unterstützung nach Aufwärtstrend<br>
+                <span style="color:#00e5ff;">▸ 50.0 %</span> — Psychologisch wichtige Halbierungszone<br>
+                <span style="color:#00e676;">▸ 61.8 %</span> — Das <em>goldene Verhältnis</em> — stärkste Unterstützungszone<br>
+                <span style="color:#ff9100;">▸ 78.6 %</span> — Tiefe Korrektur; Unterschreitung deutet auf Trendumkehr<br><br>
+                Aktueller Kurs <strong>${_curr_p:.2f}</strong> liegt am nächsten zu
+                <strong>Fib {_nearest[0]} (${_nearest[1]:.2f})</strong>.
             </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 6: INSIDER & PEERS ====================
