@@ -1131,10 +1131,10 @@ def load_stock_picks():
 
 def _call_gemini(api_key: str, model: str,
                  messages: list, max_tokens: int, temperature: float) -> str:
-    """Gemini OpenAI-kompatibler Endpoint mit x-goog-api-key Auth."""
+    """Gemini OpenAI-kompatibler Endpoint."""
     resp = requests.post(
         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-        headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         json={"model": model, "messages": messages,
               "temperature": temperature, "max_tokens": max_tokens},
         timeout=45,
