@@ -372,6 +372,30 @@ def load_yfinance_extended(ticker: str):
     return hist_weekly, hist_monthly, share_history, splits_data
 
 @st.cache_data(ttl=86400)
+def load_quarterly_financials(ticker: str):
+    """Lädt Quartalsdaten: Umsatz, Nettogewinn, EPS der letzten 8 Quartale."""
+    stock = yf.Ticker(ticker)
+    rev, net, eps_q = pd.Series(dtype=float), pd.Series(dtype=float), pd.Series(dtype=float)
+    try:
+        qi = stock.quarterly_income_stmt
+        if qi is not None and not qi.empty:
+            for row in ["Total Revenue", "Revenue"]:
+                if row in qi.index:
+                    rev = qi.loc[row].dropna().sort_index()[::-1][:8][::-1]
+                    break
+            for row in ["Net Income", "Net Income Common Stockholders"]:
+                if row in qi.index:
+                    net = qi.loc[row].dropna().sort_index()[::-1][:8][::-1]
+                    break
+            for row in ["Diluted EPS", "Basic EPS"]:
+                if row in qi.index:
+                    eps_q = qi.loc[row].dropna().sort_index()[::-1][:8][::-1]
+                    break
+    except:
+        pass
+    return rev, net, eps_q
+
+@st.cache_data(ttl=86400)
 def load_fmp_metrics(ticker: str):
     if not FMP_API_KEY:
         return {}, [], []
@@ -542,9 +566,37 @@ def is_saas_or_cyber(sector: str, industry: str) -> bool:
             return True
     return False
 
-# ==================== EMA HELPER ====================
+# ==================== TECHNICAL INDICATOR HELPERS ====================
 def compute_ema(series: pd.Series, period: int) -> pd.Series:
     return series.ewm(span=period, adjust=False).mean()
+
+def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    delta = series.diff()
+    gain = delta.clip(lower=0).ewm(com=period - 1, adjust=False).mean()
+    loss = (-delta.clip(upper=0)).ewm(com=period - 1, adjust=False).mean()
+    rs = gain / loss.replace(0, float("nan"))
+    return 100 - (100 / (1 + rs))
+
+def compute_macd(series: pd.Series, fast=12, slow=26, signal=9):
+    ema_fast = series.ewm(span=fast, adjust=False).mean()
+    ema_slow = series.ewm(span=slow, adjust=False).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    histogram = macd_line - signal_line
+    return macd_line, signal_line, histogram
+
+def compute_fibonacci(high: float, low: float):
+    diff = high - low
+    levels = {
+        "0.0 %":   high,
+        "23.6 %":  high - 0.236 * diff,
+        "38.2 %":  high - 0.382 * diff,
+        "50.0 %":  high - 0.500 * diff,
+        "61.8 %":  high - 0.618 * diff,
+        "78.6 %":  high - 0.786 * diff,
+        "100.0 %": low,
+    }
+    return levels
 
 # ==================== QUALITY SCORE ====================
 def compute_score(rev_growth, fcf_yield, gross_margin, roic_val,
@@ -1772,6 +1824,7 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     yf_info, hist, insider_df = load_yfinance(ticker)
     fmp_metrics, peers, analyst_data = load_fmp_metrics(ticker)
     hist_weekly, hist_monthly, share_history, splits_data = load_yfinance_extended(ticker)
+    q_rev, q_net, q_eps = load_quarterly_financials(ticker)
 
 if hist.empty or not yf_info:
     st.markdown(f"""
@@ -2727,6 +2780,57 @@ with tab3:
             <div class="metric-value">{f"{eps_growth:.1f}%" if eps_growth is not None else "N/A"}</div>
         </div>""", unsafe_allow_html=True)
 
+    # ── Quartalsergebnisse ─────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📊 Quartalsergebnisse</div>", unsafe_allow_html=True)
+    if not q_rev.empty or not q_net.empty:
+        _qfig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=["Umsatz (Quartale)", "Nettogewinn (Quartale)"],
+            horizontal_spacing=0.08,
+        )
+        def _qfmt(v):
+            if abs(v) >= 1e9: return f"${v/1e9:.1f}B"
+            if abs(v) >= 1e6: return f"${v/1e6:.0f}M"
+            return f"${v:.0f}"
+        if not q_rev.empty:
+            _labels = [d.strftime("Q%q '%y") if hasattr(d, 'strftime') else str(d)[:7]
+                       for d in q_rev.index]
+            _rev_b  = [v/1e9 for v in q_rev.values]
+            _rev_cl = ["#00e676" if i == 0 or v >= _rev_b[i-1] else "#ff5252"
+                       for i, v in enumerate(_rev_b)]
+            _qfig.add_trace(go.Bar(
+                x=_labels, y=_rev_b,
+                marker_color=_rev_cl, name="Umsatz",
+                text=[f"${v:.1f}B" for v in _rev_b],
+                textposition="outside", textfont=dict(size=9, color="#90a4ae"),
+            ), row=1, col=1)
+        if not q_net.empty:
+            _labels2 = [d.strftime("Q%q '%y") if hasattr(d, 'strftime') else str(d)[:7]
+                        for d in q_net.index]
+            _net_b   = [v/1e9 for v in q_net.values]
+            _net_cl  = ["#00e676" if v >= 0 else "#ff5252" for v in _net_b]
+            _qfig.add_trace(go.Bar(
+                x=_labels2, y=_net_b,
+                marker_color=_net_cl, name="Nettogewinn",
+                text=[f"${v:.2f}B" for v in _net_b],
+                textposition="outside", textfont=dict(size=9, color="#90a4ae"),
+            ), row=1, col=2)
+        _qfig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(13,21,38,0.8)",
+            height=300,
+            showlegend=False,
+            margin=dict(l=0, r=0, t=36, b=0),
+            font=dict(color="#90a4ae", size=10),
+        )
+        _qfig.update_yaxes(showgrid=True, gridcolor="#1e2d45", zeroline=True,
+                           zerolinecolor="#1e3a5f", ticksuffix="B")
+        st.plotly_chart(_qfig, use_container_width=True)
+    else:
+        st.markdown('<div class="metric-card" style="color:#546e7a;text-align:center;">'
+                    'Quartalsdaten nicht verfügbar</div>', unsafe_allow_html=True)
+
 with tab4:
     st.markdown("<div class='section-header'>Bewertungsmultiples</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
@@ -2830,15 +2934,23 @@ with tab4:
 with tab5:
     st.markdown("<div class='section-header'>📉 Technische Chart-Analyse</div>", unsafe_allow_html=True)
 
-    chart_mode = st.radio(
-        "Zeitrahmen", ["Täglich (5J)", "Wöchentlich (2J)", "Monatlich (5J)"],
-        horizontal=True, key="chart_mode"
-    )
-    ema_options = st.multiselect(
-        "EMAs anzeigen", ["EMA 20", "EMA 50", "EMA 100", "EMA 200"],
-        default=["EMA 20", "EMA 50", "EMA 200"], key="ema_sel"
-    )
-    chart_type = st.radio("Chart-Typ", ["Candlestick", "Linie"], horizontal=True, key="ctype")
+    # ── Controls row ──────────────────────────────────────────────────
+    _c1, _c2, _c3 = st.columns([2, 2, 2])
+    with _c1:
+        chart_mode = st.radio("Zeitrahmen", ["Täglich (5J)", "Wöchentlich (2J)", "Monatlich (5J)"],
+                              horizontal=True, key="chart_mode")
+    with _c2:
+        chart_type = st.radio("Chart-Typ", ["Candlestick", "Linie"], horizontal=True, key="ctype")
+    with _c3:
+        show_sp500 = st.checkbox("S&P 500 Vergleich", value=False, key="show_sp500")
+
+    _ic1, _ic2 = st.columns([3, 2])
+    with _ic1:
+        ema_options = st.multiselect("EMAs", ["EMA 20", "EMA 50", "EMA 100", "EMA 200"],
+                                     default=["EMA 50", "EMA 200"], key="ema_sel")
+    with _ic2:
+        indicator_options = st.multiselect("Indikatoren", ["RSI (14)", "MACD", "Fibonacci"],
+                                           default=["RSI (14)"], key="ind_sel")
 
     if chart_mode == "Wöchentlich (2J)":
         chart_data = hist_weekly.copy()
@@ -2853,101 +2965,204 @@ with tab5:
     if chart_data.empty:
         st.warning("Keine Daten für diesen Zeitrahmen verfügbar.")
     else:
-        ema_periods = {"EMA 20": 20, "EMA 50": 50, "EMA 100": 100, "EMA 200": 200}
-        ema_colors = {"EMA 20": "#ffd600", "EMA 50": "#00e5ff", "EMA 100": "#ff9100", "EMA 200": "#ef5350"}
+        show_rsi  = "RSI (14)" in indicator_options
+        show_macd = "MACD"    in indicator_options
+        show_fib  = "Fibonacci" in indicator_options
+
+        # Dynamic subplot layout
+        n_rows = 1 + (1 if show_rsi else 0) + (1 if show_macd else 0)
+        row_h = [0.55 if (show_rsi or show_macd) else 0.75, 0.15]
+        if show_rsi:   row_h.append(0.15)
+        if show_macd:  row_h.append(0.15)
+        # Always add volume row
+        subplot_titles = ["", "Volumen"]
+        if show_rsi:   subplot_titles.append("RSI (14)")
+        if show_macd:  subplot_titles.append("MACD")
 
         fig_ta = make_subplots(
-            rows=2, cols=1,
+            rows=1 + 1 + (1 if show_rsi else 0) + (1 if show_macd else 0),
+            cols=1,
             shared_xaxes=True,
-            row_heights=[0.75, 0.25],
-            vertical_spacing=0.03
+            row_heights=[0.55 if (show_rsi or show_macd) else 0.72,
+                         0.12,
+                         *([0.16] if show_rsi else []),
+                         *([0.16] if show_macd else [])],
+            vertical_spacing=0.02,
+            subplot_titles=["", "Volumen",
+                            *( ["RSI (14)"] if show_rsi else []),
+                            *( ["MACD"]     if show_macd else [])],
         )
+        vol_row  = 2
+        rsi_row  = 3 if show_rsi else None
+        macd_row = (3 + (1 if show_rsi else 0)) if show_macd else None
+
+        close = chart_data["Close"]
+
+        # ── Price ──────────────────────────────────────────────────────
+        ema_periods = {"EMA 20": 20, "EMA 50": 50, "EMA 100": 100, "EMA 200": 200}
+        ema_colors  = {"EMA 20": "#ffd600", "EMA 50": "#00e5ff", "EMA 100": "#ff9100", "EMA 200": "#ef5350"}
 
         if chart_type == "Candlestick":
             fig_ta.add_trace(go.Candlestick(
                 x=chart_data.index,
-                open=chart_data["Open"],
-                high=chart_data["High"],
-                low=chart_data["Low"],
-                close=chart_data["Close"],
-                name=f"{ticker} ({title_suffix})",
-                increasing_line_color="#00e676",
-                decreasing_line_color="#ff5252",
-                increasing_fillcolor="#00e676",
-                decreasing_fillcolor="#ff5252",
+                open=chart_data["Open"], high=chart_data["High"],
+                low=chart_data["Low"],  close=close,
+                name=ticker,
+                increasing_line_color="#00e676", decreasing_line_color="#ff5252",
+                increasing_fillcolor="#00e676",  decreasing_fillcolor="#ff5252",
             ), row=1, col=1)
         else:
             fig_ta.add_trace(go.Scatter(
-                x=chart_data.index,
-                y=chart_data["Close"],
-                name=f"{ticker} ({title_suffix})",
+                x=chart_data.index, y=close, name=ticker,
                 line=dict(color="#00e5ff", width=2),
-                fill="tozeroy",
-                fillcolor="rgba(0,229,255,0.04)",
+                fill="tozeroy", fillcolor="rgba(0,229,255,0.04)",
             ), row=1, col=1)
 
+        # ── S&P 500 comparison (normalised) ────────────────────────────
+        if show_sp500 and chart_type == "Linie":
+            try:
+                _sp_hist = yf.Ticker("^GSPC").history(
+                    period="2y" if "Wöchentlich" in chart_mode else "5y",
+                    interval="1wk" if "Wöchentlich" in chart_mode else
+                             "1mo" if "Monatlich"   in chart_mode else "1d"
+                )
+                if not _sp_hist.empty:
+                    _idx = chart_data.index
+                    _sp  = _sp_hist["Close"].reindex(_idx, method="ffill").dropna()
+                    _stock_norm = (close / close.iloc[0] * 100).reindex(_sp.index)
+                    _sp_norm    = (_sp   / _sp.iloc[0]   * 100)
+                    fig_ta.add_trace(go.Scatter(
+                        x=_sp_norm.index, y=_sp_norm,
+                        name="S&P 500 (norm.)",
+                        line=dict(color="#78909c", width=1.5, dash="dot"),
+                    ), row=1, col=1)
+            except Exception:
+                pass
+
+        # ── EMAs ──────────────────────────────────────────────────────
         for ema_name in ema_options:
             period = ema_periods[ema_name]
             if len(chart_data) >= period:
-                ema_vals = compute_ema(chart_data["Close"], period)
                 fig_ta.add_trace(go.Scatter(
-                    x=chart_data.index,
-                    y=ema_vals,
-                    name=ema_name,
-                    line=dict(color=ema_colors[ema_name], width=1.5),
+                    x=chart_data.index, y=compute_ema(close, period),
+                    name=ema_name, line=dict(color=ema_colors[ema_name], width=1.4),
                 ), row=1, col=1)
 
+        # ── Fibonacci ──────────────────────────────────────────────────
+        if show_fib:
+            _fib_high = float(chart_data["High"].max())
+            _fib_low  = float(chart_data["Low"].min())
+            _fib_levels = compute_fibonacci(_fib_high, _fib_low)
+            _fib_colors = {
+                "0.0 %":   "rgba(255,255,255,0.25)",
+                "23.6 %":  "rgba(255,214,0,0.55)",
+                "38.2 %":  "rgba(0,230,118,0.65)",
+                "50.0 %":  "rgba(0,229,255,0.65)",
+                "61.8 %":  "rgba(0,230,118,0.65)",
+                "78.6 %":  "rgba(255,145,0,0.65)",
+                "100.0 %": "rgba(255,255,255,0.25)",
+            }
+            for label, lvl in _fib_levels.items():
+                fig_ta.add_hline(
+                    y=lvl, line_dash="dot",
+                    line_color=_fib_colors.get(label, "rgba(100,181,246,0.4)"),
+                    line_width=1,
+                    annotation_text=f"Fib {label}  ${lvl:.2f}",
+                    annotation_font_color=_fib_colors.get(label, "#64b5f6"),
+                    annotation_font_size=9,
+                    row=1, col=1,
+                )
+
+        # ── Analyst target ──────────────────────────────────────────────
         if target_mean:
             fig_ta.add_hline(y=target_mean, line_dash="dot", line_color="#ffd600", line_width=1.5,
                              annotation_text=f"Analyst Ziel ${target_mean:.0f}",
                              annotation_font_color="#ffd600", row=1, col=1)
 
-        colors_vol_ta = ["#00e676" if c >= o else "#ff5252"
-                         for c, o in zip(chart_data["Close"], chart_data["Open"])]
+        # ── Volume ──────────────────────────────────────────────────────
+        vol_colors = ["#00e676" if c >= o else "#ff5252"
+                      for c, o in zip(close, chart_data["Open"])]
         fig_ta.add_trace(go.Bar(
             x=chart_data.index, y=chart_data["Volume"],
-            name="Volumen", marker_color=colors_vol_ta, opacity=0.6,
-            showlegend=False
-        ), row=2, col=1)
+            name="Volumen", marker_color=vol_colors, opacity=0.55, showlegend=False,
+        ), row=vol_row, col=1)
 
+        # ── RSI ─────────────────────────────────────────────────────────
+        if show_rsi and rsi_row:
+            rsi_vals = compute_rsi(close)
+            fig_ta.add_trace(go.Scatter(
+                x=chart_data.index, y=rsi_vals,
+                name="RSI", line=dict(color="#a78bfa", width=1.5), showlegend=False,
+            ), row=rsi_row, col=1)
+            for lvl, clr in [(70, "rgba(255,82,82,0.35)"), (30, "rgba(0,230,118,0.35)")]:
+                fig_ta.add_hline(y=lvl, line_dash="dash", line_color=clr, line_width=1,
+                                 row=rsi_row, col=1)
+            fig_ta.update_yaxes(range=[0, 100], row=rsi_row, col=1)
+
+        # ── MACD ────────────────────────────────────────────────────────
+        if show_macd and macd_row:
+            macd_line, signal_line, macd_hist = compute_macd(close)
+            hist_colors = ["#00e676" if v >= 0 else "#ff5252" for v in macd_hist]
+            fig_ta.add_trace(go.Bar(
+                x=chart_data.index, y=macd_hist,
+                name="MACD Hist", marker_color=hist_colors, opacity=0.6, showlegend=False,
+            ), row=macd_row, col=1)
+            fig_ta.add_trace(go.Scatter(
+                x=chart_data.index, y=macd_line,
+                name="MACD", line=dict(color="#00e5ff", width=1.5), showlegend=False,
+            ), row=macd_row, col=1)
+            fig_ta.add_trace(go.Scatter(
+                x=chart_data.index, y=signal_line,
+                name="Signal", line=dict(color="#ffd600", width=1.2), showlegend=False,
+            ), row=macd_row, col=1)
+
+        # ── Layout ──────────────────────────────────────────────────────
+        _total_rows = 1 + 1 + (1 if show_rsi else 0) + (1 if show_macd else 0)
+        _height = 520 + 120 * (_total_rows - 2)
         fig_ta.update_layout(
             template="plotly_dark",
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(13,21,38,0.8)",
-            height=620,
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.01,
-                xanchor="right", x=1,
-                bgcolor="rgba(13,21,38,0.8)",
-                bordercolor="#1e3a5f", borderwidth=1,
-                font=dict(size=11)
-            ),
+            height=_height,
+            legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
+                        bgcolor="rgba(13,21,38,0.8)", bordercolor="#1e3a5f", borderwidth=1,
+                        font=dict(size=10)),
             margin=dict(l=0, r=0, t=30, b=0),
             xaxis=dict(showgrid=False, zeroline=False, rangeslider=dict(visible=False)),
             yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False),
-            xaxis2=dict(showgrid=False),
-            yaxis2=dict(showgrid=False, zeroline=False),
             hovermode="x unified",
             title=dict(text=f"{company_name} — {title_suffix}", font=dict(color="#64b5f6", size=14)),
         )
+        for r in range(2, _total_rows + 1):
+            fig_ta.update_xaxes(showgrid=False, row=r, col=1)
+            fig_ta.update_yaxes(showgrid=True, gridcolor="#1e2d45", zeroline=False, row=r, col=1)
+
         st.plotly_chart(fig_ta, use_container_width=True)
 
-        if ema_options and len(chart_data) > 0:
-            current_price_c = chart_data["Close"].iloc[-1]
-            ema_insights = []
-            for ema_name in ema_options:
-                period = ema_periods[ema_name]
-                if len(chart_data) >= period:
-                    ema_now = compute_ema(chart_data["Close"], period).iloc[-1]
-                    pct_diff = (current_price_c - ema_now) / ema_now * 100
-                    status = "oberhalb ✅" if pct_diff > 0 else "unterhalb ⚠️"
-                    ema_insights.append(f"{ema_name}: {status} ({pct_diff:+.1f}%)")
-            if ema_insights:
-                st.markdown(f"""
-                <div class="insight-box">
-                    <strong>📊 EMA-Analyse ({title_suffix}):</strong> {' | '.join(ema_insights)}
-                </div>
-                """, unsafe_allow_html=True)
+        # ── EMA + RSI insight box ────────────────────────────────────────
+        _insights = []
+        current_price_c = close.iloc[-1]
+        for ema_name in ema_options:
+            period = ema_periods[ema_name]
+            if len(chart_data) >= period:
+                ema_now = compute_ema(close, period).iloc[-1]
+                pct_diff = (current_price_c - ema_now) / ema_now * 100
+                status = "oberhalb ✅" if pct_diff > 0 else "unterhalb ⚠️"
+                _insights.append(f"{ema_name}: {status} ({pct_diff:+.1f}%)")
+        if show_rsi:
+            rsi_now = compute_rsi(close).iloc[-1]
+            rsi_status = "Überkauft 🔴" if rsi_now > 70 else "Überverkauft 🟢" if rsi_now < 30 else "Neutral ⚪"
+            _insights.append(f"RSI: {rsi_now:.1f} — {rsi_status}")
+        if show_macd:
+            _ml, _sl, _ = compute_macd(close)
+            _cross = "Bullish ✅ (MACD > Signal)" if _ml.iloc[-1] > _sl.iloc[-1] else "Bearish ⚠️ (MACD < Signal)"
+            _insights.append(f"MACD: {_cross}")
+        if _insights:
+            st.markdown(f"""
+            <div class="insight-box">
+                <strong>📊 Indikator-Analyse ({title_suffix}):</strong><br>
+                {'&nbsp;&nbsp;|&nbsp;&nbsp;'.join(_insights)}
+            </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 6: INSIDER & PEERS ====================
 with tab6:
