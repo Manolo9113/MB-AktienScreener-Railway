@@ -290,6 +290,29 @@ st.markdown("""
         padding: 20px 22px;
         margin: 16px 0;
     }
+
+    /* KI-Analyse CTA Button */
+    div[data-testid="stButton"] button[kind="secondary"]#btn_grok,
+    div[data-testid="stBaseButton-secondary"][key="btn_grok"] button,
+    .ki-cta-wrap div[data-testid="stButton"] > button {
+        background: linear-gradient(135deg, #4c1d95, #6d28d9, #7c3aed) !important;
+        color: #fff !important;
+        border: none !important;
+        border-radius: 14px !important;
+        font-size: 1.15rem !important;
+        font-weight: 700 !important;
+        padding: 14px 28px !important;
+        letter-spacing: 0.5px !important;
+        box-shadow: 0 4px 20px rgba(124,58,237,0.45), 0 0 0 1px rgba(167,139,250,0.25) !important;
+        transition: all 0.2s ease !important;
+        width: 100% !important;
+        cursor: pointer !important;
+    }
+    .ki-cta-wrap div[data-testid="stButton"] > button:hover {
+        background: linear-gradient(135deg, #5b21b6, #7c3aed, #8b5cf6) !important;
+        box-shadow: 0 6px 28px rgba(124,58,237,0.65), 0 0 0 2px rgba(167,139,250,0.4) !important;
+        transform: translateY(-1px) !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -299,6 +322,7 @@ import os
 FMP_API_KEY = os.getenv("FMP_API_KEY", "")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
 XAI_API_KEY  = os.getenv("XAI_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
@@ -346,6 +370,63 @@ def load_yfinance_extended(ticker: str):
     except:
         pass
     return hist_weekly, hist_monthly, share_history, splits_data
+
+@st.cache_data(ttl=86400)
+def load_quarterly_financials(ticker: str):
+    """Lädt Quartalsdaten: Umsatz, Nettogewinn, EPS der letzten 8 Quartale."""
+    stock = yf.Ticker(ticker)
+    rev, net, eps_q = pd.Series(dtype=float), pd.Series(dtype=float), pd.Series(dtype=float)
+    try:
+        qi = stock.quarterly_income_stmt
+        if qi is not None and not qi.empty:
+            for row in ["Total Revenue", "Revenue"]:
+                if row in qi.index:
+                    rev = qi.loc[row].dropna().sort_index()[::-1][:8][::-1]
+                    break
+            for row in ["Net Income", "Net Income Common Stockholders"]:
+                if row in qi.index:
+                    net = qi.loc[row].dropna().sort_index()[::-1][:8][::-1]
+                    break
+            for row in ["Diluted EPS", "Basic EPS"]:
+                if row in qi.index:
+                    eps_q = qi.loc[row].dropna().sort_index()[::-1][:8][::-1]
+                    break
+    except:
+        pass
+    return rev, net, eps_q
+
+@st.cache_data(ttl=86400)
+def load_earnings_surprises(ticker: str) -> list[dict]:
+    """Lädt EPS Beat/Miss der letzten 8 Quartale aus yfinance earnings_dates."""
+    results = []
+    try:
+        df = yf.Ticker(ticker).earnings_dates
+        if df is None or df.empty:
+            return []
+        df = df.dropna(subset=["EPS Estimate", "Reported EPS"])
+        # Only past dates (Reported EPS available)
+        df = df[df["Reported EPS"].notna()]
+        df = df.sort_index(ascending=False).head(8)
+        for date, row in df.iterrows():
+            est  = float(row["EPS Estimate"])
+            act  = float(row["Reported EPS"])
+            surp_pct = ((act - est) / abs(est) * 100) if est != 0 else 0
+            if surp_pct > 2:
+                verdict = "Beat"
+            elif surp_pct < -2:
+                verdict = "Miss"
+            else:
+                verdict = "In Line"
+            results.append({
+                "date":     date.strftime("%b %Y") if hasattr(date, "strftime") else str(date)[:7],
+                "estimate": est,
+                "actual":   act,
+                "surp_pct": surp_pct,
+                "verdict":  verdict,
+            })
+    except Exception:
+        pass
+    return results
 
 @st.cache_data(ttl=86400)
 def load_fmp_metrics(ticker: str):
@@ -425,6 +506,21 @@ def fmt_large(value):
 
 # ==================== SECTOR BENCHMARKS ====================
 # Typische Medianwerte je Sektor (S&P 500 historische Durchschnitte)
+# Fallback-Peers wenn FMP keine Peers liefert (Free-Tier-Limit)
+SECTOR_PEERS_FALLBACK = {
+    "Technology":             ["AAPL", "MSFT", "GOOGL", "META", "NVDA", "ORCL", "ADBE", "CRM"],
+    "Healthcare":             ["JNJ", "PFE", "UNH", "ABBV", "MRK", "LLY", "TMO", "ABT"],
+    "Consumer Cyclical":      ["AMZN", "TSLA", "HD", "NKE", "MCD", "SBUX", "TGT", "LOW"],
+    "Consumer Defensive":     ["WMT", "PG", "KO", "COST", "PEP", "PM", "MO", "CL"],
+    "Financial Services":     ["JPM", "BAC", "WFC", "GS", "MS", "BLK", "C", "AXP"],
+    "Energy":                 ["XOM", "CVX", "COP", "SLB", "EOG", "PXD", "MPC", "PSX"],
+    "Industrials":            ["HON", "UPS", "CAT", "RTX", "LMT", "GE", "DE", "MMM"],
+    "Communication Services": ["GOOGL", "META", "NFLX", "DIS", "T", "VZ", "CMCSA", "SNAP"],
+    "Utilities":              ["NEE", "DUK", "SO", "D", "AEP", "EXC", "SRE", "XEL"],
+    "Real Estate":            ["AMT", "PLD", "CCI", "EQIX", "O", "SPG", "WELL", "AVB"],
+    "Basic Materials":        ["LIN", "APD", "SHW", "FCX", "NEM", "AA", "NUE", "ECL"],
+}
+
 SECTOR_BENCHMARKS = {
     "Technology": {
         "Bruttomarge": 65.0, "Op. Marge": 22.0, "Gewinnmarge": 18.0,
@@ -503,9 +599,37 @@ def is_saas_or_cyber(sector: str, industry: str) -> bool:
             return True
     return False
 
-# ==================== EMA HELPER ====================
+# ==================== TECHNICAL INDICATOR HELPERS ====================
 def compute_ema(series: pd.Series, period: int) -> pd.Series:
     return series.ewm(span=period, adjust=False).mean()
+
+def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    delta = series.diff()
+    gain = delta.clip(lower=0).ewm(com=period - 1, adjust=False).mean()
+    loss = (-delta.clip(upper=0)).ewm(com=period - 1, adjust=False).mean()
+    rs = gain / loss.replace(0, float("nan"))
+    return 100 - (100 / (1 + rs))
+
+def compute_macd(series: pd.Series, fast=12, slow=26, signal=9):
+    ema_fast = series.ewm(span=fast, adjust=False).mean()
+    ema_slow = series.ewm(span=slow, adjust=False).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    histogram = macd_line - signal_line
+    return macd_line, signal_line, histogram
+
+def compute_fibonacci(high: float, low: float):
+    diff = high - low
+    levels = {
+        "0.0 %":   high,
+        "23.6 %":  high - 0.236 * diff,
+        "38.2 %":  high - 0.382 * diff,
+        "50.0 %":  high - 0.500 * diff,
+        "61.8 %":  high - 0.618 * diff,
+        "78.6 %":  high - 0.786 * diff,
+        "100.0 %": low,
+    }
+    return levels
 
 # ==================== QUALITY SCORE ====================
 def compute_score(rev_growth, fcf_yield, gross_margin, roic_val,
@@ -1030,59 +1154,269 @@ def load_market_news():
             pass
     return headlines[:4]
 
-# ==================== GROK AI ====================
-def call_grok_api(system_prompt: str, user_message: str, api_key: str) -> str:
-    """Ruft die xAI Grok API auf und gibt den Antworttext zurück."""
-    if not api_key:
-        return "⚠️ Kein XAI_API_KEY konfiguriert. Bitte in den Railway-Umgebungsvariablen setzen."
-    try:
-        resp = requests.post(
-            "https://api.x.ai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "grok-3",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user",   "content": user_message},
-                ],
-                "temperature": 0.4,
-                "max_tokens": 1800,
-            },
-            timeout=45,
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
-    except requests.exceptions.Timeout:
-        return "⚠️ Grok API Timeout — bitte erneut versuchen."
-    except Exception as e:
-        return f"⚠️ Grok API Fehler: {e}"
+
+# ==================== STOCK PICKS ====================
+_GROWTH_POOL = {
+    "NVDA":  "KI-Chip-Marktführer mit explosivem Datencenter-Wachstum",
+    "META":  "Social-Media-Gigant mit starker KI-Monetarisierung & Margenstärke",
+    "AMZN":  "E-Commerce & Cloud (AWS) mit beschleunigtem Free-Cashflow",
+    "CRWD":  "Cybersecurity-Leader mit hohem Anteil wiederkehrender SaaS-Erlöse",
+    "NOW":   "ServiceNow – Enterprise-Workflow-KI mit >20 % ARR-Wachstum",
+    "PLTR":  "Datenanalyse & KI-Plattform mit starkem US-Government-Momentum",
+    "NFLX":  "Streaming-Leader mit wachsendem Werbeumsatz und Preissetzungsmacht",
+    "UBER":  "Ride-Hailing & Delivery – erstmals profitabel mit FCF-Wachstum",
+    "FICO":  "Kreditscoring-Monopol mit nachhaltiger Preissetzungsmacht",
+    "APP":   "AppLovin – Mobile-Ad-Tech mit außergewöhnlichem Margenwachstum",
+}
+_VALUE_POOL = {
+    "GOOGL": "Alphabet – KI-Leader mit günstigem Forward-KGV trotz Marktdominanz",
+    "BRK-B": "Berkshire Hathaway – diversifizierter Qualitätskonzern mit riesigem Cash-Berg",
+    "V":     "Visa – unerschütterliches Zahlungsnetzwerk mit über 50 % Nettomargen",
+    "ASML":  "Halbleiter-Monopolist für EUV-Lithographie – kein echter Wettbewerber",
+    "JNJ":   "Johnson & Johnson – Healthcare-Dividendenaristokrat mit breitem Moat",
+    "BLK":   "BlackRock – weltgrößter Asset Manager mit stabilem Gebührenstrom",
+    "UNH":   "UnitedHealth – diversifiziertes Gesundheitsunternehmen mit starkem Moat",
+    "CB":    "Chubb – Versicherungskonzern mit herausragender Underwriting-Qualität",
+    "ABBV":  "AbbVie – Pharma mit starker Pipeline nach Humira-Ablösung",
+    "MSFT":  "Microsoft – Cloud-Plattform (Azure + Copilot) mit stabilem Dividendenwachstum",
+}
+# (ticker, description, estimated_div_growth_years)
+_DIVIDEND_POOL = {
+    "KO":  ("Coca-Cola – 62 Jahre konsekutive Dividendenerhöhungen, globaler Getränke-Moat", 62),
+    "PG":  ("Procter & Gamble – 67 Jahre, breites Markenportfolio mit Preissetzungsmacht", 67),
+    "PEP": ("PepsiCo – 52 Jahre, Food & Beverages mit globalem Vertriebsnetz", 52),
+    "LOW": ("Lowe's – 61 Jahre, Heimwerker-Einzelhandel mit starkem Free-Cashflow", 61),
+    "ADP": ("Automatic Data Processing – 49 Jahre, Payroll-Monopolist mit Netzwerkeffekten", 49),
+    "ITW": ("Illinois Tool Works – 60 Jahre, diversifizierter Industriekonzern mit 80/20-Strategie", 60),
+    "MCD": ("McDonald's – 48 Jahre, globales Franchise-Modell mit hohen Asset-Light-Margen", 48),
+    "KMB": ("Kimberly-Clark – 52 Jahre, Konsumgüter mit stabilen Cashflows", 52),
+    "AFL": ("Aflac – 41 Jahre, Krankenversicherung mit solidem Underwriting-Ergebnis", 41),
+    "SYY": ("Sysco – 54 Jahre, größter US-Lebensmittelvertrieb mit starker Marktposition", 54),
+    "CVX": ("Chevron – 37 Jahre, integrierter Ölkonzern mit diszipliniertem Kapitalrückfluss", 37),
+    "JNJ": ("Johnson & Johnson – 62 Jahre, Healthcare-Gigant mit breitem Pharma- & MedTech-Moat", 62),
+}
+
+def _safe_div_yield(info: dict, price: float) -> float:
+    """Berechnet Dividend Yield sauber aus trailingAnnualDividendRate / price."""
+    annual = info.get("trailingAnnualDividendRate") or 0
+    raw_dy = (info.get("dividendYield") or 0) * 100
+    if annual and price and price > 0:
+        computed = (annual / price) * 100
+        dy = computed if (abs(computed - raw_dy) > 2 or raw_dy > 15) else raw_dy
+    else:
+        dy = raw_dy
+    return min(dy, 25.0)  # cap at 25 %
+
+@st.cache_data(ttl=43200)
+def load_stock_picks():
+    growth_results, value_results, div_results = [], [], []
+
+    # ── Growth & Value ──────────────────────────────────────────────────
+    for pool, results in [(_GROWTH_POOL, growth_results), (_VALUE_POOL, value_results)]:
+        for t, desc in pool.items():
+            try:
+                info = yf.Ticker(t).info
+                price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+                fwd_pe = info.get("forwardPE")
+                rev_growth = (info.get("revenueGrowth") or 0) * 100
+                eps_growth = (info.get("earningsGrowth") or 0) * 100
+                fcf = info.get("freeCashflow") or 0
+                mktcap = info.get("marketCap") or 1
+                fcf_yield = (fcf / mktcap * 100) if fcf else None
+                roe = (info.get("returnOnEquity") or 0) * 100
+                week52h = info.get("fiftyTwoWeekHigh") or price
+                week52l = info.get("fiftyTwoWeekLow") or price
+                w52_pos = ((price - week52l) / (week52h - week52l) * 100) if week52h > week52l else 50
+                results.append({
+                    "ticker": t, "name": info.get("shortName") or t, "desc": desc,
+                    "price": price, "fwd_pe": fwd_pe,
+                    "rev_growth": rev_growth, "eps_growth": eps_growth,
+                    "fcf_yield": fcf_yield, "roe": roe, "w52_pos": w52_pos,
+                })
+            except Exception:
+                pass
+
+    # ── Dividend Aristocrats ────────────────────────────────────────────
+    for t, (desc, div_years) in _DIVIDEND_POOL.items():
+        try:
+            info = yf.Ticker(t).info
+            price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+            if not price:
+                continue
+
+            dy = _safe_div_yield(info, price)
+            payout = (info.get("payoutRatio") or 0) * 100
+            roe = (info.get("returnOnEquity") or 0) * 100
+            fcf = info.get("freeCashflow") or 0
+            mktcap = info.get("marketCap") or 1
+            eps_growth = (info.get("earningsGrowth") or 0) * 100
+            rev_growth = (info.get("revenueGrowth") or 0) * 100
+            week52h = info.get("fiftyTwoWeekHigh") or price
+            week52l = info.get("fiftyTwoWeekLow") or price
+            w52_pos = ((price - week52l) / (week52h - week52l) * 100) if week52h > week52l else 50
+
+            # ── Dividend Trap Checks ────────────────────────────────────
+            trap_flags = []
+            if dy > 8:
+                trap_flags.append("Yield >8 %")
+            if payout > 75 and payout < 200:
+                trap_flags.append("Payout >75 %")
+            if fcf < 0:
+                trap_flags.append("FCF negativ")
+            if eps_growth < -15:
+                trap_flags.append("Gewinn rückläufig")
+            if w52_pos < 15:
+                trap_flags.append("Kurs nahe 52W-Tief")
+
+            # Skip if 3+ trap flags (likely a value trap)
+            if len(trap_flags) >= 3:
+                continue
+
+            # Quality filter: yield must be in meaningful range
+            if dy < 1.0 or dy > 10.0:
+                continue
+
+            # Quality score: rewards yield, low payout, positive FCF, high ROE
+            fcf_yield_val = (fcf / mktcap * 100) if fcf and mktcap else 0
+            quality_score = (
+                dy * 3
+                + max(0, 70 - payout) * 0.3
+                + max(0, roe) * 0.2
+                + (5 if fcf > 0 else -5)
+                + min(div_years, 60) * 0.1
+            )
+
+            div_results.append({
+                "ticker": t, "name": info.get("shortName") or t, "desc": desc,
+                "price": price, "div_yield": dy, "payout": payout,
+                "div_years": div_years, "roe": roe, "fcf_yield": fcf_yield_val,
+                "w52_pos": w52_pos, "quality_score": quality_score,
+                "trap_flags": trap_flags,
+            })
+        except Exception:
+            pass
+
+    growth_results.sort(key=lambda x: (x["rev_growth"] or 0) + (x["w52_pos"] or 0) * 0.3, reverse=True)
+    value_results.sort(key=lambda x: (x["fcf_yield"] or 0) * 2 + (x["roe"] or 0) * 0.5, reverse=True)
+    div_results.sort(key=lambda x: x["quality_score"], reverse=True)
+    return growth_results[:8], value_results[:8], div_results[:8]
 
 
-def call_grok_chat(system_prompt: str, messages: list, api_key: str) -> str:
-    """Multi-Turn Chat mit Grok — sendet volles Gesprächsprotokoll."""
-    if not api_key:
-        return "⚠️ Kein XAI_API_KEY konfiguriert."
+# ==================== KI ANALYSE (Grok + Gemini Fallback) ====================
+
+# Preferred model order — newest first, only verified stable names as fallback
+_GEMINI_MODELS = [
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-flash",
+]
+
+@st.cache_data(ttl=86400)
+def _discover_gemini_models(api_key: str) -> list[str]:
+    """Fragt die ListModels-API ab und gibt generateContent-fähige Modelle zurück."""
     try:
-        resp = requests.post(
-            "https://api.x.ai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": "grok-3",
-                "messages": [{"role": "system", "content": system_prompt}] + messages,
-                "temperature": 0.5,
-                "max_tokens": 900,
-            },
-            timeout=45,
+        resp = requests.get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            params={"key": api_key},
+            timeout=10,
         )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
-    except requests.exceptions.Timeout:
-        return "⚠️ Timeout — bitte erneut versuchen."
-    except Exception as e:
-        return f"⚠️ Fehler: {e}"
+        if not resp.ok:
+            return []
+        available = {
+            m["name"].replace("models/", "")
+            for m in resp.json().get("models", [])
+            if "generateContent" in m.get("supportedGenerationMethods", [])
+        }
+        # Return preferred order filtered to what's actually available,
+        # then append any other discovered models not in our list
+        ordered = [m for m in _GEMINI_MODELS if m in available]
+        extras  = sorted(available - set(_GEMINI_MODELS))
+        return ordered + extras
+    except Exception:
+        return []
+
+
+def _call_gemini(api_key: str, model: str,
+                 messages: list, max_tokens: int, temperature: float) -> str:
+    """Gemini native REST API — key als ?key= Parameter, kein Auth-Header."""
+    system_parts = []
+    contents = []
+    for msg in messages:
+        if msg["role"] == "system":
+            system_parts.append({"text": msg["content"]})
+        else:
+            g_role = "user" if msg["role"] == "user" else "model"
+            contents.append({"role": g_role, "parts": [{"text": msg["content"]}]})
+
+    body = {
+        "contents": contents,
+        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
+    }
+    if system_parts:
+        body["systemInstruction"] = {"parts": system_parts}
+
+    for api_ver in ("v1beta", "v1"):
+        resp = requests.post(
+            f"https://generativelanguage.googleapis.com/{api_ver}/models/{model}:generateContent",
+            params={"key": api_key},
+            headers={"Content-Type": "application/json"},
+            json=body,
+            timeout=60,
+        )
+        if resp.status_code == 404:
+            continue
+        if not resp.ok:
+            raise ValueError(f"HTTP {resp.status_code}: {resp.text[:250]}")
+        data = resp.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+    raise ValueError(f"Modell '{model}' in v1beta und v1 nicht gefunden")
+
+
+def _try_gemini(messages: list, max_tokens: int,
+                temperature: float, api_key: str) -> tuple[str, str]:
+    """
+    Versucht alle verfügbaren Gemini-Modelle (via ListModels + Fallback-Liste).
+    Gibt (text, model_name) bei Erfolg oder ("", alle_fehler) zurück.
+    """
+    models = _discover_gemini_models(api_key) or _GEMINI_MODELS
+    errors = []
+    for model in models:
+        try:
+            text = _call_gemini(api_key, model, messages, max_tokens, temperature)
+            return text, model
+        except Exception as e:
+            errors.append(f"{model}: {str(e)[:120]}")
+    return "", " | ".join(errors) if errors else "Keine Modelle verfügbar"
+
+
+def call_ki_api(system_prompt: str, user_message: str,
+                gemini_key: str,
+                max_tokens: int = 1800) -> tuple[str, str]:
+    """Ruft Gemini an. Gibt (antwort_text, provider_label) zurück."""
+    if not gemini_key:
+        return ("⚠️ Kein API-Key konfiguriert. Bitte GEMINI_API_KEY "
+                "in den Railway-Umgebungsvariablen setzen.", "")
+    messages = [{"role": "system", "content": system_prompt},
+                {"role": "user",   "content": user_message}]
+    text, detail = _try_gemini(messages, max_tokens, 0.4, gemini_key)
+    if text:
+        return text, f"Gemini · {detail}"
+    return (f"⚠️ KI-Anfrage fehlgeschlagen — {detail}", "")
+
+
+def call_ki_chat(system_prompt: str, messages: list, gemini_key: str) -> str:
+    """Chat-Modus via Gemini."""
+    if not gemini_key:
+        return "⚠️ Kein GEMINI_API_KEY konfiguriert."
+    all_msgs = [{"role": "system", "content": system_prompt}] + messages
+    text, detail = _try_gemini(all_msgs, 900, 0.5, gemini_key)
+    if text:
+        return text
+    return f"⚠️ Gemini nicht verfügbar — {detail}"
+
 
 
 def build_grok_prompt(
@@ -1189,6 +1523,8 @@ if "grok_analysis" not in st.session_state:
     st.session_state["grok_analysis"] = ""
 if "grok_ticker" not in st.session_state:
     st.session_state["grok_ticker"] = ""
+if "grok_provider" not in st.session_state:
+    st.session_state["grok_provider"] = ""
 if "grok_chat" not in st.session_state:
     st.session_state["grok_chat"] = []
 if "grok_chat_ctx" not in st.session_state:
@@ -1389,6 +1725,109 @@ if st.session_state["show_landing"]:
     else:
         st.markdown('<div class="metric-card" style="color:#546e7a; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
 
+    # ── Aktienempfehlungen Accordion ──
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    with st.expander("💡  Aktienideen — Growth · Value · Dividende  (täglich aktualisiert)", expanded=False):
+        with st.spinner("Lade Aktienempfehlungen…"):
+            _gp, _vp, _dp = load_stock_picks()
+
+        def _badge(label, value, suffix="", fmt=".0f", color="#64b5f6"):
+            if value is None or value == 0:
+                return ""
+            try:
+                val_str = f"{value:{fmt}}{suffix}"
+            except Exception:
+                val_str = f"{value}{suffix}"
+            return (f"<span style='background:rgba(100,181,246,0.1);color:{color};"
+                    f"border-radius:5px;padding:2px 7px;font-size:0.71rem;"
+                    f"font-weight:600;margin-right:4px;white-space:nowrap;'>"
+                    f"{label}&thinsp;{val_str}</span>")
+
+        def _trend_bar(pos, accent):
+            pos = max(0, min(100, pos or 50))
+            bar_clr = accent if pos > 62 else "#ffd600" if pos > 35 else "#ff5252"
+            return (f"<div style='margin-top:7px;'>"
+                    f"<div style='display:flex;justify-content:space-between;"
+                    f"font-size:0.63rem;color:#37474f;margin-bottom:2px;'>"
+                    f"<span>52W-Tief</span><span style='color:#546e7a;'>{pos:.0f}%</span>"
+                    f"<span>52W-Hoch</span></div>"
+                    f"<div style='background:#1e2d45;border-radius:4px;height:4px;'>"
+                    f"<div style='background:{bar_clr};width:{pos}%;height:4px;"
+                    f"border-radius:4px;transition:width 0.4s;'></div></div></div>")
+
+        def _pick_card(s, accent, badges_html, extra_html=""):
+            price_str = f"${s['price']:,.2f}" if s['price'] else "—"
+            return f"""
+            <div style='background:linear-gradient(135deg,#0d1f3c,#0a1628);
+                 border:1px solid #1e3a5f;border-left:3px solid {accent};
+                 border-radius:12px;padding:13px 15px;margin-bottom:10px;'>
+              <div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>
+                <span style='color:{accent};font-size:1.02rem;font-weight:800;
+                      letter-spacing:0.5px;'>{s["ticker"]}</span>
+                <span style='color:#b0bec5;font-size:0.82rem;font-weight:600;'>{price_str}</span>
+              </div>
+              <div style='color:#546e7a;font-size:0.72rem;margin-bottom:5px;'>{s["name"]}</div>
+              <div style='color:#90a4ae;font-size:0.78rem;line-height:1.45;margin-bottom:8px;'>{s["desc"]}</div>
+              <div style='line-height:2;'>{badges_html}</div>
+              {extra_html}
+              {_trend_bar(s["w52_pos"], accent)}
+            </div>"""
+
+        _col_g, _col_v, _col_d = st.columns(3)
+
+        with _col_g:
+            st.markdown(
+                "<div style='color:#00e5ff;font-size:0.82rem;font-weight:700;"
+                "text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;"
+                "padding-bottom:7px;border-bottom:1px solid rgba(0,229,255,0.2);'>"
+                "🚀 Growth &amp; Momentum</div>",
+                unsafe_allow_html=True)
+            for s in _gp:
+                b = (_badge("Rev▲", s["rev_growth"], "%", ".0f", "#00e676") +
+                     _badge("EPS▲", s["eps_growth"], "%", ".0f", "#69f0ae") +
+                     _badge("FCF", s["fcf_yield"], "%", ".1f", "#40c4ff"))
+                st.markdown(_pick_card(s, "#00e5ff", b), unsafe_allow_html=True)
+
+        with _col_v:
+            st.markdown(
+                "<div style='color:#a78bfa;font-size:0.82rem;font-weight:700;"
+                "text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;"
+                "padding-bottom:7px;border-bottom:1px solid rgba(124,58,237,0.3);'>"
+                "💎 Value — Buffett-Style</div>",
+                unsafe_allow_html=True)
+            for s in _vp:
+                b = (_badge("KGV", s["fwd_pe"], "x", ".1f", "#ce93d8") +
+                     _badge("ROE", s["roe"], "%", ".0f", "#f48fb1") +
+                     _badge("FCF", s["fcf_yield"], "%", ".1f", "#a5d6a7"))
+                st.markdown(_pick_card(s, "#a78bfa", b), unsafe_allow_html=True)
+
+        with _col_d:
+            st.markdown(
+                "<div style='color:#f59e0b;font-size:0.82rem;font-weight:700;"
+                "text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;"
+                "padding-bottom:7px;border-bottom:1px solid rgba(245,158,11,0.3);'>"
+                "🏆 Dividend Aristocrats</div>",
+                unsafe_allow_html=True)
+            for s in _dp:
+                trap_html = ""
+                if s["trap_flags"]:
+                    trap_html = (f"<div style='color:#ffd600;font-size:0.68rem;"
+                                 f"margin-bottom:4px;'>⚠️ {', '.join(s['trap_flags'])}</div>")
+                years_b = _badge(f"{s['div_years']}J▲", None, "", ".0f", "#fbbf24") if False else (
+                    f"<span style='background:rgba(245,158,11,0.12);color:#fbbf24;"
+                    f"border-radius:5px;padding:2px 7px;font-size:0.71rem;"
+                    f"font-weight:600;margin-right:4px;'>{s['div_years']} Jahre▲</span>"
+                )
+                b = (years_b +
+                     _badge("Yield", s["div_yield"], "%", ".1f", "#f59e0b") +
+                     _badge("Payout", s["payout"] if s["payout"] > 0 else None, "%", ".0f", "#fca5a5"))
+                st.markdown(_pick_card(s, "#f59e0b", b, trap_html), unsafe_allow_html=True)
+
+        st.markdown(
+            "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
+            "⚠️ Keine Anlageberatung · Daten via Yahoo Finance · Aktualisierung alle 12 Std.</div>",
+            unsafe_allow_html=True)
+
     # ── Schnellauswahl auf Landing ──
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     st.markdown("<div class='section-header'>⚡ Beliebte Aktien</div>", unsafe_allow_html=True)
@@ -1418,6 +1857,8 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     yf_info, hist, insider_df = load_yfinance(ticker)
     fmp_metrics, peers, analyst_data = load_fmp_metrics(ticker)
     hist_weekly, hist_monthly, share_history, splits_data = load_yfinance_extended(ticker)
+    q_rev, q_net, q_eps = load_quarterly_financials(ticker)
+    earnings_surprises   = load_earnings_surprises(ticker)
 
 if hist.empty or not yf_info:
     st.markdown(f"""
@@ -1464,6 +1905,18 @@ forward_pe = yf_info.get("forwardPE")
 debt = yf_info.get("debtToEquity") or 0
 beta = yf_info.get("beta") or 1
 dividend_yield = (yf_info.get("dividendYield") or 0) * 100
+# ── Dividend Yield Sanity-Check ──────────────────────────────────────────────
+# yfinance sometimes delivers stale/wrong values. Recompute from annual rate.
+_annual_div_rate = yf_info.get("trailingAnnualDividendRate") or 0
+if _annual_div_rate and price and price > 0:
+    _computed_yield = (_annual_div_rate / price) * 100
+    # If the two sources differ a lot, trust the computed one
+    if abs(_computed_yield - dividend_yield) > 2 or dividend_yield > 15:
+        dividend_yield = _computed_yield
+# Hard cap: yields above 25% are almost always data errors (ex-dividend artifact etc.)
+if dividend_yield > 25:
+    dividend_yield = 0.0
+_div_yield_suspicious = dividend_yield > 15  # flag for display
 shares_outstanding = yf_info.get("sharesOutstanding")
 shares_float = yf_info.get("floatShares")
 shares_short = yf_info.get("sharesShort")
@@ -1479,6 +1932,11 @@ target_mean = yf_info.get("targetMeanPrice")
 recommendation = yf_info.get("recommendationKey", "").replace("_", " ").title()
 sector = yf_info.get("sector", "")
 industry = yf_info.get("industry", "")
+
+# Peer-Fallback: wenn FMP keine Peers liefert → Sektor-basierte Liste
+if not peers and sector:
+    peers = [t for t in SECTOR_PEERS_FALLBACK.get(sector, []) if t != ticker][:5]
+
 # Logo: FMP Image-Endpoint (öffentlich, kein API-Key nötig)
 logo_url = f"https://financialmodelingprep.com/image-stock/{ticker}.png"
 
@@ -1609,6 +2067,11 @@ st.markdown(f"""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+st.markdown(
+    "<div style='color:#37474f;font-size:0.7rem;margin:-8px 0 10px 0;'>"
+    "⏱ Kursdaten via Yahoo Finance · ca. 15–20 Min. verzögert · Keine Echtzeitkurse</div>",
+    unsafe_allow_html=True)
 
 # ── Watchlist-Button ──────────────────────────────────────────────
 _wl_curr = st.session_state.get("watchlist", [])
@@ -1771,16 +2234,22 @@ st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 if st.session_state.get("grok_ticker") != ticker:
     st.session_state["grok_analysis"] = ""
     st.session_state["grok_ticker"] = ticker
+    st.session_state["grok_provider"] = ""
     st.session_state["grok_chat"] = []
     st.session_state["grok_chat_ctx"] = ""
 
-_col_btn, _col_hint = st.columns([1, 4])
+st.markdown('<div class="ki-cta-wrap">', unsafe_allow_html=True)
+_col_btn, _col_hint = st.columns([2, 3])
 with _col_btn:
-    _run_grok = st.button("🤖 KI-Analyse", key="btn_grok",
-                          help="Grok-3 analysiert alle Kennzahlen und liefert Bull/Bear-Case, Investment-These und Risiko-Flags")
+    _run_grok = st.button("🤖  KI-Analyse starten", key="btn_grok",
+                          use_container_width=True,
+                          help="KI analysiert alle Kennzahlen und liefert Bull/Bear-Case, Investment-These und Risiko-Flags")
 with _col_hint:
-    if not XAI_API_KEY:
-        st.caption("⚠️ XAI_API_KEY nicht gesetzt — bitte in Railway-Umgebungsvariablen eintragen.")
+    if not GEMINI_API_KEY:
+        st.caption("⚠️ Kein KI-Key gesetzt — GEMINI_API_KEY (Google AI Studio) in Railway-Umgebungsvariablen eintragen.")
+    else:
+        st.caption("Powered by Gemini (Google) · Analyse dauert ca. 5–15 Sekunden")
+st.markdown('</div>', unsafe_allow_html=True)
 
 if _run_grok:
     _dcf_for_grok = dcf_valuation(fcf, shares_outstanding,
@@ -1805,9 +2274,11 @@ if _run_grok:
             moat=moat, piotroski=_piotroski_data,
             dcf_fair_val=_dcf_for_grok,
         )
-        st.session_state["grok_analysis"] = call_grok_api(_sys, _usr, XAI_API_KEY)
-        st.session_state["grok_chat"] = []   # Chat bei neuer Analyse zurücksetzen
-        st.session_state["grok_chat_ctx"] = _usr  # Kontext für Chat speichern
+        _ki_text, _ki_provider = call_ki_api(_sys, _usr, GEMINI_API_KEY)
+        st.session_state["grok_analysis"] = _ki_text
+        st.session_state["grok_provider"] = _ki_provider
+        st.session_state["grok_chat"] = []
+        st.session_state["grok_chat_ctx"] = _usr
 
 # Analyse anzeigen (bleibt bis Ticker-Wechsel)
 if st.session_state.get("grok_analysis"):
@@ -1823,12 +2294,13 @@ if st.session_state.get("grok_analysis"):
             "BEWERTUNG":        ("⚖️", "#64b5f6"),
             "ROT-FLAGS":        ("⚠️", "#ff8f00"),
         }
+        _provider_label = st.session_state.get("grok_provider") or "KI"
         _html_parts = [
             f"<div class='grok-box'>"
             f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:14px;'>"
             f"<span style='font-size:1.4rem;'>🤖</span>"
             f"<div><div style='color:#a78bfa;font-size:1.0rem;font-weight:700;'>KI-Analyse · {company_name}</div>"
-            f"<div style='color:#546e7a;font-size:0.75rem;'>Powered by Grok-3 · xAI</div>"
+            f"<div style='color:#546e7a;font-size:0.75rem;'>Powered by {_provider_label}</div>"
             f"</div></div>"
         ]
         _current_section = None
@@ -1903,7 +2375,7 @@ if st.session_state.get("grok_analysis"):
                 f"UNTERNEHMENSKONTEXT:\n{st.session_state.get('grok_chat_ctx', '')}"
             )
             with st.spinner("Grok denkt..."):
-                _answer = call_grok_chat(_chat_sys, _hist[-8:], XAI_API_KEY)
+                _answer = call_ki_chat(_chat_sys, _hist[-8:], GEMINI_API_KEY)
             _hist.append({"role": "assistant", "content": _answer})
             st.session_state["grok_chat"] = _hist
             st.rerun()
@@ -2086,7 +2558,9 @@ with tab1:
     with c2:
         st.markdown(mini_card("Operating Margin", operating_margin, 20, 10, ".1f", "%"), unsafe_allow_html=True)
     with c3:
-        st.markdown(mini_card("Dividend Yield", dividend_yield, 3, 1, ".2f", "%"), unsafe_allow_html=True)
+        _dy_label = "Dividend Yield ⚠️" if _div_yield_suspicious else "Dividend Yield"
+        _dy_tooltip = "Wert >15 % — bitte manuell prüfen (möglicher Datenfehler)" if _div_yield_suspicious else None
+        st.markdown(mini_card(_dy_label, dividend_yield, 3, 1, ".2f", "%", tooltip=_dy_tooltip), unsafe_allow_html=True)
 
     # ── Branchenvergleich ──────────────────────────────────────────────
     st.markdown("<div class='section-header'>🌍 Branchenvergleich</div>", unsafe_allow_html=True)
@@ -2345,6 +2819,128 @@ with tab3:
             <div class="metric-value">{f"{eps_growth:.1f}%" if eps_growth is not None else "N/A"}</div>
         </div>""", unsafe_allow_html=True)
 
+    # ── Earnings Surprises ─────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🎯 Earnings Surprises (EPS Beat / Miss)</div>", unsafe_allow_html=True)
+    if earnings_surprises:
+        _beat_streak = 0
+        for _es in earnings_surprises:
+            if _es["verdict"] == "Beat":
+                _beat_streak += 1
+            else:
+                break
+
+        # Streak badge
+        if _beat_streak >= 2:
+            _streak_html = (f"<span style='background:rgba(0,230,118,0.15);color:#00e676;"
+                            f"border-radius:8px;padding:3px 12px;font-size:0.82rem;"
+                            f"font-weight:700;margin-left:10px;'>"
+                            f"🔥 {_beat_streak}× Beat-Streak</span>")
+        else:
+            _streak_html = ""
+        st.markdown(f"<div style='margin-bottom:10px;color:#78909c;font-size:0.8rem;'>"
+                    f"Letzte {len(earnings_surprises)} Quartale{_streak_html}</div>",
+                    unsafe_allow_html=True)
+
+        # Cards row
+        _es_cols = st.columns(min(len(earnings_surprises), 4))
+        for _i, _es in enumerate(earnings_surprises[:4]):
+            _col = _es_cols[_i]
+            _v   = _es["verdict"]
+            _clr = "#00e676" if _v == "Beat" else "#ff5252" if _v == "Miss" else "#ffd600"
+            _bg  = "rgba(0,230,118,0.08)" if _v == "Beat" else "rgba(255,82,82,0.08)" if _v == "Miss" else "rgba(255,214,0,0.08)"
+            _icon = "✅" if _v == "Beat" else "❌" if _v == "Miss" else "➖"
+            _surp_str = f"{_es['surp_pct']:+.1f}%"
+            _col.markdown(f"""
+            <div style='background:{_bg};border:1px solid {_clr}33;border-top:3px solid {_clr};
+                 border-radius:12px;padding:12px 14px;text-align:center;'>
+              <div style='color:#546e7a;font-size:0.72rem;margin-bottom:4px;'>{_es["date"]}</div>
+              <div style='color:{_clr};font-size:1.1rem;font-weight:800;'>{_icon} {_v}</div>
+              <div style='color:#eceff1;font-size:0.88rem;font-weight:700;margin:4px 0;'>{_surp_str}</div>
+              <div style='color:#546e7a;font-size:0.7rem;'>
+                Est: ${_es["estimate"]:.2f} · Act: ${_es["actual"]:.2f}
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+        # Surprise % bar chart (all 8 quarters)
+        if len(earnings_surprises) > 1:
+            _dates  = [e["date"]     for e in reversed(earnings_surprises)]
+            _surps  = [e["surp_pct"] for e in reversed(earnings_surprises)]
+            _colors = ["#00e676" if s > 2 else "#ff5252" if s < -2 else "#ffd600" for s in _surps]
+            _fig_es = go.Figure(go.Bar(
+                x=_dates, y=_surps,
+                marker_color=_colors,
+                text=[f"{s:+.1f}%" for s in _surps],
+                textposition="outside",
+                textfont=dict(size=10, color="#90a4ae"),
+            ))
+            _fig_es.add_hline(y=0, line_color="#1e3a5f", line_width=1)
+            _fig_es.update_layout(
+                template="plotly_dark",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(13,21,38,0.8)",
+                height=200,
+                margin=dict(l=0, r=0, t=10, b=0),
+                showlegend=False,
+                yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False,
+                           ticksuffix="%", title="Überraschung %"),
+                xaxis=dict(showgrid=False),
+            )
+            st.plotly_chart(_fig_es, use_container_width=True)
+    else:
+        st.markdown('<div class="metric-card" style="color:#546e7a;text-align:center;">'
+                    'Earnings-Daten nicht verfügbar</div>', unsafe_allow_html=True)
+
+    # ── Quartalsergebnisse ─────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📊 Quartalsergebnisse</div>", unsafe_allow_html=True)
+    if not q_rev.empty or not q_net.empty:
+        _qfig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=["Umsatz (Quartale)", "Nettogewinn (Quartale)"],
+            horizontal_spacing=0.08,
+        )
+        def _qfmt(v):
+            if abs(v) >= 1e9: return f"${v/1e9:.1f}B"
+            if abs(v) >= 1e6: return f"${v/1e6:.0f}M"
+            return f"${v:.0f}"
+        if not q_rev.empty:
+            _labels = [d.strftime("Q%q '%y") if hasattr(d, 'strftime') else str(d)[:7]
+                       for d in q_rev.index]
+            _rev_b  = [v/1e9 for v in q_rev.values]
+            _rev_cl = ["#00e676" if i == 0 or v >= _rev_b[i-1] else "#ff5252"
+                       for i, v in enumerate(_rev_b)]
+            _qfig.add_trace(go.Bar(
+                x=_labels, y=_rev_b,
+                marker_color=_rev_cl, name="Umsatz",
+                text=[f"${v:.1f}B" for v in _rev_b],
+                textposition="outside", textfont=dict(size=9, color="#90a4ae"),
+            ), row=1, col=1)
+        if not q_net.empty:
+            _labels2 = [d.strftime("Q%q '%y") if hasattr(d, 'strftime') else str(d)[:7]
+                        for d in q_net.index]
+            _net_b   = [v/1e9 for v in q_net.values]
+            _net_cl  = ["#00e676" if v >= 0 else "#ff5252" for v in _net_b]
+            _qfig.add_trace(go.Bar(
+                x=_labels2, y=_net_b,
+                marker_color=_net_cl, name="Nettogewinn",
+                text=[f"${v:.2f}B" for v in _net_b],
+                textposition="outside", textfont=dict(size=9, color="#90a4ae"),
+            ), row=1, col=2)
+        _qfig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(13,21,38,0.8)",
+            height=300,
+            showlegend=False,
+            margin=dict(l=0, r=0, t=36, b=0),
+            font=dict(color="#90a4ae", size=10),
+        )
+        _qfig.update_yaxes(showgrid=True, gridcolor="#1e2d45", zeroline=True,
+                           zerolinecolor="#1e3a5f", ticksuffix="B")
+        st.plotly_chart(_qfig, use_container_width=True)
+    else:
+        st.markdown('<div class="metric-card" style="color:#546e7a;text-align:center;">'
+                    'Quartalsdaten nicht verfügbar</div>', unsafe_allow_html=True)
+
 with tab4:
     st.markdown("<div class='section-header'>Bewertungsmultiples</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
@@ -2361,7 +2957,9 @@ with tab4:
     with c1:
         st.markdown(mini_card("Beta", beta, 0.8, 1.5, ".2f", ""), unsafe_allow_html=True)
     with c2:
-        st.markdown(mini_card("Dividend Yield", dividend_yield, 3, 1, ".2f", "%"), unsafe_allow_html=True)
+        _dy_label2 = "Dividend Yield ⚠️" if _div_yield_suspicious else "Dividend Yield"
+        _dy_tooltip2 = "Wert >15 % — bitte manuell prüfen (möglicher Datenfehler)" if _div_yield_suspicious else None
+        st.markdown(mini_card(_dy_label2, dividend_yield, 3, 1, ".2f", "%", tooltip=_dy_tooltip2), unsafe_allow_html=True)
     with c3:
         pfcf_str = f"{price_to_fcf:.1f}x" if price_to_fcf else "N/A"
         pfcf_color = "#00e676" if price_to_fcf and price_to_fcf < 20 else "#ffd600" if price_to_fcf and price_to_fcf < 35 else "#ff5252"
@@ -2402,59 +3000,153 @@ with tab4:
 
     # DCF
     if show_dcf:
-        st.markdown("<div class='section-header'>💰 DCF Rechner</div>", unsafe_allow_html=True)
-        default_growth = min(max(int(rev_growth), 5), 30)
-        st.markdown(f"""
-        <div class="insight-box" style="margin-bottom:12px;">
-            <strong>ℹ️ DCF Hinweis:</strong> Der DCF-Wert reagiert stark auf die Eingaben.
-            Bei High-Growth-Aktien wie Halbleiter/KI-Unternehmen empfiehlt sich eine
-            <strong>konservative Wachstumsrate</strong> (10–20%) und ein höherer Diskontsatz (10–12%),
-            um Euphorie-Prämien zu vermeiden. Akt. Rev. Growth: <strong>{rev_growth:.1f}%</strong>.
-        </div>
-        """, unsafe_allow_html=True)
-        d1, d2, d3, d4 = st.columns(4)
-        with d1:
-            g_rate = st.slider("Wachstumsrate (%)", 0, 40, default_growth, 1, key="dcf_g")
-        with d2:
-            t_rate = st.slider("Terminal Growth (%)", 1, 5, 2, 1, key="dcf_t")
-        with d3:
-            d_rate = st.slider("Diskontrate (%)", 5, 15, 10, 1, key="dcf_d")
-        with d4:
-            yrs = st.slider("Jahre", 5, 15, 10, 1, key="dcf_y")
+        st.markdown("<div class='section-header'>💰 DCF Szenarien — Bull / Base / Bear</div>", unsafe_allow_html=True)
 
-        fair_val = dcf_valuation(fcf, shares_outstanding, g_rate, t_rate, d_rate, yrs)
-        if fair_val:
-            margin = (fair_val - price) / price * 100
-            m_color = "#00e676" if margin > 0 else "#ff5252"
-            m_label = "Margin of Safety" if margin > 0 else "Überbewertung"
+        # ── Szenario-Annahmen (basierend auf Rev. Growth) ──────────────
+        _rg = rev_growth or 5
+        _scenarios = {
+            "🐻 Bear": {
+                "growth": max(2.0,  round(_rg * 0.35, 1)),
+                "terminal": 1.5, "discount": 11.0,
+                "accent": "#ff5252", "bg": "rgba(255,82,82,0.07)",
+                "label": "Konservativ",
+            },
+            "⚖️ Base": {
+                "growth": max(5.0,  round(min(_rg * 0.65, 20), 1)),
+                "terminal": 2.5, "discount": 10.0,
+                "accent": "#64b5f6", "bg": "rgba(100,181,246,0.07)",
+                "label": "Realistisch",
+            },
+            "🐂 Bull": {
+                "growth": max(10.0, round(min(_rg * 0.90, 35), 1)),
+                "terminal": 3.5, "discount":  9.0,
+                "accent": "#00e676", "bg": "rgba(0,230,118,0.07)",
+                "label": "Optimistisch",
+            },
+        }
+
+        _sc_cols = st.columns(3)
+        _sc_vals = {}
+        for (_name, _sc), _col in zip(_scenarios.items(), _sc_cols):
+            _fv = dcf_valuation(fcf, shares_outstanding,
+                                _sc["growth"], _sc["terminal"], _sc["discount"], 10)
+            _sc_vals[_name] = _fv
+            if _fv:
+                _mg = (_fv - price) / price * 100
+                _mg_label = f"{'▲' if _mg > 0 else '▼'} {abs(_mg):.1f}% {'Upside' if _mg > 0 else 'Downside'}"
+                _mg_clr   = _sc["accent"] if _mg > 0 else "#ff5252"
+            else:
+                _mg_label, _mg_clr = "N/A", "#546e7a"
+            _col.markdown(f"""
+            <div style='background:{_sc["bg"]};border:1px solid {_sc["accent"]}33;
+                 border-top:3px solid {_sc["accent"]};border-radius:14px;
+                 padding:18px 14px;text-align:center;'>
+              <div style='color:{_sc["accent"]};font-size:0.78rem;font-weight:700;
+                   text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;'>
+                {_name}</div>
+              <div style='color:#78909c;font-size:0.7rem;margin-bottom:10px;'>{_sc["label"]}</div>
+              <div style='color:#eceff1;font-size:1.9rem;font-weight:800;'>
+                {"${:,.0f}".format(_fv) if _fv else "N/A"}</div>
+              <div style='color:{_mg_clr};font-size:0.85rem;font-weight:600;margin:6px 0;'>
+                {_mg_label}</div>
+              <div style='color:#37474f;font-size:0.68rem;line-height:1.6;margin-top:8px;
+                   border-top:1px solid #1e2d45;padding-top:8px;text-align:left;'>
+                Wachstum: {_sc["growth"]}%<br>
+                Terminal: {_sc["terminal"]}%<br>
+                Diskont:  {_sc["discount"]}%
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+        # ── Vergleichsbalken ───────────────────────────────────────────
+        _fv_values = [v for v in _sc_vals.values() if v]
+        if _fv_values and price:
+            _bar_labels = list(_sc_vals.keys()) + ["📍 Kurs"]
+            _bar_vals   = [v if v else 0 for v in _sc_vals.values()] + [price]
+            _bar_clrs   = [_scenarios[n]["accent"] for n in _sc_vals] + ["#ffd600"]
+            _fig_dcf = go.Figure(go.Bar(
+                x=_bar_labels, y=_bar_vals,
+                marker_color=_bar_clrs,
+                text=[f"${v:,.0f}" for v in _bar_vals],
+                textposition="outside",
+                textfont=dict(size=11, color="#90a4ae"),
+            ))
+            _fig_dcf.add_hline(y=price, line_dash="dot", line_color="#ffd600",
+                               line_width=1.5,
+                               annotation_text=f"Kurs ${price:.0f}",
+                               annotation_font_color="#ffd600")
+            _fig_dcf.update_layout(
+                template="plotly_dark",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(13,21,38,0.8)",
+                height=260, showlegend=False,
+                margin=dict(l=0, r=0, t=30, b=0),
+                yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False,
+                           tickprefix="$"),
+                xaxis=dict(showgrid=False),
+            )
+            st.plotly_chart(_fig_dcf, use_container_width=True)
+
+        # ── Manueller Rechner (aufklappbar) ────────────────────────────
+        with st.expander("⚙️ Eigenes Szenario berechnen", expanded=False):
             st.markdown(f"""
-            <div style="background:linear-gradient(135deg, #0d2137, #0a1a2e); border:1px solid #1e3a5f; border-radius:16px; padding:22px; margin-top:10px; text-align:center;">
-                <div style="color:#78909c; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">DCF Fairer Wert</div>
-                <div style="color:#eceff1; font-size:2.5rem; font-weight:800;">${fair_val:.2f}</div>
-                <div style="color:{m_color}; font-size:1rem; margin-top:6px; font-weight:600;">
-                    {'▲' if margin > 0 else '▼'} {abs(margin):.1f}% {m_label}
-                </div>
-                <div style="color:#546e7a; font-size:0.78rem; margin-top:6px;">
-                    Aktueller Kurs: ${price:.2f} | FCF: {fmt_large(fcf)}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.info("Nicht genug Daten für DCF-Berechnung (FCF oder Shares fehlen).")
+            <div class="insight-box" style="margin-bottom:12px;">
+                <strong>ℹ️ DCF Hinweis:</strong> Der Wert reagiert stark auf Eingaben.
+                Konservative Wachstumsrate (10–20%) und höherer Diskontsatz (10–12%)
+                vermeiden Euphorie-Prämien. Akt. Rev. Growth: <strong>{rev_growth:.1f}%</strong>.
+            </div>""", unsafe_allow_html=True)
+            default_growth = min(max(int(_rg), 5), 30)
+            d1, d2, d3, d4 = st.columns(4)
+            with d1:
+                g_rate = st.slider("Wachstumsrate (%)", 0, 40, default_growth, 1, key="dcf_g")
+            with d2:
+                t_rate = st.slider("Terminal Growth (%)", 1, 5, 2, 1, key="dcf_t")
+            with d3:
+                d_rate = st.slider("Diskontrate (%)", 5, 15, 10, 1, key="dcf_d")
+            with d4:
+                yrs = st.slider("Jahre", 5, 15, 10, 1, key="dcf_y")
+
+            fair_val = dcf_valuation(fcf, shares_outstanding, g_rate, t_rate, d_rate, yrs)
+            if fair_val:
+                margin = (fair_val - price) / price * 100
+                m_color = "#00e676" if margin > 0 else "#ff5252"
+                m_label = "Margin of Safety" if margin > 0 else "Überbewertung"
+                st.markdown(f"""
+                <div style="background:linear-gradient(135deg,#0d2137,#0a1a2e);border:1px solid #1e3a5f;
+                     border-radius:16px;padding:22px;margin-top:10px;text-align:center;">
+                    <div style="color:#78909c;font-size:0.8rem;text-transform:uppercase;
+                         letter-spacing:1px;margin-bottom:8px;">Eigenes Szenario</div>
+                    <div style="color:#eceff1;font-size:2.5rem;font-weight:800;">${fair_val:.2f}</div>
+                    <div style="color:{m_color};font-size:1rem;margin-top:6px;font-weight:600;">
+                        {'▲' if margin > 0 else '▼'} {abs(margin):.1f}% {m_label}
+                    </div>
+                    <div style="color:#546e7a;font-size:0.78rem;margin-top:6px;">
+                        Kurs: ${price:.2f} | FCF: {fmt_large(fcf)}
+                    </div>
+                </div>""", unsafe_allow_html=True)
+            else:
+                st.info("Nicht genug Daten für DCF-Berechnung (FCF oder Shares fehlen).")
 
 # ==================== TAB 5: CHART ANALYSE ====================
 with tab5:
     st.markdown("<div class='section-header'>📉 Technische Chart-Analyse</div>", unsafe_allow_html=True)
 
-    chart_mode = st.radio(
-        "Zeitrahmen", ["Täglich (5J)", "Wöchentlich (2J)", "Monatlich (5J)"],
-        horizontal=True, key="chart_mode"
-    )
-    ema_options = st.multiselect(
-        "EMAs anzeigen", ["EMA 20", "EMA 50", "EMA 100", "EMA 200"],
-        default=["EMA 20", "EMA 50", "EMA 200"], key="ema_sel"
-    )
-    chart_type = st.radio("Chart-Typ", ["Candlestick", "Linie"], horizontal=True, key="ctype")
+    # ── Controls row ──────────────────────────────────────────────────
+    _c1, _c2, _c3 = st.columns([2, 2, 2])
+    with _c1:
+        chart_mode = st.radio("Zeitrahmen", ["Täglich (5J)", "Wöchentlich (2J)", "Monatlich (5J)"],
+                              horizontal=True, key="chart_mode")
+    with _c2:
+        chart_type = st.radio("Chart-Typ", ["Candlestick", "Linie"], horizontal=True, key="ctype")
+    with _c3:
+        show_sp500 = st.checkbox("S&P 500 Vergleich", value=False, key="show_sp500")
+
+    _ic1, _ic2 = st.columns([3, 2])
+    with _ic1:
+        ema_options = st.multiselect("EMAs", ["EMA 20", "EMA 50", "EMA 100", "EMA 200"],
+                                     default=["EMA 50", "EMA 200"], key="ema_sel")
+    with _ic2:
+        indicator_options = st.multiselect("Indikatoren", ["RSI (14)", "MACD", "Fibonacci"],
+                                           default=["RSI (14)"], key="ind_sel")
 
     if chart_mode == "Wöchentlich (2J)":
         chart_data = hist_weekly.copy()
@@ -2469,101 +3161,204 @@ with tab5:
     if chart_data.empty:
         st.warning("Keine Daten für diesen Zeitrahmen verfügbar.")
     else:
-        ema_periods = {"EMA 20": 20, "EMA 50": 50, "EMA 100": 100, "EMA 200": 200}
-        ema_colors = {"EMA 20": "#ffd600", "EMA 50": "#00e5ff", "EMA 100": "#ff9100", "EMA 200": "#ef5350"}
+        show_rsi  = "RSI (14)" in indicator_options
+        show_macd = "MACD"    in indicator_options
+        show_fib  = "Fibonacci" in indicator_options
+
+        # Dynamic subplot layout
+        n_rows = 1 + (1 if show_rsi else 0) + (1 if show_macd else 0)
+        row_h = [0.55 if (show_rsi or show_macd) else 0.75, 0.15]
+        if show_rsi:   row_h.append(0.15)
+        if show_macd:  row_h.append(0.15)
+        # Always add volume row
+        subplot_titles = ["", "Volumen"]
+        if show_rsi:   subplot_titles.append("RSI (14)")
+        if show_macd:  subplot_titles.append("MACD")
 
         fig_ta = make_subplots(
-            rows=2, cols=1,
+            rows=1 + 1 + (1 if show_rsi else 0) + (1 if show_macd else 0),
+            cols=1,
             shared_xaxes=True,
-            row_heights=[0.75, 0.25],
-            vertical_spacing=0.03
+            row_heights=[0.55 if (show_rsi or show_macd) else 0.72,
+                         0.12,
+                         *([0.16] if show_rsi else []),
+                         *([0.16] if show_macd else [])],
+            vertical_spacing=0.02,
+            subplot_titles=["", "Volumen",
+                            *( ["RSI (14)"] if show_rsi else []),
+                            *( ["MACD"]     if show_macd else [])],
         )
+        vol_row  = 2
+        rsi_row  = 3 if show_rsi else None
+        macd_row = (3 + (1 if show_rsi else 0)) if show_macd else None
+
+        close = chart_data["Close"]
+
+        # ── Price ──────────────────────────────────────────────────────
+        ema_periods = {"EMA 20": 20, "EMA 50": 50, "EMA 100": 100, "EMA 200": 200}
+        ema_colors  = {"EMA 20": "#ffd600", "EMA 50": "#00e5ff", "EMA 100": "#ff9100", "EMA 200": "#ef5350"}
 
         if chart_type == "Candlestick":
             fig_ta.add_trace(go.Candlestick(
                 x=chart_data.index,
-                open=chart_data["Open"],
-                high=chart_data["High"],
-                low=chart_data["Low"],
-                close=chart_data["Close"],
-                name=f"{ticker} ({title_suffix})",
-                increasing_line_color="#00e676",
-                decreasing_line_color="#ff5252",
-                increasing_fillcolor="#00e676",
-                decreasing_fillcolor="#ff5252",
+                open=chart_data["Open"], high=chart_data["High"],
+                low=chart_data["Low"],  close=close,
+                name=ticker,
+                increasing_line_color="#00e676", decreasing_line_color="#ff5252",
+                increasing_fillcolor="#00e676",  decreasing_fillcolor="#ff5252",
             ), row=1, col=1)
         else:
             fig_ta.add_trace(go.Scatter(
-                x=chart_data.index,
-                y=chart_data["Close"],
-                name=f"{ticker} ({title_suffix})",
+                x=chart_data.index, y=close, name=ticker,
                 line=dict(color="#00e5ff", width=2),
-                fill="tozeroy",
-                fillcolor="rgba(0,229,255,0.04)",
+                fill="tozeroy", fillcolor="rgba(0,229,255,0.04)",
             ), row=1, col=1)
 
+        # ── S&P 500 comparison (normalised) ────────────────────────────
+        if show_sp500 and chart_type == "Linie":
+            try:
+                _sp_hist = yf.Ticker("^GSPC").history(
+                    period="2y" if "Wöchentlich" in chart_mode else "5y",
+                    interval="1wk" if "Wöchentlich" in chart_mode else
+                             "1mo" if "Monatlich"   in chart_mode else "1d"
+                )
+                if not _sp_hist.empty:
+                    _idx = chart_data.index
+                    _sp  = _sp_hist["Close"].reindex(_idx, method="ffill").dropna()
+                    _stock_norm = (close / close.iloc[0] * 100).reindex(_sp.index)
+                    _sp_norm    = (_sp   / _sp.iloc[0]   * 100)
+                    fig_ta.add_trace(go.Scatter(
+                        x=_sp_norm.index, y=_sp_norm,
+                        name="S&P 500 (norm.)",
+                        line=dict(color="#78909c", width=1.5, dash="dot"),
+                    ), row=1, col=1)
+            except Exception:
+                pass
+
+        # ── EMAs ──────────────────────────────────────────────────────
         for ema_name in ema_options:
             period = ema_periods[ema_name]
             if len(chart_data) >= period:
-                ema_vals = compute_ema(chart_data["Close"], period)
                 fig_ta.add_trace(go.Scatter(
-                    x=chart_data.index,
-                    y=ema_vals,
-                    name=ema_name,
-                    line=dict(color=ema_colors[ema_name], width=1.5),
+                    x=chart_data.index, y=compute_ema(close, period),
+                    name=ema_name, line=dict(color=ema_colors[ema_name], width=1.4),
                 ), row=1, col=1)
 
+        # ── Fibonacci ──────────────────────────────────────────────────
+        if show_fib:
+            _fib_high = float(chart_data["High"].max())
+            _fib_low  = float(chart_data["Low"].min())
+            _fib_levels = compute_fibonacci(_fib_high, _fib_low)
+            _fib_colors = {
+                "0.0 %":   "rgba(255,255,255,0.25)",
+                "23.6 %":  "rgba(255,214,0,0.55)",
+                "38.2 %":  "rgba(0,230,118,0.65)",
+                "50.0 %":  "rgba(0,229,255,0.65)",
+                "61.8 %":  "rgba(0,230,118,0.65)",
+                "78.6 %":  "rgba(255,145,0,0.65)",
+                "100.0 %": "rgba(255,255,255,0.25)",
+            }
+            for label, lvl in _fib_levels.items():
+                fig_ta.add_hline(
+                    y=lvl, line_dash="dot",
+                    line_color=_fib_colors.get(label, "rgba(100,181,246,0.4)"),
+                    line_width=1,
+                    annotation_text=f"Fib {label}  ${lvl:.2f}",
+                    annotation_font_color=_fib_colors.get(label, "#64b5f6"),
+                    annotation_font_size=9,
+                    row=1, col=1,
+                )
+
+        # ── Analyst target ──────────────────────────────────────────────
         if target_mean:
             fig_ta.add_hline(y=target_mean, line_dash="dot", line_color="#ffd600", line_width=1.5,
                              annotation_text=f"Analyst Ziel ${target_mean:.0f}",
                              annotation_font_color="#ffd600", row=1, col=1)
 
-        colors_vol_ta = ["#00e676" if c >= o else "#ff5252"
-                         for c, o in zip(chart_data["Close"], chart_data["Open"])]
+        # ── Volume ──────────────────────────────────────────────────────
+        vol_colors = ["#00e676" if c >= o else "#ff5252"
+                      for c, o in zip(close, chart_data["Open"])]
         fig_ta.add_trace(go.Bar(
             x=chart_data.index, y=chart_data["Volume"],
-            name="Volumen", marker_color=colors_vol_ta, opacity=0.6,
-            showlegend=False
-        ), row=2, col=1)
+            name="Volumen", marker_color=vol_colors, opacity=0.55, showlegend=False,
+        ), row=vol_row, col=1)
 
+        # ── RSI ─────────────────────────────────────────────────────────
+        if show_rsi and rsi_row:
+            rsi_vals = compute_rsi(close)
+            fig_ta.add_trace(go.Scatter(
+                x=chart_data.index, y=rsi_vals,
+                name="RSI", line=dict(color="#a78bfa", width=1.5), showlegend=False,
+            ), row=rsi_row, col=1)
+            for lvl, clr in [(70, "rgba(255,82,82,0.35)"), (30, "rgba(0,230,118,0.35)")]:
+                fig_ta.add_hline(y=lvl, line_dash="dash", line_color=clr, line_width=1,
+                                 row=rsi_row, col=1)
+            fig_ta.update_yaxes(range=[0, 100], row=rsi_row, col=1)
+
+        # ── MACD ────────────────────────────────────────────────────────
+        if show_macd and macd_row:
+            macd_line, signal_line, macd_hist = compute_macd(close)
+            hist_colors = ["#00e676" if v >= 0 else "#ff5252" for v in macd_hist]
+            fig_ta.add_trace(go.Bar(
+                x=chart_data.index, y=macd_hist,
+                name="MACD Hist", marker_color=hist_colors, opacity=0.6, showlegend=False,
+            ), row=macd_row, col=1)
+            fig_ta.add_trace(go.Scatter(
+                x=chart_data.index, y=macd_line,
+                name="MACD", line=dict(color="#00e5ff", width=1.5), showlegend=False,
+            ), row=macd_row, col=1)
+            fig_ta.add_trace(go.Scatter(
+                x=chart_data.index, y=signal_line,
+                name="Signal", line=dict(color="#ffd600", width=1.2), showlegend=False,
+            ), row=macd_row, col=1)
+
+        # ── Layout ──────────────────────────────────────────────────────
+        _total_rows = 1 + 1 + (1 if show_rsi else 0) + (1 if show_macd else 0)
+        _height = 520 + 120 * (_total_rows - 2)
         fig_ta.update_layout(
             template="plotly_dark",
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(13,21,38,0.8)",
-            height=620,
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.01,
-                xanchor="right", x=1,
-                bgcolor="rgba(13,21,38,0.8)",
-                bordercolor="#1e3a5f", borderwidth=1,
-                font=dict(size=11)
-            ),
+            height=_height,
+            legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
+                        bgcolor="rgba(13,21,38,0.8)", bordercolor="#1e3a5f", borderwidth=1,
+                        font=dict(size=10)),
             margin=dict(l=0, r=0, t=30, b=0),
             xaxis=dict(showgrid=False, zeroline=False, rangeslider=dict(visible=False)),
             yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False),
-            xaxis2=dict(showgrid=False),
-            yaxis2=dict(showgrid=False, zeroline=False),
             hovermode="x unified",
             title=dict(text=f"{company_name} — {title_suffix}", font=dict(color="#64b5f6", size=14)),
         )
+        for r in range(2, _total_rows + 1):
+            fig_ta.update_xaxes(showgrid=False, row=r, col=1)
+            fig_ta.update_yaxes(showgrid=True, gridcolor="#1e2d45", zeroline=False, row=r, col=1)
+
         st.plotly_chart(fig_ta, use_container_width=True)
 
-        if ema_options and len(chart_data) > 0:
-            current_price_c = chart_data["Close"].iloc[-1]
-            ema_insights = []
-            for ema_name in ema_options:
-                period = ema_periods[ema_name]
-                if len(chart_data) >= period:
-                    ema_now = compute_ema(chart_data["Close"], period).iloc[-1]
-                    pct_diff = (current_price_c - ema_now) / ema_now * 100
-                    status = "oberhalb ✅" if pct_diff > 0 else "unterhalb ⚠️"
-                    ema_insights.append(f"{ema_name}: {status} ({pct_diff:+.1f}%)")
-            if ema_insights:
-                st.markdown(f"""
-                <div class="insight-box">
-                    <strong>📊 EMA-Analyse ({title_suffix}):</strong> {' | '.join(ema_insights)}
-                </div>
-                """, unsafe_allow_html=True)
+        # ── EMA + RSI insight box ────────────────────────────────────────
+        _insights = []
+        current_price_c = close.iloc[-1]
+        for ema_name in ema_options:
+            period = ema_periods[ema_name]
+            if len(chart_data) >= period:
+                ema_now = compute_ema(close, period).iloc[-1]
+                pct_diff = (current_price_c - ema_now) / ema_now * 100
+                status = "oberhalb ✅" if pct_diff > 0 else "unterhalb ⚠️"
+                _insights.append(f"{ema_name}: {status} ({pct_diff:+.1f}%)")
+        if show_rsi:
+            rsi_now = compute_rsi(close).iloc[-1]
+            rsi_status = "Überkauft 🔴" if rsi_now > 70 else "Überverkauft 🟢" if rsi_now < 30 else "Neutral ⚪"
+            _insights.append(f"RSI: {rsi_now:.1f} — {rsi_status}")
+        if show_macd:
+            _ml, _sl, _ = compute_macd(close)
+            _cross = "Bullish ✅ (MACD > Signal)" if _ml.iloc[-1] > _sl.iloc[-1] else "Bearish ⚠️ (MACD < Signal)"
+            _insights.append(f"MACD: {_cross}")
+        if _insights:
+            st.markdown(f"""
+            <div class="insight-box">
+                <strong>📊 Indikator-Analyse ({title_suffix}):</strong><br>
+                {'&nbsp;&nbsp;|&nbsp;&nbsp;'.join(_insights)}
+            </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 6: INSIDER & PEERS ====================
 with tab6:
