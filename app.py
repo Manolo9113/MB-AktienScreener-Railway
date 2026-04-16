@@ -425,6 +425,21 @@ def fmt_large(value):
 
 # ==================== SECTOR BENCHMARKS ====================
 # Typische Medianwerte je Sektor (S&P 500 historische Durchschnitte)
+# Fallback-Peers wenn FMP keine Peers liefert (Free-Tier-Limit)
+SECTOR_PEERS_FALLBACK = {
+    "Technology":             ["AAPL", "MSFT", "GOOGL", "META", "NVDA", "ORCL", "ADBE", "CRM"],
+    "Healthcare":             ["JNJ", "PFE", "UNH", "ABBV", "MRK", "LLY", "TMO", "ABT"],
+    "Consumer Cyclical":      ["AMZN", "TSLA", "HD", "NKE", "MCD", "SBUX", "TGT", "LOW"],
+    "Consumer Defensive":     ["WMT", "PG", "KO", "COST", "PEP", "PM", "MO", "CL"],
+    "Financial Services":     ["JPM", "BAC", "WFC", "GS", "MS", "BLK", "C", "AXP"],
+    "Energy":                 ["XOM", "CVX", "COP", "SLB", "EOG", "PXD", "MPC", "PSX"],
+    "Industrials":            ["HON", "UPS", "CAT", "RTX", "LMT", "GE", "DE", "MMM"],
+    "Communication Services": ["GOOGL", "META", "NFLX", "DIS", "T", "VZ", "CMCSA", "SNAP"],
+    "Utilities":              ["NEE", "DUK", "SO", "D", "AEP", "EXC", "SRE", "XEL"],
+    "Real Estate":            ["AMT", "PLD", "CCI", "EQIX", "O", "SPG", "WELL", "AVB"],
+    "Basic Materials":        ["LIN", "APD", "SHW", "FCX", "NEM", "AA", "NUE", "ECL"],
+}
+
 SECTOR_BENCHMARKS = {
     "Technology": {
         "Bruttomarge": 65.0, "Op. Marge": 22.0, "Gewinnmarge": 18.0,
@@ -1032,57 +1047,77 @@ def load_market_news():
 
 # ==================== GROK AI ====================
 def call_grok_api(system_prompt: str, user_message: str, api_key: str) -> str:
-    """Ruft die xAI Grok API auf und gibt den Antworttext zurück."""
+    """Ruft die xAI Grok API auf — versucht grok-3, fällt auf grok-2-1212 zurück."""
     if not api_key:
         return "⚠️ Kein XAI_API_KEY konfiguriert. Bitte in den Railway-Umgebungsvariablen setzen."
-    try:
-        resp = requests.post(
-            "https://api.x.ai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "grok-3",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user",   "content": user_message},
-                ],
-                "temperature": 0.4,
-                "max_tokens": 1800,
-            },
-            timeout=45,
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
-    except requests.exceptions.Timeout:
-        return "⚠️ Grok API Timeout — bitte erneut versuchen."
-    except Exception as e:
-        return f"⚠️ Grok API Fehler: {e}"
+    models = ["grok-3", "grok-2-1212", "grok-beta"]
+    last_err = ""
+    for model in models:
+        try:
+            resp = requests.post(
+                "https://api.x.ai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user",   "content": user_message},
+                    ],
+                    "temperature": 0.4,
+                    "max_tokens": 1800,
+                },
+                timeout=45,
+            )
+            if resp.status_code == 403:
+                last_err = f"403 Forbidden (Modell {model} nicht verfügbar)"
+                continue   # nächstes Modell versuchen
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        except requests.exceptions.Timeout:
+            return "⚠️ Grok API Timeout — bitte erneut versuchen."
+        except Exception as e:
+            last_err = str(e)
+            if "403" in last_err:
+                continue
+            return f"⚠️ Grok API Fehler: {e}"
+    return f"⚠️ Kein verfügbares Grok-Modell gefunden. Letzter Fehler: {last_err}\nBitte prüfe den XAI_API_KEY in den Railway-Einstellungen."
 
 
 def call_grok_chat(system_prompt: str, messages: list, api_key: str) -> str:
-    """Multi-Turn Chat mit Grok — sendet volles Gesprächsprotokoll."""
+    """Multi-Turn Chat mit Grok — versucht grok-3, fällt auf grok-2-1212 zurück."""
     if not api_key:
         return "⚠️ Kein XAI_API_KEY konfiguriert."
-    try:
-        resp = requests.post(
-            "https://api.x.ai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": "grok-3",
-                "messages": [{"role": "system", "content": system_prompt}] + messages,
-                "temperature": 0.5,
-                "max_tokens": 900,
-            },
-            timeout=45,
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
-    except requests.exceptions.Timeout:
-        return "⚠️ Timeout — bitte erneut versuchen."
-    except Exception as e:
-        return f"⚠️ Fehler: {e}"
+    models = ["grok-3", "grok-2-1212", "grok-beta"]
+    last_err = ""
+    for model in models:
+        try:
+            resp = requests.post(
+                "https://api.x.ai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": model,
+                    "messages": [{"role": "system", "content": system_prompt}] + messages,
+                    "temperature": 0.5,
+                    "max_tokens": 900,
+                },
+                timeout=45,
+            )
+            if resp.status_code == 403:
+                last_err = f"403 Forbidden (Modell {model})"
+                continue
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        except requests.exceptions.Timeout:
+            return "⚠️ Timeout — bitte erneut versuchen."
+        except Exception as e:
+            last_err = str(e)
+            if "403" in last_err:
+                continue
+            return f"⚠️ Fehler: {e}"
+    return f"⚠️ Kein verfügbares Grok-Modell. Letzter Fehler: {last_err}"
 
 
 def build_grok_prompt(
@@ -1479,6 +1514,11 @@ target_mean = yf_info.get("targetMeanPrice")
 recommendation = yf_info.get("recommendationKey", "").replace("_", " ").title()
 sector = yf_info.get("sector", "")
 industry = yf_info.get("industry", "")
+
+# Peer-Fallback: wenn FMP keine Peers liefert → Sektor-basierte Liste
+if not peers and sector:
+    peers = [t for t in SECTOR_PEERS_FALLBACK.get(sector, []) if t != ticker][:5]
+
 # Logo: FMP Image-Endpoint (öffentlich, kein API-Key nötig)
 logo_url = f"https://financialmodelingprep.com/image-stock/{ticker}.png"
 
