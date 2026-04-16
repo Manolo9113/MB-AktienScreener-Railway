@@ -397,36 +397,66 @@ def load_quarterly_financials(ticker: str):
 
 @st.cache_data(ttl=86400)
 def load_earnings_surprises(ticker: str) -> list[dict]:
-    """Lädt EPS Beat/Miss der letzten 8 Quartale aus yfinance earnings_dates."""
+    """Lädt EPS Beat/Miss aus yfinance earnings_dates (mit limit=20 und quarterly_earnings-Fallback)."""
     results = []
+
+    # Attempt 1: earnings_dates (with larger limit for more history)
     try:
-        df = yf.Ticker(ticker).earnings_dates
-        if df is None or df.empty:
-            return []
-        df = df.dropna(subset=["EPS Estimate", "Reported EPS"])
-        # Only past dates (Reported EPS available)
-        df = df[df["Reported EPS"].notna()]
-        df = df.sort_index(ascending=False).head(8)
-        for date, row in df.iterrows():
-            est  = float(row["EPS Estimate"])
-            act  = float(row["Reported EPS"])
-            surp_pct = ((act - est) / abs(est) * 100) if est != 0 else 0
-            if surp_pct > 2:
-                verdict = "Beat"
-            elif surp_pct < -2:
-                verdict = "Miss"
-            else:
-                verdict = "In Line"
-            results.append({
-                "date":     date.strftime("%b %Y") if hasattr(date, "strftime") else str(date)[:7],
-                "estimate": est,
-                "actual":   act,
-                "surp_pct": surp_pct,
-                "verdict":  verdict,
-            })
+        stock = yf.Ticker(ticker)
+        # newer yfinance versions accept limit= keyword
+        try:
+            df = stock.get_earnings_dates(limit=20)
+        except Exception:
+            df = stock.earnings_dates
+
+        if df is not None and not df.empty:
+            # Keep only rows where Reported EPS is present (= past quarters)
+            past = df[df["Reported EPS"].notna()].copy()
+            if not past.empty:
+                past = past.sort_index(ascending=False).head(8)
+                for date, row in past.iterrows():
+                    est_raw = row.get("EPS Estimate")
+                    act_raw = row.get("Reported EPS")
+                    if pd.isna(act_raw):
+                        continue
+                    act = float(act_raw)
+                    est = float(est_raw) if pd.notna(est_raw) else None
+                    surp_pct = ((act - est) / abs(est) * 100) if est else 0
+                    verdict = "Beat" if surp_pct > 2 else "Miss" if surp_pct < -2 else "In Line"
+                    results.append({
+                        "date":     date.strftime("%b %Y") if hasattr(date, "strftime") else str(date)[:7],
+                        "estimate": est,
+                        "actual":   act,
+                        "surp_pct": surp_pct,
+                        "verdict":  verdict,
+                    })
+                if results:
+                    return results
     except Exception:
         pass
+
+    # Attempt 2: quarterly_earnings fallback (no estimates, but shows actual EPS trend)
+    try:
+        stock = yf.Ticker(ticker)
+        qe = stock.quarterly_earnings
+        if qe is not None and not qe.empty and "Earnings" in qe.columns:
+            qe = qe.sort_index(ascending=False).head(8)
+            for period, row in qe.iterrows():
+                act_raw = row.get("Earnings")
+                if pd.isna(act_raw):
+                    continue
+                results.append({
+                    "date":     str(period),
+                    "estimate": None,
+                    "actual":   float(act_raw),
+                    "surp_pct": 0,
+                    "verdict":  "In Line",
+                })
+    except Exception:
+        pass
+
     return results
+
 
 @st.cache_data(ttl=86400)
 def load_fmp_metrics(ticker: str):
@@ -2875,7 +2905,7 @@ with tab3:
               <div style='color:{_clr};font-size:1.1rem;font-weight:800;'>{_icon} {_v}</div>
               <div style='color:#eceff1;font-size:0.88rem;font-weight:700;margin:4px 0;'>{_surp_str}</div>
               <div style='color:#546e7a;font-size:0.7rem;'>
-                Est: ${_es["estimate"]:.2f} · Act: ${_es["actual"]:.2f}
+                {'Est: $' + f"{_es['estimate']:.2f} · " if _es['estimate'] is not None else ''}Act: ${_es["actual"]:.2f}
               </div>
             </div>""", unsafe_allow_html=True)
 
