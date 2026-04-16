@@ -2354,22 +2354,23 @@ def mini_card(label, value, good, ok, fmt=".1f", suffix="", inverse=False, toolt
     tip = tooltip or _METRIC_TOOLTIPS.get(label, "")
     tip_html = ""
     if tip:
-        # Escape quotes for safe inline HTML
-        tip_safe = tip.replace('"', "&quot;").replace("'", "&#39;")
+        # Escape all HTML special chars to avoid breaking the card structure
+        tip_safe = tip.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
         tip_html = (
             f'<div class="mcard-tip-wrap">'
             f'<span class="mcard-tip-icon" tabindex="0">?</span>'
             f'<div class="mcard-tip-bubble">{tip_safe}</div>'
             f'</div>'
         )
-    return f"""
-    <div class="metric-card" style="position:relative;">
-        {tip_html}
-        <div class="metric-label">{label}</div>
-        <div class="metric-value">{val_str}</div>
-        <div style="margin-top:6px;">{b}</div>
-    </div>
-    """
+    # Single-line HTML — no blank lines inside divs (avoids Streamlit markdown parser switching modes)
+    return (
+        f'<div class="metric-card" style="position:relative;">'
+        f'{tip_html}'
+        f'<div class="metric-label">{label}</div>'
+        f'<div class="metric-value">{val_str}</div>'
+        f'<div style="margin-top:6px;">{b}</div>'
+        f'</div>'
+    )
 
 if show_rule_of_40:
     with col_r40:
