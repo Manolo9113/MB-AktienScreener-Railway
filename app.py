@@ -1095,10 +1095,38 @@ _VALUE_POOL = {
     "ABBV":  "AbbVie – Pharma mit starker Pipeline nach Humira-Ablösung",
     "MSFT":  "Microsoft – Cloud-Plattform (Azure + Copilot) mit stabilem Dividendenwachstum",
 }
+# (ticker, description, estimated_div_growth_years)
+_DIVIDEND_POOL = {
+    "KO":  ("Coca-Cola – 62 Jahre konsekutive Dividendenerhöhungen, globaler Getränke-Moat", 62),
+    "PG":  ("Procter & Gamble – 67 Jahre, breites Markenportfolio mit Preissetzungsmacht", 67),
+    "PEP": ("PepsiCo – 52 Jahre, Food & Beverages mit globalem Vertriebsnetz", 52),
+    "LOW": ("Lowe's – 61 Jahre, Heimwerker-Einzelhandel mit starkem Free-Cashflow", 61),
+    "ADP": ("Automatic Data Processing – 49 Jahre, Payroll-Monopolist mit Netzwerkeffekten", 49),
+    "ITW": ("Illinois Tool Works – 60 Jahre, diversifizierter Industriekonzern mit 80/20-Strategie", 60),
+    "MCD": ("McDonald's – 48 Jahre, globales Franchise-Modell mit hohen Asset-Light-Margen", 48),
+    "KMB": ("Kimberly-Clark – 52 Jahre, Konsumgüter mit stabilen Cashflows", 52),
+    "AFL": ("Aflac – 41 Jahre, Krankenversicherung mit solidem Underwriting-Ergebnis", 41),
+    "SYY": ("Sysco – 54 Jahre, größter US-Lebensmittelvertrieb mit starker Marktposition", 54),
+    "CVX": ("Chevron – 37 Jahre, integrierter Ölkonzern mit diszipliniertem Kapitalrückfluss", 37),
+    "JNJ": ("Johnson & Johnson – 62 Jahre, Healthcare-Gigant mit breitem Pharma- & MedTech-Moat", 62),
+}
+
+def _safe_div_yield(info: dict, price: float) -> float:
+    """Berechnet Dividend Yield sauber aus trailingAnnualDividendRate / price."""
+    annual = info.get("trailingAnnualDividendRate") or 0
+    raw_dy = (info.get("dividendYield") or 0) * 100
+    if annual and price and price > 0:
+        computed = (annual / price) * 100
+        dy = computed if (abs(computed - raw_dy) > 2 or raw_dy > 15) else raw_dy
+    else:
+        dy = raw_dy
+    return min(dy, 25.0)  # cap at 25 %
 
 @st.cache_data(ttl=43200)
 def load_stock_picks():
-    growth_results, value_results = [], []
+    growth_results, value_results, div_results = [], [], []
+
+    # ── Growth & Value ──────────────────────────────────────────────────
     for pool, results in [(_GROWTH_POOL, growth_results), (_VALUE_POOL, value_results)]:
         for t, desc in pool.items():
             try:
@@ -1122,9 +1150,71 @@ def load_stock_picks():
                 })
             except Exception:
                 pass
+
+    # ── Dividend Aristocrats ────────────────────────────────────────────
+    for t, (desc, div_years) in _DIVIDEND_POOL.items():
+        try:
+            info = yf.Ticker(t).info
+            price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+            if not price:
+                continue
+
+            dy = _safe_div_yield(info, price)
+            payout = (info.get("payoutRatio") or 0) * 100
+            roe = (info.get("returnOnEquity") or 0) * 100
+            fcf = info.get("freeCashflow") or 0
+            mktcap = info.get("marketCap") or 1
+            eps_growth = (info.get("earningsGrowth") or 0) * 100
+            rev_growth = (info.get("revenueGrowth") or 0) * 100
+            week52h = info.get("fiftyTwoWeekHigh") or price
+            week52l = info.get("fiftyTwoWeekLow") or price
+            w52_pos = ((price - week52l) / (week52h - week52l) * 100) if week52h > week52l else 50
+
+            # ── Dividend Trap Checks ────────────────────────────────────
+            trap_flags = []
+            if dy > 8:
+                trap_flags.append("Yield >8 %")
+            if payout > 75 and payout < 200:
+                trap_flags.append("Payout >75 %")
+            if fcf < 0:
+                trap_flags.append("FCF negativ")
+            if eps_growth < -15:
+                trap_flags.append("Gewinn rückläufig")
+            if w52_pos < 15:
+                trap_flags.append("Kurs nahe 52W-Tief")
+
+            # Skip if 3+ trap flags (likely a value trap)
+            if len(trap_flags) >= 3:
+                continue
+
+            # Quality filter: yield must be in meaningful range
+            if dy < 1.0 or dy > 10.0:
+                continue
+
+            # Quality score: rewards yield, low payout, positive FCF, high ROE
+            fcf_yield_val = (fcf / mktcap * 100) if fcf and mktcap else 0
+            quality_score = (
+                dy * 3
+                + max(0, 70 - payout) * 0.3
+                + max(0, roe) * 0.2
+                + (5 if fcf > 0 else -5)
+                + min(div_years, 60) * 0.1
+            )
+
+            div_results.append({
+                "ticker": t, "name": info.get("shortName") or t, "desc": desc,
+                "price": price, "div_yield": dy, "payout": payout,
+                "div_years": div_years, "roe": roe, "fcf_yield": fcf_yield_val,
+                "w52_pos": w52_pos, "quality_score": quality_score,
+                "trap_flags": trap_flags,
+            })
+        except Exception:
+            pass
+
     growth_results.sort(key=lambda x: (x["rev_growth"] or 0) + (x["w52_pos"] or 0) * 0.3, reverse=True)
     value_results.sort(key=lambda x: (x["fcf_yield"] or 0) * 2 + (x["roe"] or 0) * 0.5, reverse=True)
-    return growth_results[:8], value_results[:8]
+    div_results.sort(key=lambda x: x["quality_score"], reverse=True)
+    return growth_results[:8], value_results[:8], div_results[:8]
 
 
 # ==================== KI ANALYSE (Grok + Gemini Fallback) ====================
@@ -1552,9 +1642,9 @@ if st.session_state["show_landing"]:
 
     # ── Aktienempfehlungen Accordion ──
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    with st.expander("💡  Aktienideen — Growth & Value Picks  (täglich aktualisiert)", expanded=False):
+    with st.expander("💡  Aktienideen — Growth · Value · Dividende  (täglich aktualisiert)", expanded=False):
         with st.spinner("Lade Aktienempfehlungen…"):
-            _gp, _vp = load_stock_picks()
+            _gp, _vp, _dp = load_stock_picks()
 
         def _badge(label, value, suffix="", fmt=".0f", color="#64b5f6"):
             if value is None or value == 0:
@@ -1580,13 +1670,12 @@ if st.session_state["show_landing"]:
                     f"<div style='background:{bar_clr};width:{pos}%;height:4px;"
                     f"border-radius:4px;transition:width 0.4s;'></div></div></div>")
 
-        def _pick_card(s, accent, badges_html):
+        def _pick_card(s, accent, badges_html, extra_html=""):
             price_str = f"${s['price']:,.2f}" if s['price'] else "—"
             return f"""
             <div style='background:linear-gradient(135deg,#0d1f3c,#0a1628);
                  border:1px solid #1e3a5f;border-left:3px solid {accent};
-                 border-radius:12px;padding:13px 15px;margin-bottom:10px;
-                 transition:border-color 0.2s;'>
+                 border-radius:12px;padding:13px 15px;margin-bottom:10px;'>
               <div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>
                 <span style='color:{accent};font-size:1.02rem;font-weight:800;
                       letter-spacing:0.5px;'>{s["ticker"]}</span>
@@ -1595,10 +1684,11 @@ if st.session_state["show_landing"]:
               <div style='color:#546e7a;font-size:0.72rem;margin-bottom:5px;'>{s["name"]}</div>
               <div style='color:#90a4ae;font-size:0.78rem;line-height:1.45;margin-bottom:8px;'>{s["desc"]}</div>
               <div style='line-height:2;'>{badges_html}</div>
+              {extra_html}
               {_trend_bar(s["w52_pos"], accent)}
             </div>"""
 
-        _col_g, _col_v = st.columns(2)
+        _col_g, _col_v, _col_d = st.columns(3)
 
         with _col_g:
             st.markdown(
@@ -1625,6 +1715,28 @@ if st.session_state["show_landing"]:
                      _badge("ROE", s["roe"], "%", ".0f", "#f48fb1") +
                      _badge("FCF", s["fcf_yield"], "%", ".1f", "#a5d6a7"))
                 st.markdown(_pick_card(s, "#a78bfa", b), unsafe_allow_html=True)
+
+        with _col_d:
+            st.markdown(
+                "<div style='color:#f59e0b;font-size:0.82rem;font-weight:700;"
+                "text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;"
+                "padding-bottom:7px;border-bottom:1px solid rgba(245,158,11,0.3);'>"
+                "🏆 Dividend Aristocrats</div>",
+                unsafe_allow_html=True)
+            for s in _dp:
+                trap_html = ""
+                if s["trap_flags"]:
+                    trap_html = (f"<div style='color:#ffd600;font-size:0.68rem;"
+                                 f"margin-bottom:4px;'>⚠️ {', '.join(s['trap_flags'])}</div>")
+                years_b = _badge(f"{s['div_years']}J▲", None, "", ".0f", "#fbbf24") if False else (
+                    f"<span style='background:rgba(245,158,11,0.12);color:#fbbf24;"
+                    f"border-radius:5px;padding:2px 7px;font-size:0.71rem;"
+                    f"font-weight:600;margin-right:4px;'>{s['div_years']} Jahre▲</span>"
+                )
+                b = (years_b +
+                     _badge("Yield", s["div_yield"], "%", ".1f", "#f59e0b") +
+                     _badge("Payout", s["payout"] if s["payout"] > 0 else None, "%", ".0f", "#fca5a5"))
+                st.markdown(_pick_card(s, "#f59e0b", b, trap_html), unsafe_allow_html=True)
 
         st.markdown(
             "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
