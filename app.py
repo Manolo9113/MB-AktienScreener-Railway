@@ -290,6 +290,29 @@ st.markdown("""
         padding: 20px 22px;
         margin: 16px 0;
     }
+
+    /* KI-Analyse CTA Button */
+    div[data-testid="stButton"] button[kind="secondary"]#btn_grok,
+    div[data-testid="stBaseButton-secondary"][key="btn_grok"] button,
+    .ki-cta-wrap div[data-testid="stButton"] > button {
+        background: linear-gradient(135deg, #4c1d95, #6d28d9, #7c3aed) !important;
+        color: #fff !important;
+        border: none !important;
+        border-radius: 14px !important;
+        font-size: 1.15rem !important;
+        font-weight: 700 !important;
+        padding: 14px 28px !important;
+        letter-spacing: 0.5px !important;
+        box-shadow: 0 4px 20px rgba(124,58,237,0.45), 0 0 0 1px rgba(167,139,250,0.25) !important;
+        transition: all 0.2s ease !important;
+        width: 100% !important;
+        cursor: pointer !important;
+    }
+    .ki-cta-wrap div[data-testid="stButton"] > button:hover {
+        background: linear-gradient(135deg, #5b21b6, #7c3aed, #8b5cf6) !important;
+        box-shadow: 0 6px 28px rgba(124,58,237,0.65), 0 0 0 2px rgba(167,139,250,0.4) !important;
+        transform: translateY(-1px) !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1832,13 +1855,18 @@ if st.session_state.get("grok_ticker") != ticker:
     st.session_state["grok_chat"] = []
     st.session_state["grok_chat_ctx"] = ""
 
-_col_btn, _col_hint = st.columns([1, 4])
+st.markdown('<div class="ki-cta-wrap">', unsafe_allow_html=True)
+_col_btn, _col_hint = st.columns([2, 3])
 with _col_btn:
-    _run_grok = st.button("🤖 KI-Analyse", key="btn_grok",
-                          help="Grok-3 analysiert alle Kennzahlen und liefert Bull/Bear-Case, Investment-These und Risiko-Flags")
+    _run_grok = st.button("🤖  KI-Analyse starten", key="btn_grok",
+                          use_container_width=True,
+                          help="KI analysiert alle Kennzahlen und liefert Bull/Bear-Case, Investment-These und Risiko-Flags")
 with _col_hint:
     if not XAI_API_KEY and not GEMINI_API_KEY:
         st.caption("⚠️ Kein KI-Key gesetzt — XAI_API_KEY (xAI) oder GEMINI_API_KEY (Google) in Railway-Umgebungsvariablen eintragen.")
+    else:
+        st.caption("Powered by Grok (xAI) · Gemini (Google) · Analyse dauert ca. 5–15 Sekunden")
+st.markdown('</div>', unsafe_allow_html=True)
 
 if _run_grok:
     _dcf_for_grok = dcf_valuation(fcf, shares_outstanding,
