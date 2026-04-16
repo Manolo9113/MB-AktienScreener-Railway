@@ -468,6 +468,8 @@ def load_annual_financials(ticker: str):
                     break
     except Exception:
         pass
+    fcf = pd.Series(dtype=float)
+    shares_ann = pd.Series(dtype=float)
     try:
         cf = stock.cash_flow
         if cf is not None and not cf.empty:
@@ -477,7 +479,16 @@ def load_annual_financials(ticker: str):
                 fcf = (cf.loc["Operating Cash Flow"] + cf.loc["Capital Expenditure"]).dropna().sort_index()
     except Exception:
         pass
-    return rev, net, eps, fcf
+    try:
+        inc2 = stock.income_stmt
+        if inc2 is not None and not inc2.empty:
+            for row in ["Diluted Average Shares", "Basic Average Shares", "Ordinary Shares Number"]:
+                if row in inc2.index:
+                    shares_ann = inc2.loc[row].dropna().sort_index()
+                    break
+    except Exception:
+        pass
+    return rev, net, eps, fcf, shares_ann
 
 @st.cache_data(ttl=86400)
 def load_earnings_surprises(ticker: str) -> list[dict]:
@@ -2115,7 +2126,7 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     hist_weekly, hist_monthly, share_history, splits_data = load_yfinance_extended(ticker)
     q_rev, q_net, q_eps = load_quarterly_financials(ticker)
     earnings_surprises   = load_earnings_surprises(ticker)
-    a_rev, a_net, a_eps, a_fcf = load_annual_financials(ticker)
+    a_rev, a_net, a_eps, a_fcf, a_shares = load_annual_financials(ticker)
 
 if hist.empty or not yf_info:
     st.markdown(f"""
@@ -2201,46 +2212,16 @@ logo_url = f"https://financialmodelingprep.com/image-stock/{ticker}.png"
 # Rule of 40 nur für SaaS/Tech/Cyber relevant
 show_rule_of_40 = is_saas_or_cyber(sector, industry)
 
-# Verwässerung berechnen — split-bereinigt, 5-Jahres-Fenster
+# Verwässerung berechnen — aus Jahresabschluss (Diluted Average Shares), bereits split-bereinigt
 dilution_pct = None
-if share_history is not None and not (isinstance(share_history, pd.DataFrame) and share_history.empty):
+if not a_shares.empty and len(a_shares) >= 2:
     try:
-        if isinstance(share_history, pd.Series):
-            sh = share_history.dropna().sort_index()
-        elif isinstance(share_history, pd.DataFrame) and len(share_history.columns) > 0:
-            sh = share_history.iloc[:, 0].dropna().sort_index()
-        else:
-            sh = pd.Series(dtype=float)
-        # Split-Bereinigung: timezone-sicher (beide Seiten als naive)
-        def _naive(ts):
-            t = pd.Timestamp(ts)
-            return t.tz_localize(None) if t.tzinfo is None else t.tz_convert(None)
-        def _naive_index(idx):
-            if hasattr(idx, "tz") and idx.tz is not None:
-                return idx.tz_convert(None)
-            return idx
-        if len(sh) > 0 and splits_data is not None and len(splits_data) > 0:
-            sh = sh.copy()
-            sh_idx_naive = _naive_index(sh.index)
-            for split_date, ratio in splits_data.items():
-                if ratio <= 0:
-                    continue
-                try:
-                    sd = _naive(split_date)
-                    mask = sh_idx_naive < sd
-                    sh.iloc[mask.values] = sh.iloc[mask.values].values * ratio
-                except Exception:
-                    continue
-        # Nur letzte 5 Jahre
-        sh_idx_naive = _naive_index(sh.index)
-        five_years_ago = pd.Timestamp.now().replace(tzinfo=None) - pd.DateOffset(years=5)
-        sh = sh[sh_idx_naive >= five_years_ago]
-        if len(sh) >= 2:
-            oldest = sh.iloc[0]
-            newest = sh.iloc[-1]
-            if oldest > 0:
-                dilution_pct = (newest - oldest) / oldest * 100
-    except:
+        _sh = a_shares.sort_index()
+        oldest = float(_sh.iloc[0])
+        newest = float(_sh.iloc[-1])
+        if oldest > 0:
+            dilution_pct = (newest - oldest) / oldest * 100
+    except Exception:
         pass
 
 # Neue Investor-Kennzahlen
@@ -3148,40 +3129,37 @@ with tab3:
             <div class="metric-sub">% des Free Float leerverkauft</div>
         </div>""", unsafe_allow_html=True)
 
-    # Share count history chart
-    if share_history is not None:
+    # Share count history — Balkendiagramm aus Jahresabschluss (split-bereinigt)
+    if not a_shares.empty and len(a_shares) >= 2:
         try:
-            if isinstance(share_history, pd.Series):
-                sh = share_history.dropna()
-            elif isinstance(share_history, pd.DataFrame) and len(share_history.columns) > 0:
-                sh = share_history.iloc[:, 0].dropna()
-            else:
-                sh = pd.Series(dtype=float)
-            if len(sh) >= 4:
-                fig_sh = go.Figure(go.Scatter(
-                    x=sh.index, y=sh.values / 1e9,
-                    mode="lines+markers",
-                    line=dict(color="#ffd600", width=2),
-                    marker=dict(size=5, color="#ffd600"),
-                    fill="tozeroy",
-                    fillcolor="rgba(255,214,0,0.06)",
-                    name="Aktienanzahl (Mrd.)"
-                ))
-                fig_sh.update_layout(
-                    template="plotly_dark",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(13,21,38,0.8)",
-                    height=200,
-                    margin=dict(l=0, r=0, t=10, b=0),
-                    showlegend=False,
-                    yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False, title="Mrd. Aktien"),
-                    xaxis=dict(showgrid=False),
-                )
-                st.plotly_chart(fig_sh, use_container_width=True)
-                if dilution_pct:
-                    dil_warn = "⚠️ Starke Verwässerung" if dilution_pct > 10 else "🟡 Moderate Verwässerung" if dilution_pct > 3 else "✅ Geringe Verwässerung / Rückkäufe"
-                    st.markdown(f'<div class="insight-box"><strong>Aktienanzahl Trend:</strong> {dil_warn} ({dil_str} seit Messbeginn). Für Investoren ist ein Rückgang der Aktienanzahl positiv (Buybacks).</div>', unsafe_allow_html=True)
-        except:
+            _sh_ann = a_shares.sort_index()
+            _sh_years = [pd.Timestamp(d).strftime("%Y") for d in _sh_ann.index]
+            _sh_vals  = (_sh_ann.values / 1e9).tolist()
+            _sh_delta = [0.0] + [(_sh_vals[i] - _sh_vals[i-1]) / abs(_sh_vals[i-1]) * 100 if _sh_vals[i-1] else 0 for i in range(1, len(_sh_vals))]
+            _sh_colors = ["#ff5252" if d > 0.5 else "#00e676" if d < -0.5 else "#ffd600" for d in _sh_delta]
+            fig_sh = go.Figure(go.Bar(
+                x=_sh_years, y=_sh_vals,
+                marker_color=_sh_colors,
+                text=[f"{v:.2f}B" for v in _sh_vals],
+                textposition="outside",
+                textfont=dict(size=10, color="#90a4ae"),
+            ))
+            fig_sh.update_layout(
+                title=dict(text="Aktienanzahl (Diluted) — Jahresverlauf", font=dict(size=12, color="#90a4ae"), x=0),
+                template="plotly_dark",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(13,21,38,0.8)",
+                height=220,
+                margin=dict(l=0, r=0, t=30, b=0),
+                showlegend=False,
+                yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False, title="Mrd. Aktien"),
+                xaxis=dict(showgrid=False),
+            )
+            st.plotly_chart(fig_sh, use_container_width=True)
+            if dilution_pct is not None:
+                dil_warn = "⚠️ Starke Verwässerung" if dilution_pct > 10 else "🟡 Moderate Verwässerung" if dilution_pct > 3 else "✅ Geringe Verwässerung / Rückkäufe (Buybacks)"
+                st.markdown(f'<div class="insight-box"><strong>Aktienanzahl Trend:</strong> {dil_warn} ({dil_str} über {len(_sh_years)} Jahre). Rückgang = Buybacks = positiv für Aktionäre.</div>', unsafe_allow_html=True)
+        except Exception:
             pass
 
     st.markdown("<div class='section-header'>EPS</div>", unsafe_allow_html=True)
