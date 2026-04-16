@@ -1267,7 +1267,7 @@ _OVERHYPED_POOL = {
     "SMCI":  "Super Micro — Bilanzierungsprobleme, Delisting-Risiko, extrem hohe Kursvolatilität",
 }
 
-
+def _safe_div_yield(info: dict, price: float) -> float:
     """Berechnet Dividend Yield sauber aus trailingAnnualDividendRate / price."""
     annual = info.get("trailingAnnualDividendRate") or 0
     raw_dy = (info.get("dividendYield") or 0) * 100
