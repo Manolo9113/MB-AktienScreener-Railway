@@ -444,6 +444,32 @@ def load_quarterly_financials(ticker: str):
     return rev, net, eps_q
 
 @st.cache_data(ttl=86400)
+def load_annual_financials(ticker: str):
+    """Jahresabschluss: Umsatz, Nettogewinn, EPS der letzten 5 Geschäftsjahre."""
+    stock = yf.Ticker(ticker)
+    rev = pd.Series(dtype=float)
+    net = pd.Series(dtype=float)
+    eps = pd.Series(dtype=float)
+    try:
+        inc = stock.income_stmt
+        if inc is not None and not inc.empty:
+            for row in ["Total Revenue", "Revenue"]:
+                if row in inc.index:
+                    rev = inc.loc[row].dropna().sort_index()
+                    break
+            for row in ["Net Income", "Net Income Common Stockholders"]:
+                if row in inc.index:
+                    net = inc.loc[row].dropna().sort_index()
+                    break
+            for row in ["Diluted EPS", "Basic EPS"]:
+                if row in inc.index:
+                    eps = inc.loc[row].dropna().sort_index()
+                    break
+    except Exception:
+        pass
+    return rev, net, eps
+
+@st.cache_data(ttl=86400)
 def load_earnings_surprises(ticker: str) -> list[dict]:
     """Lädt EPS Beat/Miss — FMP primär, yfinance als Fallback."""
     results = []
@@ -2047,6 +2073,7 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     hist_weekly, hist_monthly, share_history, splits_data = load_yfinance_extended(ticker)
     q_rev, q_net, q_eps = load_quarterly_financials(ticker)
     earnings_surprises   = load_earnings_surprises(ticker)
+    a_rev, a_net, a_eps  = load_annual_financials(ticker)
 
 if hist.empty or not yf_info:
     st.markdown(f"""
@@ -2883,6 +2910,93 @@ with tab2:
                 title=dict(text="Jährliche Kursperformance", font=dict(color="#64b5f6", size=13)),
             )
             st.plotly_chart(fig_g, use_container_width=True)
+
+    # ── Jährliches Umsatz- & Gewinnwachstum ────────────────────────────
+    st.markdown("<div class='section-header'>📊 Jährliches Fundamentalwachstum (5 Jahre)</div>",
+                unsafe_allow_html=True)
+
+    def _bar_chart(series: pd.Series, title: str, color_pos: str, color_neg: str,
+                   is_growth: bool = True, value_fmt=None):
+        """Hilfsfunktion: Balkendiagramm für Jahreswerte oder YoY-Wachstum."""
+        if series.empty or len(series) < 2:
+            return None
+        s = series.tail(5)
+        if is_growth:
+            vals = s.pct_change().dropna() * 100
+            ylabel, suffix = "Wachstum %", "%"
+        else:
+            vals = s
+            ylabel, suffix = "Wert", ""
+        if vals.empty:
+            return None
+        labels = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in vals.index]
+        colors = [color_pos if v >= 0 else color_neg for v in vals.values]
+        text_vals = (
+            [f"{v:+.1f}{suffix}" for v in vals.values] if is_growth
+            else ([value_fmt(v) for v in vals.values] if value_fmt else [f"{v:.2f}" for v in vals.values])
+        )
+        fig = go.Figure(go.Bar(
+            x=labels, y=vals.values,
+            marker_color=colors,
+            text=text_vals,
+            textposition="outside",
+            textfont=dict(size=11, color="#90a4ae"),
+        ))
+        fig.add_hline(y=0, line_color="#1e3a5f", line_width=1)
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(13,21,38,0.8)",
+            height=240,
+            margin=dict(l=0, r=0, t=30, b=0),
+            showlegend=False,
+            yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False,
+                       ticksuffix=suffix if is_growth else ""),
+            xaxis=dict(showgrid=False),
+            title=dict(text=title, font=dict(color="#64b5f6", size=13)),
+        )
+        return fig
+
+    _gc1, _gc2 = st.columns(2)
+
+    with _gc1:
+        _fig_rev_g = _bar_chart(a_rev, "Umsatzwachstum YoY", "#00e676", "#ff5252")
+        if _fig_rev_g:
+            st.plotly_chart(_fig_rev_g, use_container_width=True)
+        else:
+            st.markdown('<div class="insight-box" style="color:#546e7a;">Keine Jahres-Umsatzdaten verfügbar.</div>',
+                        unsafe_allow_html=True)
+
+    with _gc2:
+        _fig_net_g = _bar_chart(a_net, "Nettogewinnwachstum YoY", "#00e676", "#ff5252")
+        if _fig_net_g:
+            st.plotly_chart(_fig_net_g, use_container_width=True)
+        else:
+            st.markdown('<div class="insight-box" style="color:#546e7a;">Keine Jahres-Gewinndate verfügbar.</div>',
+                        unsafe_allow_html=True)
+
+    # Absolutes Niveau (Umsatz & EPS) als zweite Reihe
+    _gc3, _gc4 = st.columns(2)
+
+    with _gc3:
+        _fig_rev_abs = _bar_chart(a_rev, "Umsatz absolut", "#1565c0", "#1565c0",
+                                   is_growth=False, value_fmt=lambda v: fmt_large(v))
+        if _fig_rev_abs:
+            st.plotly_chart(_fig_rev_abs, use_container_width=True)
+
+    with _gc4:
+        if not a_eps.empty and len(a_eps) >= 2:
+            _fig_eps = _bar_chart(a_eps, "EPS (Diluted) — Trend",
+                                   "#00e5ff", "#ff5252", is_growth=False,
+                                   value_fmt=lambda v: f"${v:.2f}")
+            if _fig_eps:
+                st.plotly_chart(_fig_eps, use_container_width=True)
+        elif not a_net.empty:
+            _fig_net_abs = _bar_chart(a_net, "Nettogewinn absolut",
+                                       "#64b5f6", "#ff5252", is_growth=False,
+                                       value_fmt=lambda v: fmt_large(v))
+            if _fig_net_abs:
+                st.plotly_chart(_fig_net_abs, use_container_width=True)
 
 with tab3:
     st.markdown("<div class='section-header'>Bilanz</div>", unsafe_allow_html=True)
