@@ -1068,6 +1068,64 @@ def load_market_news():
             pass
     return headlines[:4]
 
+
+# ==================== STOCK PICKS ====================
+_GROWTH_POOL = {
+    "NVDA":  "KI-Chip-Marktführer mit explosivem Datencenter-Wachstum",
+    "META":  "Social-Media-Gigant mit starker KI-Monetarisierung & Margenstärke",
+    "AMZN":  "E-Commerce & Cloud (AWS) mit beschleunigtem Free-Cashflow",
+    "CRWD":  "Cybersecurity-Leader mit hohem Anteil wiederkehrender SaaS-Erlöse",
+    "NOW":   "ServiceNow – Enterprise-Workflow-KI mit >20 % ARR-Wachstum",
+    "PLTR":  "Datenanalyse & KI-Plattform mit starkem US-Government-Momentum",
+    "NFLX":  "Streaming-Leader mit wachsendem Werbeumsatz und Preissetzungsmacht",
+    "UBER":  "Ride-Hailing & Delivery – erstmals profitabel mit FCF-Wachstum",
+    "FICO":  "Kreditscoring-Monopol mit nachhaltiger Preissetzungsmacht",
+    "APP":   "AppLovin – Mobile-Ad-Tech mit außergewöhnlichem Margenwachstum",
+}
+_VALUE_POOL = {
+    "GOOGL": "Alphabet – KI-Leader mit günstigem Forward-KGV trotz Marktdominanz",
+    "BRK-B": "Berkshire Hathaway – diversifizierter Qualitätskonzern mit riesigem Cash-Berg",
+    "V":     "Visa – unerschütterliches Zahlungsnetzwerk mit über 50 % Nettomargen",
+    "ASML":  "Halbleiter-Monopolist für EUV-Lithographie – kein echter Wettbewerber",
+    "JNJ":   "Johnson & Johnson – Healthcare-Dividendenaristokrat mit breitem Moat",
+    "BLK":   "BlackRock – weltgrößter Asset Manager mit stabilem Gebührenstrom",
+    "UNH":   "UnitedHealth – diversifiziertes Gesundheitsunternehmen mit starkem Moat",
+    "CB":    "Chubb – Versicherungskonzern mit herausragender Underwriting-Qualität",
+    "ABBV":  "AbbVie – Pharma mit starker Pipeline nach Humira-Ablösung",
+    "MSFT":  "Microsoft – Cloud-Plattform (Azure + Copilot) mit stabilem Dividendenwachstum",
+}
+
+@st.cache_data(ttl=43200)
+def load_stock_picks():
+    growth_results, value_results = [], []
+    for pool, results in [(_GROWTH_POOL, growth_results), (_VALUE_POOL, value_results)]:
+        for t, desc in pool.items():
+            try:
+                info = yf.Ticker(t).info
+                price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+                fwd_pe = info.get("forwardPE")
+                rev_growth = (info.get("revenueGrowth") or 0) * 100
+                eps_growth = (info.get("earningsGrowth") or 0) * 100
+                fcf = info.get("freeCashflow") or 0
+                mktcap = info.get("marketCap") or 1
+                fcf_yield = (fcf / mktcap * 100) if fcf else None
+                roe = (info.get("returnOnEquity") or 0) * 100
+                week52h = info.get("fiftyTwoWeekHigh") or price
+                week52l = info.get("fiftyTwoWeekLow") or price
+                w52_pos = ((price - week52l) / (week52h - week52l) * 100) if week52h > week52l else 50
+                results.append({
+                    "ticker": t, "name": info.get("shortName") or t, "desc": desc,
+                    "price": price, "fwd_pe": fwd_pe,
+                    "rev_growth": rev_growth, "eps_growth": eps_growth,
+                    "fcf_yield": fcf_yield, "roe": roe, "w52_pos": w52_pos,
+                })
+            except Exception:
+                pass
+    growth_results.sort(key=lambda x: (x["rev_growth"] or 0) + (x["w52_pos"] or 0) * 0.3, reverse=True)
+    value_results.sort(key=lambda x: (x["fcf_yield"] or 0) * 2 + (x["roe"] or 0) * 0.5, reverse=True)
+    return growth_results[:8], value_results[:8]
+
+
 # ==================== KI ANALYSE (Grok + Gemini Fallback) ====================
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
@@ -1476,6 +1534,87 @@ if st.session_state["show_landing"]:
         if col.button(f"**{t}**\n{name}", use_container_width=True, key=f"lp_{t}"):
             _go_to_ticker(t)
             st.rerun()
+
+    # ── Aktienempfehlungen Accordion ──
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    with st.expander("💡  Aktienideen — Growth & Value Picks  (täglich aktualisiert)", expanded=False):
+        with st.spinner("Lade Aktienempfehlungen…"):
+            _gp, _vp = load_stock_picks()
+
+        def _badge(label, value, suffix="", fmt=".0f", color="#64b5f6"):
+            if value is None or value == 0:
+                return ""
+            try:
+                val_str = f"{value:{fmt}}{suffix}"
+            except Exception:
+                val_str = f"{value}{suffix}"
+            return (f"<span style='background:rgba(100,181,246,0.1);color:{color};"
+                    f"border-radius:5px;padding:2px 7px;font-size:0.71rem;"
+                    f"font-weight:600;margin-right:4px;white-space:nowrap;'>"
+                    f"{label}&thinsp;{val_str}</span>")
+
+        def _trend_bar(pos, accent):
+            pos = max(0, min(100, pos or 50))
+            bar_clr = accent if pos > 62 else "#ffd600" if pos > 35 else "#ff5252"
+            return (f"<div style='margin-top:7px;'>"
+                    f"<div style='display:flex;justify-content:space-between;"
+                    f"font-size:0.63rem;color:#37474f;margin-bottom:2px;'>"
+                    f"<span>52W-Tief</span><span style='color:#546e7a;'>{pos:.0f}%</span>"
+                    f"<span>52W-Hoch</span></div>"
+                    f"<div style='background:#1e2d45;border-radius:4px;height:4px;'>"
+                    f"<div style='background:{bar_clr};width:{pos}%;height:4px;"
+                    f"border-radius:4px;transition:width 0.4s;'></div></div></div>")
+
+        def _pick_card(s, accent, badges_html):
+            price_str = f"${s['price']:,.2f}" if s['price'] else "—"
+            return f"""
+            <div style='background:linear-gradient(135deg,#0d1f3c,#0a1628);
+                 border:1px solid #1e3a5f;border-left:3px solid {accent};
+                 border-radius:12px;padding:13px 15px;margin-bottom:10px;
+                 transition:border-color 0.2s;'>
+              <div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>
+                <span style='color:{accent};font-size:1.02rem;font-weight:800;
+                      letter-spacing:0.5px;'>{s["ticker"]}</span>
+                <span style='color:#b0bec5;font-size:0.82rem;font-weight:600;'>{price_str}</span>
+              </div>
+              <div style='color:#546e7a;font-size:0.72rem;margin-bottom:5px;'>{s["name"]}</div>
+              <div style='color:#90a4ae;font-size:0.78rem;line-height:1.45;margin-bottom:8px;'>{s["desc"]}</div>
+              <div style='line-height:2;'>{badges_html}</div>
+              {_trend_bar(s["w52_pos"], accent)}
+            </div>"""
+
+        _col_g, _col_v = st.columns(2)
+
+        with _col_g:
+            st.markdown(
+                "<div style='color:#00e5ff;font-size:0.82rem;font-weight:700;"
+                "text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;"
+                "padding-bottom:7px;border-bottom:1px solid rgba(0,229,255,0.2);'>"
+                "🚀 Growth &amp; Momentum</div>",
+                unsafe_allow_html=True)
+            for s in _gp:
+                b = (_badge("Rev▲", s["rev_growth"], "%", ".0f", "#00e676") +
+                     _badge("EPS▲", s["eps_growth"], "%", ".0f", "#69f0ae") +
+                     _badge("FCF", s["fcf_yield"], "%", ".1f", "#40c4ff"))
+                st.markdown(_pick_card(s, "#00e5ff", b), unsafe_allow_html=True)
+
+        with _col_v:
+            st.markdown(
+                "<div style='color:#a78bfa;font-size:0.82rem;font-weight:700;"
+                "text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;"
+                "padding-bottom:7px;border-bottom:1px solid rgba(124,58,237,0.3);'>"
+                "💎 Value — Buffett-Style</div>",
+                unsafe_allow_html=True)
+            for s in _vp:
+                b = (_badge("KGV", s["fwd_pe"], "x", ".1f", "#ce93d8") +
+                     _badge("ROE", s["roe"], "%", ".0f", "#f48fb1") +
+                     _badge("FCF", s["fcf_yield"], "%", ".1f", "#a5d6a7"))
+                st.markdown(_pick_card(s, "#a78bfa", b), unsafe_allow_html=True)
+
+        st.markdown(
+            "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
+            "⚠️ Keine Anlageberatung · Daten via Yahoo Finance · Aktualisierung alle 12 Std.</div>",
+            unsafe_allow_html=True)
 
     st.stop()
 
