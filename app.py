@@ -1522,19 +1522,6 @@ if st.session_state["show_landing"]:
     else:
         st.markdown('<div class="metric-card" style="color:#546e7a; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
 
-    # ── Schnellauswahl auf Landing ──
-    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-header'>⚡ Beliebte Aktien</div>", unsafe_allow_html=True)
-    popular = [
-        ("AAPL","Apple"), ("MSFT","Microsoft"), ("NVDA","NVIDIA"), ("AMZN","Amazon"),
-        ("GOOGL","Alphabet"), ("META","Meta"), ("TSLA","Tesla"), ("SAP","SAP"),
-    ]
-    pop_cols = st.columns(len(popular))
-    for col, (t, name) in zip(pop_cols, popular):
-        if col.button(f"**{t}**\n{name}", use_container_width=True, key=f"lp_{t}"):
-            _go_to_ticker(t)
-            st.rerun()
-
     # ── Aktienempfehlungen Accordion ──
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     with st.expander("💡  Aktienideen — Growth & Value Picks  (täglich aktualisiert)", expanded=False):
@@ -1615,6 +1602,19 @@ if st.session_state["show_landing"]:
             "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
             "⚠️ Keine Anlageberatung · Daten via Yahoo Finance · Aktualisierung alle 12 Std.</div>",
             unsafe_allow_html=True)
+
+    # ── Schnellauswahl auf Landing ──
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>⚡ Beliebte Aktien</div>", unsafe_allow_html=True)
+    popular = [
+        ("AAPL","Apple"), ("MSFT","Microsoft"), ("NVDA","NVIDIA"), ("AMZN","Amazon"),
+        ("GOOGL","Alphabet"), ("META","Meta"), ("TSLA","Tesla"), ("SAP","SAP"),
+    ]
+    pop_cols = st.columns(len(popular))
+    for col, (t, name) in zip(pop_cols, popular):
+        if col.button(f"**{t}**\n{name}", use_container_width=True, key=f"lp_{t}"):
+            _go_to_ticker(t)
+            st.rerun()
 
     st.stop()
 
