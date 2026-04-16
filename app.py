@@ -518,7 +518,33 @@ def load_earnings_surprises(ticker: str) -> list[dict]:
         except Exception:
             pass
 
-    # Attempt 2: yfinance get_earnings_dates
+    # Attempt 2: yfinance earnings_history (yfinance >= 0.2.38)
+    try:
+        stock = yf.Ticker(ticker)
+        eh = stock.earnings_history
+        if eh is not None and not eh.empty:
+            for date, row in eh.sort_index(ascending=False).head(8).iterrows():
+                act_raw = row.get("epsActual") or row.get("Reported EPS")
+                est_raw = row.get("epsEstimate") or row.get("EPS Estimate")
+                if act_raw is None or pd.isna(act_raw):
+                    continue
+                act = float(act_raw)
+                est = float(est_raw) if est_raw is not None and pd.notna(est_raw) else None
+                surp_pct = ((act - est) / abs(est) * 100) if est else 0
+                verdict = "Beat" if surp_pct > 2 else "Miss" if surp_pct < -2 else "In Line"
+                results.append({
+                    "date":     date.strftime("%b %Y") if hasattr(date, "strftime") else str(date)[:7],
+                    "estimate": est,
+                    "actual":   act,
+                    "surp_pct": surp_pct,
+                    "verdict":  verdict,
+                })
+            if results:
+                return results
+    except Exception:
+        pass
+
+    # Attempt 3: yfinance get_earnings_dates
     try:
         stock = yf.Ticker(ticker)
         try:
@@ -550,18 +576,24 @@ def load_earnings_surprises(ticker: str) -> list[dict]:
     except Exception:
         pass
 
-    # Attempt 3: yfinance quarterly_earnings (nur Actual, kein Estimate-Vergleich)
+    # Attempt 4: yfinance quarterly EPS aus income_stmt (nur Actual, kein Estimate-Vergleich)
     try:
-        qe = yf.Ticker(ticker).quarterly_earnings
-        if qe is not None and not qe.empty and "Earnings" in qe.columns:
-            for period, row in qe.sort_index(ascending=False).head(8).iterrows():
-                act_raw = row.get("Earnings")
-                if pd.isna(act_raw):
-                    continue
-                results.append({
-                    "date": str(period), "estimate": None,
-                    "actual": float(act_raw), "surp_pct": 0, "verdict": "In Line",
-                })
+        stock = yf.Ticker(ticker)
+        qi = stock.quarterly_income_stmt
+        if qi is not None and not qi.empty:
+            for row_name in ["Diluted EPS", "Basic EPS"]:
+                if row_name in qi.index:
+                    eps_series = qi.loc[row_name].dropna().sort_index(ascending=False).head(8)
+                    for date, val in eps_series.items():
+                        results.append({
+                            "date":     date.strftime("%b %Y") if hasattr(date, "strftime") else str(date)[:7],
+                            "estimate": None,
+                            "actual":   float(val),
+                            "surp_pct": 0,
+                            "verdict":  "In Line",
+                        })
+                    if results:
+                        return results
     except Exception:
         pass
 
@@ -3249,11 +3281,12 @@ with tab3:
             _eps_hint += f"&nbsp;·&nbsp;Trailing EPS: <strong>${_trail_eps:.2f}</strong>"
         if _fwd_eps:
             _eps_hint += f"&nbsp;·&nbsp;Forward EPS (Schätzung): <strong>${_fwd_eps:.2f}</strong>"
+        _no_fmp_hint = " &nbsp;·&nbsp; <em>Tipp: FMP_API_KEY in Railway setzen für zuverlässige Daten.</em>" if not FMP_API_KEY else ""
         st.markdown(
             f'<div class="insight-box" style="color:#78909c;">'
             f'📭 Historische EPS-Überraschungen für <strong>{ticker}</strong> nicht verfügbar '
-            f'(yfinance liefert keine earnings_dates für diesen Titel).'
-            f'{_eps_hint}</div>',
+            f'(keine Datenquelle liefert Beat/Miss-Daten für diesen Titel).'
+            f'{_no_fmp_hint}{_eps_hint}</div>',
             unsafe_allow_html=True)
 
     # ── Quartalsergebnisse ─────────────────────────────────────────────
