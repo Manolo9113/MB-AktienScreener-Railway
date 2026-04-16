@@ -1131,18 +1131,35 @@ def load_stock_picks():
 
 def _call_gemini(api_key: str, model: str,
                  messages: list, max_tokens: int, temperature: float) -> str:
-    """Gemini OpenAI-kompatibler Endpoint."""
+    """Gemini native REST API — key als ?key= Parameter, kein Auth-Header."""
+    # OpenAI-Format → Gemini-Format konvertieren
+    system_parts = []
+    contents = []
+    for msg in messages:
+        if msg["role"] == "system":
+            system_parts.append({"text": msg["content"]})
+        else:
+            g_role = "user" if msg["role"] == "user" else "model"
+            contents.append({"role": g_role, "parts": [{"text": msg["content"]}]})
+
+    body = {
+        "contents": contents,
+        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
+    }
+    if system_parts:
+        body["systemInstruction"] = {"parts": system_parts}
+
     resp = requests.post(
-        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": messages,
-              "temperature": temperature, "max_tokens": max_tokens},
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        params={"key": api_key},
+        headers={"Content-Type": "application/json"},
+        json=body,
         timeout=45,
     )
     if resp.status_code in (400, 403, 404, 422):
-        raise ValueError(f"HTTP {resp.status_code}: {resp.text[:120]}")
+        raise ValueError(f"HTTP {resp.status_code}: {resp.text[:200]}")
     resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
+    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 
 def _try_gemini(messages: list, max_tokens: int, temperature: float, api_key: str) -> tuple[str, str]:
