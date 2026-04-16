@@ -291,6 +291,54 @@ st.markdown("""
         margin: 16px 0;
     }
 
+    /* Metric card tooltip ❓ */
+    .mcard-tip-wrap {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+    }
+    .mcard-tip-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 17px;
+        height: 17px;
+        border-radius: 50%;
+        background: rgba(100,181,246,0.12);
+        color: #546e7a;
+        font-size: 0.65rem;
+        font-weight: 700;
+        cursor: help;
+        user-select: none;
+        transition: background 0.15s, color 0.15s;
+    }
+    .mcard-tip-icon:hover,
+    .mcard-tip-icon:focus {
+        background: rgba(100,181,246,0.28);
+        color: #64b5f6;
+    }
+    .mcard-tip-bubble {
+        display: none;
+        position: absolute;
+        right: 0;
+        top: 22px;
+        background: #0d1f3c;
+        border: 1px solid #1e3a5f;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 0.76rem;
+        color: #b0bec5;
+        line-height: 1.55;
+        width: 230px;
+        z-index: 9999;
+        box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+        pointer-events: none;
+    }
+    .mcard-tip-wrap:hover .mcard-tip-bubble,
+    .mcard-tip-wrap:focus-within .mcard-tip-bubble {
+        display: block;
+    }
+
     /* KI-Analyse CTA Button */
     div[data-testid="stButton"] button[kind="secondary"]#btn_grok,
     div[data-testid="stBaseButton-secondary"][key="btn_grok"] button,
@@ -2277,10 +2325,19 @@ def mini_card(label, value, good, ok, fmt=".1f", suffix="", inverse=False, toolt
     b = badge(value, good, ok, fmt, inverse)
     val_str = f"{value:{fmt}}{suffix}" if value is not None else "N/A"
     tip = tooltip or _METRIC_TOOLTIPS.get(label, "")
-    title_attr = f' title="{tip}"' if tip else ""
-    cursor = ' style="cursor:help;"' if tip else ""
+    tip_html = ""
+    if tip:
+        # Escape quotes for safe inline HTML
+        tip_safe = tip.replace('"', "&quot;").replace("'", "&#39;")
+        tip_html = (
+            f'<div class="mcard-tip-wrap">'
+            f'<span class="mcard-tip-icon" tabindex="0">?</span>'
+            f'<div class="mcard-tip-bubble">{tip_safe}</div>'
+            f'</div>'
+        )
     return f"""
-    <div class="metric-card"{cursor}{title_attr}>
+    <div class="metric-card" style="position:relative;">
+        {tip_html}
         <div class="metric-label">{label}</div>
         <div class="metric-value">{val_str}</div>
         <div style="margin-top:6px;">{b}</div>
