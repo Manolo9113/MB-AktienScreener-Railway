@@ -2108,6 +2108,158 @@ if st.session_state["show_landing"]:
             _go_to_ticker(t)
             st.rerun()
 
+    # ── Top 10 pro Sektor ──────────────────────────────────────────────
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    with st.expander("🌍  Top 10 Aktien pro Sektor — Global", expanded=False):
+        _SECTOR_TOPS = {
+            "💻 Tech": [
+                ("AAPL","Apple","iPhone-Ökosystem & Services"),
+                ("MSFT","Microsoft","Cloud (Azure) & KI-Plattform"),
+                ("NVDA","Nvidia","KI-Chips & Datacenter"),
+                ("TSM","TSMC","Weltgrößter Chip-Auftragsfertiger"),
+                ("AVGO","Broadcom","Netzwerk-Chips & VMware"),
+                ("ASML","ASML","Monopol Lithographie-Maschinen (EUV)"),
+                ("ORCL","Oracle","Cloud-Datenbanken & ERP"),
+                ("SAP","SAP","Enterprise-Software, Marktführer Europa"),
+                ("ADBE","Adobe","Kreativ-Software & KI-Tools"),
+                ("CRM","Salesforce","CRM-Plattform & KI-Agents"),
+            ],
+            "🏥 Health": [
+                ("LLY","Eli Lilly","Marktführer GLP-1 Adipositas/Diabetes"),
+                ("UNH","UnitedHealth","Größter US-Krankenversicherer"),
+                ("NVO","Novo Nordisk","Ozempic/Wegovy — GLP-1 Pionier"),
+                ("JNJ","J&J","Medizintechnik & Pharma-Dividende"),
+                ("AZN","AstraZeneca","Onkologie & Atemwegsmedizin"),
+                ("ABBV","AbbVie","Botox, Humira & Oncology Pipeline"),
+                ("MRK","Merck & Co.","Keytruda — Immuntherapie-Marktführer"),
+                ("TMO","Thermo Fisher","Life-Science Tools & CRO"),
+                ("ISRG","Intuitive Surgical","Da Vinci Roboter-OP — Quasi-Monopol"),
+                ("DHR","Danaher","Labor & Diagnostik Konglomerat"),
+            ],
+            "💰 Finance": [
+                ("BRK-B","Berkshire","Buffetts Holding-Konglomerat"),
+                ("JPM","JPMorgan","Größte US-Bank nach Assets"),
+                ("V","Visa","Globales Zahlungsnetzwerk"),
+                ("MA","Mastercard","Duopol Zahlungsabwicklung"),
+                ("BAC","Bank of America","Universal-Bank mit Wealth Mgmt"),
+                ("GS","Goldman Sachs","Investment Banking & Trading"),
+                ("SPGI","S&P Global","Rating-Agentur & Finanzdaten"),
+                ("MSCI","MSCI","Index-Anbieter & Analytics"),
+                ("AXP","Amex","Premium-Kreditkarten & Rewards"),
+                ("BX","Blackstone","Weltgrößter alternativer Asset Manager"),
+            ],
+            "🛒 Konsum": [
+                ("AMZN","Amazon","E-Commerce & AWS Cloud"),
+                ("MCD","McDonald's","Globale Franchise-Maschinerie"),
+                ("COST","Costco","Mitgliedschaftsmodell & Loyalität"),
+                ("HD","Home Depot","Nr. 1 Baumarkt USA"),
+                ("NKE","Nike","Premium-Sportmarke global"),
+                ("BKNG","Booking","Weltführer Online-Reisebuchung"),
+                ("SBUX","Starbucks","Premium-Kaffeemarke global"),
+                ("TJX","TJX","Off-Price Retail, resilientes Modell"),
+                ("CMG","Chipotle","Wachstums-Fast-Casual-Restaurant"),
+                ("ABNB","Airbnb","Plattform-Marktführer Kurzzeit-Mieten"),
+            ],
+            "📡 Komm.": [
+                ("GOOGL","Alphabet","Google Search, YouTube, Cloud"),
+                ("META","Meta","Facebook, Instagram, WhatsApp"),
+                ("NFLX","Netflix","Streaming-Marktführer global"),
+                ("DIS","Disney","Content, Parks & ESPN"),
+                ("TMUS","T-Mobile US","Wachstumsstärkster US-Mobilfunker"),
+                ("SPOT","Spotify","Audio-Streaming Marktführer"),
+                ("VZ","Verizon","Stabiler Dividenden-Telko USA"),
+                ("WBD","Warner Bros.","Max-Streaming & TV-Content"),
+                ("NTES","NetEase","Gaming & Online-Dienste China"),
+                ("SNAP","Snap","Junge Zielgruppe, AR-Fokus"),
+            ],
+            "🏭 Industrie": [
+                ("CAT","Caterpillar","Bau- & Bergbaumaschinen global"),
+                ("DE","John Deere","Landmaschinen & Precision Farming"),
+                ("HON","Honeywell","Industrie-Automation & Aerospace"),
+                ("RTX","RTX","Rüstung & Triebwerke (Pratt & Whitney)"),
+                ("ETN","Eaton","Energiemanagement & Elektrifizierung"),
+                ("GE","GE Aerospace","Flugzeugtriebwerke — Weltmarktführer"),
+                ("UPS","UPS","Globales Logistik-Netzwerk"),
+                ("ADP","ADP","Payroll & HR Software, Quasi-Monopol"),
+                ("ITW","Illinois Tool","80 fokussierte Industrie-Divisionen"),
+                ("PH","Parker Hannifin","Motion & Control Systems"),
+            ],
+            "⚡ Energie": [
+                ("XOM","ExxonMobil","Größte westliche Öl-Gesellschaft"),
+                ("CVX","Chevron","Integrierter Öl-Konzern USA"),
+                ("SHEL","Shell","Europas größter Energie-Konzern"),
+                ("TTE","TotalEnergies","Französischer Energie-Riese"),
+                ("COP","ConocoPhillips","Effizienter US-Öl/Gas-Explorer"),
+                ("EOG","EOG Resources","Effizienter US-Shale-Produzent"),
+                ("SLB","SLB","Weltführer Öl-Services"),
+                ("NEE","NextEra","Weltführer Wind & Solar-Energie"),
+                ("ENB","Enbridge","Pipeline-Infrastruktur Nordamerika"),
+                ("PSX","Phillips 66","Raffinerie & Midstream"),
+            ],
+            "🛡️ Basis": [
+                ("PG","Procter & Gamble","Tide, Pampers, Gillette — Marken-Stärke"),
+                ("KO","Coca-Cola","Getränke-Ikone, starke Dividende"),
+                ("PEP","PepsiCo","Getränke + Frito-Lay Snacks"),
+                ("WMT","Walmart","Weltgrößter Einzelhändler"),
+                ("PM","Philip Morris","Iqos & Zyn — Rauchfrei-Transformation"),
+                ("MDLZ","Mondelēz","Oreo, Milka & Cadbury"),
+                ("CL","Colgate","Zahnpflege-Weltmarktführer"),
+                ("UL","Unilever","Dove, Knorr — FMCG-Konzern"),
+                ("COST","Costco","Mitgliedschaft-Loyalität & Wachstum"),
+                ("MO","Altria","US-Tabak, hohe Dividendenrendite"),
+            ],
+            "🏗️ Material": [
+                ("LIN","Linde","Industriegase-Weltmarktführer"),
+                ("BHP","BHP Group","Bergbau-Riese: Eisenerz & Kupfer"),
+                ("RIO","Rio Tinto","Eisenerz, Aluminium, Kupfer"),
+                ("FCX","Freeport","Weltgrößter Kupfer-Miner"),
+                ("NEM","Newmont","Größter Goldproduzent weltweit"),
+                ("APD","Air Products","Wasserstoff & Industriegase"),
+                ("SHW","Sherwin-Williams","Marktführer Farben USA"),
+                ("ALB","Albemarle","Lithium-Produzent für E-Mobilität"),
+                ("VALE","Vale","Brasiliens Eisenerz & Nickel-Riese"),
+                ("NUE","Nucor","Effizienter US-Stahlproduzent"),
+            ],
+            "🏢 Immo": [
+                ("PLD","Prologis","Logistik-REITs, Amazon-Lager"),
+                ("AMT","American Tower","Mobilfunk-Türme global"),
+                ("EQIX","Equinix","Weltführer Rechenzentren-REITs"),
+                ("SPG","Simon Property","Premium-Einkaufszentren USA"),
+                ("O","Realty Income","Monthly Dividend Company"),
+                ("CCI","Crown Castle","US-Mobilfunk-Infrastruktur"),
+                ("PSA","Public Storage","Self-Storage Nr. 1 USA"),
+                ("WELL","Welltower","Seniorenwohnungen & Healthcare"),
+                ("DLR","Digital Realty","Rechenzentren & Cloud-Infra"),
+                ("AVB","AvalonBay","Premium-Appartements USA"),
+            ],
+        }
+
+        _sec_tabs = st.tabs(list(_SECTOR_TOPS.keys()))
+        for _stab, (_sec_name, _stocks) in zip(_sec_tabs, _SECTOR_TOPS.items()):
+            with _stab:
+                _sc1, _sc2 = st.columns(2)
+                for _i, (_tk, _nm, _ds) in enumerate(_stocks):
+                    _col = _sc1 if _i < 5 else _sc2
+                    with _col:
+                        st.markdown(
+                            f"<div style='background:linear-gradient(135deg,#0d1f3c,#0a1628);"
+                            f"border:1px solid #1e3a5f;border-radius:10px;"
+                            f"padding:10px 13px;margin-bottom:8px;'>"
+                            f"<div style='display:flex;justify-content:space-between;"
+                            f"align-items:baseline;margin-bottom:2px;'>"
+                            f"<span style='color:#64b5f6;font-size:0.95rem;font-weight:800;"
+                            f"letter-spacing:0.4px;'>{_tk}</span>"
+                            f"<span style='color:#546e7a;font-size:0.7rem;'>{_nm}</span>"
+                            f"</div>"
+                            f"<div style='color:#78909c;font-size:0.73rem;line-height:1.4;'>{_ds}</div>"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+                        if st.button(f"→ {_tk} analysieren", key=f"sec_{_sec_name}_{_tk}",
+                                     use_container_width=True):
+                            _go_to_ticker(_tk)
+                            st.rerun()
+
     st.stop()
 
 # ==================== MAIN DATA ====================
