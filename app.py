@@ -1706,6 +1706,18 @@ forward_pe = yf_info.get("forwardPE")
 debt = yf_info.get("debtToEquity") or 0
 beta = yf_info.get("beta") or 1
 dividend_yield = (yf_info.get("dividendYield") or 0) * 100
+# ── Dividend Yield Sanity-Check ──────────────────────────────────────────────
+# yfinance sometimes delivers stale/wrong values. Recompute from annual rate.
+_annual_div_rate = yf_info.get("trailingAnnualDividendRate") or 0
+if _annual_div_rate and price and price > 0:
+    _computed_yield = (_annual_div_rate / price) * 100
+    # If the two sources differ a lot, trust the computed one
+    if abs(_computed_yield - dividend_yield) > 2 or dividend_yield > 15:
+        dividend_yield = _computed_yield
+# Hard cap: yields above 25% are almost always data errors (ex-dividend artifact etc.)
+if dividend_yield > 25:
+    dividend_yield = 0.0
+_div_yield_suspicious = dividend_yield > 15  # flag for display
 shares_outstanding = yf_info.get("sharesOutstanding")
 shares_float = yf_info.get("floatShares")
 shares_short = yf_info.get("sharesShort")
@@ -2342,7 +2354,9 @@ with tab1:
     with c2:
         st.markdown(mini_card("Operating Margin", operating_margin, 20, 10, ".1f", "%"), unsafe_allow_html=True)
     with c3:
-        st.markdown(mini_card("Dividend Yield", dividend_yield, 3, 1, ".2f", "%"), unsafe_allow_html=True)
+        _dy_label = "Dividend Yield ⚠️" if _div_yield_suspicious else "Dividend Yield"
+        _dy_tooltip = "Wert >15 % — bitte manuell prüfen (möglicher Datenfehler)" if _div_yield_suspicious else None
+        st.markdown(mini_card(_dy_label, dividend_yield, 3, 1, ".2f", "%", tooltip=_dy_tooltip), unsafe_allow_html=True)
 
     # ── Branchenvergleich ──────────────────────────────────────────────
     st.markdown("<div class='section-header'>🌍 Branchenvergleich</div>", unsafe_allow_html=True)
@@ -2617,7 +2631,9 @@ with tab4:
     with c1:
         st.markdown(mini_card("Beta", beta, 0.8, 1.5, ".2f", ""), unsafe_allow_html=True)
     with c2:
-        st.markdown(mini_card("Dividend Yield", dividend_yield, 3, 1, ".2f", "%"), unsafe_allow_html=True)
+        _dy_label2 = "Dividend Yield ⚠️" if _div_yield_suspicious else "Dividend Yield"
+        _dy_tooltip2 = "Wert >15 % — bitte manuell prüfen (möglicher Datenfehler)" if _div_yield_suspicious else None
+        st.markdown(mini_card(_dy_label2, dividend_yield, 3, 1, ".2f", "%", tooltip=_dy_tooltip2), unsafe_allow_html=True)
     with c3:
         pfcf_str = f"{price_to_fcf:.1f}x" if price_to_fcf else "N/A"
         pfcf_color = "#00e676" if price_to_fcf and price_to_fcf < 20 else "#ffd600" if price_to_fcf and price_to_fcf < 35 else "#ff5252"
