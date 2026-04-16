@@ -1129,12 +1129,13 @@ def load_stock_picks():
 
 # ==================== KI ANALYSE (Grok + Gemini Fallback) ====================
 
-# Preferred model order — newest / most capable first
+# Preferred model order — newest first, only verified stable names as fallback
 _GEMINI_MODELS = [
     "gemini-2.5-pro",
     "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
+    "gemini-1.5-flash-8b",
     "gemini-1.5-flash",
 ]
 
