@@ -396,6 +396,39 @@ def load_quarterly_financials(ticker: str):
     return rev, net, eps_q
 
 @st.cache_data(ttl=86400)
+def load_earnings_surprises(ticker: str) -> list[dict]:
+    """Lädt EPS Beat/Miss der letzten 8 Quartale aus yfinance earnings_dates."""
+    results = []
+    try:
+        df = yf.Ticker(ticker).earnings_dates
+        if df is None or df.empty:
+            return []
+        df = df.dropna(subset=["EPS Estimate", "Reported EPS"])
+        # Only past dates (Reported EPS available)
+        df = df[df["Reported EPS"].notna()]
+        df = df.sort_index(ascending=False).head(8)
+        for date, row in df.iterrows():
+            est  = float(row["EPS Estimate"])
+            act  = float(row["Reported EPS"])
+            surp_pct = ((act - est) / abs(est) * 100) if est != 0 else 0
+            if surp_pct > 2:
+                verdict = "Beat"
+            elif surp_pct < -2:
+                verdict = "Miss"
+            else:
+                verdict = "In Line"
+            results.append({
+                "date":     date.strftime("%b %Y") if hasattr(date, "strftime") else str(date)[:7],
+                "estimate": est,
+                "actual":   act,
+                "surp_pct": surp_pct,
+                "verdict":  verdict,
+            })
+    except Exception:
+        pass
+    return results
+
+@st.cache_data(ttl=86400)
 def load_fmp_metrics(ticker: str):
     if not FMP_API_KEY:
         return {}, [], []
@@ -1825,6 +1858,7 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     fmp_metrics, peers, analyst_data = load_fmp_metrics(ticker)
     hist_weekly, hist_monthly, share_history, splits_data = load_yfinance_extended(ticker)
     q_rev, q_net, q_eps = load_quarterly_financials(ticker)
+    earnings_surprises   = load_earnings_surprises(ticker)
 
 if hist.empty or not yf_info:
     st.markdown(f"""
@@ -2033,6 +2067,11 @@ st.markdown(f"""
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+st.markdown(
+    "<div style='color:#37474f;font-size:0.7rem;margin:-8px 0 10px 0;'>"
+    "⏱ Kursdaten via Yahoo Finance · ca. 15–20 Min. verzögert · Keine Echtzeitkurse</div>",
+    unsafe_allow_html=True)
 
 # ── Watchlist-Button ──────────────────────────────────────────────
 _wl_curr = st.session_state.get("watchlist", [])
@@ -2779,6 +2818,77 @@ with tab3:
             <div class="metric-label">EPS Wachstum (fwd)</div>
             <div class="metric-value">{f"{eps_growth:.1f}%" if eps_growth is not None else "N/A"}</div>
         </div>""", unsafe_allow_html=True)
+
+    # ── Earnings Surprises ─────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🎯 Earnings Surprises (EPS Beat / Miss)</div>", unsafe_allow_html=True)
+    if earnings_surprises:
+        _beat_streak = 0
+        for _es in earnings_surprises:
+            if _es["verdict"] == "Beat":
+                _beat_streak += 1
+            else:
+                break
+
+        # Streak badge
+        if _beat_streak >= 2:
+            _streak_html = (f"<span style='background:rgba(0,230,118,0.15);color:#00e676;"
+                            f"border-radius:8px;padding:3px 12px;font-size:0.82rem;"
+                            f"font-weight:700;margin-left:10px;'>"
+                            f"🔥 {_beat_streak}× Beat-Streak</span>")
+        else:
+            _streak_html = ""
+        st.markdown(f"<div style='margin-bottom:10px;color:#78909c;font-size:0.8rem;'>"
+                    f"Letzte {len(earnings_surprises)} Quartale{_streak_html}</div>",
+                    unsafe_allow_html=True)
+
+        # Cards row
+        _es_cols = st.columns(min(len(earnings_surprises), 4))
+        for _i, _es in enumerate(earnings_surprises[:4]):
+            _col = _es_cols[_i]
+            _v   = _es["verdict"]
+            _clr = "#00e676" if _v == "Beat" else "#ff5252" if _v == "Miss" else "#ffd600"
+            _bg  = "rgba(0,230,118,0.08)" if _v == "Beat" else "rgba(255,82,82,0.08)" if _v == "Miss" else "rgba(255,214,0,0.08)"
+            _icon = "✅" if _v == "Beat" else "❌" if _v == "Miss" else "➖"
+            _surp_str = f"{_es['surp_pct']:+.1f}%"
+            _col.markdown(f"""
+            <div style='background:{_bg};border:1px solid {_clr}33;border-top:3px solid {_clr};
+                 border-radius:12px;padding:12px 14px;text-align:center;'>
+              <div style='color:#546e7a;font-size:0.72rem;margin-bottom:4px;'>{_es["date"]}</div>
+              <div style='color:{_clr};font-size:1.1rem;font-weight:800;'>{_icon} {_v}</div>
+              <div style='color:#eceff1;font-size:0.88rem;font-weight:700;margin:4px 0;'>{_surp_str}</div>
+              <div style='color:#546e7a;font-size:0.7rem;'>
+                Est: ${_es["estimate"]:.2f} · Act: ${_es["actual"]:.2f}
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+        # Surprise % bar chart (all 8 quarters)
+        if len(earnings_surprises) > 1:
+            _dates  = [e["date"]     for e in reversed(earnings_surprises)]
+            _surps  = [e["surp_pct"] for e in reversed(earnings_surprises)]
+            _colors = ["#00e676" if s > 2 else "#ff5252" if s < -2 else "#ffd600" for s in _surps]
+            _fig_es = go.Figure(go.Bar(
+                x=_dates, y=_surps,
+                marker_color=_colors,
+                text=[f"{s:+.1f}%" for s in _surps],
+                textposition="outside",
+                textfont=dict(size=10, color="#90a4ae"),
+            ))
+            _fig_es.add_hline(y=0, line_color="#1e3a5f", line_width=1)
+            _fig_es.update_layout(
+                template="plotly_dark",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(13,21,38,0.8)",
+                height=200,
+                margin=dict(l=0, r=0, t=10, b=0),
+                showlegend=False,
+                yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False,
+                           ticksuffix="%", title="Überraschung %"),
+                xaxis=dict(showgrid=False),
+            )
+            st.plotly_chart(_fig_es, use_container_width=True)
+    else:
+        st.markdown('<div class="metric-card" style="color:#546e7a;text-align:center;">'
+                    'Earnings-Daten nicht verfügbar</div>', unsafe_allow_html=True)
 
     # ── Quartalsergebnisse ─────────────────────────────────────────────
     st.markdown("<div class='section-header'>📊 Quartalsergebnisse</div>", unsafe_allow_html=True)
