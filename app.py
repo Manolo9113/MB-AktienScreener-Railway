@@ -1812,96 +1812,101 @@ if _run_grok:
 # Analyse anzeigen (bleibt bis Ticker-Wechsel)
 if st.session_state.get("grok_analysis"):
     _raw = st.session_state["grok_analysis"]
-    _sections = {
-        "BULL CASE": ("🟢", "#00e676"),
-        "BEAR CASE": ("🔴", "#ff5252"),
-        "INVESTMENT THESE": ("💡", "#ffd600"),
-        "BEWERTUNG": ("⚖️", "#64b5f6"),
-        "ROT-FLAGS": ("⚠️", "#ff8f00"),
-    }
-    _html_parts = [f"<div class='grok-box'><div style='display:flex;align-items:center;gap:10px;margin-bottom:14px;'>"
-                   f"<span style='font-size:1.4rem;'>🤖</span>"
-                   f"<div><div style='color:#a78bfa;font-size:1.0rem;font-weight:700;'>KI-Analyse · {company_name}</div>"
-                   f"<div style='color:#546e7a;font-size:0.75rem;'>Powered by Grok-3 · xAI</div></div></div>"]
-    _current_section = None
-    _current_lines = []
-    def _flush_section(sec, lines, parts, sections):
-        if sec and lines:
-            icon, color = sections.get(sec, ("📌", "#64b5f6"))
-            parts.append(f"<div class='grok-section-title'>{icon} {sec}</div>")
-            text = "\n".join(lines).strip()
-            # Bullet-Punkte als HTML-Liste
-            if text.startswith("-"):
-                items = [l.lstrip("- ").strip() for l in text.splitlines() if l.strip().startswith("-")]
-                parts.append("<ul>" + "".join(f"<li>{i}</li>" for i in items if i) + "</ul>")
-            else:
-                parts.append(f"<p>{text}</p>")
-    for _line in _raw.splitlines():
-        _stripped = _line.strip()
-        if _stripped in _sections:
-            _flush_section(_current_section, _current_lines, _html_parts, _sections)
-            _current_section = _stripped
-            _current_lines = []
-        else:
-            if _stripped:
+    if _raw.startswith("⚠️"):
+        # API-Fehler direkt als Warnung anzeigen
+        st.warning(_raw)
+    else:
+        _sections = {
+            "BULL CASE":        ("🟢", "#00e676"),
+            "BEAR CASE":        ("🔴", "#ff5252"),
+            "INVESTMENT THESE": ("💡", "#ffd600"),
+            "BEWERTUNG":        ("⚖️", "#64b5f6"),
+            "ROT-FLAGS":        ("⚠️", "#ff8f00"),
+        }
+        _html_parts = [
+            f"<div class='grok-box'>"
+            f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:14px;'>"
+            f"<span style='font-size:1.4rem;'>🤖</span>"
+            f"<div><div style='color:#a78bfa;font-size:1.0rem;font-weight:700;'>KI-Analyse · {company_name}</div>"
+            f"<div style='color:#546e7a;font-size:0.75rem;'>Powered by Grok-3 · xAI</div>"
+            f"</div></div>"
+        ]
+        _current_section = None
+        _current_lines = []
+        def _flush_section(sec, lines, parts, sections):
+            if sec and lines:
+                icon, color = sections.get(sec, ("📌", "#64b5f6"))
+                parts.append(f"<div class='grok-section-title'>{icon} {sec}</div>")
+                text = "\n".join(lines).strip()
+                if text.startswith("-"):
+                    bullet_items = [l.lstrip("- ").strip() for l in text.splitlines() if l.strip().startswith("-")]
+                    parts.append("<ul>" + "".join(f"<li>{i}</li>" for i in bullet_items if i) + "</ul>")
+                else:
+                    parts.append(f"<p>{text}</p>")
+        for _line in _raw.splitlines():
+            _stripped = _line.strip()
+            if _stripped in _sections:
+                _flush_section(_current_section, _current_lines, _html_parts, _sections)
+                _current_section = _stripped
+                _current_lines = []
+            elif _stripped:
                 _current_lines.append(_stripped)
-    _flush_section(_current_section, _current_lines, _html_parts, _sections)
-    _html_parts.append("</div>")
-    st.markdown("".join(_html_parts), unsafe_allow_html=True)
+        _flush_section(_current_section, _current_lines, _html_parts, _sections)
+        _html_parts.append("</div>")
+        st.markdown("".join(_html_parts), unsafe_allow_html=True)
 
-    # ── Chat-Modus ────────────────────────────────────────────────────
-    st.markdown("""
-    <div style='display:flex; align-items:center; gap:10px; margin:18px 0 6px 0;'>
-        <div style='color:#a78bfa; font-size:0.95rem; font-weight:700;'>💬 Folgefragen an Grok</div>
-        <div style='color:#37474f; font-size:0.75rem;'>Stelle eigene Fragen zu {cn}</div>
-    </div>
-    """.replace("{cn}", company_name), unsafe_allow_html=True)
+        # ── Chat-Modus (nur bei erfolgreicher Analyse) ────────────────
+        st.markdown("""
+        <div style='display:flex; align-items:center; gap:10px; margin:18px 0 6px 0;'>
+            <div style='color:#a78bfa; font-size:0.95rem; font-weight:700;'>💬 Folgefragen an Grok</div>
+            <div style='color:#37474f; font-size:0.75rem;'>Stelle eigene Fragen zu {cn}</div>
+        </div>
+        """.replace("{cn}", company_name), unsafe_allow_html=True)
 
-    # Chatverlauf rendern
-    _chat_hist = st.session_state.get("grok_chat", [])
-    if _chat_hist:
-        _chat_html = ["<div class='chat-wrap'>"]
-        for _msg in _chat_hist:
-            if _msg["role"] == "user":
-                _chat_html.append(
-                    f"<div class='chat-user-msg'><div class='chat-user-bubble'>{_msg['content']}</div></div>")
-            else:
-                _chat_html.append(
-                    f"<div class='chat-ai-msg'><div class='chat-ai-bubble'>{_msg['content']}</div></div>")
-        _chat_html.append("</div>")
-        st.markdown("".join(_chat_html), unsafe_allow_html=True)
+        # Chatverlauf rendern
+        _chat_hist = st.session_state.get("grok_chat", [])
+        if _chat_hist:
+            _chat_html = ["<div class='chat-wrap'>"]
+            for _msg in _chat_hist:
+                if _msg["role"] == "user":
+                    _chat_html.append(
+                        f"<div class='chat-user-msg'><div class='chat-user-bubble'>{_msg['content']}</div></div>")
+                else:
+                    _chat_html.append(
+                        f"<div class='chat-ai-msg'><div class='chat-ai-bubble'>{_msg['content']}</div></div>")
+            _chat_html.append("</div>")
+            st.markdown("".join(_chat_html), unsafe_allow_html=True)
 
-    # Eingabe-Formular (clear_on_submit verhindert Doppelabsenden)
-    with st.form("grok_chat_form", clear_on_submit=True):
-        _fc1, _fc2, _fc3 = st.columns([5, 1, 1])
-        with _fc1:
-            _chat_q = st.text_input(
-                "", placeholder=f"z.B. 'Wie stark ist das Moat wirklich?' oder 'Vergleich mit {peers[0] if peers else 'Wettbewerber'}'",
-                label_visibility="collapsed")
-        with _fc2:
-            _chat_send = st.form_submit_button("Senden →", use_container_width=True)
-        with _fc3:
-            _chat_clear = st.form_submit_button("Löschen", use_container_width=True)
+        # Eingabe-Formular
+        _peer_hint = peers[0] if peers else "Wettbewerber"
+        with st.form("grok_chat_form", clear_on_submit=True):
+            _fc1, _fc2, _fc3 = st.columns([5, 1, 1])
+            with _fc1:
+                _chat_q = st.text_input(
+                    "", placeholder=f"z.B. 'Wie stark ist das Moat wirklich?' oder 'Vergleich mit {_peer_hint}'",
+                    label_visibility="collapsed")
+            with _fc2:
+                _chat_send = st.form_submit_button("Senden →", use_container_width=True)
+            with _fc3:
+                _chat_clear = st.form_submit_button("Löschen", use_container_width=True)
 
-    if _chat_clear:
-        st.session_state["grok_chat"] = []
-        st.rerun()
+        if _chat_clear:
+            st.session_state["grok_chat"] = []
+            st.rerun()
 
-    if _chat_send and _chat_q.strip():
-        _hist = st.session_state.get("grok_chat", [])
-        _hist.append({"role": "user", "content": _chat_q.strip()})
-        # System-Prompt für Chat: Kontext + kurze Anweisungen
-        _chat_sys = (
-            f"Du bist ein erfahrener Aktienanalyst und beantwortest Fragen zu {company_name} ({ticker}) auf Deutsch. "
-            f"Antworte präzise, direkt und ohne Floskeln. Keine langen Einleitungen.\n\n"
-            f"UNTERNEHMENSKONTEXT:\n{st.session_state.get('grok_chat_ctx', '')}"
-        )
-        # Nur letzte 8 Nachrichten senden (Tokenlimit)
-        with st.spinner("Grok denkt..."):
-            _answer = call_grok_chat(_chat_sys, _hist[-8:], XAI_API_KEY)
-        _hist.append({"role": "assistant", "content": _answer})
-        st.session_state["grok_chat"] = _hist
-        st.rerun()
+        if _chat_send and _chat_q.strip():
+            _hist = st.session_state.get("grok_chat", [])
+            _hist.append({"role": "user", "content": _chat_q.strip()})
+            _chat_sys = (
+                f"Du bist ein erfahrener Aktienanalyst und beantwortest Fragen zu {company_name} ({ticker}) auf Deutsch. "
+                f"Antworte präzise, direkt und ohne Floskeln. Keine langen Einleitungen.\n\n"
+                f"UNTERNEHMENSKONTEXT:\n{st.session_state.get('grok_chat_ctx', '')}"
+            )
+            with st.spinner("Grok denkt..."):
+                _answer = call_grok_chat(_chat_sys, _hist[-8:], XAI_API_KEY)
+            _hist.append({"role": "assistant", "content": _answer})
+            st.session_state["grok_chat"] = _hist
+            st.rerun()
 
 # ==================== CHART ====================
 st.markdown("<div class='section-header'>📉 Kurs & Fair Value Kanal</div>", unsafe_allow_html=True)
@@ -2701,7 +2706,7 @@ with tab7:
                 if content:
                     title     = content.get("title", "")
                     publisher = (content.get("provider") or {}).get("displayName", "") or \
-                                (content.get("provider") or {}).get("displayName", "")
+                                item.get("publisher", "")
                     link      = (content.get("canonicalUrl") or {}).get("url", "") or \
                                 (content.get("clickThroughUrl") or {}).get("url", "#")
                     pub_raw   = content.get("pubDate", "")
