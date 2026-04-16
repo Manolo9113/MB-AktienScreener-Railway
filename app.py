@@ -445,11 +445,12 @@ def load_quarterly_financials(ticker: str):
 
 @st.cache_data(ttl=86400)
 def load_annual_financials(ticker: str):
-    """Jahresabschluss: Umsatz, Nettogewinn, EPS der letzten 5 Geschäftsjahre."""
+    """Jahresabschluss: Umsatz, Nettogewinn, EPS, FCF der letzten 5 Geschäftsjahre."""
     stock = yf.Ticker(ticker)
     rev = pd.Series(dtype=float)
     net = pd.Series(dtype=float)
     eps = pd.Series(dtype=float)
+    fcf = pd.Series(dtype=float)
     try:
         inc = stock.income_stmt
         if inc is not None and not inc.empty:
@@ -467,7 +468,16 @@ def load_annual_financials(ticker: str):
                     break
     except Exception:
         pass
-    return rev, net, eps
+    try:
+        cf = stock.cash_flow
+        if cf is not None and not cf.empty:
+            if "Free Cash Flow" in cf.index:
+                fcf = cf.loc["Free Cash Flow"].dropna().sort_index()
+            elif "Operating Cash Flow" in cf.index and "Capital Expenditure" in cf.index:
+                fcf = (cf.loc["Operating Cash Flow"] + cf.loc["Capital Expenditure"]).dropna().sort_index()
+    except Exception:
+        pass
+    return rev, net, eps, fcf
 
 @st.cache_data(ttl=86400)
 def load_earnings_surprises(ticker: str) -> list[dict]:
@@ -2073,7 +2083,7 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     hist_weekly, hist_monthly, share_history, splits_data = load_yfinance_extended(ticker)
     q_rev, q_net, q_eps = load_quarterly_financials(ticker)
     earnings_surprises   = load_earnings_surprises(ticker)
-    a_rev, a_net, a_eps  = load_annual_financials(ticker)
+    a_rev, a_net, a_eps, a_fcf = load_annual_financials(ticker)
 
 if hist.empty or not yf_info:
     st.markdown(f"""
@@ -2998,6 +3008,21 @@ with tab2:
                                        value_fmt=lambda v: fmt_large(v))
             if _fig_net_abs:
                 st.plotly_chart(_fig_net_abs, use_container_width=True)
+
+    # FCF-Zeile
+    _gc5, _gc6 = st.columns(2)
+    with _gc5:
+        _fig_fcf_abs = _bar_chart(a_fcf, "Free Cash Flow absolut", "#26a69a", "#ef5350",
+                                   is_growth=False, value_fmt=lambda v: fmt_large(v))
+        if _fig_fcf_abs:
+            st.plotly_chart(_fig_fcf_abs, use_container_width=True)
+        else:
+            st.markdown('<div class="insight-box" style="color:#546e7a;">Keine FCF-Daten verfügbar.</div>',
+                        unsafe_allow_html=True)
+    with _gc6:
+        _fig_fcf_g = _bar_chart(a_fcf, "Free Cash Flow Wachstum YoY", "#00e676", "#ff5252")
+        if _fig_fcf_g:
+            st.plotly_chart(_fig_fcf_g, use_container_width=True)
 
 with tab3:
     st.markdown("<div class='section-header'>Bilanz</div>", unsafe_allow_html=True)
