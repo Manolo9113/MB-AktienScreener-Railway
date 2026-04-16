@@ -1129,25 +1129,9 @@ def load_stock_picks():
 
 # ==================== KI ANALYSE (Grok + Gemini Fallback) ====================
 
-def _call_openai_compat(base_url: str, api_key: str, model: str,
-                         messages: list, max_tokens: int, temperature: float) -> str:
-    """Generischer OpenAI-kompatibler API-Call für Grok (xAI)."""
-    resp = requests.post(
-        f"{base_url}/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": messages,
-              "temperature": temperature, "max_tokens": max_tokens},
-        timeout=45,
-    )
-    if resp.status_code in (400, 403, 404, 422):
-        raise ValueError(f"HTTP {resp.status_code}: {resp.text[:120]}")
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
-
-
 def _call_gemini(api_key: str, model: str,
                  messages: list, max_tokens: int, temperature: float) -> str:
-    """Gemini OpenAI-kompatibler Endpoint — nutzt x-goog-api-key statt Bearer."""
+    """Gemini OpenAI-kompatibler Endpoint mit x-goog-api-key Auth."""
     resp = requests.post(
         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
@@ -1161,22 +1145,8 @@ def _call_gemini(api_key: str, model: str,
     return resp.json()["choices"][0]["message"]["content"]
 
 
-def _try_grok(messages: list, max_tokens: int, temperature: float, api_key: str) -> tuple[str, str]:
-    """Versucht Grok-Modelle in Reihenfolge. Gibt (text, model_name) zurück."""
-    last_err = ""
-    for model in ["grok-3", "grok-3-fast", "grok-2-latest", "grok-2-1212"]:
-        try:
-            text = _call_openai_compat(
-                "https://api.x.ai/v1", api_key, model, messages, max_tokens, temperature)
-            return text, model
-        except Exception as e:
-            last_err = str(e)
-            continue
-    return "", last_err
-
-
 def _try_gemini(messages: list, max_tokens: int, temperature: float, api_key: str) -> tuple[str, str]:
-    """Versucht Gemini-Modelle in Reihenfolge (x-goog-api-key Auth)."""
+    """Versucht Gemini-Modelle in Reihenfolge. Gibt (text, model_name|fehler) zurück."""
     last_err = ""
     for model in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]:
         try:
@@ -1189,57 +1159,29 @@ def _try_gemini(messages: list, max_tokens: int, temperature: float, api_key: st
 
 
 def call_ki_api(system_prompt: str, user_message: str,
-                xai_key: str, gemini_key: str,
+                gemini_key: str,
                 max_tokens: int = 1800) -> tuple[str, str]:
-    """
-    Ruft Grok an, fällt bei Fehler auf Gemini zurück.
-    Gibt (antwort_text, provider_label) zurück.
-    """
+    """Ruft Gemini an. Gibt (antwort_text, provider_label) zurück."""
+    if not gemini_key:
+        return ("⚠️ Kein API-Key konfiguriert. Bitte GEMINI_API_KEY "
+                "in den Railway-Umgebungsvariablen setzen.", "")
     messages = [{"role": "system", "content": system_prompt},
                 {"role": "user",   "content": user_message}]
-
-    grok_detail = gemini_detail = ""
-
-    if xai_key:
-        text, grok_detail = _try_grok(messages, max_tokens, 0.4, xai_key)
-        if text:
-            return text, f"Grok · {grok_detail}"
-
-    if gemini_key:
-        text, gemini_detail = _try_gemini(messages, max_tokens, 0.4, gemini_key)
-        if text:
-            return text, f"Gemini · {gemini_detail}"
-
-    if not xai_key and not gemini_key:
-        return ("⚠️ Kein API-Key konfiguriert. Bitte XAI_API_KEY oder GEMINI_API_KEY "
-                "in den Railway-Umgebungsvariablen setzen.", "")
-
-    # Both failed — show actual error so user can debug
-    details = []
-    if xai_key and grok_detail:
-        details.append(f"Grok: {grok_detail[:120]}")
-    if gemini_key and gemini_detail:
-        details.append(f"Gemini: {gemini_detail[:120]}")
-    hint = " | ".join(details) if details else "Unbekannter Fehler"
-    return (f"⚠️ KI-Anfrage fehlgeschlagen — {hint}", "")
+    text, detail = _try_gemini(messages, max_tokens, 0.4, gemini_key)
+    if text:
+        return text, f"Gemini · {detail}"
+    return (f"⚠️ KI-Anfrage fehlgeschlagen — {detail[:200]}", "")
 
 
-def call_ki_chat(system_prompt: str, messages: list,
-                 xai_key: str, gemini_key: str) -> str:
-    """Chat-Modus: Grok → Gemini Fallback."""
+def call_ki_chat(system_prompt: str, messages: list, gemini_key: str) -> str:
+    """Chat-Modus via Gemini."""
+    if not gemini_key:
+        return "⚠️ Kein GEMINI_API_KEY konfiguriert."
     all_msgs = [{"role": "system", "content": system_prompt}] + messages
-
-    if xai_key:
-        text, detail = _try_grok(all_msgs, 900, 0.5, xai_key)
-        if text:
-            return text
-
-    if gemini_key:
-        text, detail = _try_gemini(all_msgs, 900, 0.5, gemini_key)
-        if text:
-            return text
-
-    return f"⚠️ Kein KI-Modell verfügbar. Letzter Fehler: {detail}"
+    text, detail = _try_gemini(all_msgs, 900, 0.5, gemini_key)
+    if text:
+        return text
+    return f"⚠️ Gemini nicht verfügbar — {detail}"
 
 
 
@@ -2029,10 +1971,10 @@ with _col_btn:
                           use_container_width=True,
                           help="KI analysiert alle Kennzahlen und liefert Bull/Bear-Case, Investment-These und Risiko-Flags")
 with _col_hint:
-    if not XAI_API_KEY and not GEMINI_API_KEY:
-        st.caption("⚠️ Kein KI-Key gesetzt — XAI_API_KEY (xAI) oder GEMINI_API_KEY (Google) in Railway-Umgebungsvariablen eintragen.")
+    if not GEMINI_API_KEY:
+        st.caption("⚠️ Kein KI-Key gesetzt — GEMINI_API_KEY (Google AI Studio) in Railway-Umgebungsvariablen eintragen.")
     else:
-        st.caption("Powered by Grok (xAI) · Gemini (Google) · Analyse dauert ca. 5–15 Sekunden")
+        st.caption("Powered by Gemini (Google) · Analyse dauert ca. 5–15 Sekunden")
 st.markdown('</div>', unsafe_allow_html=True)
 
 if _run_grok:
@@ -2058,7 +2000,7 @@ if _run_grok:
             moat=moat, piotroski=_piotroski_data,
             dcf_fair_val=_dcf_for_grok,
         )
-        _ki_text, _ki_provider = call_ki_api(_sys, _usr, XAI_API_KEY, GEMINI_API_KEY)
+        _ki_text, _ki_provider = call_ki_api(_sys, _usr, GEMINI_API_KEY)
         st.session_state["grok_analysis"] = _ki_text
         st.session_state["grok_provider"] = _ki_provider
         st.session_state["grok_chat"] = []
@@ -2159,7 +2101,7 @@ if st.session_state.get("grok_analysis"):
                 f"UNTERNEHMENSKONTEXT:\n{st.session_state.get('grok_chat_ctx', '')}"
             )
             with st.spinner("Grok denkt..."):
-                _answer = call_ki_chat(_chat_sys, _hist[-8:], XAI_API_KEY, GEMINI_API_KEY)
+                _answer = call_ki_chat(_chat_sys, _hist[-8:], GEMINI_API_KEY)
             _hist.append({"role": "assistant", "content": _answer})
             st.session_state["grok_chat"] = _hist
             st.rerun()
