@@ -1129,10 +1129,43 @@ def load_stock_picks():
 
 # ==================== KI ANALYSE (Grok + Gemini Fallback) ====================
 
+# Preferred model order — newest / most capable first
+_GEMINI_MODELS = [
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash",
+]
+
+@st.cache_data(ttl=86400)
+def _discover_gemini_models(api_key: str) -> list[str]:
+    """Fragt die ListModels-API ab und gibt generateContent-fähige Modelle zurück."""
+    try:
+        resp = requests.get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            params={"key": api_key},
+            timeout=10,
+        )
+        if not resp.ok:
+            return []
+        available = {
+            m["name"].replace("models/", "")
+            for m in resp.json().get("models", [])
+            if "generateContent" in m.get("supportedGenerationMethods", [])
+        }
+        # Return preferred order filtered to what's actually available,
+        # then append any other discovered models not in our list
+        ordered = [m for m in _GEMINI_MODELS if m in available]
+        extras  = sorted(available - set(_GEMINI_MODELS))
+        return ordered + extras
+    except Exception:
+        return []
+
+
 def _call_gemini(api_key: str, model: str,
                  messages: list, max_tokens: int, temperature: float) -> str:
     """Gemini native REST API — key als ?key= Parameter, kein Auth-Header."""
-    # OpenAI-Format → Gemini-Format konvertieren
     system_parts = []
     contents = []
     for msg in messages:
@@ -1149,30 +1182,38 @@ def _call_gemini(api_key: str, model: str,
     if system_parts:
         body["systemInstruction"] = {"parts": system_parts}
 
-    resp = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-        params={"key": api_key},
-        headers={"Content-Type": "application/json"},
-        json=body,
-        timeout=45,
-    )
-    if resp.status_code in (400, 403, 404, 422):
-        raise ValueError(f"HTTP {resp.status_code}: {resp.text[:200]}")
-    resp.raise_for_status()
-    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    for api_ver in ("v1beta", "v1"):
+        resp = requests.post(
+            f"https://generativelanguage.googleapis.com/{api_ver}/models/{model}:generateContent",
+            params={"key": api_key},
+            headers={"Content-Type": "application/json"},
+            json=body,
+            timeout=60,
+        )
+        if resp.status_code == 404:
+            continue
+        if not resp.ok:
+            raise ValueError(f"HTTP {resp.status_code}: {resp.text[:250]}")
+        data = resp.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+    raise ValueError(f"Modell '{model}' in v1beta und v1 nicht gefunden")
 
 
-def _try_gemini(messages: list, max_tokens: int, temperature: float, api_key: str) -> tuple[str, str]:
-    """Versucht Gemini-Modelle in Reihenfolge. Gibt (text, model_name|fehler) zurück."""
-    last_err = ""
-    for model in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]:
+def _try_gemini(messages: list, max_tokens: int,
+                temperature: float, api_key: str) -> tuple[str, str]:
+    """
+    Versucht alle verfügbaren Gemini-Modelle (via ListModels + Fallback-Liste).
+    Gibt (text, model_name) bei Erfolg oder ("", alle_fehler) zurück.
+    """
+    models = _discover_gemini_models(api_key) or _GEMINI_MODELS
+    errors = []
+    for model in models:
         try:
             text = _call_gemini(api_key, model, messages, max_tokens, temperature)
             return text, model
         except Exception as e:
-            last_err = str(e)
-            continue
-    return "", last_err
+            errors.append(f"{model}: {str(e)[:120]}")
+    return "", " | ".join(errors) if errors else "Keine Modelle verfügbar"
 
 
 def call_ki_api(system_prompt: str, user_message: str,
@@ -1187,7 +1228,7 @@ def call_ki_api(system_prompt: str, user_message: str,
     text, detail = _try_gemini(messages, max_tokens, 0.4, gemini_key)
     if text:
         return text, f"Gemini · {detail}"
-    return (f"⚠️ KI-Anfrage fehlgeschlagen — {detail[:200]}", "")
+    return (f"⚠️ KI-Anfrage fehlgeschlagen — {detail}", "")
 
 
 def call_ki_chat(system_prompt: str, messages: list, gemini_key: str) -> str:
@@ -1199,7 +1240,6 @@ def call_ki_chat(system_prompt: str, messages: list, gemini_key: str) -> str:
     if text:
         return text
     return f"⚠️ Gemini nicht verfügbar — {detail}"
-
 
 
 
