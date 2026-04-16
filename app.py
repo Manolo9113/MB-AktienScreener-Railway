@@ -397,26 +397,57 @@ def load_quarterly_financials(ticker: str):
 
 @st.cache_data(ttl=86400)
 def load_earnings_surprises(ticker: str) -> list[dict]:
-    """Lädt EPS Beat/Miss aus yfinance earnings_dates (mit limit=20 und quarterly_earnings-Fallback)."""
+    """Lädt EPS Beat/Miss — FMP primär, yfinance als Fallback."""
     results = []
 
-    # Attempt 1: earnings_dates (with larger limit for more history)
+    # Attempt 1: FMP earnings-surprises (zuverlässigste Quelle)
+    if FMP_API_KEY:
+        try:
+            r = requests.get(
+                f"https://financialmodelingprep.com/api/v3/earnings-surprises/{ticker}",
+                params={"apikey": FMP_API_KEY}, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list) and data:
+                    for item in data[:8]:
+                        act = item.get("actualEarningResult")
+                        est = item.get("estimatedEarning")
+                        if act is None:
+                            continue
+                        act, est = float(act), (float(est) if est is not None else None)
+                        surp_pct = ((act - est) / abs(est) * 100) if est else 0
+                        verdict = "Beat" if surp_pct > 2 else "Miss" if surp_pct < -2 else "In Line"
+                        date_str = item.get("date", "")[:7]
+                        try:
+                            date_str = pd.Timestamp(item["date"]).strftime("%b %Y")
+                        except Exception:
+                            pass
+                        results.append({
+                            "date":     date_str,
+                            "estimate": est,
+                            "actual":   act,
+                            "surp_pct": surp_pct,
+                            "verdict":  verdict,
+                        })
+                    if results:
+                        return results
+        except Exception:
+            pass
+
+    # Attempt 2: yfinance get_earnings_dates
     try:
         stock = yf.Ticker(ticker)
-        # newer yfinance versions accept limit= keyword
         try:
             df = stock.get_earnings_dates(limit=20)
         except Exception:
             df = stock.earnings_dates
-
         if df is not None and not df.empty:
-            # Keep only rows where Reported EPS is present (= past quarters)
             past = df[df["Reported EPS"].notna()].copy()
             if not past.empty:
                 past = past.sort_index(ascending=False).head(8)
                 for date, row in past.iterrows():
-                    est_raw = row.get("EPS Estimate")
                     act_raw = row.get("Reported EPS")
+                    est_raw = row.get("EPS Estimate")
                     if pd.isna(act_raw):
                         continue
                     act = float(act_raw)
@@ -435,22 +466,17 @@ def load_earnings_surprises(ticker: str) -> list[dict]:
     except Exception:
         pass
 
-    # Attempt 2: quarterly_earnings fallback (no estimates, but shows actual EPS trend)
+    # Attempt 3: yfinance quarterly_earnings (nur Actual, kein Estimate-Vergleich)
     try:
-        stock = yf.Ticker(ticker)
-        qe = stock.quarterly_earnings
+        qe = yf.Ticker(ticker).quarterly_earnings
         if qe is not None and not qe.empty and "Earnings" in qe.columns:
-            qe = qe.sort_index(ascending=False).head(8)
-            for period, row in qe.iterrows():
+            for period, row in qe.sort_index(ascending=False).head(8).iterrows():
                 act_raw = row.get("Earnings")
                 if pd.isna(act_raw):
                     continue
                 results.append({
-                    "date":     str(period),
-                    "estimate": None,
-                    "actual":   float(act_raw),
-                    "surp_pct": 0,
-                    "verdict":  "In Line",
+                    "date": str(period), "estimate": None,
+                    "actual": float(act_raw), "surp_pct": 0, "verdict": "In Line",
                 })
     except Exception:
         pass
