@@ -1252,7 +1252,22 @@ _DIVIDEND_POOL = {
     "JNJ": ("Johnson & Johnson – 62 Jahre, Healthcare-Gigant mit breitem Pharma- & MedTech-Moat", 62),
 }
 
-def _safe_div_yield(info: dict, price: float) -> float:
+_OVERHYPED_POOL = {
+    "TSLA":  "Tesla — extrem hohes KGV trotz verlangsamtem Wachstum & wachsender EV-Konkurrenz",
+    "PLTR":  "Palantir — KUV >30x bei moderatem Wachstum, Bewertung diskonnektiert von Fundamentals",
+    "SNOW":  "Snowflake — Wachstum verlangsamt, Cloud-Bewertung noch deutlich über Branchenniveau",
+    "RIVN":  "Rivian — hohe Cash-Verbrennung, Verluste je produziertem Fahrzeug, Liquiditätsrisiko",
+    "COIN":  "Coinbase — stark zyklisch, Kryptoabhängigkeit, Bewertung folgt Sentimentzyklen",
+    "RBLX":  "Roblox — verlustreich trotz hoher User-Zahlen, fragliches Monetarisierungsmodell",
+    "AI":    "C3.ai — Marketing-lastig, schwaches Umsatzwachstum bei anhaltend hoher KUV-Bewertung",
+    "LCID":  "Lucid Motors — minimale Produktion, extrem hohe Burn Rate, unsichere Finanzierung",
+    "BYND":  "Beyond Meat — Umsatz schrumpft, tiefe Verluste, Plant-Based-Hype deutlich verpufft",
+    "PATH":  "UiPath — Wachstumsverlangsamung im RPA-Markt bei weiterhin ambitionierter Bewertung",
+    "MSTR":  "MicroStrategy — kein operatives Kerngeschäft, reine Bitcoin-Wette mit Hebel-Risiko",
+    "SMCI":  "Super Micro — Bilanzierungsprobleme, Delisting-Risiko, extrem hohe Kursvolatilität",
+}
+
+
     """Berechnet Dividend Yield sauber aus trailingAnnualDividendRate / price."""
     annual = info.get("trailingAnnualDividendRate") or 0
     raw_dy = (info.get("dividendYield") or 0) * 100
@@ -1265,7 +1280,7 @@ def _safe_div_yield(info: dict, price: float) -> float:
 
 @st.cache_data(ttl=43200)
 def load_stock_picks():
-    growth_results, value_results, div_results = [], [], []
+    growth_results, value_results, div_results, hype_results = [], [], [], []
 
     # ── Growth & Value ──────────────────────────────────────────────────
     for pool, results in [(_GROWTH_POOL, growth_results), (_VALUE_POOL, value_results)]:
@@ -1352,10 +1367,54 @@ def load_stock_picks():
         except Exception:
             pass
 
+    # ── Overhyped / Overvalued ──────────────────────────────────────────
+    for t, desc in _OVERHYPED_POOL.items():
+        try:
+            info = yf.Ticker(t).info
+            price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+            if not price:
+                continue
+            ps_ratio    = info.get("priceToSalesTrailing12Months")
+            pe_ratio    = info.get("trailingPE") or info.get("forwardPE")
+            fcf         = info.get("freeCashflow") or 0
+            mktcap      = info.get("marketCap") or 1
+            fcf_yield   = (fcf / mktcap * 100) if fcf else None
+            short_float = (info.get("shortPercentOfFloat") or 0) * 100
+            target      = info.get("targetMeanPrice")
+            analyst_up  = ((target - price) / price * 100) if target and price else None
+            week52h     = info.get("fiftyTwoWeekHigh") or price
+            week52l     = info.get("fiftyTwoWeekLow") or price
+            w52_pos     = ((price - week52l) / (week52h - week52l) * 100) if week52h > week52l else 50
+            # Hype score: high P/S + high P/E + negative FCF + high short float
+            hype_score = (
+                (ps_ratio or 0) * 2
+                + (min(pe_ratio, 200) if pe_ratio and pe_ratio > 0 else 50) * 0.3
+                + (10 if fcf < 0 else 0)
+                + short_float * 0.5
+            )
+            # Warning flags
+            warn_flags = []
+            if ps_ratio and ps_ratio > 10:  warn_flags.append(f"KUV {ps_ratio:.0f}x")
+            if pe_ratio  and pe_ratio > 80:  warn_flags.append(f"KGV {pe_ratio:.0f}x")
+            if fcf < 0:                      warn_flags.append("FCF negativ")
+            if short_float > 10:             warn_flags.append(f"Short {short_float:.0f}%")
+            if analyst_up is not None and analyst_up < -5:
+                warn_flags.append(f"Über Analystenziel")
+            hype_results.append({
+                "ticker": t, "name": info.get("shortName") or t, "desc": desc,
+                "price": price, "ps_ratio": ps_ratio, "pe_ratio": pe_ratio,
+                "fcf_yield": fcf_yield, "short_float": short_float,
+                "analyst_up": analyst_up, "w52_pos": w52_pos,
+                "hype_score": hype_score, "warn_flags": warn_flags,
+            })
+        except Exception:
+            pass
+
     growth_results.sort(key=lambda x: (x["rev_growth"] or 0) + (x["w52_pos"] or 0) * 0.3, reverse=True)
     value_results.sort(key=lambda x: (x["fcf_yield"] or 0) * 2 + (x["roe"] or 0) * 0.5, reverse=True)
     div_results.sort(key=lambda x: x["quality_score"], reverse=True)
-    return growth_results[:8], value_results[:8], div_results[:8]
+    hype_results.sort(key=lambda x: x["hype_score"], reverse=True)
+    return growth_results[:8], value_results[:8], div_results[:8], hype_results[:8]
 
 
 # ==================== KI ANALYSE (Grok + Gemini Fallback) ====================
@@ -1783,9 +1842,9 @@ if st.session_state["show_landing"]:
 
     # ── Aktienempfehlungen Accordion ──
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    with st.expander("💡  Aktienideen — Growth · Value · Dividende  (täglich aktualisiert)", expanded=False):
+    with st.expander("💡  Aktienideen — Growth · Value · Dividende · Overhyped  (täglich aktualisiert)", expanded=False):
         with st.spinner("Lade Aktienempfehlungen…"):
-            _gp, _vp, _dp = load_stock_picks()
+            _gp, _vp, _dp, _hp = load_stock_picks()
 
         def _badge(label, value, suffix="", fmt=".0f", color="#64b5f6"):
             if value is None or value == 0:
@@ -1829,7 +1888,8 @@ if st.session_state["show_landing"]:
               {_trend_bar(s["w52_pos"], accent)}
             </div>"""
 
-        _col_g, _col_v, _col_d = st.columns(3)
+        # ── Zeile 1: Growth | Value ──────────────────────────────────────
+        _col_g, _col_v = st.columns(2)
 
         with _col_g:
             st.markdown(
@@ -1857,6 +1917,11 @@ if st.session_state["show_landing"]:
                      _badge("FCF", s["fcf_yield"], "%", ".1f", "#a5d6a7"))
                 st.markdown(_pick_card(s, "#a78bfa", b), unsafe_allow_html=True)
 
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+        # ── Zeile 2: Dividende | Overhyped ───────────────────────────────
+        _col_d, _col_h = st.columns(2)
+
         with _col_d:
             st.markdown(
                 "<div style='color:#f59e0b;font-size:0.82rem;font-weight:700;"
@@ -1869,7 +1934,7 @@ if st.session_state["show_landing"]:
                 if s["trap_flags"]:
                     trap_html = (f"<div style='color:#ffd600;font-size:0.68rem;"
                                  f"margin-bottom:4px;'>⚠️ {', '.join(s['trap_flags'])}</div>")
-                years_b = _badge(f"{s['div_years']}J▲", None, "", ".0f", "#fbbf24") if False else (
+                years_b = (
                     f"<span style='background:rgba(245,158,11,0.12);color:#fbbf24;"
                     f"border-radius:5px;padding:2px 7px;font-size:0.71rem;"
                     f"font-weight:600;margin-right:4px;'>{s['div_years']} Jahre▲</span>"
@@ -1878,6 +1943,25 @@ if st.session_state["show_landing"]:
                      _badge("Yield", s["div_yield"], "%", ".1f", "#f59e0b") +
                      _badge("Payout", s["payout"] if s["payout"] > 0 else None, "%", ".0f", "#fca5a5"))
                 st.markdown(_pick_card(s, "#f59e0b", b, trap_html), unsafe_allow_html=True)
+
+        with _col_h:
+            st.markdown(
+                "<div style='color:#ff5252;font-size:0.82rem;font-weight:700;"
+                "text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;"
+                "padding-bottom:7px;border-bottom:1px solid rgba(255,82,82,0.3);'>"
+                "🔥 Overhyped / Overvalued</div>",
+                unsafe_allow_html=True)
+            for s in _hp:
+                warn_html = ""
+                if s["warn_flags"]:
+                    warn_html = (f"<div style='color:#ff5252;font-size:0.68rem;"
+                                 f"margin-bottom:4px;'>🚨 {' · '.join(s['warn_flags'])}</div>")
+                b = (_badge("KUV", s["ps_ratio"], "x", ".1f", "#ff5252") +
+                     _badge("KGV", s["pe_ratio"] if s["pe_ratio"] and s["pe_ratio"] < 999 else None, "x", ".0f", "#ff7043") +
+                     _badge("Short", s["short_float"] if s["short_float"] > 2 else None, "%", ".0f", "#ffd600"))
+                if s["analyst_up"] is not None and s["analyst_up"] < 0:
+                    b += _badge("Upside", s["analyst_up"], "%", ".0f", "#ef9a9a")
+                st.markdown(_pick_card(s, "#ff5252", b, warn_html), unsafe_allow_html=True)
 
         st.markdown(
             "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
