@@ -322,6 +322,7 @@ import os
 FMP_API_KEY = os.getenv("FMP_API_KEY", "")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
 XAI_API_KEY  = os.getenv("XAI_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
@@ -1127,7 +1128,6 @@ def load_stock_picks():
 
 
 # ==================== KI ANALYSE (Grok + Gemini Fallback) ====================
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 def _call_openai_compat(base_url: str, api_key: str, model: str,
                          messages: list, max_tokens: int, temperature: float) -> str:
@@ -1147,27 +1147,31 @@ def _call_openai_compat(base_url: str, api_key: str, model: str,
 
 def _try_grok(messages: list, max_tokens: int, temperature: float, api_key: str) -> tuple[str, str]:
     """Versucht Grok-Modelle in Reihenfolge. Gibt (text, model_name) zurück."""
+    last_err = ""
     for model in ["grok-3", "grok-3-fast", "grok-2-latest", "grok-2-1212", "grok-beta"]:
         try:
             text = _call_openai_compat(
                 "https://api.x.ai/v1", api_key, model, messages, max_tokens, temperature)
             return text, model
-        except Exception:
+        except Exception as e:
+            last_err = str(e)
             continue
-    return "", ""
+    return "", last_err
 
 
 def _try_gemini(messages: list, max_tokens: int, temperature: float, api_key: str) -> tuple[str, str]:
     """Versucht Gemini über den OpenAI-kompatiblen Endpoint."""
+    last_err = ""
     for model in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]:
         try:
             text = _call_openai_compat(
                 "https://generativelanguage.googleapis.com/v1beta/openai",
                 api_key, model, messages, max_tokens, temperature)
             return text, model
-        except Exception:
+        except Exception as e:
+            last_err = str(e)
             continue
-    return "", ""
+    return "", last_err
 
 
 def call_ki_api(system_prompt: str, user_message: str,
@@ -1180,20 +1184,30 @@ def call_ki_api(system_prompt: str, user_message: str,
     messages = [{"role": "system", "content": system_prompt},
                 {"role": "user",   "content": user_message}]
 
+    grok_detail = gemini_detail = ""
+
     if xai_key:
-        text, model = _try_grok(messages, max_tokens, 0.4, xai_key)
+        text, grok_detail = _try_grok(messages, max_tokens, 0.4, xai_key)
         if text:
-            return text, f"Grok · {model}"
+            return text, f"Grok · {grok_detail}"
 
     if gemini_key:
-        text, model = _try_gemini(messages, max_tokens, 0.4, gemini_key)
+        text, gemini_detail = _try_gemini(messages, max_tokens, 0.4, gemini_key)
         if text:
-            return text, f"Gemini · {model}"
+            return text, f"Gemini · {gemini_detail}"
 
     if not xai_key and not gemini_key:
         return ("⚠️ Kein API-Key konfiguriert. Bitte XAI_API_KEY oder GEMINI_API_KEY "
                 "in den Railway-Umgebungsvariablen setzen.", "")
-    return ("⚠️ Kein KI-Modell verfügbar. Bitte XAI_API_KEY / GEMINI_API_KEY prüfen.", "")
+
+    # Both failed — show actual error so user can debug
+    details = []
+    if xai_key and grok_detail:
+        details.append(f"Grok: {grok_detail[:120]}")
+    if gemini_key and gemini_detail:
+        details.append(f"Gemini: {gemini_detail[:120]}")
+    hint = " | ".join(details) if details else "Unbekannter Fehler"
+    return (f"⚠️ KI-Anfrage fehlgeschlagen — {hint}", "")
 
 
 def call_ki_chat(system_prompt: str, messages: list,
@@ -1202,16 +1216,16 @@ def call_ki_chat(system_prompt: str, messages: list,
     all_msgs = [{"role": "system", "content": system_prompt}] + messages
 
     if xai_key:
-        text, _ = _try_grok(all_msgs, 900, 0.5, xai_key)
+        text, detail = _try_grok(all_msgs, 900, 0.5, xai_key)
         if text:
             return text
 
     if gemini_key:
-        text, _ = _try_gemini(all_msgs, 900, 0.5, gemini_key)
+        text, detail = _try_gemini(all_msgs, 900, 0.5, gemini_key)
         if text:
             return text
 
-    return "⚠️ Kein KI-Modell verfügbar."
+    return f"⚠️ Kein KI-Modell verfügbar. Letzter Fehler: {detail}"
 
 
 
