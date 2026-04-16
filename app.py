@@ -1131,7 +1131,7 @@ def load_stock_picks():
 
 def _call_openai_compat(base_url: str, api_key: str, model: str,
                          messages: list, max_tokens: int, temperature: float) -> str:
-    """Generischer OpenAI-kompatibler API-Call (Grok & Gemini nutzen dasselbe Format)."""
+    """Generischer OpenAI-kompatibler API-Call für Grok (xAI)."""
     resp = requests.post(
         f"{base_url}/chat/completions",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -1145,10 +1145,26 @@ def _call_openai_compat(base_url: str, api_key: str, model: str,
     return resp.json()["choices"][0]["message"]["content"]
 
 
+def _call_gemini(api_key: str, model: str,
+                 messages: list, max_tokens: int, temperature: float) -> str:
+    """Gemini OpenAI-kompatibler Endpoint — nutzt x-goog-api-key statt Bearer."""
+    resp = requests.post(
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+        json={"model": model, "messages": messages,
+              "temperature": temperature, "max_tokens": max_tokens},
+        timeout=45,
+    )
+    if resp.status_code in (400, 403, 404, 422):
+        raise ValueError(f"HTTP {resp.status_code}: {resp.text[:120]}")
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
+
+
 def _try_grok(messages: list, max_tokens: int, temperature: float, api_key: str) -> tuple[str, str]:
     """Versucht Grok-Modelle in Reihenfolge. Gibt (text, model_name) zurück."""
     last_err = ""
-    for model in ["grok-3", "grok-3-fast", "grok-2-latest", "grok-2-1212", "grok-beta"]:
+    for model in ["grok-3", "grok-3-fast", "grok-2-latest", "grok-2-1212"]:
         try:
             text = _call_openai_compat(
                 "https://api.x.ai/v1", api_key, model, messages, max_tokens, temperature)
@@ -1160,13 +1176,11 @@ def _try_grok(messages: list, max_tokens: int, temperature: float, api_key: str)
 
 
 def _try_gemini(messages: list, max_tokens: int, temperature: float, api_key: str) -> tuple[str, str]:
-    """Versucht Gemini über den OpenAI-kompatiblen Endpoint."""
+    """Versucht Gemini-Modelle in Reihenfolge (x-goog-api-key Auth)."""
     last_err = ""
     for model in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]:
         try:
-            text = _call_openai_compat(
-                "https://generativelanguage.googleapis.com/v1beta/openai",
-                api_key, model, messages, max_tokens, temperature)
+            text = _call_gemini(api_key, model, messages, max_tokens, temperature)
             return text, model
         except Exception as e:
             last_err = str(e)
