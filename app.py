@@ -1147,35 +1147,71 @@ def _extract_segments_from_xbrl(xbrl: dict) -> tuple:
     """
     Parst Produkt- und Geo-Segmente aus einem sec-api.io XBRL-JSON-Dict.
 
-    Sucht in bekannten Income-Statement-Sektionen nach Revenue-Konzepten,
-    filtert auf 12-Monats-Perioden und trennt nach Axis-Typ:
-      - srt:ProductOrServiceAxis  → product_segs
-      - srt:StatementGeographicalAxis → geo_segs
-
-    Gibt (product_segs, geo_segs) als {name: usd_value} Dicts zurück.
+    Strategie: Erst gezielter Scan bekannter Income-Sections, dann Breit-Scan
+    aller Sections nach beliebigem Konzept mit Segment-Dimension.
+    Trennt nach Axis-Typ:
+      - ProductOrService / ProductAndService → product_segs
+      - Geographical / Geographic            → geo_segs
     """
     INCOME_SECTIONS = [
         "StatementsOfIncome", "StatementsOfOperations",
         "ConsolidatedStatementsOfIncome", "ConsolidatedStatementsOfOperations",
         "StatementsOfEarnings", "IncomeStatement",
+        "ConsolidatedStatementsOfOperationsAndComprehensiveIncome",
+        "ConsolidatedStatementsOfIncomeAndComprehensiveIncome",
     ]
     REVENUE_CONCEPTS = [
         "RevenueFromContractWithCustomerExcludingAssessedTax",
-        "Revenues", "SalesRevenueNet", "NetRevenues",
         "RevenueFromContractWithCustomerIncludingAssessedTax",
-        "TotalRevenues",
+        "Revenues", "Revenue", "SalesRevenueNet", "NetRevenues",
+        "TotalRevenues", "NetRevenue", "SalesRevenueGoodsNet",
+        "NetSales", "TotalNetSales",
     ]
 
+    def _has_seg_dim(items_list):
+        """Returns True if any item in the list has a ProductOrService/Geographical dimension."""
+        for it in items_list:
+            seg = it.get("segment")
+            if seg is None:
+                continue
+            for s in (seg if isinstance(seg, list) else [seg]):
+                d = s.get("dimension", "")
+                if "ProductOrService" in d or "ProductAndService" in d or \
+                   "Geographical" in d or "Geographic" in d:
+                    return True
+        return False
+
+    # ── Pass 1: targeted (known sections + known revenue concepts) ─────
     items: list = []
     for sec in INCOME_SECTIONS:
         section = xbrl.get(sec, {})
+        if not isinstance(section, dict):
+            continue
         for concept in REVENUE_CONCEPTS:
             data = section.get(concept)
-            if isinstance(data, list) and data:
+            if isinstance(data, list) and data and _has_seg_dim(data):
                 items = data
                 break
         if items:
             break
+
+    # ── Pass 2: broad scan — any section, any concept with segment dim ─
+    if not items:
+        for sec_key, sec_data in xbrl.items():
+            if not isinstance(sec_data, dict):
+                continue
+            for concept, data in sec_data.items():
+                if not isinstance(data, list) or not data:
+                    continue
+                # Only pick revenue/sales-looking concepts in broad scan
+                c_lower = concept.lower()
+                if not any(k in c_lower for k in ["revenue", "sales", "netsales", "netrevenue"]):
+                    continue
+                if _has_seg_dim(data):
+                    items = data
+                    break
+            if items:
+                break
 
     if not items:
         return {}, {}
@@ -1203,11 +1239,15 @@ def _extract_segments_from_xbrl(xbrl: dict) -> tuple:
             continue  # total consolidated value — not a segment row
 
         segs = seg if isinstance(seg, list) else [seg]
-        if len(segs) != 1:
-            continue  # multi-dimensional intersection — ambiguous, skip
 
-        dim    = segs[0].get("dimension", "")
-        member = segs[0].get("value", "")
+        # Allow up to 2 dims: take the one that is the segment axis
+        seg_dims = [s for s in segs if any(k in s.get("dimension", "") for k in
+                    ["ProductOrService", "ProductAndService", "Geographical", "Geographic"])]
+        if not seg_dims:
+            continue
+        # If there are non-segment extra dims (e.g. currency), still process the segment dim
+        dim    = seg_dims[0].get("dimension", "")
+        member = seg_dims[0].get("value", "")
 
         try:
             val = float(item.get("value") or 0)
@@ -1219,7 +1259,6 @@ def _extract_segments_from_xbrl(xbrl: dict) -> tuple:
         name = _clean_seg_name(member)
 
         if "ProductOrService" in dim or "ProductAndService" in dim:
-            # Keep the larger value when same segment appears in multiple periods
             if name not in product_segs or val > product_segs[name]:
                 product_segs[name] = val
         elif "Geographical" in dim or "Geographic" in dim:
