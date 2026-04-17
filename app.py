@@ -2006,6 +2006,8 @@ if "sb_access_token" not in st.session_state:
     st.session_state["sb_access_token"] = ""
 if "sb_auth_msg" not in st.session_state:
     st.session_state["sb_auth_msg"] = ""
+if "wachstum_expanded" not in st.session_state:
+    st.session_state["wachstum_expanded"] = None
 
 def _go_to_ticker(t):
     st.session_state["ticker"] = t
@@ -3367,15 +3369,13 @@ with tab1:
     else:
         st.markdown(f'<div class="insight-box">ℹ️ Keine Branchenbenchmarks für <strong>{sector or "unbekannter Sektor"}</strong> hinterlegt.</div>', unsafe_allow_html=True)
 
-# ── Chart-Detailansicht-Dialog ─────────────────────────────────────────────
-@st.dialog("📊 Detailansicht — Absolut + Wachstum kombiniert", width="large")
-def _expand_chart_dialog(tkr: str, metric: str, title: str,
-                         color_pos: str, color_neg: str):
+# ── Chart-Detailansicht (Inline) ───────────────────────────────────────────
+def _render_expanded_chart(tkr: str, metric: str, title: str,
+                           color_pos: str, color_neg: str):
     """Kombinierter Chart: Balken = Absolutwerte, Linie = YoY-Wachstum %."""
     with st.spinner("Lade Daten…"):
         _ex_rev, _ex_net, _ex_eps, _ex_fcf, _ex_sh, _ex_price, _ex_ebitda = load_extended_financials(tkr, FMP_API_KEY)
 
-    # Map metric → (series, abs_fmt, label_suffix)
     _map = {
         "revenue":        (_ex_rev,    lambda v: fmt_large(v), ""),
         "revenue_growth": (_ex_rev,    lambda v: fmt_large(v), ""),
@@ -3398,7 +3398,6 @@ def _expand_chart_dialog(tkr: str, metric: str, title: str,
     s = series.dropna()
     labels_abs = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in s.index]
 
-    # YoY growth rate
     growth = s.pct_change() * 100
     growth_clean = growth.dropna()
     labels_g = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in growth_clean.index]
@@ -3409,7 +3408,6 @@ def _expand_chart_dialog(tkr: str, metric: str, title: str,
     _note = f" · {len(labels_abs)} Jahre" + ("" if FMP_API_KEY else " (ohne FMP_API_KEY: max. 4–5 Jahre)")
     st.caption(f"**{title}** — {tkr}{_note}")
 
-    # Special case: price chart is already growth %, just show as bar
     if metric == "price":
         fig = go.Figure(go.Bar(
             x=labels_abs, y=s.values,
@@ -3420,7 +3418,7 @@ def _expand_chart_dialog(tkr: str, metric: str, title: str,
         fig.add_hline(y=0, line_color="#1e3a5f", line_width=1)
         fig.update_layout(
             template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(13,21,38,0.8)", height=400,
+            plot_bgcolor="rgba(13,21,38,0.8)", height=420,
             margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
             yaxis=dict(ticksuffix="%", showgrid=True, gridcolor="#1e2d45"),
             xaxis=dict(showgrid=False),
@@ -3428,7 +3426,6 @@ def _expand_chart_dialog(tkr: str, metric: str, title: str,
         st.plotly_chart(fig, use_container_width=True)
         return
 
-    # Combined chart: bars = absolute, line = YoY %
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
     abs_texts = [abs_fmt(v) for v in s.values] if abs_fmt else [str(v) for v in s.values]
@@ -3460,7 +3457,7 @@ def _expand_chart_dialog(tkr: str, metric: str, title: str,
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(13,21,38,0.8)",
-        height=430,
+        height=460,
         margin=dict(l=10, r=60, t=30, b=10),
         legend=dict(orientation="h", y=1.08, font=dict(size=11),
                     bgcolor="rgba(0,0,0,0)"),
@@ -3484,13 +3481,32 @@ with tab2:
     with c3:
         st.markdown(mini_card("FCF Yield", fcf_yield, 5, 2, ".1f", "%"), unsafe_allow_html=True)
 
+    # ── Inline-Detailansicht ──────────────────────────────────────────────────
+    _exp = st.session_state.get("wachstum_expanded")
+    if _exp:
+        _exp_metric, _exp_ticker, _exp_title, _exp_cp, _exp_cn = _exp
+        st.markdown("---")
+        _cl, _tl = st.columns([1, 7])
+        with _cl:
+            if st.button("✕ Schließen", key="close_wachstum_expanded"):
+                st.session_state["wachstum_expanded"] = None
+                st.rerun()
+        with _tl:
+            st.markdown(
+                f"<h4 style='color:#64b5f6;margin:4px 0;'>📊 {_exp_title} — Detailansicht</h4>",
+                unsafe_allow_html=True,
+            )
+        _render_expanded_chart(_exp_ticker, _exp_metric, _exp_title, _exp_cp, _exp_cn)
+        st.markdown("---")
+
     def _show_chart(fig, metric_key, title, cp, cn, fallback_msg=None):
-        """Zeigt Chart + ⛶-Button in einer Zeile."""
+        """Zeigt Chart + Detailansicht-Button."""
         if fig:
             st.plotly_chart(fig, use_container_width=True)
-            if st.button("⛶ Vergrößern / mehr Jahre", key=f"exp_{metric_key}",
+            if st.button("📊 Detailansicht", key=f"exp_{metric_key}",
                          use_container_width=True):
-                _expand_chart_dialog(ticker, metric_key, title, cp, cn)
+                st.session_state["wachstum_expanded"] = (metric_key, ticker, title, cp, cn)
+                st.rerun()
         elif fallback_msg:
             st.markdown(f'<div class="insight-box" style="color:#546e7a;">{fallback_msg}</div>',
                         unsafe_allow_html=True)
@@ -3518,9 +3534,9 @@ with tab2:
                 title=dict(text="Jährliche Kursperformance", font=dict(color="#64b5f6", size=13)),
             )
             st.plotly_chart(fig_g, use_container_width=True)
-            if st.button("⛶ Vergrößern / mehr Jahre", key="exp_price", use_container_width=False):
-                _expand_chart_dialog(ticker, "price", "Jährliche Kursperformance",
-                                     "#00e676", "#ff5252")
+            if st.button("📊 Detailansicht", key="exp_price", use_container_width=False):
+                st.session_state["wachstum_expanded"] = ("price", ticker, "Jährliche Kursperformance", "#00e676", "#ff5252")
+                st.rerun()
 
     # ── Jährliches Umsatz- & Gewinnwachstum ────────────────────────────
     st.markdown("<div class='section-header'>📊 Jährliches Fundamentalwachstum (5 Jahre)</div>",
@@ -3797,8 +3813,9 @@ with tab3:
                 xaxis=dict(showgrid=False),
             )
             st.plotly_chart(fig_sh, use_container_width=True)
-            if st.button("⛶ Vergrößern / mehr Jahre", key="exp_shares", use_container_width=False):
-                _expand_chart_dialog(ticker, "shares", "Aktienanzahl (Diluted)", "#26a69a", "#ef5350")
+            if st.button("📊 Detailansicht", key="exp_shares", use_container_width=False):
+                st.session_state["wachstum_expanded"] = ("shares", ticker, "Aktienanzahl (Diluted)", "#26a69a", "#ef5350")
+                st.rerun()
             if dilution_pct is not None:
                 dil_warn = "⚠️ Starke Verwässerung" if dilution_pct > 10 else "🟡 Moderate Verwässerung" if dilution_pct > 3 else "✅ Geringe Verwässerung / Rückkäufe (Buybacks)"
                 st.markdown(f'<div class="insight-box"><strong>Aktienanzahl Trend:</strong> {dil_warn} ({dil_str} über {len(_sh_years)} Jahre). Rückgang = Buybacks = positiv für Aktionäre.</div>', unsafe_allow_html=True)
