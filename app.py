@@ -2410,6 +2410,9 @@ INVESTMENT THESE
 BEWERTUNG
 [1-2 Sätze zum aktuellen Kurs vs. fairen Wert. Ergänze einen qualitativen Hinweis zu Moat-Faktoren die sich nicht aus Zahlen ablesen lassen (z.B. Patentschutz, langfristige Kundenverträge, Technologievorsprung).]
 
+KI-EINFLUSS
+[Kategorisiere das Unternehmen in EINER Zeile: "🚀 KI-Profiteur", "⚠️ KI-Disruptionsrisiko" oder "➖ KI-neutral". Dann 2-3 Sätze Begründung: Welche konkreten Produkte/Prozesse profitieren von KI oder sind durch KI bedroht? Wie ist das Unternehmen im Vergleich zu Konkurrenten positioniert?]
+
 ROT-FLAGS
 - [maximal 3 klare Warnsignale — oder "Keine kritischen Warnsignale erkannt"]
 
@@ -3547,6 +3550,7 @@ if st.session_state.get("grok_analysis"):
             "BEAR CASE":        ("🔴", "#ff5252"),
             "INVESTMENT THESE": ("💡", "#ffd600"),
             "BEWERTUNG":        ("⚖️", "#64b5f6"),
+            "KI-EINFLUSS":      ("🤖", "#ce93d8"),
             "ROT-FLAGS":        ("⚠️", "#ff8f00"),
         }
         _provider_label = st.session_state.get("grok_provider") or "KI"
