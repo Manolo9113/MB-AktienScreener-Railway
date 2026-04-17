@@ -4629,14 +4629,19 @@ with tab5:
     with _c2:
         chart_type = st.radio("Chart-Typ", ["Candlestick", "Linie"], horizontal=True, key="ctype")
     with _c3:
-        show_sp500 = st.checkbox("S&P 500 Vergleich", value=False, key="show_sp500")
+        _lcol, _rcol = st.columns(2)
+        with _lcol:
+            show_sp500 = st.checkbox("S&P 500 Vergleich", value=False, key="show_sp500")
+        with _rcol:
+            show_log = st.checkbox("Log. Skala", value=False, key="log_scale")
 
     _ic1, _ic2 = st.columns([3, 2])
     with _ic1:
         ema_options = st.multiselect("EMAs", ["EMA 20", "EMA 50", "EMA 100", "EMA 200"],
                                      default=["EMA 50", "EMA 200"], key="ema_sel")
     with _ic2:
-        indicator_options = st.multiselect("Indikatoren", ["RSI (14)", "MACD", "Fibonacci"],
+        indicator_options = st.multiselect("Indikatoren",
+                                           ["RSI (14)", "MACD", "Bollinger Bänder", "Fibonacci"],
                                            default=["RSI (14)"], key="ind_sel")
 
     if chart_mode == "Wöchentlich (2J)":
@@ -4652,9 +4657,10 @@ with tab5:
     if chart_data.empty:
         st.warning("Keine Daten für diesen Zeitrahmen verfügbar.")
     else:
-        show_rsi  = "RSI (14)" in indicator_options
-        show_macd = "MACD"    in indicator_options
-        show_fib  = "Fibonacci" in indicator_options
+        show_rsi  = "RSI (14)"          in indicator_options
+        show_macd = "MACD"              in indicator_options
+        show_fib  = "Fibonacci"         in indicator_options
+        show_bb   = "Bollinger Bänder"  in indicator_options
 
         # Dynamic subplot layout
         n_rows = 1 + (1 if show_rsi else 0) + (1 if show_macd else 0)
@@ -4747,6 +4753,29 @@ with tab5:
                     name=ema_name, line=dict(color=ema_colors[ema_name], width=1.4),
                 ), row=1, col=1)
 
+        # ── Bollinger Bands (20, 2σ) ────────────────────────────────────
+        if show_bb and len(close) >= 20:
+            _bb_mid   = close.rolling(20).mean()
+            _bb_std   = close.rolling(20).std()
+            _bb_upper = _bb_mid + 2 * _bb_std
+            _bb_lower = _bb_mid - 2 * _bb_std
+            fig_ta.add_trace(go.Scatter(
+                x=chart_data.index, y=_bb_upper, name="BB Oben",
+                line=dict(color="rgba(100,181,246,0.6)", width=1, dash="dot"),
+                showlegend=True,
+            ), row=1, col=1)
+            fig_ta.add_trace(go.Scatter(
+                x=chart_data.index, y=_bb_lower, name="BB Unten",
+                line=dict(color="rgba(100,181,246,0.6)", width=1, dash="dot"),
+                fill="tonexty", fillcolor="rgba(100,181,246,0.04)",
+                showlegend=True,
+            ), row=1, col=1)
+            fig_ta.add_trace(go.Scatter(
+                x=chart_data.index, y=_bb_mid, name="BB Mitte (SMA 20)",
+                line=dict(color="rgba(100,181,246,0.35)", width=1),
+                showlegend=False,
+            ), row=1, col=1)
+
         # ── Fibonacci ──────────────────────────────────────────────────
         if show_fib:
             _fib_high = float(chart_data["High"].max())
@@ -4817,7 +4846,29 @@ with tab5:
 
         # ── Layout ──────────────────────────────────────────────────────
         _total_rows = 1 + 1 + (1 if show_rsi else 0) + (1 if show_macd else 0)
-        _height = 520 + 120 * (_total_rows - 2)
+        _height = 560 + 120 * (_total_rows - 2)
+
+        # Default view: last 1 year (fixes the "chart only visible until Jan/Feb" issue)
+        _today      = pd.Timestamp.today().normalize()
+        _range_end  = _today.strftime("%Y-%m-%d")
+        _range_start = (_today - pd.DateOffset(years=1)).strftime("%Y-%m-%d")
+
+        # 52-week high/low reference lines
+        if len(chart_data) >= 50:
+            _lookback = min(252, len(chart_data))
+            _52w_high = float(chart_data["High"].iloc[-_lookback:].max())
+            _52w_low  = float(chart_data["Low"].iloc[-_lookback:].min())
+            fig_ta.add_hline(y=_52w_high, line_dash="dot",
+                             line_color="rgba(0,230,118,0.4)", line_width=1,
+                             annotation_text=f"52W Hoch ${_52w_high:.2f}",
+                             annotation_font_color="rgba(0,230,118,0.7)",
+                             annotation_font_size=9, row=1, col=1)
+            fig_ta.add_hline(y=_52w_low, line_dash="dot",
+                             line_color="rgba(255,82,82,0.4)", line_width=1,
+                             annotation_text=f"52W Tief ${_52w_low:.2f}",
+                             annotation_font_color="rgba(255,82,82,0.7)",
+                             annotation_font_size=9, row=1, col=1)
+
         fig_ta.update_layout(
             template="plotly_dark",
             paper_bgcolor="rgba(0,0,0,0)",
@@ -4826,12 +4877,42 @@ with tab5:
             legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
                         bgcolor="rgba(13,21,38,0.8)", bordercolor="#1e3a5f", borderwidth=1,
                         font=dict(size=10)),
-            margin=dict(l=0, r=0, t=30, b=0),
-            xaxis=dict(showgrid=False, zeroline=False, rangeslider=dict(visible=False)),
-            yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False),
+            margin=dict(l=0, r=60, t=40, b=0),
+            xaxis=dict(
+                showgrid=False, zeroline=False,
+                rangeslider=dict(visible=False),
+                range=[_range_start, _range_end],
+                rangeselector=dict(
+                    bgcolor="#0d1526",
+                    activecolor="#1565c0",
+                    bordercolor="#1e3a5f",
+                    borderwidth=1,
+                    font=dict(color="#90a4ae", size=10),
+                    buttons=[
+                        dict(count=1,  label="1M",  step="month", stepmode="backward"),
+                        dict(count=3,  label="3M",  step="month", stepmode="backward"),
+                        dict(count=6,  label="6M",  step="month", stepmode="backward"),
+                        dict(count=1,  label="YTD", step="year",  stepmode="todate"),
+                        dict(count=1,  label="1J",  step="year",  stepmode="backward"),
+                        dict(count=2,  label="2J",  step="year",  stepmode="backward"),
+                        dict(count=5,  label="5J",  step="year",  stepmode="backward"),
+                        dict(step="all", label="MAX"),
+                    ],
+                ),
+            ),
+            yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False,
+                       type="log" if show_log else "linear"),
             hovermode="x unified",
             title=dict(text=f"{company_name} — {title_suffix}", font=dict(color="#64b5f6", size=14)),
         )
+
+        # Wochenend-Lücken schließen (nur Tages-Chart)
+        if chart_mode == "Täglich (5J)":
+            fig_ta.update_xaxes(
+                rangebreaks=[dict(bounds=["sat", "mon"])],
+                row=1, col=1,
+            )
+
         for r in range(2, _total_rows + 1):
             fig_ta.update_xaxes(showgrid=False, row=r, col=1)
             fig_ta.update_yaxes(showgrid=True, gridcolor="#1e2d45", zeroline=False, row=r, col=1)
@@ -4856,6 +4937,19 @@ with tab5:
             _ml, _sl, _ = compute_macd(close)
             _cross = "Bullish ✅ (MACD > Signal)" if _ml.iloc[-1] > _sl.iloc[-1] else "Bearish ⚠️ (MACD < Signal)"
             _insights.append(f"MACD: {_cross}")
+        if show_bb and len(close) >= 20:
+            _bb_m = close.rolling(20).mean().iloc[-1]
+            _bb_s = close.rolling(20).std().iloc[-1]
+            _bb_u, _bb_l = _bb_m + 2 * _bb_s, _bb_m - 2 * _bb_s
+            _cp = float(close.iloc[-1])
+            _bw = (_bb_u - _bb_l) / _bb_m * 100  # Bandwidth %
+            if _cp > _bb_u:
+                _bb_status = "Über BB Oben 🔴 (überkauft)"
+            elif _cp < _bb_l:
+                _bb_status = "Unter BB Unten 🟢 (überverkauft)"
+            else:
+                _bb_status = f"Innerhalb ({(_cp - _bb_l) / (_bb_u - _bb_l) * 100:.0f}% vom Tief)"
+            _insights.append(f"BB: {_bb_status} · Breite {_bw:.1f}%")
         if _insights:
             st.markdown(f"""
             <div class="insight-box">
