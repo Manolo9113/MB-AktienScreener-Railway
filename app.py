@@ -576,6 +576,117 @@ def load_annual_financials(ticker: str):
     return rev, net, eps, fcf, shares_ann, ebitda_s
 
 @st.cache_data(ttl=86400)
+def _sec_cik(ticker: str):
+    """Ticker → zero-padded CIK string. Returns None on failure."""
+    try:
+        r = requests.get(
+            "https://www.sec.gov/files/company_tickers.json",
+            headers={"User-Agent": "StocksMB app@stocksmb.app"},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            for entry in r.json().values():
+                if entry.get("ticker", "").upper() == ticker.upper():
+                    return str(entry["cik_str"]).zfill(10)
+    except Exception:
+        pass
+    return None
+
+
+@st.cache_data(ttl=86400)
+def _sec_annual(ticker: str) -> dict:
+    """
+    SEC EDGAR XBRL — gratis, kein API-Key, bis zu 15 Jahre Jahresabschluss.
+    Gibt Dict mit pd.Series: rev, net, eps, fcf, shares, ebitda
+    Nur US-Aktien (10-K Pflicht). Rate-Limit: 10 req/s — durch Cache kein Problem.
+    """
+    cik = _sec_cik(ticker)
+    if not cik:
+        return {}
+    try:
+        r = requests.get(
+            f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json",
+            headers={"User-Agent": "StocksMB app@stocksmb.app"},
+            timeout=20,
+        )
+        if r.status_code != 200:
+            return {}
+        gaap = r.json().get("facts", {}).get("us-gaap", {})
+    except Exception:
+        return {}
+
+    def _extract(concept: str, unit: str = "USD") -> pd.Series:
+        rows = gaap.get(concept, {}).get("units", {}).get(unit, [])
+        ann = [d for d in rows if d.get("form") == "10-K" and d.get("fp") == "FY"]
+        if not ann:
+            return pd.Series(dtype=float)
+        by_fy: dict = {}
+        for d in ann:
+            fy = d.get("fy")
+            if fy and (fy not in by_fy or d.get("filed", "") > by_fy[fy].get("filed", "")):
+                by_fy[fy] = d
+        ordered = sorted(by_fy.values(), key=lambda x: x["end"])
+        return pd.Series(
+            [d["val"] for d in ordered],
+            index=pd.to_datetime([d["end"] for d in ordered]),
+        ).sort_index()
+
+    def _first(*series) -> pd.Series:
+        for s in series:
+            if not s.empty:
+                return s
+        return pd.Series(dtype=float)
+
+    rev = _first(
+        _extract("Revenues"),
+        _extract("RevenueFromContractWithCustomerExcludingAssessedTax"),
+        _extract("SalesRevenueNet"),
+        _extract("RevenuesNetOfInterestExpense"),
+    )
+    net = _first(
+        _extract("NetIncomeLoss"),
+        _extract("NetIncomeLossAvailableToCommonStockholdersBasic"),
+    )
+    eps = _first(
+        _extract("EarningsPerShareDiluted", "USD/shares"),
+        _extract("EarningsPerShareBasic",   "USD/shares"),
+    )
+    op_cf = _first(_extract("NetCashProvidedByUsedInOperatingActivities"))
+    capex = _first(
+        _extract("PaymentsToAcquirePropertyPlantAndEquipment"),
+        _extract("CapitalExpendituresIncurredButNotYetPaid"),
+    )
+    shares = _first(
+        _extract("WeightedAverageNumberOfDilutedSharesOutstanding", "shares"),
+        _extract("CommonStockSharesOutstanding", "shares"),
+    )
+    op_inc = _first(_extract("OperatingIncomeLoss"))
+    dna    = _first(
+        _extract("DepreciationDepletionAndAmortization"),
+        _extract("DepreciationAndAmortization"),
+    )
+
+    # FCF = Operating CF − CapEx
+    fcf = pd.Series(dtype=float)
+    if not op_cf.empty:
+        if not capex.empty:
+            idx = op_cf.index.intersection(capex.index)
+            if len(idx) > 0:
+                fcf = (op_cf.loc[idx] - capex.loc[idx]).sort_index()
+        else:
+            fcf = op_cf
+
+    # EBITDA = Operating Income + D&A
+    ebitda = pd.Series(dtype=float)
+    if not op_inc.empty and not dna.empty:
+        idx = op_inc.index.intersection(dna.index)
+        if len(idx) > 0:
+            ebitda = (op_inc.loc[idx] + dna.loc[idx]).sort_index()
+
+    return {"rev": rev, "net": net, "eps": eps, "fcf": fcf, "shares": shares, "ebitda": ebitda}
+
+
+@st.cache_data(ttl=86400)
 def load_extended_financials(ticker: str, api_key: str = ""):
     """Bis zu 15 Jahre Jahresdaten — FMP primär (api_key als Cache-Key), yfinance Fallback."""
     def _clean(s: pd.Series) -> pd.Series:
@@ -634,6 +745,25 @@ def load_extended_financials(ticker: str, api_key: str = ""):
                         fcf = _clean(pd.Series(fcfs, index=cf_dates))
         except Exception:
             pass
+
+    # SEC EDGAR XBRL Fallback — gratis, kein Key, bis 15 Jahre (nur US-Aktien)
+    try:
+        _sec = _sec_annual(ticker)
+        if _sec:
+            def _prefer_longer(current: pd.Series, sec_s: pd.Series) -> pd.Series:
+                sec_s = _clean(sec_s)
+                if sec_s.empty:
+                    return current
+                # Use SEC data if it's longer OR current is empty
+                return sec_s if (current.empty or len(sec_s) > len(current)) else current
+            rev        = _prefer_longer(rev,        _sec.get("rev",    pd.Series(dtype=float)))
+            net        = _prefer_longer(net,        _sec.get("net",    pd.Series(dtype=float)))
+            eps        = _prefer_longer(eps,        _sec.get("eps",    pd.Series(dtype=float)))
+            fcf        = _prefer_longer(fcf,        _sec.get("fcf",    pd.Series(dtype=float)))
+            shares     = _prefer_longer(shares,     _sec.get("shares", pd.Series(dtype=float)))
+            ebitda_ext = _prefer_longer(ebitda_ext, _sec.get("ebitda", pd.Series(dtype=float)))
+    except Exception:
+        pass
 
     # yfinance fallback for any series still empty
     try:
