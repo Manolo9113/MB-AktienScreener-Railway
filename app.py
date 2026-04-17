@@ -536,31 +536,34 @@ def load_quarterly_financials(ticker: str):
 
 @st.cache_data(ttl=86400)
 def load_annual_financials(ticker: str):
-    """Jahresabschluss: Umsatz, Nettogewinn, EPS, FCF der letzten 5 Geschäftsjahre."""
+    """Jahresabschluss: Umsatz, Nettogewinn, EPS, FCF, EBITDA der letzten 5 Geschäftsjahre."""
     stock = yf.Ticker(ticker)
     rev = pd.Series(dtype=float)
     net = pd.Series(dtype=float)
     eps = pd.Series(dtype=float)
     fcf = pd.Series(dtype=float)
+    ebitda_s = pd.Series(dtype=float)
+    shares_ann = pd.Series(dtype=float)
     try:
         inc = stock.income_stmt
         if inc is not None and not inc.empty:
             for row in ["Total Revenue", "Revenue"]:
                 if row in inc.index:
-                    rev = inc.loc[row].dropna().sort_index()
-                    break
+                    rev = inc.loc[row].dropna().sort_index(); break
             for row in ["Net Income", "Net Income Common Stockholders"]:
                 if row in inc.index:
-                    net = inc.loc[row].dropna().sort_index()
-                    break
+                    net = inc.loc[row].dropna().sort_index(); break
             for row in ["Diluted EPS", "Basic EPS"]:
                 if row in inc.index:
-                    eps = inc.loc[row].dropna().sort_index()
-                    break
+                    eps = inc.loc[row].dropna().sort_index(); break
+            for row in ["EBITDA", "Normalized EBITDA"]:
+                if row in inc.index:
+                    ebitda_s = inc.loc[row].dropna().sort_index(); break
+            for row in ["Diluted Average Shares", "Basic Average Shares", "Ordinary Shares Number"]:
+                if row in inc.index:
+                    shares_ann = inc.loc[row].dropna().sort_index(); break
     except Exception:
         pass
-    fcf = pd.Series(dtype=float)
-    shares_ann = pd.Series(dtype=float)
     try:
         cf = stock.cash_flow
         if cf is not None and not cf.empty:
@@ -570,36 +573,31 @@ def load_annual_financials(ticker: str):
                 fcf = (cf.loc["Operating Cash Flow"] + cf.loc["Capital Expenditure"]).dropna().sort_index()
     except Exception:
         pass
-    try:
-        inc2 = stock.income_stmt
-        if inc2 is not None and not inc2.empty:
-            for row in ["Diluted Average Shares", "Basic Average Shares", "Ordinary Shares Number"]:
-                if row in inc2.index:
-                    shares_ann = inc2.loc[row].dropna().sort_index()
-                    break
-    except Exception:
-        pass
-    return rev, net, eps, fcf, shares_ann
+    return rev, net, eps, fcf, shares_ann, ebitda_s
 
 @st.cache_data(ttl=86400)
-def load_extended_financials(ticker: str):
-    """Bis zu 15 Jahre Jahresdaten — FMP primär, yfinance als Fallback."""
+def load_extended_financials(ticker: str, api_key: str = ""):
+    """Bis zu 15 Jahre Jahresdaten — FMP primär (api_key als Cache-Key), yfinance Fallback."""
+    def _clean(s: pd.Series) -> pd.Series:
+        return s.replace(0, float("nan")).dropna().sort_index()
+
     rev = pd.Series(dtype=float)
     net = pd.Series(dtype=float)
     eps = pd.Series(dtype=float)
     fcf = pd.Series(dtype=float)
+    ebitda_ext = pd.Series(dtype=float)
     shares = pd.Series(dtype=float)
     price_annual = pd.Series(dtype=float)
 
-    if FMP_API_KEY:
+    if api_key:
         try:
             r = requests.get(
                 f"https://financialmodelingprep.com/api/v3/income-statement/{ticker}",
-                params={"limit": 15, "apikey": FMP_API_KEY}, timeout=10)
+                params={"limit": 15, "apikey": api_key}, timeout=10)
             if r.status_code == 200:
                 data = r.json()
                 if isinstance(data, list) and data:
-                    dates, revs, nets, epss, shs = [], [], [], [], []
+                    dates, revs, nets, epss, shs, ebs = [], [], [], [], [], []
                     for d in data:
                         try:
                             dates.append(pd.Timestamp(d["date"]))
@@ -607,19 +605,21 @@ def load_extended_financials(ticker: str):
                             nets.append(float(d.get("netIncome") or 0))
                             epss.append(float(d.get("epsdiluted") or 0))
                             shs.append(float(d.get("weightedAverageShsOutDil") or 0))
+                            ebs.append(float(d.get("ebitda") or 0))
                         except Exception:
                             continue
                     if dates:
-                        rev    = pd.Series(revs,   index=dates).sort_index()
-                        net    = pd.Series(nets,   index=dates).sort_index()
-                        eps    = pd.Series(epss,   index=dates).sort_index()
-                        shares = pd.Series(shs,    index=dates).sort_index()
+                        rev        = _clean(pd.Series(revs, index=dates))
+                        net        = _clean(pd.Series(nets, index=dates))
+                        eps        = _clean(pd.Series(epss, index=dates))
+                        shares     = _clean(pd.Series(shs,  index=dates))
+                        ebitda_ext = _clean(pd.Series(ebs,  index=dates))
         except Exception:
             pass
         try:
             r2 = requests.get(
                 f"https://financialmodelingprep.com/api/v3/cash-flow-statement/{ticker}",
-                params={"limit": 15, "apikey": FMP_API_KEY}, timeout=10)
+                params={"limit": 15, "apikey": api_key}, timeout=10)
             if r2.status_code == 200:
                 data2 = r2.json()
                 if isinstance(data2, list) and data2:
@@ -631,7 +631,7 @@ def load_extended_financials(ticker: str):
                         except Exception:
                             continue
                     if cf_dates:
-                        fcf = pd.Series(fcfs, index=cf_dates).sort_index()
+                        fcf = _clean(pd.Series(fcfs, index=cf_dates))
         except Exception:
             pass
 
@@ -643,11 +643,11 @@ def load_extended_financials(ticker: str):
             if rev.empty:
                 for row in ["Total Revenue", "Revenue"]:
                     if row in inc.index:
-                        rev = inc.loc[row].dropna().sort_index(); break
+                        rev = _clean(inc.loc[row]); break
             if net.empty:
                 for row in ["Net Income", "Net Income Common Stockholders"]:
                     if row in inc.index:
-                        net = inc.loc[row].dropna().sort_index(); break
+                        net = _clean(inc.loc[row]); break
             if eps.empty:
                 for row in ["Diluted EPS", "Basic EPS"]:
                     if row in inc.index:
@@ -655,12 +655,16 @@ def load_extended_financials(ticker: str):
             if shares.empty:
                 for row in ["Diluted Average Shares", "Basic Average Shares"]:
                     if row in inc.index:
-                        shares = inc.loc[row].dropna().sort_index(); break
+                        shares = _clean(inc.loc[row]); break
+            if ebitda_ext.empty:
+                for row in ["EBITDA", "Normalized EBITDA"]:
+                    if row in inc.index:
+                        ebitda_ext = _clean(inc.loc[row]); break
         if fcf.empty:
             cf = stock.cash_flow
             if cf is not None and not cf.empty:
                 if "Free Cash Flow" in cf.index:
-                    fcf = cf.loc["Free Cash Flow"].dropna().sort_index()
+                    fcf = _clean(cf.loc["Free Cash Flow"])
     except Exception:
         pass
 
@@ -672,7 +676,7 @@ def load_extended_financials(ticker: str):
     except Exception:
         pass
 
-    return rev, net, eps, fcf, shares, price_annual
+    return rev, net, eps, fcf, shares, price_annual, ebitda_ext
 
 @st.cache_data(ttl=86400)
 def load_earnings_surprises(ticker: str) -> list[dict]:
@@ -2564,7 +2568,7 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     hist_weekly, hist_monthly, share_history, splits_data = load_yfinance_extended(ticker)
     q_rev, q_net, q_eps = load_quarterly_financials(ticker)
     earnings_surprises   = load_earnings_surprises(ticker)
-    a_rev, a_net, a_eps, a_fcf, a_shares = load_annual_financials(ticker)
+    a_rev, a_net, a_eps, a_fcf, a_shares, a_ebitda = load_annual_financials(ticker)
     seg_data = load_segment_data(ticker)
 
 if hist.empty or not yf_info:
@@ -3369,18 +3373,20 @@ def _expand_chart_dialog(tkr: str, metric: str, title: str,
                          color_pos: str, color_neg: str):
     """Zeigt erweiterte Balkendiagramm-Ansicht (bis 15 Jahre) in einem Modal."""
     with st.spinner("Lade erweiterte Daten…"):
-        _ex_rev, _ex_net, _ex_eps, _ex_fcf, _ex_sh, _ex_price = load_extended_financials(tkr)
+        _ex_rev, _ex_net, _ex_eps, _ex_fcf, _ex_sh, _ex_price, _ex_ebitda = load_extended_financials(tkr, FMP_API_KEY)
 
     _series_map = {
-        "revenue":        (_ex_rev,   False, lambda v: fmt_large(v)),
-        "revenue_growth": (_ex_rev,   True,  None),
-        "net":            (_ex_net,   False, lambda v: fmt_large(v)),
-        "net_growth":     (_ex_net,   True,  None),
-        "eps":            (_ex_eps,   False, lambda v: f"${v:.2f}"),
-        "fcf":            (_ex_fcf,   False, lambda v: fmt_large(v)),
-        "fcf_growth":     (_ex_fcf,   True,  None),
-        "shares":         (_ex_sh,    False, lambda v: f"{v/1e9:.2f}B"),
-        "price":          (_ex_price, True,  None),
+        "revenue":        (_ex_rev,    False, lambda v: fmt_large(v)),
+        "revenue_growth": (_ex_rev,    True,  None),
+        "net":            (_ex_net,    False, lambda v: fmt_large(v)),
+        "net_growth":     (_ex_net,    True,  None),
+        "eps":            (_ex_eps,    False, lambda v: f"${v:.2f}"),
+        "fcf":            (_ex_fcf,    False, lambda v: fmt_large(v)),
+        "fcf_growth":     (_ex_fcf,    True,  None),
+        "ebitda":         (_ex_ebitda, False, lambda v: fmt_large(v)),
+        "ebitda_growth":  (_ex_ebitda, True,  None),
+        "shares":         (_ex_sh,     False, lambda v: f"{v/1e9:.2f}B"),
+        "price":          (_ex_price,  True,  None),
     }
     series, is_growth, vfmt = _series_map.get(metric, (pd.Series(dtype=float), True, None))
 
@@ -3550,6 +3556,17 @@ with tab2:
     with _gc6:
         _show_chart(_bar_chart(a_fcf, "Free Cash Flow Wachstum YoY", "#00e676", "#ff5252"),
                     "fcf_growth", "FCF Wachstum YoY", "#00e676", "#ff5252")
+
+    # EBITDA-Zeile
+    _gc7, _gc8 = st.columns(2)
+    with _gc7:
+        _show_chart(_bar_chart(a_ebitda, "EBITDA absolut", "#7986cb", "#ef5350",
+                               is_growth=False, value_fmt=lambda v: fmt_large(v)),
+                    "ebitda", "EBITDA absolut", "#7986cb", "#ef5350",
+                    "Keine EBITDA-Daten verfügbar.")
+    with _gc8:
+        _show_chart(_bar_chart(a_ebitda, "EBITDA Wachstum YoY", "#00e676", "#ff5252"),
+                    "ebitda_growth", "EBITDA Wachstum YoY", "#00e676", "#ff5252")
 
 with tab3:
     st.markdown("<div class='section-header'>Bilanz</div>", unsafe_allow_html=True)
