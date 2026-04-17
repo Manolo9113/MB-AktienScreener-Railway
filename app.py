@@ -3367,70 +3367,111 @@ with tab1:
     else:
         st.markdown(f'<div class="insight-box">ℹ️ Keine Branchenbenchmarks für <strong>{sector or "unbekannter Sektor"}</strong> hinterlegt.</div>', unsafe_allow_html=True)
 
-# ── Chart-Vollbild-Dialog ──────────────────────────────────────────────────
-@st.dialog("📊 Detailansicht — Erweiterte Historie", width="large")
+# ── Chart-Detailansicht-Dialog ─────────────────────────────────────────────
+@st.dialog("📊 Detailansicht — Absolut + Wachstum kombiniert", width="large")
 def _expand_chart_dialog(tkr: str, metric: str, title: str,
                          color_pos: str, color_neg: str):
-    """Zeigt erweiterte Balkendiagramm-Ansicht (bis 15 Jahre) in einem Modal."""
-    with st.spinner("Lade erweiterte Daten…"):
+    """Kombinierter Chart: Balken = Absolutwerte, Linie = YoY-Wachstum %."""
+    with st.spinner("Lade Daten…"):
         _ex_rev, _ex_net, _ex_eps, _ex_fcf, _ex_sh, _ex_price, _ex_ebitda = load_extended_financials(tkr, FMP_API_KEY)
 
-    _series_map = {
-        "revenue":        (_ex_rev,    False, lambda v: fmt_large(v)),
-        "revenue_growth": (_ex_rev,    True,  None),
-        "net":            (_ex_net,    False, lambda v: fmt_large(v)),
-        "net_growth":     (_ex_net,    True,  None),
-        "eps":            (_ex_eps,    False, lambda v: f"${v:.2f}"),
-        "fcf":            (_ex_fcf,    False, lambda v: fmt_large(v)),
-        "fcf_growth":     (_ex_fcf,    True,  None),
-        "ebitda":         (_ex_ebitda, False, lambda v: fmt_large(v)),
-        "ebitda_growth":  (_ex_ebitda, True,  None),
-        "shares":         (_ex_sh,     False, lambda v: f"{v/1e9:.2f}B"),
-        "price":          (_ex_price,  True,  None),
+    # Map metric → (series, abs_fmt, label_suffix)
+    _map = {
+        "revenue":        (_ex_rev,    lambda v: fmt_large(v), ""),
+        "revenue_growth": (_ex_rev,    lambda v: fmt_large(v), ""),
+        "net":            (_ex_net,    lambda v: fmt_large(v), ""),
+        "net_growth":     (_ex_net,    lambda v: fmt_large(v), ""),
+        "eps":            (_ex_eps,    lambda v: f"${v:.2f}",  ""),
+        "fcf":            (_ex_fcf,    lambda v: fmt_large(v), ""),
+        "fcf_growth":     (_ex_fcf,    lambda v: fmt_large(v), ""),
+        "ebitda":         (_ex_ebitda, lambda v: fmt_large(v), ""),
+        "ebitda_growth":  (_ex_ebitda, lambda v: fmt_large(v), ""),
+        "shares":         (_ex_sh,     lambda v: f"{v/1e9:.2f}B", ""),
+        "price":          (_ex_price,  None,                   "%"),
     }
-    series, is_growth, vfmt = _series_map.get(metric, (pd.Series(dtype=float), True, None))
+    series, abs_fmt, _ = _map.get(metric, (_ex_rev, lambda v: fmt_large(v), ""))
 
-    if series.empty or len(series) < 2:
+    if series is None or series.empty or len(series) < 2:
         st.warning("Nicht genug Daten verfügbar.")
         return
 
     s = series.dropna()
-    if is_growth:
-        vals   = s.pct_change().dropna() * 100
-        suffix = "%"
-    else:
-        vals   = s
-        suffix = ""
+    labels_abs = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in s.index]
 
-    labels = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in vals.index]
-    colors = [color_pos if v >= 0 else color_neg for v in vals.values]
-    texts  = (
-        [f"{v:+.1f}%" for v in vals.values] if is_growth
-        else ([vfmt(v) for v in vals.values] if vfmt else [f"{v:.2f}" for v in vals.values])
-    )
+    # YoY growth rate
+    growth = s.pct_change() * 100
+    growth_clean = growth.dropna()
+    labels_g = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in growth_clean.index]
 
-    _note = "" if FMP_API_KEY else " (FMP_API_KEY nicht gesetzt → max. 4–5 Jahre via yfinance)"
-    st.caption(f"**{title}** · {tkr} · {len(labels)} Jahre{_note}")
+    bar_colors = [color_pos if v >= 0 else color_neg for v in s.values]
+    line_colors = ["#00e676" if v >= 0 else "#ff5252" for v in growth_clean.values]
 
-    fig = go.Figure(go.Bar(
-        x=labels, y=vals.values,
-        marker_color=colors,
-        text=texts,
+    _note = f" · {len(labels_abs)} Jahre" + ("" if FMP_API_KEY else " (ohne FMP_API_KEY: max. 4–5 Jahre)")
+    st.caption(f"**{title}** — {tkr}{_note}")
+
+    # Special case: price chart is already growth %, just show as bar
+    if metric == "price":
+        fig = go.Figure(go.Bar(
+            x=labels_abs, y=s.values,
+            marker_color=["#00e676" if v >= 0 else "#ff5252" for v in s.values],
+            text=[f"{v:+.1f}%" for v in s.values],
+            textposition="outside", textfont=dict(size=12, color="#90a4ae"),
+        ))
+        fig.add_hline(y=0, line_color="#1e3a5f", line_width=1)
+        fig.update_layout(
+            template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(13,21,38,0.8)", height=400,
+            margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
+            yaxis=dict(ticksuffix="%", showgrid=True, gridcolor="#1e2d45"),
+            xaxis=dict(showgrid=False),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        return
+
+    # Combined chart: bars = absolute, line = YoY %
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    abs_texts = [abs_fmt(v) for v in s.values] if abs_fmt else [str(v) for v in s.values]
+    fig.add_trace(go.Bar(
+        x=labels_abs, y=s.values,
+        name=title,
+        marker_color=bar_colors,
+        text=abs_texts,
         textposition="outside",
-        textfont=dict(size=12, color="#90a4ae"),
-    ))
-    fig.add_hline(y=0, line_color="#1e3a5f", line_width=1)
+        textfont=dict(size=11, color="#90a4ae"),
+        opacity=0.85,
+    ), secondary_y=False)
+
+    if len(growth_clean) >= 1:
+        fig.add_trace(go.Scatter(
+            x=labels_g, y=growth_clean.values,
+            name="YoY Wachstum %",
+            mode="lines+markers+text",
+            line=dict(color="#ffd600", width=2.5),
+            marker=dict(size=8, color=line_colors,
+                        line=dict(color="#ffd600", width=1.5)),
+            text=[f"{v:+.1f}%" for v in growth_clean.values],
+            textposition="top center",
+            textfont=dict(size=10, color="#ffd600"),
+        ), secondary_y=True)
+
+    fig.add_hline(y=0, line_color="#1e3a5f", line_width=1, secondary_y=False)
     fig.update_layout(
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(13,21,38,0.8)",
-        height=420,
-        margin=dict(l=10, r=10, t=20, b=10),
-        showlegend=False,
-        yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False,
-                   ticksuffix=suffix if is_growth else ""),
+        height=430,
+        margin=dict(l=10, r=60, t=30, b=10),
+        legend=dict(orientation="h", y=1.08, font=dict(size=11),
+                    bgcolor="rgba(0,0,0,0)"),
         xaxis=dict(showgrid=False),
     )
+    fig.update_yaxes(showgrid=True, gridcolor="#1e2d45", secondary_y=False)
+    fig.update_yaxes(ticksuffix="%", showgrid=False,
+                     title_text="YoY Wachstum %",
+                     title_font=dict(color="#ffd600"),
+                     tickfont=dict(color="#ffd600"),
+                     secondary_y=True)
     st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
@@ -3568,6 +3609,75 @@ with tab2:
         _show_chart(_bar_chart(a_ebitda, "EBITDA Wachstum YoY", "#00e676", "#ff5252"),
                     "ebitda_growth", "EBITDA Wachstum YoY", "#00e676", "#ff5252")
 
+    # ── Segment-Aufschlüsselung ────────────────────────────────────────
+    st.markdown("<div class='section-header'>🥧 Umsatz nach Segment</div>", unsafe_allow_html=True)
+    _seg_colors = ["#00e5ff","#a78bfa","#00e676","#ffd600","#ff5252",
+                   "#f59e0b","#64b5f6","#f48fb1","#69f0ae","#ce93d8",
+                   "#4db6ac","#ef9a9a","#80cbc4","#ffcc80","#90a4ae"]
+
+    def _seg_charts(entries: list, sublabel: str):
+        if not entries:
+            return
+        latest = entries[-1]
+        segs = {k: v for k, v in latest["segments"].items() if v > 0}
+        if not segs:
+            return
+        total = sum(segs.values())
+        names = list(segs.keys())
+        vals  = list(segs.values())
+        clrs  = _seg_colors[:len(names)]
+        st.caption(f"**{sublabel}** — {latest['date']}")
+        _sc1, _sc2 = st.columns(2)
+        with _sc1:
+            fig_donut = go.Figure(go.Pie(
+                labels=names, values=vals, hole=0.52,
+                marker=dict(colors=clrs, line=dict(color="#0a1628", width=2)),
+                textinfo="label+percent", textfont=dict(size=11),
+                hovertemplate="<b>%{label}</b><br>%{value:,.0f}<br>%{percent}<extra></extra>",
+            ))
+            fig_donut.update_layout(
+                template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                height=300, margin=dict(l=0, r=0, t=10, b=0),
+                showlegend=True, legend=dict(font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+                annotations=[dict(text=fmt_large(total), x=0.5, y=0.5,
+                                  font=dict(size=14, color="#b0bec5"), showarrow=False)],
+            )
+            st.plotly_chart(fig_donut, use_container_width=True)
+        with _sc2:
+            if len(entries) >= 2:
+                years = [e["date"] for e in entries]
+                fig_stk = go.Figure()
+                for i, seg_name in enumerate(names):
+                    fig_stk.add_trace(go.Bar(
+                        name=seg_name, x=years,
+                        y=[e["segments"].get(seg_name, 0) for e in entries],
+                        marker_color=_seg_colors[i % len(_seg_colors)],
+                        hovertemplate=f"<b>{seg_name}</b><br>%{{y:,.0f}}<extra></extra>",
+                    ))
+                fig_stk.update_layout(
+                    barmode="stack", template="plotly_dark",
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(13,21,38,0.8)",
+                    height=300, margin=dict(l=0, r=0, t=10, b=0),
+                    legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)",
+                                orientation="h", yanchor="bottom", y=1.02),
+                    yaxis=dict(showgrid=True, gridcolor="#1e2d45"),
+                    xaxis=dict(showgrid=False),
+                )
+                st.plotly_chart(fig_stk, use_container_width=True)
+            else:
+                st.caption("Nur 1 Jahr — kein Trend darstellbar.")
+
+    _has_seg = seg_data.get("product") or seg_data.get("geo")
+    if _has_seg:
+        if seg_data.get("product"):
+            _seg_charts(seg_data["product"], "Produkt / Geschäftsbereich")
+        if seg_data.get("geo"):
+            _seg_charts(seg_data["geo"], "Geografie")
+    elif FMP_API_KEY:
+        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Keine Segmentdaten für diesen Titel verfügbar — Unternehmen rapportiert keine Segmente oder FMP-Plan enthält keine Segmentdaten.</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Segmentdaten benötigen FMP_API_KEY (in Railway Umgebungsvariablen setzen).</div>', unsafe_allow_html=True)
+
 with tab3:
     st.markdown("<div class='section-header'>Bilanz</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
@@ -3694,102 +3804,6 @@ with tab3:
                 st.markdown(f'<div class="insight-box"><strong>Aktienanzahl Trend:</strong> {dil_warn} ({dil_str} über {len(_sh_years)} Jahre). Rückgang = Buybacks = positiv für Aktionäre.</div>', unsafe_allow_html=True)
         except Exception:
             pass
-
-    # ── Segment-Aufschlüsselung ────────────────────────────────────────
-    _seg_colors = ["#00e5ff","#a78bfa","#00e676","#ffd600","#ff5252",
-                   "#f59e0b","#64b5f6","#f48fb1","#69f0ae","#ce93d8",
-                   "#4db6ac","#ef9a9a","#80cbc4","#ffcc80","#90a4ae"]
-
-    def _seg_charts(entries: list, label: str):
-        if not entries:
-            return
-        latest = entries[-1]
-        segs   = {k: v for k, v in latest["segments"].items() if v > 0}
-        if not segs:
-            return
-        total  = sum(segs.values())
-        names  = list(segs.keys())
-        vals   = list(segs.values())
-        clrs   = _seg_colors[:len(names)]
-
-        st.markdown(
-            f"<div class='section-header'>🥧 Segment-Aufschlüsselung — {label} ({latest['date']})</div>",
-            unsafe_allow_html=True)
-
-        _sc1, _sc2 = st.columns(2)
-
-        # Donut — aktuelles Jahr
-        with _sc1:
-            fig_donut = go.Figure(go.Pie(
-                labels=names,
-                values=vals,
-                hole=0.52,
-                marker=dict(colors=clrs, line=dict(color="#0a1628", width=2)),
-                textinfo="label+percent",
-                textfont=dict(size=11),
-                hovertemplate="<b>%{label}</b><br>%{value:,.0f}<br>%{percent}<extra></extra>",
-            ))
-            fig_donut.update_layout(
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
-                height=320,
-                margin=dict(l=0, r=0, t=10, b=0),
-                showlegend=True,
-                legend=dict(font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
-                annotations=[dict(
-                    text=fmt_large(total),
-                    x=0.5, y=0.5, font=dict(size=14, color="#b0bec5"),
-                    showarrow=False,
-                )],
-            )
-            st.plotly_chart(fig_donut, use_container_width=True)
-
-        # Gestapeltes Balkendiagramm — Trend über Jahre
-        with _sc2:
-            if len(entries) >= 2:
-                years = [e["date"] for e in entries]
-                fig_stk = go.Figure()
-                for i, seg_name in enumerate(names):
-                    seg_vals = [e["segments"].get(seg_name, 0) for e in entries]
-                    fig_stk.add_trace(go.Bar(
-                        name=seg_name,
-                        x=years,
-                        y=seg_vals,
-                        marker_color=_seg_colors[i % len(_seg_colors)],
-                        hovertemplate=f"<b>{seg_name}</b><br>%{{y:,.0f}}<extra></extra>",
-                    ))
-                fig_stk.update_layout(
-                    barmode="stack",
-                    template="plotly_dark",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(13,21,38,0.8)",
-                    height=320,
-                    margin=dict(l=0, r=0, t=10, b=0),
-                    legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)",
-                                orientation="h", yanchor="bottom", y=1.02),
-                    yaxis=dict(showgrid=True, gridcolor="#1e2d45"),
-                    xaxis=dict(showgrid=False),
-                )
-                st.plotly_chart(fig_stk, use_container_width=True)
-            else:
-                st.caption("Nur 1 Jahr verfügbar — kein Trend darstellbar.")
-
-    _has_seg = seg_data.get("product") or seg_data.get("geo")
-    if _has_seg:
-        if seg_data.get("product"):
-            _seg_charts(seg_data["product"], "Produkt / Geschäftsbereich")
-        if seg_data.get("geo"):
-            _seg_charts(seg_data["geo"], "Geografie")
-    elif FMP_API_KEY:
-        st.markdown(
-            '<div class="insight-box" style="color:#546e7a;">ℹ️ Keine Segmentdaten für diesen Titel verfügbar '
-            '(Unternehmen rapportiert keine Segmente oder FMP hat keine Daten).</div>',
-            unsafe_allow_html=True)
-    else:
-        st.markdown(
-            '<div class="insight-box" style="color:#546e7a;">ℹ️ Segmentdaten benötigen FMP_API_KEY '
-            '(in Railway als Umgebungsvariable setzen).</div>',
-            unsafe_allow_html=True)
 
     st.markdown("<div class='section-header'>EPS</div>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
