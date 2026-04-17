@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import requests
 import re
+import json
+import time
 
 # ==================== CONFIG ====================
 st.set_page_config(
@@ -968,6 +970,47 @@ def load_segment_data(ticker: str) -> dict:
     return result
 
 
+# ── Persistenter Disk-Cache (überlebt App-Neustarts auf Railway) ────────────
+# Bevorzugt /data (Railway Volume) – Fallback ./sec_cache (überlebt Restarts,
+# nicht Redeployments). XBRL-Daten: permanent. Query-Listen: 30-Tage-TTL.
+
+def _sec_cache_dir() -> str:
+    """Gibt vorhandenes Cache-Verzeichnis zurück (erstellt es bei Bedarf)."""
+    for candidate in ["/data/sec_cache", "./sec_cache", "/tmp/sec_cache"]:
+        try:
+            os.makedirs(candidate, exist_ok=True)
+            return candidate
+        except OSError:
+            continue
+    return "/tmp"
+
+
+def _dcache_get(key: str, ttl_days: float = None):
+    """Liest gecachten Wert vom Disk. None wenn nicht vorhanden oder abgelaufen."""
+    path = os.path.join(_sec_cache_dir(), f"{key}.json")
+    try:
+        if os.path.exists(path):
+            if ttl_days is not None:
+                age = (time.time() - os.path.getmtime(path)) / 86400
+                if age > ttl_days:
+                    return None
+            with open(path) as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
+
+
+def _dcache_set(key: str, data) -> None:
+    """Schreibt Wert als JSON auf Disk."""
+    path = os.path.join(_sec_cache_dir(), f"{key}.json")
+    try:
+        with open(path, "w") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
+
 # ── sec-api.io Segment Revenue (XBRL-to-JSON) ──────────────────────────────
 
 def _clean_seg_name(raw: str) -> str:
@@ -988,10 +1031,16 @@ def _clean_seg_name(raw: str) -> str:
 
 
 @st.cache_data(ttl=86400)
-def _secapi_query(ticker: str, form_type: str = "10-K", count: int = 15) -> list:
+def _secapi_query(ticker: str, form_type: str = "10-K", count: int = 10) -> list:
     """Filing-Liste via sec-api.io Query API.
+    Disk-Cache TTL: 30 Tage (neue 10-K erscheinen nur jährlich).
     Gibt [{accessionNo, periodOfReport, filedAt, ...}, ...] zurück.
     """
+    cache_key = f"q_{ticker.upper()}_{form_type.replace('/', '_')}_{count}"
+    cached = _dcache_get(cache_key, ttl_days=30)
+    if isinstance(cached, list):
+        return cached
+
     if not SEC_API_KEY:
         return []
     try:
@@ -1010,15 +1059,24 @@ def _secapi_query(ticker: str, form_type: str = "10-K", count: int = 15) -> list
             timeout=15,
         )
         if r.status_code == 200:
-            return r.json().get("data", [])
+            data = r.json().get("data", [])
+            _dcache_set(cache_key, data)
+            return data
     except Exception:
         pass
     return []
 
 
-@st.cache_data(ttl=604800)  # 7 Tage — historische Filings ändern sich nie
+@st.cache_data(ttl=604800)
 def _secapi_xbrl(accession_no: str) -> dict:
-    """XBRL-to-JSON Konverter via sec-api.io für eine Accession Number."""
+    """XBRL-to-JSON Konverter via sec-api.io.
+    Disk-Cache: permanent (historische Filings ändern sich nie — 1× API-Call pro Filing).
+    """
+    cache_key = f"xbrl_{accession_no.replace('-', '_')}"
+    cached = _dcache_get(cache_key)          # kein TTL — XBRL ist unveränderlich
+    if isinstance(cached, dict) and cached:
+        return cached
+
     if not SEC_API_KEY:
         return {}
     try:
@@ -1028,7 +1086,9 @@ def _secapi_xbrl(accession_no: str) -> dict:
             timeout=25,
         )
         if r.status_code == 200:
-            return r.json()
+            data = r.json()
+            _dcache_set(cache_key, data)
+            return data
     except Exception:
         pass
     return {}
