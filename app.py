@@ -2352,22 +2352,30 @@ def build_grok_prompt(
 
     system = """Du bist ein erfahrener Aktienanalyst mit CFA-Zertifizierung und 20 Jahren Erfahrung.
 Analysiere Aktien prägnant, ehrlich und auf Deutsch.
+
+WICHTIG: Beurteile Kennzahlen immer relativ zum Sektor. Ein Industriekonzern (Siemens, BASF) mit 25% Bruttomargen kann einen starken Burggraben haben — verglichen mit NVIDIA (75%) ist das kein Versagen, sondern Branchennorm. Kapitalintensive Sektoren (Industrie, Energie, Materialien) haben systemisch niedrigere Margen als asset-light Technologie.
+
 Strukturiere deine Antwort IMMER exakt so (Markdown-frei, nur diese Abschnitte):
 
 BULL CASE
-- [3 konkrete Stärken des Unternehmens]
+- [3 konkrete Stärken — mindestens 1 qualitativ: Patente / Marke / Kundenbindung / Management / Regulierung]
 
 BEAR CASE
 - [3 konkrete Risiken oder Schwächen]
 
 INVESTMENT THESE
-[2-3 Sätze: Kernthese — warum kaufen oder nicht kaufen?]
+[2-3 Sätze: Kernthese — warum kaufen oder nicht kaufen? Nenne explizit den Sektor-Kontext.]
 
 BEWERTUNG
-[1-2 Sätze zum aktuellen Kurs vs. fairen Wert / Wachstumserwartungen]
+[1-2 Sätze zum aktuellen Kurs vs. fairen Wert — relativ zu Sektorpeers bewertet]
+
+BURGGRABEN-QUALITÄT
+[2-3 Sätze: Qualitative Moat-Faktoren die sich NICHT aus Zahlen ablesen lassen — z.B. Patentschutz, Marken-Stärke, langfristige Kundenverträge, Regulierungsschutz, Managementqualität, technologischer Vorsprung]
 
 ROT-FLAGS
 - [maximal 3 klare Warnsignale — oder "Keine kritischen Warnsignale erkannt"]
+
+Hinweis: Diese Analyse basiert auf quantitativen Daten. Vollständige Due Diligence erfordert Geschäftsberichte, Patentdatenbanken und Branchenexpertise. Keine Anlageberatung.
 
 Sei direkt. Vermeide Marketing-Floskeln. Wenn Daten fehlen, schreib kurz warum."""
 
@@ -2387,13 +2395,46 @@ Sei direkt. Vermeide Marketing-Floskeln. Wenn Daten fehlen, schreib kurz warum."
     short_line = f"Short Interest: {_fmt(short_pct_float * 100 if short_pct_float else None)}" if short_pct_float else ""
     net_cash_line = f"Net Cash/Aktie: {_fmt(net_cash_per_share, suffix='$', decimals=2)}" if net_cash_per_share is not None else ""
 
+    # Determine capital intensity for sector context
+    _sec_l = (sector or "").lower()
+    _ind_l = (industry or "").lower()
+    _is_cap_int = any(k in _sec_l or k in _ind_l for k in [
+        "industrial", "manufactur", "capital goods", "conglomerat", "materials",
+        "mining", "steel", "chemical", "energy", "utilities", "oil", "gas", "infrastructure"])
+    _is_fin = any(k in _sec_l for k in ["financial", "bank", "insurance"])
+    _is_pharma = any(k in _sec_l or k in _ind_l for k in ["healthcare", "pharma", "biotech", "drug"])
+    if _is_cap_int:
+        _cap_ctx = ("Kapitalintensiver Sektor: Margen und ROIC sind strukturell niedriger als bei "
+                    "Technologieunternehmen. Branchenübliche Benchmarks: Bruttomarge >30-40%, ROIC >10-12%. "
+                    "Bitte Kennzahlen explizit im Sektorvergleich (nicht vs. Tech-Benchmarks) beurteilen.")
+        _sector_peers = "Sektorpeers: andere Industriekonzerne / Kapitalgutkompanien"
+    elif _is_fin:
+        _cap_ctx = ("Finanzsektor: Margen nicht mit Industrie oder Tech vergleichbar. "
+                    "Relevante Kennzahlen: ROE, Net Interest Margin, Cost-Income-Ratio. "
+                    "Bitte branchenspezifisch beurteilen.")
+        _sector_peers = "Sektorpeers: andere Banken / Versicherungen / Finanzdienstleister"
+    elif _is_pharma:
+        _cap_ctx = ("FuE-intensiver Sektor: hohe Bruttomarge (Patentschutz), aber massive Investitionen in "
+                    "Forschung und klinische Studien drücken Nettomarge. Pipeline-Qualität und Patentlaufzeiten "
+                    "entscheidend. Bitte explizit auf Patentschutz und Pipeline eingehen.")
+        _sector_peers = "Sektorpeers: andere Pharma- / Biotech-Unternehmen"
+    else:
+        _cap_ctx = ("Asset-light / Technologiesektor: hohe Skalierbarkeit, niedrige Grenzkosten. "
+                    "Margen und ROIC deutlich über Industriedurchschnitt normal. "
+                    "Bitte auf technologischen Vorsprung und Plattform-Netzwerkeffekte eingehen.")
+        _sector_peers = "Sektorpeers: andere Technologie- / Softwareunternehmen"
+
     user_msg = f"""Analysiere {company_name} ({ticker}):
 
 STAMMDATEN
 Sektor: {sector} | Branche: {industry}
 Kurs: ${price:.2f} | Marktkapitalisierung: {mc_str}
 
-QUALITÄT
+BRANCHEN-KONTEXT
+{_cap_ctx}
+{_sector_peers}
+
+QUALITÄT (relativ zu Sektornorm beurteilen)
 Qualitäts-Score: {quality_score}/100
 Bruttomarge: {_fmt(gross_margin)}
 ROIC: {_fmt(roic_val)}
@@ -2411,7 +2452,8 @@ Total Shareholder Yield: {_fmt(total_shareholder_yield)}
 
 BURGGRABEN
 Moat-Breite: {moat_str}
-Moat-Treiber: {moat_types_str}
+Moat-Treiber (quantitativ): {moat_types_str}
+Hinweis: Ergänze im Abschnitt BURGGRABEN-QUALITÄT qualitative Faktoren (Patente, Marke, Verträge, Management).
 
 RISIKEN
 Piotroski F-Score: {piotroski_str}
