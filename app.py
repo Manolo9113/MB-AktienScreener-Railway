@@ -582,6 +582,99 @@ def load_annual_financials(ticker: str):
     return rev, net, eps, fcf, shares_ann
 
 @st.cache_data(ttl=86400)
+def load_extended_financials(ticker: str):
+    """Bis zu 15 Jahre Jahresdaten — FMP primär, yfinance als Fallback."""
+    rev = pd.Series(dtype=float)
+    net = pd.Series(dtype=float)
+    eps = pd.Series(dtype=float)
+    fcf = pd.Series(dtype=float)
+    shares = pd.Series(dtype=float)
+    price_annual = pd.Series(dtype=float)
+
+    if FMP_API_KEY:
+        try:
+            r = requests.get(
+                f"https://financialmodelingprep.com/api/v3/income-statement/{ticker}",
+                params={"limit": 15, "apikey": FMP_API_KEY}, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list) and data:
+                    dates, revs, nets, epss, shs = [], [], [], [], []
+                    for d in data:
+                        try:
+                            dates.append(pd.Timestamp(d["date"]))
+                            revs.append(float(d.get("revenue") or 0))
+                            nets.append(float(d.get("netIncome") or 0))
+                            epss.append(float(d.get("epsdiluted") or 0))
+                            shs.append(float(d.get("weightedAverageShsOutDil") or 0))
+                        except Exception:
+                            continue
+                    if dates:
+                        rev    = pd.Series(revs,   index=dates).sort_index()
+                        net    = pd.Series(nets,   index=dates).sort_index()
+                        eps    = pd.Series(epss,   index=dates).sort_index()
+                        shares = pd.Series(shs,    index=dates).sort_index()
+        except Exception:
+            pass
+        try:
+            r2 = requests.get(
+                f"https://financialmodelingprep.com/api/v3/cash-flow-statement/{ticker}",
+                params={"limit": 15, "apikey": FMP_API_KEY}, timeout=10)
+            if r2.status_code == 200:
+                data2 = r2.json()
+                if isinstance(data2, list) and data2:
+                    cf_dates, fcfs = [], []
+                    for d in data2:
+                        try:
+                            cf_dates.append(pd.Timestamp(d["date"]))
+                            fcfs.append(float(d.get("freeCashFlow") or 0))
+                        except Exception:
+                            continue
+                    if cf_dates:
+                        fcf = pd.Series(fcfs, index=cf_dates).sort_index()
+        except Exception:
+            pass
+
+    # yfinance fallback for any series still empty
+    try:
+        stock = yf.Ticker(ticker)
+        inc = stock.income_stmt
+        if inc is not None and not inc.empty:
+            if rev.empty:
+                for row in ["Total Revenue", "Revenue"]:
+                    if row in inc.index:
+                        rev = inc.loc[row].dropna().sort_index(); break
+            if net.empty:
+                for row in ["Net Income", "Net Income Common Stockholders"]:
+                    if row in inc.index:
+                        net = inc.loc[row].dropna().sort_index(); break
+            if eps.empty:
+                for row in ["Diluted EPS", "Basic EPS"]:
+                    if row in inc.index:
+                        eps = inc.loc[row].dropna().sort_index(); break
+            if shares.empty:
+                for row in ["Diluted Average Shares", "Basic Average Shares"]:
+                    if row in inc.index:
+                        shares = inc.loc[row].dropna().sort_index(); break
+        if fcf.empty:
+            cf = stock.cash_flow
+            if cf is not None and not cf.empty:
+                if "Free Cash Flow" in cf.index:
+                    fcf = cf.loc["Free Cash Flow"].dropna().sort_index()
+    except Exception:
+        pass
+
+    # Annual price performance (up to 15y from yfinance history)
+    try:
+        _h = yf.Ticker(ticker).history(period="15y")
+        if not _h.empty:
+            price_annual = _h["Close"].resample("YE").last().pct_change().dropna() * 100
+    except Exception:
+        pass
+
+    return rev, net, eps, fcf, shares, price_annual
+
+@st.cache_data(ttl=86400)
 def load_earnings_surprises(ticker: str) -> list[dict]:
     """Lädt EPS Beat/Miss — FMP primär, yfinance als Fallback."""
     results = []
@@ -3211,6 +3304,70 @@ with tab1:
     else:
         st.markdown(f'<div class="insight-box">ℹ️ Keine Branchenbenchmarks für <strong>{sector or "unbekannter Sektor"}</strong> hinterlegt.</div>', unsafe_allow_html=True)
 
+# ── Chart-Vollbild-Dialog ──────────────────────────────────────────────────
+@st.dialog("📊 Detailansicht — Erweiterte Historie", width="large")
+def _expand_chart_dialog(tkr: str, metric: str, title: str,
+                         color_pos: str, color_neg: str):
+    """Zeigt erweiterte Balkendiagramm-Ansicht (bis 15 Jahre) in einem Modal."""
+    with st.spinner("Lade erweiterte Daten…"):
+        _ex_rev, _ex_net, _ex_eps, _ex_fcf, _ex_sh, _ex_price = load_extended_financials(tkr)
+
+    _series_map = {
+        "revenue":        (_ex_rev,   False, lambda v: fmt_large(v)),
+        "revenue_growth": (_ex_rev,   True,  None),
+        "net":            (_ex_net,   False, lambda v: fmt_large(v)),
+        "net_growth":     (_ex_net,   True,  None),
+        "eps":            (_ex_eps,   False, lambda v: f"${v:.2f}"),
+        "fcf":            (_ex_fcf,   False, lambda v: fmt_large(v)),
+        "fcf_growth":     (_ex_fcf,   True,  None),
+        "shares":         (_ex_sh,    False, lambda v: f"{v/1e9:.2f}B"),
+        "price":          (_ex_price, True,  None),
+    }
+    series, is_growth, vfmt = _series_map.get(metric, (pd.Series(dtype=float), True, None))
+
+    if series.empty or len(series) < 2:
+        st.warning("Nicht genug Daten verfügbar.")
+        return
+
+    s = series.dropna()
+    if is_growth:
+        vals   = s.pct_change().dropna() * 100
+        suffix = "%"
+    else:
+        vals   = s
+        suffix = ""
+
+    labels = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in vals.index]
+    colors = [color_pos if v >= 0 else color_neg for v in vals.values]
+    texts  = (
+        [f"{v:+.1f}%" for v in vals.values] if is_growth
+        else ([vfmt(v) for v in vals.values] if vfmt else [f"{v:.2f}" for v in vals.values])
+    )
+
+    _note = "" if FMP_API_KEY else " (FMP_API_KEY nicht gesetzt → max. 4–5 Jahre via yfinance)"
+    st.caption(f"**{title}** · {tkr} · {len(labels)} Jahre{_note}")
+
+    fig = go.Figure(go.Bar(
+        x=labels, y=vals.values,
+        marker_color=colors,
+        text=texts,
+        textposition="outside",
+        textfont=dict(size=12, color="#90a4ae"),
+    ))
+    fig.add_hline(y=0, line_color="#1e3a5f", line_width=1)
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(13,21,38,0.8)",
+        height=420,
+        margin=dict(l=10, r=10, t=20, b=10),
+        showlegend=False,
+        yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False,
+                   ticksuffix=suffix if is_growth else ""),
+        xaxis=dict(showgrid=False),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
 with tab2:
     st.markdown("<div class='section-header'>Wachstum</div>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
@@ -3220,6 +3377,17 @@ with tab2:
         st.markdown(mini_card("Earnings Growth", earnings_growth, 15, 5, ".1f", "%"), unsafe_allow_html=True)
     with c3:
         st.markdown(mini_card("FCF Yield", fcf_yield, 5, 2, ".1f", "%"), unsafe_allow_html=True)
+
+    def _show_chart(fig, metric_key, title, cp, cn, fallback_msg=None):
+        """Zeigt Chart + ⛶-Button in einer Zeile."""
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+            if st.button("⛶ Vergrößern / mehr Jahre", key=f"exp_{metric_key}",
+                         use_container_width=True):
+                _expand_chart_dialog(ticker, metric_key, title, cp, cn)
+        elif fallback_msg:
+            st.markdown(f'<div class="insight-box" style="color:#546e7a;">{fallback_msg}</div>',
+                        unsafe_allow_html=True)
 
     # Growth sparkline (if hist available)
     if len(hist) > 252:
@@ -3244,6 +3412,9 @@ with tab2:
                 title=dict(text="Jährliche Kursperformance", font=dict(color="#64b5f6", size=13)),
             )
             st.plotly_chart(fig_g, use_container_width=True)
+            if st.button("⛶ Vergrößern / mehr Jahre", key="exp_price", use_container_width=False):
+                _expand_chart_dialog(ticker, "price", "Jährliche Kursperformance",
+                                     "#00e676", "#ff5252")
 
     # ── Jährliches Umsatz- & Gewinnwachstum ────────────────────────────
     st.markdown("<div class='section-header'>📊 Jährliches Fundamentalwachstum (5 Jahre)</div>",
@@ -3251,16 +3422,11 @@ with tab2:
 
     def _bar_chart(series: pd.Series, title: str, color_pos: str, color_neg: str,
                    is_growth: bool = True, value_fmt=None):
-        """Hilfsfunktion: Balkendiagramm für Jahreswerte oder YoY-Wachstum."""
         if series.empty or len(series) < 2:
             return None
         s = series.tail(5)
-        if is_growth:
-            vals = s.pct_change().dropna() * 100
-            ylabel, suffix = "Wachstum %", "%"
-        else:
-            vals = s
-            ylabel, suffix = "Wert", ""
+        vals = s.pct_change().dropna() * 100 if is_growth else s
+        suffix = "%" if is_growth else ""
         if vals.empty:
             return None
         labels = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in vals.index]
@@ -3292,60 +3458,39 @@ with tab2:
         return fig
 
     _gc1, _gc2 = st.columns(2)
-
     with _gc1:
-        _fig_rev_g = _bar_chart(a_rev, "Umsatzwachstum YoY", "#00e676", "#ff5252")
-        if _fig_rev_g:
-            st.plotly_chart(_fig_rev_g, use_container_width=True)
-        else:
-            st.markdown('<div class="insight-box" style="color:#546e7a;">Keine Jahres-Umsatzdaten verfügbar.</div>',
-                        unsafe_allow_html=True)
-
+        _show_chart(_bar_chart(a_rev, "Umsatzwachstum YoY", "#00e676", "#ff5252"),
+                    "revenue_growth", "Umsatzwachstum YoY", "#00e676", "#ff5252",
+                    "Keine Jahres-Umsatzdaten verfügbar.")
     with _gc2:
-        _fig_net_g = _bar_chart(a_net, "Nettogewinnwachstum YoY", "#00e676", "#ff5252")
-        if _fig_net_g:
-            st.plotly_chart(_fig_net_g, use_container_width=True)
-        else:
-            st.markdown('<div class="insight-box" style="color:#546e7a;">Keine Jahres-Gewinndate verfügbar.</div>',
-                        unsafe_allow_html=True)
+        _show_chart(_bar_chart(a_net, "Nettogewinnwachstum YoY", "#00e676", "#ff5252"),
+                    "net_growth", "Nettogewinnwachstum YoY", "#00e676", "#ff5252",
+                    "Keine Jahres-Gewinndaten verfügbar.")
 
-    # Absolutes Niveau (Umsatz & EPS) als zweite Reihe
     _gc3, _gc4 = st.columns(2)
-
     with _gc3:
-        _fig_rev_abs = _bar_chart(a_rev, "Umsatz absolut", "#1565c0", "#1565c0",
-                                   is_growth=False, value_fmt=lambda v: fmt_large(v))
-        if _fig_rev_abs:
-            st.plotly_chart(_fig_rev_abs, use_container_width=True)
-
+        _show_chart(_bar_chart(a_rev, "Umsatz absolut", "#1565c0", "#1565c0",
+                               is_growth=False, value_fmt=lambda v: fmt_large(v)),
+                    "revenue", "Umsatz absolut", "#1565c0", "#1565c0")
     with _gc4:
         if not a_eps.empty and len(a_eps) >= 2:
-            _fig_eps = _bar_chart(a_eps, "EPS (Diluted) — Trend",
-                                   "#00e5ff", "#ff5252", is_growth=False,
-                                   value_fmt=lambda v: f"${v:.2f}")
-            if _fig_eps:
-                st.plotly_chart(_fig_eps, use_container_width=True)
+            _show_chart(_bar_chart(a_eps, "EPS (Diluted) — Trend", "#00e5ff", "#ff5252",
+                                   is_growth=False, value_fmt=lambda v: f"${v:.2f}"),
+                        "eps", "EPS (Diluted)", "#00e5ff", "#ff5252")
         elif not a_net.empty:
-            _fig_net_abs = _bar_chart(a_net, "Nettogewinn absolut",
-                                       "#64b5f6", "#ff5252", is_growth=False,
-                                       value_fmt=lambda v: fmt_large(v))
-            if _fig_net_abs:
-                st.plotly_chart(_fig_net_abs, use_container_width=True)
+            _show_chart(_bar_chart(a_net, "Nettogewinn absolut", "#64b5f6", "#ff5252",
+                                   is_growth=False, value_fmt=lambda v: fmt_large(v)),
+                        "net", "Nettogewinn absolut", "#64b5f6", "#ff5252")
 
-    # FCF-Zeile
     _gc5, _gc6 = st.columns(2)
     with _gc5:
-        _fig_fcf_abs = _bar_chart(a_fcf, "Free Cash Flow absolut", "#26a69a", "#ef5350",
-                                   is_growth=False, value_fmt=lambda v: fmt_large(v))
-        if _fig_fcf_abs:
-            st.plotly_chart(_fig_fcf_abs, use_container_width=True)
-        else:
-            st.markdown('<div class="insight-box" style="color:#546e7a;">Keine FCF-Daten verfügbar.</div>',
-                        unsafe_allow_html=True)
+        _show_chart(_bar_chart(a_fcf, "Free Cash Flow absolut", "#26a69a", "#ef5350",
+                               is_growth=False, value_fmt=lambda v: fmt_large(v)),
+                    "fcf", "Free Cash Flow absolut", "#26a69a", "#ef5350",
+                    "Keine FCF-Daten verfügbar.")
     with _gc6:
-        _fig_fcf_g = _bar_chart(a_fcf, "Free Cash Flow Wachstum YoY", "#00e676", "#ff5252")
-        if _fig_fcf_g:
-            st.plotly_chart(_fig_fcf_g, use_container_width=True)
+        _show_chart(_bar_chart(a_fcf, "Free Cash Flow Wachstum YoY", "#00e676", "#ff5252"),
+                    "fcf_growth", "FCF Wachstum YoY", "#00e676", "#ff5252")
 
 with tab3:
     st.markdown("<div class='section-header'>Bilanz</div>", unsafe_allow_html=True)
@@ -3466,6 +3611,8 @@ with tab3:
                 xaxis=dict(showgrid=False),
             )
             st.plotly_chart(fig_sh, use_container_width=True)
+            if st.button("⛶ Vergrößern / mehr Jahre", key="exp_shares", use_container_width=False):
+                _expand_chart_dialog(ticker, "shares", "Aktienanzahl (Diluted)", "#26a69a", "#ef5350")
             if dilution_pct is not None:
                 dil_warn = "⚠️ Starke Verwässerung" if dilution_pct > 10 else "🟡 Moderate Verwässerung" if dilution_pct > 3 else "✅ Geringe Verwässerung / Rückkäufe (Buybacks)"
                 st.markdown(f'<div class="insight-box"><strong>Aktienanzahl Trend:</strong> {dil_warn} ({dil_str} über {len(_sh_years)} Jahre). Rückgang = Buybacks = positiv für Aktionäre.</div>', unsafe_allow_html=True)
