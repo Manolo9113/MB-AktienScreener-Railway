@@ -371,6 +371,97 @@ FMP_API_KEY = os.getenv("FMP_API_KEY", "")
 NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
 XAI_API_KEY  = os.getenv("XAI_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+
+# ── Supabase Auth & Watchlist helpers ─────────────────────────────────
+def _sb_headers(access_token: str = "") -> dict:
+    token = access_token or SUPABASE_KEY
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+
+def sb_login(email: str, password: str):
+    """Returns (data_dict, error_str). data_dict has access_token + user."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None, "SUPABASE_URL / SUPABASE_KEY nicht gesetzt."
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
+            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
+            json={"email": email, "password": password},
+            timeout=10,
+        )
+        data = r.json()
+        if r.status_code == 200 and data.get("access_token"):
+            return data, None
+        return None, data.get("error_description") or data.get("msg") or "Login fehlgeschlagen."
+    except Exception as e:
+        return None, str(e)
+
+def sb_register(email: str, password: str):
+    """Returns (data_dict, error_str)."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None, "SUPABASE_URL / SUPABASE_KEY nicht gesetzt."
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/auth/v1/signup",
+            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
+            json={"email": email, "password": password},
+            timeout=10,
+        )
+        data = r.json()
+        if r.status_code == 200 and data.get("id"):
+            return data, None
+        return None, data.get("error_description") or data.get("msg") or "Registrierung fehlgeschlagen."
+    except Exception as e:
+        return None, str(e)
+
+def sb_load_watchlist(access_token: str) -> list[dict]:
+    """Returns list of {ticker, name} dicts from Supabase."""
+    if not SUPABASE_URL or not access_token:
+        return []
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/watchlists",
+            headers={**_sb_headers(access_token), "Accept": "application/json"},
+            params={"select": "ticker,name", "order": "added_at.asc"},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            return [{"ticker": row["ticker"], "name": row.get("name") or row["ticker"]}
+                    for row in r.json()]
+    except Exception:
+        pass
+    return []
+
+def sb_add_ticker(access_token: str, user_id: str, ticker: str, name: str = ""):
+    if not SUPABASE_URL or not access_token:
+        return
+    try:
+        requests.post(
+            f"{SUPABASE_URL}/rest/v1/watchlists",
+            headers={**_sb_headers(access_token), "Prefer": "return=minimal"},
+            json={"user_id": user_id, "ticker": ticker, "name": name},
+            timeout=10,
+        )
+    except Exception:
+        pass
+
+def sb_remove_ticker(access_token: str, ticker: str):
+    if not SUPABASE_URL or not access_token:
+        return
+    try:
+        requests.delete(
+            f"{SUPABASE_URL}/rest/v1/watchlists",
+            headers={**_sb_headers(access_token), "Prefer": "return=minimal"},
+            params={"ticker": f"eq.{ticker}"},
+            timeout=10,
+        )
+    except Exception:
+        pass
 
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
@@ -1775,6 +1866,12 @@ if "watchlist" not in st.session_state:
     st.session_state["watchlist"] = []
 if "show_wl_compare" not in st.session_state:
     st.session_state["show_wl_compare"] = False
+if "sb_user" not in st.session_state:
+    st.session_state["sb_user"] = None
+if "sb_access_token" not in st.session_state:
+    st.session_state["sb_access_token"] = ""
+if "sb_auth_msg" not in st.session_state:
+    st.session_state["sb_auth_msg"] = ""
 
 def _go_to_ticker(t):
     st.session_state["ticker"] = t
@@ -1848,6 +1945,64 @@ with st.sidebar:
     show_insider = st.toggle("Insider-Transaktionen", value=True)
     show_dcf = st.toggle("DCF Rechner", value=True)
 
+    # ── Konto ──────────────────────────────────────────────────────────
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>🔐 Konto</div>", unsafe_allow_html=True)
+    _sb_user = st.session_state.get("sb_user")
+    if _sb_user:
+        st.markdown(
+            f"<div style='color:#64b5f6;font-size:0.78rem;padding:4px 0 6px 0;"
+            f"word-break:break-all;'>👤 {_sb_user.get('email','')}</div>",
+            unsafe_allow_html=True)
+        if st.button("Abmelden", use_container_width=True, key="sb_logout"):
+            st.session_state["sb_user"] = None
+            st.session_state["sb_access_token"] = ""
+            st.session_state["sb_auth_msg"] = ""
+            st.session_state["watchlist"] = []
+            st.rerun()
+    else:
+        _auth_tab_login, _auth_tab_reg = st.tabs(["Anmelden", "Registrieren"])
+        with _auth_tab_login:
+            _li_email = st.text_input("E-Mail", key="li_email", label_visibility="collapsed",
+                                       placeholder="E-Mail")
+            _li_pw    = st.text_input("Passwort", key="li_pw", type="password",
+                                       label_visibility="collapsed", placeholder="Passwort")
+            if st.button("Anmelden", use_container_width=True, key="li_btn"):
+                with st.spinner("…"):
+                    _data, _err = sb_login(_li_email.strip(), _li_pw)
+                if _err:
+                    st.session_state["sb_auth_msg"] = f"❌ {_err}"
+                else:
+                    st.session_state["sb_user"] = _data.get("user") or {}
+                    st.session_state["sb_user"]["email"] = (_data.get("user") or {}).get("email", _li_email.strip())
+                    st.session_state["sb_access_token"] = _data["access_token"]
+                    st.session_state["sb_auth_msg"] = "✅ Angemeldet"
+                    _loaded = sb_load_watchlist(_data["access_token"])
+                    if _loaded:
+                        _existing = {w["ticker"] for w in st.session_state["watchlist"]}
+                        for _w in _loaded:
+                            if _w["ticker"] not in _existing:
+                                st.session_state["watchlist"].append(_w)
+                    st.rerun()
+        with _auth_tab_reg:
+            _rg_email = st.text_input("E-Mail", key="rg_email", label_visibility="collapsed",
+                                       placeholder="E-Mail")
+            _rg_pw    = st.text_input("Passwort", key="rg_pw", type="password",
+                                       label_visibility="collapsed", placeholder="Passwort (min. 6 Zeichen)")
+            if st.button("Registrieren", use_container_width=True, key="rg_btn"):
+                with st.spinner("…"):
+                    _data, _err = sb_register(_rg_email.strip(), _rg_pw)
+                if _err:
+                    st.session_state["sb_auth_msg"] = f"❌ {_err}"
+                else:
+                    st.session_state["sb_auth_msg"] = "✅ Konto erstellt — bitte anmelden."
+        if st.session_state.get("sb_auth_msg"):
+            _msg_clr = "#00e676" if st.session_state["sb_auth_msg"].startswith("✅") else "#ff5252"
+            st.markdown(
+                f"<div style='font-size:0.75rem;color:{_msg_clr};padding:4px 0;'>"
+                f"{st.session_state['sb_auth_msg']}</div>",
+                unsafe_allow_html=True)
+
     # ── Watchlist ──────────────────────────────────────────────────────
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
     st.markdown("<div class='section-header'>⭐ Watchlist</div>", unsafe_allow_html=True)
@@ -1864,6 +2019,7 @@ with st.sidebar:
                 if st.button("✕", key=f"wl_del_{_w['ticker']}", help="Entfernen"):
                     st.session_state["watchlist"] = [
                         x for x in st.session_state["watchlist"] if x["ticker"] != _w["ticker"]]
+                    sb_remove_ticker(st.session_state.get("sb_access_token", ""), _w["ticker"])
                     st.rerun()
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         _cmp_lbl = "📊 Vergleich ausblenden" if st.session_state["show_wl_compare"] else "📊 Vergleich anzeigen"
@@ -2472,11 +2628,13 @@ with _wl_b1:
     if _in_wl:
         if st.button("✅ Gemerkt", key="wl_rm", help="Aus Watchlist entfernen"):
             st.session_state["watchlist"] = [w for w in _wl_curr if w["ticker"] != ticker]
+            sb_remove_ticker(st.session_state.get("sb_access_token", ""), ticker)
             st.rerun()
     else:
         if st.button("⭐ Merken", key="wl_add", help="Zur Watchlist hinzufügen"):
-            st.session_state["watchlist"] = _wl_curr + [
-                {"ticker": ticker, "name": company_name}]
+            st.session_state["watchlist"] = _wl_curr + [{"ticker": ticker, "name": company_name}]
+            _uid = (st.session_state.get("sb_user") or {}).get("id", "")
+            sb_add_ticker(st.session_state.get("sb_access_token", ""), _uid, ticker, company_name)
             st.rerun()
 
 # ==================== SCORE + KEY METRICS ROW ====================
