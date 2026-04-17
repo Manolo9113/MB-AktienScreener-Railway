@@ -9,6 +9,7 @@ import requests
 import re
 import json
 import time
+import datetime as _dt
 
 # ==================== CONFIG ====================
 st.set_page_config(
@@ -364,6 +365,47 @@ st.markdown("""
         box-shadow: 0 6px 28px rgba(124,58,237,0.65), 0 0 0 2px rgba(167,139,250,0.4) !important;
         transform: translateY(-1px) !important;
     }
+
+    /* ── Tab-Navigation Buttons ─────────────────────────────────── */
+    div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-secondary"] {
+        background: #0d1526 !important;
+        border: 1px solid #1e3a5f !important;
+        color: #78909c !important;
+        border-radius: 6px 6px 0 0 !important;
+        font-size: 0.72rem !important;
+        padding: 6px 4px !important;
+        line-height: 1.2 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+    div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-secondary"]:hover {
+        background: #132040 !important;
+        color: #b0bec5 !important;
+        border-color: #2a4a7f !important;
+    }
+    div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-primary"] {
+        background: rgba(21,101,192,0.25) !important;
+        border: 1px solid #00e5ff !important;
+        color: #00e5ff !important;
+        border-radius: 6px 6px 0 0 !important;
+        font-size: 0.72rem !important;
+        padding: 6px 4px !important;
+        line-height: 1.2 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        font-weight: 600 !important;
+    }
+
+    /* Mobile: kleinere Nav-Buttons */
+    @media (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-secondary"],
+        div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-primary"] {
+            font-size: 0.62rem !important;
+            padding: 5px 2px !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -477,7 +519,9 @@ def load_yfinance(ticker: str):
     except:
         pass
     try:
-        hist = stock.history(period="5y")
+        _today = _dt.date.today().strftime("%Y-%m-%d")
+        _start5y = (_dt.date.today() - _dt.timedelta(days=5*365+10)).strftime("%Y-%m-%d")
+        hist = stock.history(start=_start5y, end=_today)
     except:
         pass
     try:
@@ -494,11 +538,15 @@ def load_yfinance_extended(ticker: str):
     share_history = pd.DataFrame()
     splits_data = pd.Series(dtype=float)
     try:
-        hist_weekly = stock.history(period="2y", interval="1wk")
+        _today = _dt.date.today().strftime("%Y-%m-%d")
+        _start2y = (_dt.date.today() - _dt.timedelta(days=2*365+10)).strftime("%Y-%m-%d")
+        hist_weekly = stock.history(start=_start2y, end=_today, interval="1wk")
     except:
         pass
     try:
-        hist_monthly = stock.history(period="5y", interval="1mo")
+        _today = _dt.date.today().strftime("%Y-%m-%d")
+        _start5y = (_dt.date.today() - _dt.timedelta(days=5*365+10)).strftime("%Y-%m-%d")
+        hist_monthly = stock.history(start=_start5y, end=_today, interval="1mo")
     except:
         pass
     try:
@@ -804,7 +852,8 @@ def load_extended_financials(ticker: str, api_key: str = ""):
 
     # Annual price performance (up to 15y from yfinance history)
     try:
-        _h = yf.Ticker(ticker).history(period="15y")
+        _15y_start = (_dt.date.today() - _dt.timedelta(days=15*365+20)).strftime("%Y-%m-%d")
+        _h = yf.Ticker(ticker).history(start=_15y_start, end=_dt.date.today().strftime("%Y-%m-%d"))
         if not _h.empty:
             price_annual = _h["Close"].resample("YE").last().pct_change().dropna() * 100
     except Exception:
@@ -3733,7 +3782,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
 # ==================== NAVIGATION ====================
 # Session-state-basierte Navigation (immun gegen st.rerun() und WebSocket-Reconnects)
 _TABS = [
-    "📊 Kennzahlen", "📈 Wachstum", "🏦 Fundamental", "⚖️ Bewertung",
+    "📊 Kennzahl.", "📈 Wachstum", "🏦 Bilanz", "⚖️ Bewertung",
     "📉 Chart", "🔍 Insider", "📰 News", "🏰 Burggraben", "🔬 Piotroski",
 ]
 _at = st.session_state.get("active_tab", 0)
@@ -4130,7 +4179,7 @@ elif _at == 1:
         if _src_label:
             st.caption(f"Quelle: {_src_label}")
     elif SEC_API_KEY:
-        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Keine Segmentdaten verfügbar — Unternehmen rapportiert möglicherweise keine Segmente in XBRL (häufig bei Nicht-US-Titeln).</div>', unsafe_allow_html=True)
+        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Keine Segmentdaten gefunden — das Unternehmen rapportiert möglicherweise keine separaten Segmente in seinen XBRL-Filings.</div>', unsafe_allow_html=True)
     elif FMP_API_KEY:
         st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ FMP Segmentdaten nicht verfügbar — FMP Paid Plan oder SEC_API_KEY benötigt.</div>', unsafe_allow_html=True)
     else:
@@ -4705,8 +4754,11 @@ elif _at == 4:
                 st.caption("ℹ️ S&P 500 Vergleich nur im Linie-Modus verfügbar")
             else:
                 try:
+                    _sp_days = 2*365+10 if "Wöchentlich" in chart_mode else 5*365+10
+                    _sp_start = (_dt.date.today() - _dt.timedelta(days=_sp_days)).strftime("%Y-%m-%d")
+                    _sp_end = _dt.date.today().strftime("%Y-%m-%d")
                     _sp_hist = yf.Ticker("^GSPC").history(
-                        period="2y" if "Wöchentlich" in chart_mode else "5y",
+                        start=_sp_start, end=_sp_end,
                         interval="1wk" if "Wöchentlich" in chart_mode else
                                  "1mo" if "Monatlich"   in chart_mode else "1d"
                     )
@@ -4857,6 +4909,10 @@ elif _at == 4:
                              annotation_font_color="rgba(255,82,82,0.7)",
                              annotation_font_size=9, row=1, col=1)
 
+        # Wochenend-Lücken nur im Tages-Chart (muss VOR update_layout definiert werden,
+        # damit range= nicht durch späteres update_xaxes überschrieben wird)
+        _rangebreaks = [dict(bounds=["sat", "mon"])] if chart_mode == "Täglich (5J)" else []
+
         fig_ta.update_layout(
             template="plotly_dark",
             paper_bgcolor="rgba(0,0,0,0)",
@@ -4870,6 +4926,7 @@ elif _at == 4:
                 showgrid=False, zeroline=False,
                 rangeslider=dict(visible=False),
                 range=[_range_start, _range_end],
+                rangebreaks=_rangebreaks,
                 rangeselector=dict(
                     bgcolor="#0d1526",
                     activecolor="#1565c0",
@@ -4894,15 +4951,8 @@ elif _at == 4:
             title=dict(text=f"{company_name} — {title_suffix}", font=dict(color="#64b5f6", size=14)),
         )
 
-        # Wochenend-Lücken schließen (nur Tages-Chart)
-        if chart_mode == "Täglich (5J)":
-            fig_ta.update_xaxes(
-                rangebreaks=[dict(bounds=["sat", "mon"])],
-                row=1, col=1,
-            )
-
         for r in range(2, _total_rows + 1):
-            fig_ta.update_xaxes(showgrid=False, row=r, col=1)
+            fig_ta.update_xaxes(showgrid=False, rangebreaks=_rangebreaks, row=r, col=1)
             fig_ta.update_yaxes(showgrid=True, gridcolor="#1e2d45", zeroline=False, row=r, col=1)
 
         st.plotly_chart(fig_ta, use_container_width=True)
