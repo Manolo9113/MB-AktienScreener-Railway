@@ -6,6 +6,7 @@ from plotly.subplots import make_subplots
 import numpy as np
 import pandas as pd
 import requests
+import re
 
 # ==================== CONFIG ====================
 st.set_page_config(
@@ -367,10 +368,11 @@ st.markdown("""
 # ==================== API KEY ====================
 import os
 
-FMP_API_KEY = os.getenv("FMP_API_KEY", "")
-NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
-XAI_API_KEY  = os.getenv("XAI_API_KEY", "")
+FMP_API_KEY    = os.getenv("FMP_API_KEY", "")
+NEWS_API_KEY   = os.getenv("NEWS_API_KEY", "")
+XAI_API_KEY    = os.getenv("XAI_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+SEC_API_KEY    = os.getenv("SEC_API_KEY", "")   # sec-api.io (Segment Revenue + XBRL)
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
@@ -964,6 +966,216 @@ def load_segment_data(ticker: str) -> dict:
         except Exception:
             pass
     return result
+
+
+# ── sec-api.io Segment Revenue (XBRL-to-JSON) ──────────────────────────────
+
+def _clean_seg_name(raw: str) -> str:
+    """Bereinigt XBRL-Member-Namen zu lesbarem Text.
+    Beispiele: 'aapl:iPhoneMember' → 'iPhone', 'srt:AmericasMember' → 'Americas'
+    """
+    if not raw:
+        return raw
+    if ":" in raw:
+        raw = raw.split(":", 1)[1]
+    for suffix in ["ReportableSegment", "OperatingSegment", "Segment", "Member"]:
+        if raw.endswith(suffix):
+            raw = raw[: -len(suffix)]
+    # CamelCase → space-separated (handles 'GoogleServices' → 'Google Services')
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", raw)
+    result = re.sub(r"(?<=[A-Z])(?=[A-Z][a-z])", " ", spaced)
+    return result.strip() or raw
+
+
+@st.cache_data(ttl=86400)
+def _secapi_query(ticker: str, form_type: str = "10-K", count: int = 15) -> list:
+    """Filing-Liste via sec-api.io Query API.
+    Gibt [{accessionNo, periodOfReport, filedAt, ...}, ...] zurück.
+    """
+    if not SEC_API_KEY:
+        return []
+    try:
+        r = requests.post(
+            f"https://api.sec-api.io?token={SEC_API_KEY}",
+            json={
+                "query": {
+                    "query_string": {
+                        "query": f'ticker:{ticker} AND formType:"{form_type}"'
+                    }
+                },
+                "from": "0",
+                "size": str(count),
+                "sort": [{"filedAt": {"order": "desc"}}],
+            },
+            timeout=15,
+        )
+        if r.status_code == 200:
+            return r.json().get("data", [])
+    except Exception:
+        pass
+    return []
+
+
+@st.cache_data(ttl=604800)  # 7 Tage — historische Filings ändern sich nie
+def _secapi_xbrl(accession_no: str) -> dict:
+    """XBRL-to-JSON Konverter via sec-api.io für eine Accession Number."""
+    if not SEC_API_KEY:
+        return {}
+    try:
+        r = requests.get(
+            "https://api.sec-api.io/xbrl-to-json",
+            params={"accession-no": accession_no, "token": SEC_API_KEY},
+            timeout=25,
+        )
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return {}
+
+
+def _extract_segments_from_xbrl(xbrl: dict) -> tuple:
+    """
+    Parst Produkt- und Geo-Segmente aus einem sec-api.io XBRL-JSON-Dict.
+
+    Sucht in bekannten Income-Statement-Sektionen nach Revenue-Konzepten,
+    filtert auf 12-Monats-Perioden und trennt nach Axis-Typ:
+      - srt:ProductOrServiceAxis  → product_segs
+      - srt:StatementGeographicalAxis → geo_segs
+
+    Gibt (product_segs, geo_segs) als {name: usd_value} Dicts zurück.
+    """
+    INCOME_SECTIONS = [
+        "StatementsOfIncome", "StatementsOfOperations",
+        "ConsolidatedStatementsOfIncome", "ConsolidatedStatementsOfOperations",
+        "StatementsOfEarnings", "IncomeStatement",
+    ]
+    REVENUE_CONCEPTS = [
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "Revenues", "SalesRevenueNet", "NetRevenues",
+        "RevenueFromContractWithCustomerIncludingAssessedTax",
+        "TotalRevenues",
+    ]
+
+    items: list = []
+    for sec in INCOME_SECTIONS:
+        section = xbrl.get(sec, {})
+        for concept in REVENUE_CONCEPTS:
+            data = section.get(concept)
+            if isinstance(data, list) and data:
+                items = data
+                break
+        if items:
+            break
+
+    if not items:
+        return {}, {}
+
+    def _period_months(item: dict) -> int:
+        p = item.get("period") or {}
+        try:
+            return round(
+                (pd.Timestamp(p["endDate"]) - pd.Timestamp(p["startDate"])).days / 30.44
+            )
+        except Exception:
+            return 0
+
+    # Keep only 12-month entries (annual); fall back to all if none found
+    annual = [i for i in items if abs(_period_months(i) - 12) <= 1]
+    if not annual:
+        annual = items
+
+    product_segs: dict = {}
+    geo_segs: dict = {}
+
+    for item in annual:
+        seg = item.get("segment")
+        if seg is None:
+            continue  # total consolidated value — not a segment row
+
+        segs = seg if isinstance(seg, list) else [seg]
+        if len(segs) != 1:
+            continue  # multi-dimensional intersection — ambiguous, skip
+
+        dim    = segs[0].get("dimension", "")
+        member = segs[0].get("value", "")
+
+        try:
+            val = float(item.get("value") or 0)
+        except (ValueError, TypeError):
+            continue
+        if val == 0:
+            continue
+
+        name = _clean_seg_name(member)
+
+        if "ProductOrService" in dim or "ProductAndService" in dim:
+            # Keep the larger value when same segment appears in multiple periods
+            if name not in product_segs or val > product_segs[name]:
+                product_segs[name] = val
+        elif "Geographical" in dim or "Geographic" in dim:
+            if name not in geo_segs or val > geo_segs[name]:
+                geo_segs[name] = val
+
+    return product_segs, geo_segs
+
+
+@st.cache_data(ttl=86400)
+def load_secapi_segments(ticker: str) -> dict:
+    """
+    Holt Segment Revenue (Produkt + Geografie) über bis zu 15 Jahre via sec-api.io XBRL.
+
+    Ablauf:
+      1. Query API → Liste von 10-K Filings (Accession Numbers + Perioden)
+      2. Pro Filing: XBRL-to-JSON → Segment-Extraktion
+      3. Zeitreihe nach Datum sortiert zurückgeben
+
+    Gibt zurück:
+      {
+        "product": [{"date": "2023", "segments": {"iPhone": 200e9, ...}}, ...],
+        "geo":     [{"date": "2022", "segments": {"Americas": 160e9, ...}}, ...]
+      }
+
+    Rate-Limit-Hinweis: 1 Query-Call + N XBRL-Calls pro Ticker.
+    Durch @st.cache_data(ttl=86400) wird nur 1× täglich gefetcht.
+    XBRL-Cache hat TTL=7 Tage (Filings unveränderlich).
+    """
+    empty: dict = {"product": [], "geo": []}
+    if not SEC_API_KEY:
+        return empty
+
+    filings = _secapi_query(ticker, form_type="10-K", count=15)
+    if not filings:
+        return empty
+
+    product_tl: list = []
+    geo_tl: list = []
+
+    for filing in filings:
+        accn = filing.get("accessionNo", "")
+        if not accn:
+            continue
+
+        period_str = filing.get("periodOfReport") or filing.get("filedAt", "")
+        year = str(period_str)[:4]
+        if not year.isdigit():
+            continue
+
+        xbrl = _secapi_xbrl(accn)
+        if not xbrl:
+            continue
+
+        prod_segs, geo_segs = _extract_segments_from_xbrl(xbrl)
+
+        if prod_segs:
+            product_tl.append({"date": year, "segments": prod_segs})
+        if geo_segs:
+            geo_tl.append({"date": year, "segments": geo_segs})
+
+    product_tl.sort(key=lambda x: x["date"])
+    geo_tl.sort(key=lambda x: x["date"])
+
+    return {"product": product_tl, "geo": geo_tl}
 
 
 @st.cache_data(ttl=86400)
@@ -2138,6 +2350,8 @@ if "sb_auth_msg" not in st.session_state:
     st.session_state["sb_auth_msg"] = ""
 if "wachstum_expanded" not in st.session_state:
     st.session_state["wachstum_expanded"] = None
+if "seg_expanded" not in st.session_state:
+    st.session_state["seg_expanded"] = None
 
 def _go_to_ticker(t):
     st.session_state["ticker"] = t
@@ -2701,7 +2915,13 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     q_rev, q_net, q_eps = load_quarterly_financials(ticker)
     earnings_surprises   = load_earnings_surprises(ticker)
     a_rev, a_net, a_eps, a_fcf, a_shares, a_ebitda = load_annual_financials(ticker)
-    seg_data = load_segment_data(ticker)
+    # Segmentdaten: sec-api.io bevorzugt, FMP als Fallback
+    _secapi_seg = load_secapi_segments(ticker) if SEC_API_KEY else {"product": [], "geo": []}
+    _fmp_seg    = load_segment_data(ticker)
+    seg_data = {
+        "product": _secapi_seg["product"] or _fmp_seg["product"],
+        "geo":     _secapi_seg["geo"]     or _fmp_seg["geo"],
+    }
 
 if hist.empty or not yf_info:
     st.markdown(f"""
@@ -3761,29 +3981,34 @@ with tab2:
                    "#f59e0b","#64b5f6","#f48fb1","#69f0ae","#ce93d8",
                    "#4db6ac","#ef9a9a","#80cbc4","#ffcc80","#90a4ae"]
 
-    def _seg_charts(entries: list, sublabel: str):
+    def _seg_charts(entries: list, sublabel: str, expanded: bool = False):
+        """Zeigt Donut (letztes Jahr) + gestapeltes Balkendiagramm (Zeitreihe)."""
         if not entries:
             return
         latest = entries[-1]
         segs = {k: v for k, v in latest["segments"].items() if v > 0}
         if not segs:
             return
+        # Merge segment names consistent across all years (use latest as reference)
+        all_names = list(segs.keys())
         total = sum(segs.values())
-        names = list(segs.keys())
-        vals  = list(segs.values())
-        clrs  = _seg_colors[:len(names)]
-        st.caption(f"**{sublabel}** — {latest['date']}")
-        _sc1, _sc2 = st.columns(2)
+        clrs  = _seg_colors[:len(all_names)]
+        yrs_label = f"{entries[0]['date']}–{entries[-1]['date']}" if len(entries) > 1 else entries[-1]["date"]
+        st.caption(f"**{sublabel}** — Letztes Jahr: {latest['date']} · {len(entries)} Jahre verfügbar")
+        chart_h = 380 if expanded else 300
+
+        _sc1, _sc2 = st.columns([1, 2] if expanded else [1, 1])
         with _sc1:
             fig_donut = go.Figure(go.Pie(
-                labels=names, values=vals, hole=0.52,
+                labels=all_names, values=[segs[n] for n in all_names], hole=0.52,
                 marker=dict(colors=clrs, line=dict(color="#0a1628", width=2)),
-                textinfo="label+percent", textfont=dict(size=11),
-                hovertemplate="<b>%{label}</b><br>%{value:,.0f}<br>%{percent}<extra></extra>",
+                textinfo="label+percent", textfont=dict(size=11 if expanded else 10),
+                hovertemplate="<b>%{label}</b><br>%{customdata}<br>%{percent}<extra></extra>",
+                customdata=[fmt_large(segs[n]) for n in all_names],
             ))
             fig_donut.update_layout(
                 template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-                height=300, margin=dict(l=0, r=0, t=10, b=0),
+                height=chart_h, margin=dict(l=0, r=0, t=10, b=0),
                 showlegend=True, legend=dict(font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
                 annotations=[dict(text=fmt_large(total), x=0.5, y=0.5,
                                   font=dict(size=14, color="#b0bec5"), showarrow=False)],
@@ -3793,7 +4018,7 @@ with tab2:
             if len(entries) >= 2:
                 years = [e["date"] for e in entries]
                 fig_stk = go.Figure()
-                for i, seg_name in enumerate(names):
+                for i, seg_name in enumerate(all_names):
                     fig_stk.add_trace(go.Bar(
                         name=seg_name, x=years,
                         y=[e["segments"].get(seg_name, 0) for e in entries],
@@ -3803,26 +4028,65 @@ with tab2:
                 fig_stk.update_layout(
                     barmode="stack", template="plotly_dark",
                     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(13,21,38,0.8)",
-                    height=300, margin=dict(l=0, r=0, t=10, b=0),
+                    height=chart_h, margin=dict(l=0, r=0, t=10, b=10),
                     legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)",
                                 orientation="h", yanchor="bottom", y=1.02),
                     yaxis=dict(showgrid=True, gridcolor="#1e2d45"),
                     xaxis=dict(showgrid=False),
+                    title=dict(text=yrs_label if expanded else "",
+                               font=dict(color="#64b5f6", size=11)),
                 )
                 st.plotly_chart(fig_stk, use_container_width=True)
             else:
                 st.caption("Nur 1 Jahr — kein Trend darstellbar.")
 
+    # ── Inline-Segment-Detailansicht ─────────────────────────────────────
+    _seg_exp = st.session_state.get("seg_expanded")
+    if _seg_exp:
+        _seg_type, _seg_label = _seg_exp
+        _seg_all = seg_data.get(_seg_type, [])
+        if _seg_all:
+            st.markdown("---")
+            _slc, _stl = st.columns([1, 7])
+            with _slc:
+                if st.button("✕ Schließen", key="close_seg_exp"):
+                    st.session_state["seg_expanded"] = None
+                    st.rerun()
+            with _stl:
+                st.markdown(
+                    f"<h4 style='color:#64b5f6;margin:4px 0;'>🥧 {_seg_label} — alle {len(_seg_all)} Jahre</h4>",
+                    unsafe_allow_html=True,
+                )
+            _seg_charts(_seg_all, _seg_label, expanded=True)
+            st.markdown("---")
+
     _has_seg = seg_data.get("product") or seg_data.get("geo")
+    _src_label = "sec-api.io" if SEC_API_KEY else ("FMP" if FMP_API_KEY else "")
     if _has_seg:
         if seg_data.get("product"):
-            _seg_charts(seg_data["product"], "Produkt / Geschäftsbereich")
+            _prod_all = seg_data["product"]
+            _prod_show = _prod_all[-5:]  # Normal-Ansicht: letzte 5 Jahre
+            _seg_charts(_prod_show, "Produkt / Geschäftsbereich")
+            if len(_prod_all) > 5:
+                if st.button(f"📊 Alle {len(_prod_all)} Jahre anzeigen", key="exp_seg_prod"):
+                    st.session_state["seg_expanded"] = ("product", "Produkt / Geschäftsbereich")
+                    st.rerun()
         if seg_data.get("geo"):
-            _seg_charts(seg_data["geo"], "Geografie")
+            _geo_all = seg_data["geo"]
+            _geo_show = _geo_all[-5:]
+            _seg_charts(_geo_show, "Geografie")
+            if len(_geo_all) > 5:
+                if st.button(f"📊 Alle {len(_geo_all)} Jahre anzeigen", key="exp_seg_geo"):
+                    st.session_state["seg_expanded"] = ("geo", "Geografie")
+                    st.rerun()
+        if _src_label:
+            st.caption(f"Quelle: {_src_label}")
+    elif SEC_API_KEY:
+        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Keine Segmentdaten verfügbar — Unternehmen rapportiert möglicherweise keine Segmente in XBRL (häufig bei Nicht-US-Titeln).</div>', unsafe_allow_html=True)
     elif FMP_API_KEY:
-        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Keine Segmentdaten für diesen Titel verfügbar — Unternehmen rapportiert keine Segmente oder FMP-Plan enthält keine Segmentdaten.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ FMP Segmentdaten nicht verfügbar — FMP Paid Plan oder SEC_API_KEY benötigt.</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Segmentdaten benötigen FMP_API_KEY (in Railway Umgebungsvariablen setzen).</div>', unsafe_allow_html=True)
+        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Segmentdaten: SEC_API_KEY in Railway-Umgebungsvariablen setzen (sec-api.io).</div>', unsafe_allow_html=True)
 
 with tab3:
     st.markdown("<div class='section-header'>Bilanz</div>", unsafe_allow_html=True)
