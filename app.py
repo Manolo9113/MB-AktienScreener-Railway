@@ -2412,12 +2412,15 @@ if "wachstum_expanded" not in st.session_state:
     st.session_state["wachstum_expanded"] = None
 if "seg_expanded" not in st.session_state:
     st.session_state["seg_expanded"] = None
+if "active_tab" not in st.session_state:
+    st.session_state["active_tab"] = 0
 
 def _go_to_ticker(t):
     st.session_state["ticker"] = t
     st.session_state["show_landing"] = False
     st.session_state["search_input"] = t
     st.session_state["search_msg"] = ""
+    st.session_state["active_tab"] = 0
     st.session_state["suggestions"] = []
     st.session_state["_open_sidebar"] = True
 
@@ -3642,15 +3645,108 @@ if len(hist_plot) >= 2:
     </div>
     """, unsafe_allow_html=True)
 
-# ==================== TABS ====================
-st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
-    "📊 Kennzahlen", "📈 Wachstum", "🏦 Fundamental", "⚖️ Bewertung",
-    "📉 Chart Analyse", "🔍 Insider & Peers", "📰 News", "🏰 Burggraben",
-    "🔬 Piotroski F-Score"
-])
+# ── Chart-Detailansicht (Inline) ───────────────────────────────────────────
+def _render_expanded_chart(tkr: str, metric: str, title: str,
+                           color_pos: str, color_neg: str):
+    """Kombinierter Chart: Balken = Absolutwerte, Linie = YoY-Wachstum %."""
+    with st.spinner("Lade Daten…"):
+        _ex_rev, _ex_net, _ex_eps, _ex_fcf, _ex_sh, _ex_price, _ex_ebitda = load_extended_financials(tkr, FMP_API_KEY)
 
-with tab1:
+    _map = {
+        "revenue":        (_ex_rev,    lambda v: fmt_large(v), ""),
+        "revenue_growth": (_ex_rev,    lambda v: fmt_large(v), ""),
+        "net":            (_ex_net,    lambda v: fmt_large(v), ""),
+        "net_growth":     (_ex_net,    lambda v: fmt_large(v), ""),
+        "eps":            (_ex_eps,    lambda v: f"${v:.2f}",  ""),
+        "fcf":            (_ex_fcf,    lambda v: fmt_large(v), ""),
+        "fcf_growth":     (_ex_fcf,    lambda v: fmt_large(v), ""),
+        "ebitda":         (_ex_ebitda, lambda v: fmt_large(v), ""),
+        "ebitda_growth":  (_ex_ebitda, lambda v: fmt_large(v), ""),
+        "shares":         (_ex_sh,     lambda v: f"{v/1e9:.2f}B", ""),
+        "price":          (_ex_price,  None,                   "%"),
+    }
+    series, abs_fmt, _ = _map.get(metric, (_ex_rev, lambda v: fmt_large(v), ""))
+
+    if series is None or series.empty or len(series) < 2:
+        st.warning("Nicht genug Daten verfügbar.")
+        return
+
+    s = series.dropna()
+    labels_abs = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in s.index]
+    growth = s.pct_change() * 100
+    growth_clean = growth.dropna()
+    labels_g = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in growth_clean.index]
+    bar_colors = [color_pos if v >= 0 else color_neg for v in s.values]
+    line_colors = ["#00e676" if v >= 0 else "#ff5252" for v in growth_clean.values]
+
+    _note = f" · {len(labels_abs)} Jahre" + ("" if FMP_API_KEY else " (ohne FMP_API_KEY: max. 4–5 Jahre)")
+    st.caption(f"**{title}** — {tkr}{_note}")
+
+    if metric == "price":
+        fig = go.Figure(go.Bar(
+            x=labels_abs, y=s.values,
+            marker_color=["#00e676" if v >= 0 else "#ff5252" for v in s.values],
+            text=[f"{v:+.1f}%" for v in s.values],
+            textposition="outside", textfont=dict(size=12, color="#90a4ae"),
+        ))
+        fig.add_hline(y=0, line_color="#1e3a5f", line_width=1)
+        fig.update_layout(
+            template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(13,21,38,0.8)", height=420,
+            margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
+            yaxis=dict(ticksuffix="%", showgrid=True, gridcolor="#1e2d45"),
+            xaxis=dict(showgrid=False),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        return
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    abs_texts = [abs_fmt(v) for v in s.values] if abs_fmt else [str(v) for v in s.values]
+    fig.add_trace(go.Bar(
+        x=labels_abs, y=s.values, name=title, marker_color=bar_colors,
+        text=abs_texts, textposition="outside",
+        textfont=dict(size=11, color="#90a4ae"), opacity=0.85,
+    ), secondary_y=False)
+    if len(growth_clean) >= 1:
+        fig.add_trace(go.Scatter(
+            x=labels_g, y=growth_clean.values, name="YoY Wachstum %",
+            mode="lines+markers+text", line=dict(color="#ffd600", width=2.5),
+            marker=dict(size=8, color=line_colors, line=dict(color="#ffd600", width=1.5)),
+            text=[f"{v:+.1f}%" for v in growth_clean.values],
+            textposition="top center", textfont=dict(size=10, color="#ffd600"),
+        ), secondary_y=True)
+    fig.add_hline(y=0, line_color="#1e3a5f", line_width=1, secondary_y=False)
+    fig.update_layout(
+        template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(13,21,38,0.8)", height=460,
+        margin=dict(l=10, r=60, t=30, b=10),
+        legend=dict(orientation="h", y=1.08, font=dict(size=11), bgcolor="rgba(0,0,0,0)"),
+        xaxis=dict(showgrid=False),
+    )
+    fig.update_yaxes(showgrid=True, gridcolor="#1e2d45", secondary_y=False)
+    fig.update_yaxes(ticksuffix="%", showgrid=False, title_text="YoY Wachstum %",
+                     title_font=dict(color="#ffd600"), tickfont=dict(color="#ffd600"),
+                     secondary_y=True)
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# ==================== NAVIGATION ====================
+# Session-state-basierte Navigation (immun gegen st.rerun() und WebSocket-Reconnects)
+_TABS = [
+    "📊 Kennzahlen", "📈 Wachstum", "🏦 Fundamental", "⚖️ Bewertung",
+    "📉 Chart", "🔍 Insider", "📰 News", "🏰 Burggraben", "🔬 Piotroski",
+]
+_at = st.session_state.get("active_tab", 0)
+_nav_cols = st.columns(len(_TABS))
+for _ni, (_nc, _nl) in enumerate(zip(_nav_cols, _TABS)):
+    if _nc.button(_nl, key=f"_nav_{_ni}", use_container_width=True,
+                  type="primary" if _at == _ni else "secondary"):
+        st.session_state["active_tab"] = _ni
+        _at = _ni
+st.markdown("<div style='border-top:2px solid #1e3a5f;margin:-6px 0 12px 0;'></div>",
+            unsafe_allow_html=True)
+
+if _at == 0:
     st.markdown("<div class='section-header'>Kern-Kennzahlen</div>", unsafe_allow_html=True)
     if show_rule_of_40:
         c1, c2, c3, c4 = st.columns(4)
@@ -3779,109 +3875,7 @@ with tab1:
     else:
         st.markdown(f'<div class="insight-box">ℹ️ Keine Branchenbenchmarks für <strong>{sector or "unbekannter Sektor"}</strong> hinterlegt.</div>', unsafe_allow_html=True)
 
-# ── Chart-Detailansicht (Inline) ───────────────────────────────────────────
-def _render_expanded_chart(tkr: str, metric: str, title: str,
-                           color_pos: str, color_neg: str):
-    """Kombinierter Chart: Balken = Absolutwerte, Linie = YoY-Wachstum %."""
-    with st.spinner("Lade Daten…"):
-        _ex_rev, _ex_net, _ex_eps, _ex_fcf, _ex_sh, _ex_price, _ex_ebitda = load_extended_financials(tkr, FMP_API_KEY)
-
-    _map = {
-        "revenue":        (_ex_rev,    lambda v: fmt_large(v), ""),
-        "revenue_growth": (_ex_rev,    lambda v: fmt_large(v), ""),
-        "net":            (_ex_net,    lambda v: fmt_large(v), ""),
-        "net_growth":     (_ex_net,    lambda v: fmt_large(v), ""),
-        "eps":            (_ex_eps,    lambda v: f"${v:.2f}",  ""),
-        "fcf":            (_ex_fcf,    lambda v: fmt_large(v), ""),
-        "fcf_growth":     (_ex_fcf,    lambda v: fmt_large(v), ""),
-        "ebitda":         (_ex_ebitda, lambda v: fmt_large(v), ""),
-        "ebitda_growth":  (_ex_ebitda, lambda v: fmt_large(v), ""),
-        "shares":         (_ex_sh,     lambda v: f"{v/1e9:.2f}B", ""),
-        "price":          (_ex_price,  None,                   "%"),
-    }
-    series, abs_fmt, _ = _map.get(metric, (_ex_rev, lambda v: fmt_large(v), ""))
-
-    if series is None or series.empty or len(series) < 2:
-        st.warning("Nicht genug Daten verfügbar.")
-        return
-
-    s = series.dropna()
-    labels_abs = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in s.index]
-
-    growth = s.pct_change() * 100
-    growth_clean = growth.dropna()
-    labels_g = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in growth_clean.index]
-
-    bar_colors = [color_pos if v >= 0 else color_neg for v in s.values]
-    line_colors = ["#00e676" if v >= 0 else "#ff5252" for v in growth_clean.values]
-
-    _note = f" · {len(labels_abs)} Jahre" + ("" if FMP_API_KEY else " (ohne FMP_API_KEY: max. 4–5 Jahre)")
-    st.caption(f"**{title}** — {tkr}{_note}")
-
-    if metric == "price":
-        fig = go.Figure(go.Bar(
-            x=labels_abs, y=s.values,
-            marker_color=["#00e676" if v >= 0 else "#ff5252" for v in s.values],
-            text=[f"{v:+.1f}%" for v in s.values],
-            textposition="outside", textfont=dict(size=12, color="#90a4ae"),
-        ))
-        fig.add_hline(y=0, line_color="#1e3a5f", line_width=1)
-        fig.update_layout(
-            template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(13,21,38,0.8)", height=420,
-            margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
-            yaxis=dict(ticksuffix="%", showgrid=True, gridcolor="#1e2d45"),
-            xaxis=dict(showgrid=False),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        return
-
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-    abs_texts = [abs_fmt(v) for v in s.values] if abs_fmt else [str(v) for v in s.values]
-    fig.add_trace(go.Bar(
-        x=labels_abs, y=s.values,
-        name=title,
-        marker_color=bar_colors,
-        text=abs_texts,
-        textposition="outside",
-        textfont=dict(size=11, color="#90a4ae"),
-        opacity=0.85,
-    ), secondary_y=False)
-
-    if len(growth_clean) >= 1:
-        fig.add_trace(go.Scatter(
-            x=labels_g, y=growth_clean.values,
-            name="YoY Wachstum %",
-            mode="lines+markers+text",
-            line=dict(color="#ffd600", width=2.5),
-            marker=dict(size=8, color=line_colors,
-                        line=dict(color="#ffd600", width=1.5)),
-            text=[f"{v:+.1f}%" for v in growth_clean.values],
-            textposition="top center",
-            textfont=dict(size=10, color="#ffd600"),
-        ), secondary_y=True)
-
-    fig.add_hline(y=0, line_color="#1e3a5f", line_width=1, secondary_y=False)
-    fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(13,21,38,0.8)",
-        height=460,
-        margin=dict(l=10, r=60, t=30, b=10),
-        legend=dict(orientation="h", y=1.08, font=dict(size=11),
-                    bgcolor="rgba(0,0,0,0)"),
-        xaxis=dict(showgrid=False),
-    )
-    fig.update_yaxes(showgrid=True, gridcolor="#1e2d45", secondary_y=False)
-    fig.update_yaxes(ticksuffix="%", showgrid=False,
-                     title_text="YoY Wachstum %",
-                     title_font=dict(color="#ffd600"),
-                     tickfont=dict(color="#ffd600"),
-                     secondary_y=True)
-    st.plotly_chart(fig, use_container_width=True)
-
-with tab2:
+elif _at == 1:
     st.markdown("<div class='section-header'>Wachstum</div>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -3900,7 +3894,6 @@ with tab2:
         with _cl:
             if st.button("✕ Schließen", key="close_wachstum_expanded"):
                 st.session_state["wachstum_expanded"] = None
-                st.rerun()
         with _tl:
             st.markdown(
                 f"<h4 style='color:#64b5f6;margin:4px 0;'>📊 {_exp_title} — Detailansicht</h4>",
@@ -3916,7 +3909,6 @@ with tab2:
             if st.button("📊 Detailansicht", key=f"exp_{metric_key}",
                          use_container_width=True):
                 st.session_state["wachstum_expanded"] = (metric_key, ticker, title, cp, cn)
-                st.rerun()
         elif fallback_msg:
             st.markdown(f'<div class="insight-box" style="color:#546e7a;">{fallback_msg}</div>',
                         unsafe_allow_html=True)
@@ -3946,7 +3938,6 @@ with tab2:
             st.plotly_chart(fig_g, use_container_width=True)
             if st.button("📊 Detailansicht", key="exp_price", use_container_width=False):
                 st.session_state["wachstum_expanded"] = ("price", ticker, "Jährliche Kursperformance", "#00e676", "#ff5252")
-                st.rerun()
 
     # ── Jährliches Umsatz- & Gewinnwachstum ────────────────────────────
     st.markdown("<div class='section-header'>📊 Jährliches Fundamentalwachstum (5 Jahre)</div>",
@@ -4111,7 +4102,6 @@ with tab2:
             with _slc:
                 if st.button("✕ Schließen", key="close_seg_exp"):
                     st.session_state["seg_expanded"] = None
-                    st.rerun()
             with _stl:
                 st.markdown(
                     f"<h4 style='color:#64b5f6;margin:4px 0;'>🥧 {_seg_label} — alle {len(_seg_all)} Jahre</h4>",
@@ -4130,7 +4120,6 @@ with tab2:
             if len(_prod_all) > 5:
                 if st.button(f"📊 Alle {len(_prod_all)} Jahre anzeigen", key="exp_seg_prod"):
                     st.session_state["seg_expanded"] = ("product", "Produkt / Geschäftsbereich")
-                    st.rerun()
         if seg_data.get("geo"):
             _geo_all = seg_data["geo"]
             _geo_show = _geo_all[-5:]
@@ -4138,7 +4127,6 @@ with tab2:
             if len(_geo_all) > 5:
                 if st.button(f"📊 Alle {len(_geo_all)} Jahre anzeigen", key="exp_seg_geo"):
                     st.session_state["seg_expanded"] = ("geo", "Geografie")
-                    st.rerun()
         if _src_label:
             st.caption(f"Quelle: {_src_label}")
     elif SEC_API_KEY:
@@ -4148,7 +4136,7 @@ with tab2:
     else:
         st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Segmentdaten: SEC_API_KEY in Railway-Umgebungsvariablen setzen (sec-api.io).</div>', unsafe_allow_html=True)
 
-with tab3:
+elif _at == 2:
     st.markdown("<div class='section-header'>Bilanz</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -4269,7 +4257,7 @@ with tab3:
             st.plotly_chart(fig_sh, use_container_width=True)
             if st.button("📊 Detailansicht", key="exp_shares", use_container_width=False):
                 st.session_state["wachstum_expanded"] = ("shares", ticker, "Aktienanzahl (Diluted)", "#26a69a", "#ef5350")
-                st.rerun()
+                st.session_state["active_tab"] = 1  # Wechsel zu Wachstum wo Detailansicht gerendert wird
             if dilution_pct is not None:
                 dil_warn = "⚠️ Starke Verwässerung" if dilution_pct > 10 else "🟡 Moderate Verwässerung" if dilution_pct > 3 else "✅ Geringe Verwässerung / Rückkäufe (Buybacks)"
                 st.markdown(f'<div class="insight-box"><strong>Aktienanzahl Trend:</strong> {dil_warn} ({dil_str} über {len(_sh_years)} Jahre). Rückgang = Buybacks = positiv für Aktionäre.</div>', unsafe_allow_html=True)
@@ -4432,7 +4420,7 @@ with tab3:
         st.markdown('<div class="metric-card" style="color:#546e7a;text-align:center;">'
                     'Quartalsdaten nicht verfügbar</div>', unsafe_allow_html=True)
 
-with tab4:
+elif _at == 3:
     st.markdown("<div class='section-header'>Bewertungsmultiples</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -4618,7 +4606,7 @@ with tab4:
                 st.info("Nicht genug Daten für DCF-Berechnung (FCF oder Shares fehlen).")
 
 # ==================== TAB 5: CHART ANALYSE ====================
-with tab5:
+elif _at == 4:
     st.markdown("<div class='section-header'>📉 Technische Chart-Analyse</div>", unsafe_allow_html=True)
 
     # ── Controls row ──────────────────────────────────────────────────
@@ -4980,7 +4968,7 @@ with tab5:
             </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 6: INSIDER & PEERS ====================
-with tab6:
+elif _at == 5:
     col_ins, col_peers = st.columns(2)
 
     # Insider
@@ -5074,7 +5062,7 @@ with tab6:
             st.markdown('<div class="insight-box">Keine Peers gefunden.</div>', unsafe_allow_html=True)
 
 # ==================== TAB 7: NEWS ====================
-with tab7:
+elif _at == 6:
     st.markdown("<div class='section-header'>📰 Aktuelle News</div>", unsafe_allow_html=True)
     if NEWS_API_KEY:
         try:
@@ -5163,7 +5151,7 @@ with tab7:
             st.info(f"News konnten nicht geladen werden: {ex}")
 
 # ==================== TAB 8: BURGGRABEN ====================
-with tab8:
+elif _at == 7:
     # ── Header: Moat-Breite ────────────────────────────────────────────
     st.markdown("<div class='section-header'>🏰 Burggraben-Einschätzung</div>", unsafe_allow_html=True)
     mc1, mc2, mc3 = st.columns([1, 1, 2])
@@ -5324,7 +5312,7 @@ with tab8:
     </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 9: PIOTROSKI F-SCORE ====================
-with tab9:
+elif _at == 8:
     with st.spinner("Lade Jahresabschlüsse für F-Score…"):
         piotroski = load_piotroski(ticker)
 
