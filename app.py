@@ -2411,7 +2411,7 @@ BEWERTUNG
 [1-2 Sätze zum aktuellen Kurs vs. fairen Wert. Ergänze einen qualitativen Hinweis zu Moat-Faktoren die sich nicht aus Zahlen ablesen lassen (z.B. Patentschutz, langfristige Kundenverträge, Technologievorsprung).]
 
 KI-EINFLUSS
-[Kategorisiere das Unternehmen in EINER Zeile: "🚀 KI-Profiteur", "⚠️ KI-Disruptionsrisiko" oder "➖ KI-neutral". Dann 2-3 Sätze Begründung: Welche konkreten Produkte/Prozesse profitieren von KI oder sind durch KI bedroht? Wie ist das Unternehmen im Vergleich zu Konkurrenten positioniert?]
+[Kategorisiere in EINER Zeile: "🚀 KI-Profiteur", "⚠️ KI-Disruptionsrisiko", "⚡ Beides (ambivalent)" oder "➖ KI-neutral". Wichtig: SaaS- und Softwareunternehmen sind oft ambivalent — KI verbessert ihr Produkt, bedroht aber gleichzeitig ihr Geschäftsmodell durch KI-Agenten/Generalisten-Tools. Nenne konkret: (1) was durch KI gestärkt wird, (2) was durch KI bedroht ist, (3) ob das Management eine überzeugende KI-Strategie hat.]
 
 ROT-FLAGS
 - [maximal 3 klare Warnsignale — oder "Keine kritischen Warnsignale erkannt"]
