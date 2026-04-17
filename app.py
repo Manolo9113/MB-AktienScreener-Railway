@@ -1992,6 +1992,102 @@ def resolve_search_input(raw: str) -> tuple[str, str, list]:
     # 5) Letzter Fallback: Eingabe direkt als Ticker
     return q, "", []
 
+# ==================== MAKRO DASHBOARD ====================
+def _fred_last(series_id: str, n: int = 1) -> list[float]:
+    """Gibt die letzten n gültigen Werte einer FRED-Zeitreihe zurück (kein API-Key nötig)."""
+    try:
+        r = requests.get(
+            f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}",
+            timeout=8,
+        )
+        if not r.ok:
+            return []
+        vals: list[float] = []
+        for line in reversed(r.text.strip().split("\n")[1:]):
+            parts = line.split(",")
+            if len(parts) == 2 and parts[1].strip() not in (".", ""):
+                try:
+                    vals.append(float(parts[1].strip()))
+                except ValueError:
+                    pass
+            if len(vals) >= n:
+                break
+        return vals
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=3600)
+def load_macro_data() -> dict:
+    """Wechselkurse (yfinance) + Makro-Indikatoren (FRED, kein Key nötig)."""
+    out: dict = {"fx": {}, "macro": {}}
+
+    # ── Wechselkurse ──────────────────────────────────────────────────
+    fx_map = {
+        "EUR/USD": "EURUSD=X",
+        "USD/JPY": "USDJPY=X",
+        "USD/CHF": "USDCHF=X",
+        "GBP/USD": "GBPUSD=X",
+        "USD/CNY": "USDCNY=X",
+        "USD/CAD": "USDCAD=X",
+    }
+    for label, sym in fx_map.items():
+        try:
+            h = yf.Ticker(sym).history(period="2d", interval="1d")
+            if len(h) >= 2:
+                px   = float(h["Close"].iloc[-1])
+                prev = float(h["Close"].iloc[-2])
+                pct  = (px - prev) / prev * 100
+            elif len(h) == 1:
+                px, pct = float(h["Close"].iloc[-1]), 0.0
+            else:
+                continue
+            out["fx"][label] = {"price": px, "pct": pct}
+        except Exception:
+            pass
+
+    # ── US-Makro via FRED ──────────────────────────────────────────────
+    # Inflation (CPI YoY berechnet aus CPIAUCSL)
+    cpi = _fred_last("CPIAUCSL", 13)
+    if len(cpi) >= 13:
+        yoy = (cpi[0] / cpi[12] - 1) * 100
+        out["macro"]["🇺🇸 Inflation"] = {"value": round(yoy, 1), "unit": "%"}
+
+    # Arbeitslosigkeit
+    unemp = _fred_last("UNRATE")
+    if unemp:
+        out["macro"]["🇺🇸 Arbeitslosigkeit"] = {"value": unemp[0], "unit": "%"}
+
+    # Fed Funds Rate
+    fed = _fred_last("FEDFUNDS")
+    if fed:
+        out["macro"]["🇺🇸 Fed Rate"] = {"value": fed[0], "unit": "%"}
+
+    # 10J US-Staatsanleihe
+    t10 = _fred_last("DGS10")
+    if t10:
+        out["macro"]["🇺🇸 10J Rendite"] = {"value": t10[0], "unit": "%"}
+
+    # ── Eurozone via FRED ──────────────────────────────────────────────
+    # HICP YoY (bereits in %)
+    ez_cpi = _fred_last("CP0000EZ19M086NEST")
+    if ez_cpi:
+        out["macro"]["🇪🇺 Inflation"] = {"value": ez_cpi[0], "unit": "%"}
+
+    # EZB Einlagesatz
+    ecb = _fred_last("ECBDFR")
+    if ecb:
+        out["macro"]["🇪🇺 EZB Rate"] = {"value": ecb[0], "unit": "%"}
+
+    # ── Japan / China (einfache Proxies) ──────────────────────────────
+    jp_cpi = _fred_last("JPNCPIALLMINMEI", 13)
+    if len(jp_cpi) >= 13:
+        jp_yoy = (jp_cpi[0] / jp_cpi[12] - 1) * 100
+        out["macro"]["🇯🇵 Inflation"] = {"value": round(jp_yoy, 1), "unit": "%"}
+
+    return out
+
+
 # ==================== INDICES + NEWS ====================
 @st.cache_data(ttl=300)
 def load_indices():
@@ -2761,6 +2857,53 @@ if st.session_state["show_landing"]:
                     st.warning("Kein Ergebnis. Bitte Ticker oder Firmenname prüfen.")
 
     st.markdown("<div style='height:36px'></div>", unsafe_allow_html=True)
+
+    # ── Makro-Dashboard ───────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📊 Makro-Dashboard</div>", unsafe_allow_html=True)
+    with st.spinner("Lade Makrodaten…"):
+        macro = load_macro_data()
+
+    if macro["fx"]:
+        st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin-bottom:6px;'>💱 Wechselkurse</div>",
+                    unsafe_allow_html=True)
+        fx_cols = st.columns(len(macro["fx"]))
+        for col, (label, d) in zip(fx_cols, macro["fx"].items()):
+            pct = d["pct"]
+            clr = "#00e676" if pct >= 0 else "#ff5252"
+            arrow = "▲" if pct >= 0 else "▼"
+            col.markdown(f"""
+            <div class="metric-card" style="text-align:center; padding:10px 6px;">
+                <div class="metric-label" style="font-size:0.68rem;">{label}</div>
+                <div style="color:#eceff1; font-size:0.95rem; font-weight:700; margin:3px 0;">
+                    {d['price']:.4f if d['price'] < 10 else d['price']:.2f}
+                </div>
+                <div style="color:{clr}; font-size:0.75rem;">{arrow} {abs(pct):.2f}%</div>
+            </div>""", unsafe_allow_html=True)
+
+    if macro["macro"]:
+        st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>🌐 Makro-Indikatoren</div>",
+                    unsafe_allow_html=True)
+        macro_items = list(macro["macro"].items())
+        mc_cols = st.columns(len(macro_items))
+        for col, (label, d) in zip(mc_cols, macro_items):
+            val = d["value"]
+            unit = d["unit"]
+            # Colour coding: inflation red if >3, green if <2; rates neutral
+            if "Inflation" in label:
+                clr = "#ff5252" if val > 3.0 else "#ffd600" if val > 2.0 else "#00e676"
+            elif "Arbeitslosigkeit" in label:
+                clr = "#ff5252" if val > 6.0 else "#ffd600" if val > 4.5 else "#00e676"
+            else:
+                clr = "#64b5f6"
+            col.markdown(f"""
+            <div class="metric-card" style="text-align:center; padding:10px 6px;">
+                <div class="metric-label" style="font-size:0.68rem; line-height:1.3;">{label}</div>
+                <div style="color:{clr}; font-size:1.0rem; font-weight:700; margin:4px 0;">
+                    {val:.1f}{unit}
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
     # ── Marktüberblick ──
     st.markdown("<div class='section-header'>🌍 Marktüberblick</div>", unsafe_allow_html=True)
