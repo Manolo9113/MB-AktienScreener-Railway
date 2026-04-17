@@ -796,6 +796,43 @@ def load_earnings_surprises(ticker: str) -> list[dict]:
 
 
 @st.cache_data(ttl=86400)
+def load_segment_data(ticker: str) -> dict:
+    """
+    Lädt Produkt- und Geo-Segmentdaten von FMP.
+    Gibt {'product': [...], 'geo': [...]} zurück.
+    Jeder Eintrag: {'date': str, 'segments': {name: value}}.
+    """
+    result = {"product": [], "geo": []}
+    if not FMP_API_KEY:
+        return result
+    for key, endpoint in [
+        ("product", "revenue-product-segmentation"),
+        ("geo",     "revenue-geographic-segmentation"),
+    ]:
+        try:
+            r = requests.get(
+                f"https://financialmodelingprep.com/api/v4/{endpoint}",
+                params={"symbol": ticker, "period": "annual", "apikey": FMP_API_KEY},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                raw = r.json()
+                if isinstance(raw, list):
+                    for entry in raw[:6]:           # max. 6 Jahre
+                        if not isinstance(entry, dict):
+                            continue
+                        date_str = entry.get("date", "")
+                        segs = {k: float(v) for k, v in entry.items()
+                                if k != "date" and v is not None and str(v).replace("-","").replace(".","").isdigit()}
+                        if segs:
+                            result[key].append({"date": date_str[:4], "segments": segs})
+                    result[key].sort(key=lambda x: x["date"])
+        except Exception:
+            pass
+    return result
+
+
+@st.cache_data(ttl=86400)
 def load_fmp_metrics(ticker: str):
     if not FMP_API_KEY:
         return {}, [], []
@@ -2528,6 +2565,7 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     q_rev, q_net, q_eps = load_quarterly_financials(ticker)
     earnings_surprises   = load_earnings_surprises(ticker)
     a_rev, a_net, a_eps, a_fcf, a_shares = load_annual_financials(ticker)
+    seg_data = load_segment_data(ticker)
 
 if hist.empty or not yf_info:
     st.markdown(f"""
@@ -3618,6 +3656,102 @@ with tab3:
                 st.markdown(f'<div class="insight-box"><strong>Aktienanzahl Trend:</strong> {dil_warn} ({dil_str} über {len(_sh_years)} Jahre). Rückgang = Buybacks = positiv für Aktionäre.</div>', unsafe_allow_html=True)
         except Exception:
             pass
+
+    # ── Segment-Aufschlüsselung ────────────────────────────────────────
+    _seg_colors = ["#00e5ff","#a78bfa","#00e676","#ffd600","#ff5252",
+                   "#f59e0b","#64b5f6","#f48fb1","#69f0ae","#ce93d8",
+                   "#4db6ac","#ef9a9a","#80cbc4","#ffcc80","#90a4ae"]
+
+    def _seg_charts(entries: list, label: str):
+        if not entries:
+            return
+        latest = entries[-1]
+        segs   = {k: v for k, v in latest["segments"].items() if v > 0}
+        if not segs:
+            return
+        total  = sum(segs.values())
+        names  = list(segs.keys())
+        vals   = list(segs.values())
+        clrs   = _seg_colors[:len(names)]
+
+        st.markdown(
+            f"<div class='section-header'>🥧 Segment-Aufschlüsselung — {label} ({latest['date']})</div>",
+            unsafe_allow_html=True)
+
+        _sc1, _sc2 = st.columns(2)
+
+        # Donut — aktuelles Jahr
+        with _sc1:
+            fig_donut = go.Figure(go.Pie(
+                labels=names,
+                values=vals,
+                hole=0.52,
+                marker=dict(colors=clrs, line=dict(color="#0a1628", width=2)),
+                textinfo="label+percent",
+                textfont=dict(size=11),
+                hovertemplate="<b>%{label}</b><br>%{value:,.0f}<br>%{percent}<extra></extra>",
+            ))
+            fig_donut.update_layout(
+                template="plotly_dark",
+                paper_bgcolor="rgba(0,0,0,0)",
+                height=320,
+                margin=dict(l=0, r=0, t=10, b=0),
+                showlegend=True,
+                legend=dict(font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+                annotations=[dict(
+                    text=fmt_large(total),
+                    x=0.5, y=0.5, font=dict(size=14, color="#b0bec5"),
+                    showarrow=False,
+                )],
+            )
+            st.plotly_chart(fig_donut, use_container_width=True)
+
+        # Gestapeltes Balkendiagramm — Trend über Jahre
+        with _sc2:
+            if len(entries) >= 2:
+                years = [e["date"] for e in entries]
+                fig_stk = go.Figure()
+                for i, seg_name in enumerate(names):
+                    seg_vals = [e["segments"].get(seg_name, 0) for e in entries]
+                    fig_stk.add_trace(go.Bar(
+                        name=seg_name,
+                        x=years,
+                        y=seg_vals,
+                        marker_color=_seg_colors[i % len(_seg_colors)],
+                        hovertemplate=f"<b>{seg_name}</b><br>%{{y:,.0f}}<extra></extra>",
+                    ))
+                fig_stk.update_layout(
+                    barmode="stack",
+                    template="plotly_dark",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(13,21,38,0.8)",
+                    height=320,
+                    margin=dict(l=0, r=0, t=10, b=0),
+                    legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)",
+                                orientation="h", yanchor="bottom", y=1.02),
+                    yaxis=dict(showgrid=True, gridcolor="#1e2d45"),
+                    xaxis=dict(showgrid=False),
+                )
+                st.plotly_chart(fig_stk, use_container_width=True)
+            else:
+                st.caption("Nur 1 Jahr verfügbar — kein Trend darstellbar.")
+
+    _has_seg = seg_data.get("product") or seg_data.get("geo")
+    if _has_seg:
+        if seg_data.get("product"):
+            _seg_charts(seg_data["product"], "Produkt / Geschäftsbereich")
+        if seg_data.get("geo"):
+            _seg_charts(seg_data["geo"], "Geografie")
+    elif FMP_API_KEY:
+        st.markdown(
+            '<div class="insight-box" style="color:#546e7a;">ℹ️ Keine Segmentdaten für diesen Titel verfügbar '
+            '(Unternehmen rapportiert keine Segmente oder FMP hat keine Daten).</div>',
+            unsafe_allow_html=True)
+    else:
+        st.markdown(
+            '<div class="insight-box" style="color:#546e7a;">ℹ️ Segmentdaten benötigen FMP_API_KEY '
+            '(in Railway als Umgebungsvariable setzen).</div>',
+            unsafe_allow_html=True)
 
     st.markdown("<div class='section-header'>EPS</div>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
