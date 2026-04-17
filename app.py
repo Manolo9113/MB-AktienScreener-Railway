@@ -2881,7 +2881,7 @@ if st.session_state["show_landing"]:
             <div class="metric-card" style="text-align:center; padding:10px 6px;">
                 <div class="metric-label" style="font-size:0.68rem;">{label}</div>
                 <div style="color:#eceff1; font-size:0.95rem; font-weight:700; margin:3px 0;">
-                    {d['price']:.4f if d['price'] < 10 else d['price']:.2f}
+                    {d['price']:.{4 if d['price'] < 10 else 2}f}
                 </div>
                 <div style="color:{clr}; font-size:0.75rem;">{arrow} {abs(pct):.2f}%</div>
             </div>""", unsafe_allow_html=True)
