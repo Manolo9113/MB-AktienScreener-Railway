@@ -2634,6 +2634,9 @@ pct_held_institutions = yf_info.get("heldPercentInstitutions")
 trailing_eps = yf_info.get("trailingEps")
 forward_eps = yf_info.get("forwardEps")
 enterprise_value = yf_info.get("enterpriseValue")
+ebitda = yf_info.get("ebitda")
+ebitda_margin = (ebitda / revenue * 100) if (ebitda and revenue and revenue > 0) else None
+ev_ebitda = (enterprise_value / ebitda) if (enterprise_value and ebitda and ebitda > 0) else None
 week52_high = yf_info.get("fiftyTwoWeekHigh")
 week52_low = yf_info.get("fiftyTwoWeekLow")
 target_mean = yf_info.get("targetMeanPrice")
@@ -3259,12 +3262,30 @@ with tab1:
         """, unsafe_allow_html=True)
 
     st.markdown("<div class='section-header'>Margen</div>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
         st.markdown(mini_card("Profit Margin", profit_margin, 15, 5, ".1f", "%"), unsafe_allow_html=True)
     with c2:
-        st.markdown(mini_card("Operating Margin", operating_margin, 20, 10, ".1f", "%"), unsafe_allow_html=True)
+        st.markdown(mini_card("Op. Margin", operating_margin, 20, 10, ".1f", "%"), unsafe_allow_html=True)
     with c3:
+        st.markdown(mini_card("EBITDA Margin", ebitda_margin, 25, 12, ".1f", "%",
+                              tooltip="EBITDA-Marge = EBITDA / Umsatz. Zeigt operative Profitabilität vor Zinsen, Steuern, Abschreibungen. >25% stark, >12% solide."), unsafe_allow_html=True)
+    with c4:
+        _ebitda_str = fmt_large(ebitda) if ebitda else "N/A"
+        st.markdown(
+            f'<div class="metric-card">'
+            f'<div class="metric-label">EBITDA</div>'
+            f'<div class="metric-value">{_ebitda_str}</div>'
+            f'<div style="margin-top:6px;"><span class="metric-badge-gray">absolut</span></div>'
+            f'</div>',
+            unsafe_allow_html=True)
+    with c5:
+        st.markdown(mini_card("EV/EBITDA", ev_ebitda, 0, 15, ".1f", "x", inverse=True,
+                              tooltip="Enterprise Value / EBITDA — Bewertungsmultiple unabhängig von Kapitalstruktur & Steuern. <10x günstig, 10–20x fair, >20x teuer."), unsafe_allow_html=True)
+
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+    _dy_c1, _dy_c2 = st.columns([1, 4])
+    with _dy_c1:
         _dy_label = "Dividend Yield ⚠️" if _div_yield_suspicious else "Dividend Yield"
         _dy_tooltip = "Wert >15 % — bitte manuell prüfen (möglicher Datenfehler)" if _div_yield_suspicious else None
         st.markdown(mini_card(_dy_label, dividend_yield, 3, 1, ".2f", "%", tooltip=_dy_tooltip), unsafe_allow_html=True)
