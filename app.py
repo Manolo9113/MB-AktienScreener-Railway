@@ -2482,6 +2482,7 @@ def build_grok_prompt(
     total_shareholder_yield, dilution_pct,
     moat, piotroski,
     dcf_fair_val,
+    insider_ownership=None, institutional_ownership=None,
 ) -> tuple[str, str]:
     """Baut System-Prompt und User-Message für die Grok-Analyse."""
 
@@ -2599,6 +2600,11 @@ Piotroski F-Score: {piotroski_str}
 
 BILANZ
 {net_cash_line}
+
+MANAGEMENT (Proxy-Signale)
+Insider-Ownership: {_fmt(insider_ownership * 100) if insider_ownership else "N/A"}
+Institutionell: {_fmt(institutional_ownership * 100) if institutional_ownership else "N/A"}
+Verwässerung (5J): {_fmt(dilution_pct) if dilution_pct is not None else "N/A"}
 
 Gib deine Analyse gemäß der vorgegebenen Struktur."""
 
@@ -3656,7 +3662,7 @@ if _run_grok:
     _dcf_for_grok = dcf_valuation(fcf, shares_outstanding,
                                    min(max(rev_growth or 3, 3), 30), 2.5, 10, 10)
     _piotroski_data = load_piotroski(ticker)
-    with st.spinner("Grok analysiert..."):
+    with st.spinner("KI analysiert…"):
         _sys, _usr = build_grok_prompt(
             company_name=company_name, ticker=ticker,
             sector=sector, industry=industry,
@@ -3674,6 +3680,8 @@ if _run_grok:
             dilution_pct=dilution_pct,
             moat=moat, piotroski=_piotroski_data,
             dcf_fair_val=_dcf_for_grok,
+            insider_ownership=pct_held_insider,
+            institutional_ownership=pct_held_institutions,
         )
         _ki_text, _ki_provider = call_ki_api(_sys, _usr, GEMINI_API_KEY)
         st.session_state["grok_analysis"] = _ki_text
@@ -3719,9 +3727,20 @@ if st.session_state.get("grok_analysis"):
                     parts.append(f"<p>{text}</p>")
         for _line in _raw.splitlines():
             _stripped = _line.strip()
+            # Normalise: Gemini sometimes wraps headers in **bold** or adds ":"
+            _normalised = _stripped.strip("*#: ").upper()
+            # Check exact match first, then normalised
+            _matched_sec = None
             if _stripped in _sections:
+                _matched_sec = _stripped
+            else:
+                for _sk in _sections:
+                    if _normalised == _sk.upper():
+                        _matched_sec = _sk
+                        break
+            if _matched_sec:
                 _flush_section(_current_section, _current_lines, _html_parts, _sections)
-                _current_section = _stripped
+                _current_section = _matched_sec
                 _current_lines = []
             elif _stripped:
                 _current_lines.append(_stripped)
@@ -5337,6 +5356,74 @@ elif _at == 5:
             st.markdown('<div class="insight-box">FMP API Key erforderlich für Peer-Daten.</div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="insight-box">Keine Peers gefunden.</div>', unsafe_allow_html=True)
+
+    # ── Management ────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>👔 Management & Ownership</div>", unsafe_allow_html=True)
+    _officers = yf_info.get("companyOfficers") or []
+    _ins_pct   = yf_info.get("heldPercentInsiders")
+    _inst_pct  = yf_info.get("heldPercentInstitutions")
+
+    _om1, _om2, _om3, _om4 = st.columns(4)
+    with _om1:
+        _ins_str = f"{_ins_pct*100:.1f}%" if _ins_pct else "N/A"
+        _ins_clr = "#00e676" if _ins_pct and _ins_pct > 0.05 else "#ffd600" if _ins_pct else "#546e7a"
+        st.markdown(f"""<div class="metric-card" style="text-align:center;">
+            <div class="metric-label">Insider-Ownership</div>
+            <div class="metric-value" style="color:{_ins_clr};">{_ins_str}</div>
+            <div class="metric-sub">CEO/CFO/Board halten</div>
+        </div>""", unsafe_allow_html=True)
+    with _om2:
+        _inst_str = f"{_inst_pct*100:.1f}%" if _inst_pct else "N/A"
+        st.markdown(f"""<div class="metric-card" style="text-align:center;">
+            <div class="metric-label">Institutionell</div>
+            <div class="metric-value">{_inst_str}</div>
+            <div class="metric-sub">Fonds / ETFs</div>
+        </div>""", unsafe_allow_html=True)
+    with _om3:
+        _roic_clr = "#00e676" if roic_val and roic_val > 15 else "#ffd600" if roic_val and roic_val > 8 else "#ff5252" if roic_val else "#546e7a"
+        st.markdown(f"""<div class="metric-card" style="text-align:center;">
+            <div class="metric-label">ROIC</div>
+            <div class="metric-value" style="color:{_roic_clr};">{f"{roic_val:.1f}%" if roic_val else "N/A"}</div>
+            <div class="metric-sub">Kapitalallokation</div>
+        </div>""", unsafe_allow_html=True)
+    with _om4:
+        _dil_str = f"{dilution_pct:+.1f}%" if dilution_pct is not None else "N/A"
+        _dil_clr = "#00e676" if dilution_pct is not None and dilution_pct < 0 else \
+                   "#ffd600" if dilution_pct is not None and dilution_pct < 3 else \
+                   "#ff5252" if dilution_pct is not None else "#546e7a"
+        st.markdown(f"""<div class="metric-card" style="text-align:center;">
+            <div class="metric-label">Verwässerung (5J)</div>
+            <div class="metric-value" style="color:{_dil_clr};">{_dil_str}</div>
+            <div class="metric-sub">Share count Δ</div>
+        </div>""", unsafe_allow_html=True)
+
+    if _officers:
+        _mgmt_rows = []
+        for o in _officers[:6]:
+            _name  = o.get("name", "–")
+            _title = o.get("title", "–")
+            _age   = o.get("age")
+            _pay   = o.get("totalPay")
+            _age_s = str(_age) if _age else "–"
+            _pay_s = f"${_pay/1e6:.1f}M" if _pay else "–"
+            _mgmt_rows.append((_name, _title, _age_s, _pay_s))
+
+        _mc_cols = st.columns([3, 4, 1, 2])
+        for hdr, col in zip(["Name", "Funktion", "Alter", "Vergütung"], _mc_cols):
+            col.markdown(f"<div style='color:#546e7a; font-size:0.72rem; font-weight:600; padding:4px 0;'>{hdr}</div>",
+                         unsafe_allow_html=True)
+        for _name, _title, _age_s, _pay_s in _mgmt_rows:
+            c1, c2, c3, c4 = st.columns([3, 4, 1, 2])
+            c1.markdown(f"<div style='color:#eceff1; font-size:0.82rem; padding:3px 0;'>{_name}</div>", unsafe_allow_html=True)
+            c2.markdown(f"<div style='color:#90a4ae; font-size:0.78rem; padding:3px 0;'>{_title}</div>", unsafe_allow_html=True)
+            c3.markdown(f"<div style='color:#546e7a; font-size:0.78rem; padding:3px 0;'>{_age_s}</div>", unsafe_allow_html=True)
+            c4.markdown(f"<div style='color:#64b5f6; font-size:0.78rem; padding:3px 0;'>{_pay_s}</div>", unsafe_allow_html=True)
+
+    st.markdown("""<div style='color:#37474f; font-size:0.72rem; margin-top:10px;'>
+        ℹ️ Managementqualität lässt sich nicht allein aus Zahlen ableiten — Insider-Ownership >5% und
+        sinkende Aktienanzahl sind starke positive Signale. Für eine vollständige Einschätzung: Shareholder Letters,
+        Glassdoor-Bewertungen und Track Record bei Kapitalallokation prüfen.
+    </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 7: NEWS ====================
 elif _at == 6:
