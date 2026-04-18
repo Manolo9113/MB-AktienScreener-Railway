@@ -2112,18 +2112,35 @@ def load_macro_data() -> dict:
     except Exception:
         pass
 
-    # ── CNN Fear & Greed (öffentlicher Endpunkt) ──────────────────────
+    # ── Markt-Sentiment (eigene Berechnung aus VIX + SPY-Momentum + MA) ──
     try:
-        _fg = requests.get(
-            "https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
-            timeout=6, headers={"User-Agent": "Mozilla/5.0"},
-        )
-        if _fg.ok:
-            _fgd = _fg.json().get("fear_and_greed", {})
-            _score = _fgd.get("score")
-            _rating = _fgd.get("rating", "")
-            if _score:
-                out["fear_greed"] = {"score": round(float(_score)), "rating": _rating}
+        _today_str  = _dt.date.today().strftime("%Y-%m-%d")
+        _y1_str     = (_dt.date.today() - _dt.timedelta(days=260)).strftime("%Y-%m-%d")
+        _spy_h = yf.Ticker("SPY").history(start=_y1_str, end=_today_str)
+        if len(_spy_h) >= 50:
+            _spy_last  = float(_spy_h["Close"].iloc[-1])
+            _spy_30d   = float(_spy_h["Close"].iloc[-22]) if len(_spy_h) >= 22 else _spy_last
+            _spy_200ma = float(_spy_h["Close"].tail(200).mean())
+            _mom_30d   = (_spy_last / _spy_30d - 1) * 100   # % 30-Tage-Momentum
+            _above_200 = _spy_last > _spy_200ma
+
+            # VIX-Komponente (0-40 Punkte, invertiert: niedriger VIX = mehr Gier)
+            _vix_val = out.get("vix", 20)
+            _vix_score = max(0, min(40, int((35 - _vix_val) / 35 * 40)))
+
+            # Momentum-Komponente (0-35 Punkte)
+            _mom_score = max(0, min(35, int((_mom_30d + 10) / 20 * 35)))
+
+            # MA-Komponente (0-25 Punkte)
+            _ma_score = 25 if _above_200 else 0
+
+            _fg_score  = max(0, min(100, _vix_score + _mom_score + _ma_score))
+            if _fg_score >= 75:   _fg_rating = "Extreme Greed"
+            elif _fg_score >= 55: _fg_rating = "Greed"
+            elif _fg_score >= 45: _fg_rating = "Neutral"
+            elif _fg_score >= 25: _fg_rating = "Fear"
+            else:                 _fg_rating = "Extreme Fear"
+            out["fear_greed"] = {"score": _fg_score, "rating": _fg_rating}
     except Exception:
         pass
 
@@ -3021,6 +3038,24 @@ if st.session_state["show_landing"]:
     with st.spinner("Lade Makrodaten…"):
         macro = load_macro_data()
 
+    _FX_TIPS = {
+        "EUR/USD": "Euro zu US-Dollar. Steigt der Wert, wird der Euro stärker (gut für europäische Importeure, schlecht für Exporteure).",
+        "USD/JPY": "US-Dollar zu Japanischem Yen. Hohe Werte = schwacher Yen. Bank of Japan hält Zinsen historisch niedrig.",
+        "USD/CHF": "US-Dollar zu Schweizer Franken. CHF gilt als sicherer Hafen — steigt oft in Krisenzeiten.",
+        "GBP/USD": "Britisches Pfund zu US-Dollar (auch 'Cable' genannt). Sensitiv gegenüber UK-Wirtschaftsdaten.",
+        "USD/CNY": "US-Dollar zu Chinesischem Yuan (Renminbi). Wichtig für globale Handelsdynamik und EM-Märkte.",
+        "USD/CAD": "US-Dollar zu Kanadischem Dollar. Stark korreliert mit Ölpreisen (Kanada = großer Ölexporteur).",
+    }
+    _MACRO_TIPS = {
+        "🇺🇸 Inflation":      "US-Verbraucherpreisindex (CPI) Jahr-über-Jahr. Zielwert der Fed: ~2 %. Über 3 % = restriktive Geldpolitik wahrscheinlich.",
+        "🇺🇸 Arbeitslosigkeit":"US-Arbeitslosenquote (UNRATE). Unter 4 % gilt als Vollbeschäftigung. Niedrige Werte = starke Wirtschaft, aber auch Inflationsdruck.",
+        "🇺🇸 Fed Rate":       "US-Leitzins (Federal Funds Rate). Bestimmt Kreditkosten weltweit. Hohe Zinsen belasten Wachstumsaktien stärker (höherer Diskontierungssatz).",
+        "🇺🇸 10J Rendite":    "Rendite 10-jähriger US-Staatsanleihen. Wichtiger Benchmark für Bewertungen. Steigt die Rendite, sinken oft Aktienmultiples (KGV).",
+        "🇪🇺 Inflation":      "Eurozone HICP (harmonisierter Verbraucherpreisindex) Jahr-über-Jahr. EZB-Zielwert: 2 %.",
+        "🇪🇺 EZB Rate":       "EZB-Einlagesatz. Beeinflusst Kreditkosten in der Eurozone. Höhere Zinsen stärken tendenziell den Euro.",
+        "🇯🇵 Inflation":      "Japan CPI Jahr-über-Jahr. Japan kämpfte jahrzehntelang mit Deflation. Steigende Inflation ermöglicht der BoJ Zinserhöhungen.",
+    }
+
     if macro["fx"]:
         st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin-bottom:6px;'>💱 Wechselkurse</div>",
                     unsafe_allow_html=True)
@@ -3029,9 +3064,11 @@ if st.session_state["show_landing"]:
             pct = d["pct"]
             clr = "#00e676" if pct >= 0 else "#ff5252"
             arrow = "▲" if pct >= 0 else "▼"
+            _tip = _FX_TIPS.get(label, "")
+            _tip_icon = f' <span title="{_tip}" style="color:#37474f;cursor:help;font-size:0.65rem;">ⓘ</span>' if _tip else ""
             col.markdown(f"""
             <div class="metric-card" style="text-align:center; padding:10px 6px;">
-                <div class="metric-label" style="font-size:0.68rem;">{label}</div>
+                <div class="metric-label" style="font-size:0.68rem;">{label}{_tip_icon}</div>
                 <div style="color:#eceff1; font-size:0.95rem; font-weight:700; margin:3px 0;">
                     {d['price']:.{4 if d['price'] < 10 else 2}f}
                 </div>
@@ -3046,16 +3083,17 @@ if st.session_state["show_landing"]:
         for col, (label, d) in zip(mc_cols, macro_items):
             val = d["value"]
             unit = d["unit"]
-            # Colour coding: inflation red if >3, green if <2; rates neutral
             if "Inflation" in label:
                 clr = "#ff5252" if val > 3.0 else "#ffd600" if val > 2.0 else "#00e676"
             elif "Arbeitslosigkeit" in label:
                 clr = "#ff5252" if val > 6.0 else "#ffd600" if val > 4.5 else "#00e676"
             else:
                 clr = "#64b5f6"
+            _tip = _MACRO_TIPS.get(label, "")
+            _tip_icon = f' <span title="{_tip}" style="color:#37474f;cursor:help;font-size:0.65rem;">ⓘ</span>' if _tip else ""
             col.markdown(f"""
             <div class="metric-card" style="text-align:center; padding:10px 6px;">
-                <div class="metric-label" style="font-size:0.68rem; line-height:1.3;">{label}</div>
+                <div class="metric-label" style="font-size:0.68rem; line-height:1.3;">{label}{_tip_icon}</div>
                 <div style="color:{clr}; font-size:1.0rem; font-weight:700; margin:4px 0;">
                     {val:.1f}{unit}
                 </div>
@@ -3107,7 +3145,7 @@ if st.session_state["show_landing"]:
             st.markdown(
                 f'<div class="insight-box" style="padding:10px 14px 6px 14px; margin-bottom:6px;">'
                 f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">'
-                f'<span style="color:#b0bec5;">VIX</span>'
+                f'<span style="color:#b0bec5;" title="CBOE Volatilitätsindex. Misst erwartete Schwankungen des S&P 500 in den nächsten 30 Tagen. Unter 15 = ruhig, 15–25 = moderat, über 25 = hohe Unsicherheit (Angst).">VIX ⓘ</span>'
                 f'<span style="color:{_vix_clr};font-weight:700;">{_vix}</span></div>'
                 f'<div style="background:#0d1526;border-radius:4px;height:5px;">'
                 f'<div style="width:{_vix_pct}%;height:5px;border-radius:4px;background:{_vix_clr};"></div></div>'
@@ -3123,7 +3161,7 @@ if st.session_state["show_landing"]:
             st.markdown(
                 f'<div class="insight-box" style="padding:10px 14px 6px 14px; margin-bottom:6px;">'
                 f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">'
-                f'<span style="color:#b0bec5;">Fear &amp; Greed</span>'
+                f'<span style="color:#b0bec5;" title="Eigene Berechnung: VIX (40%) + SPY-30T-Momentum (35%) + Kurs über 200-Tage-MA (25%)">Sentiment-Score ⓘ</span>'
                 f'<span style="color:{_fg_clr};font-weight:700;">{_fs} — {_fr}</span></div>'
                 f'<div style="background:#0d1526;border-radius:4px;height:5px;">'
                 f'<div style="width:{_fs}%;height:5px;border-radius:4px;background:{_fg_clr};"></div></div>'
@@ -3131,7 +3169,7 @@ if st.session_state["show_landing"]:
                 unsafe_allow_html=True)
 
         if _has_sentiment:
-            st.markdown('<div style="font-size:0.65rem;color:#37474f;margin-top:2px;">Quelle: CBOE VIX · CNN Fear &amp; Greed</div>',
+            st.markdown('<div style="font-size:0.65rem;color:#37474f;margin-top:2px;">VIX: CBOE · Sentiment: eigene Berechnung (VIX + SPY-Momentum + 200-MA)</div>',
                         unsafe_allow_html=True)
 
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
