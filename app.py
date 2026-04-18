@@ -3317,23 +3317,29 @@ if st.session_state["show_landing"]:
                     _peg_display = f"PEG {_sp_peg:.2f}x"
                     _peg_note = f"PEG-Ratio = Kurs-Gewinn-Verhältnis ÷ EPS-Wachstum%. PEG {_sp_peg:.2f}x — {_peg_interpret}."
                 else:
-                    _peg_clr, _peg_lbl, _peg_bar = "#64b5f6", "Kein PEG", 50
+                    # KGV-basierte Bewertung: historischer S&P-Schnitt ~15-18x
+                    if _sp_pe < 15:   _peg_clr, _peg_lbl = "#00e676", "Günstig"
+                    elif _sp_pe < 18: _peg_clr, _peg_lbl = "#69f0ae", "Fair"
+                    elif _sp_pe < 23: _peg_clr, _peg_lbl = "#ffd600", "Leicht teuer"
+                    elif _sp_pe < 28: _peg_clr, _peg_lbl = "#ff8f00", "Teuer"
+                    else:             _peg_clr, _peg_lbl = "#ff5252", "Sehr teuer"
+                    _peg_bar = min(int((_sp_pe - 10) / 30 * 100), 100)  # skala 10–40x
                     _peg_display = f"KGV {_sp_pe:.1f}x"
-                    _peg_interpret = f"Kein EPS-Wachstum verfügbar. Reines Kurs-Gewinn-Verhältnis (KGV): {_sp_pe:.1f}x — historischer S&P-Schnitt ~15–18x."
-                    _peg_note = _peg_interpret
+                    _peg_note = (f"Kein EPS-Wachstum verfügbar — Bewertung über KGV. "
+                                 f"Aktuell {_sp_pe:.1f}x, historischer S&amp;P-Schnitt ~15–18x → {_peg_lbl.lower()}.")
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
-                    f'<span style="color:#b0bec5;">S&amp;P 500 PEG'
+                    f'<span style="color:#b0bec5;">S&amp;P 500 Bewertung'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
-                    f'<span class="tt-box">Kurs-Gewinn-Verhältnis (KGV) ÷ Gewinnwachstum%. Berücksichtigt Wachstum — aussagekräftiger als reines KGV. Historisch fair: 1,5–2,0x. Schwäche: Schätzungen für EPS-Wachstum können stark variieren.</span></span></span>'
+                    f'<span class="tt-box">Wenn PEG verfügbar: KGV ÷ EPS-Wachstum% (fair ~1,5–2,0x). Sonst: reines KGV (hist. S&amp;P-Schnitt ~15–18x). Schwäche: Wachstumsschätzungen volatil.</span></span></span>'
                     f'<span style="color:{_peg_clr};font-weight:700;">{_peg_display}</span></div>'
                     f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_peg_bar}%;height:5px;border-radius:4px;background:{_peg_clr};"></div></div>'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
-                    f'<span>0x</span><span style="color:{_peg_clr};">{_peg_lbl}</span><span>5x</span></div>'
+                    f'<span>{"0x" if _sp_peg else "10x"}</span><span style="color:{_peg_clr};">{_peg_lbl}</span><span>{"5x" if _sp_peg else "40x"}</span></div>'
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
-                    f'&lt;1,5x = günstig · 1,5–2,0x = fair · 2–3x = teuer · &gt;3x = sehr teuer · Ø Hist: ~1,8x</div>'
+                    f'{"&lt;1,5x = günstig · 1,5–2,0x = fair · 2–3x = teuer · &gt;3x = sehr teuer · Ø ~1,8x" if _sp_peg else "&lt;15x = günstig · 15–18x = fair · 18–23x = leicht teuer · &gt;28x = sehr teuer"}</div>'
                     f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
                     f'<b>Einordnung:</b> {_peg_note}</div>'
                     f'</div>',
