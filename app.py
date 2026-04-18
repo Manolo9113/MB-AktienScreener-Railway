@@ -3655,10 +3655,13 @@ if st.session_state["show_landing"]:
                     unsafe_allow_html=True)
 
     # ── Erweitertes Makro-Dashboard (Expander) ────────────────────────
-    with st.expander("🔬 Erweitertes Makro-Dashboard — Regime-Analyse", expanded=False):
-        with st.spinner("Lade Makro-Daten …"):
-            _em = load_extended_macro()
+    try:
+        _em = load_extended_macro()
+    except Exception:
+        _em = {"modules": {}, "regime": {}}
 
+    with st.expander("🔬 Erweitertes Makro-Dashboard — Regime-Analyse", expanded=False):
+      try:
         _reg   = _em.get("regime", {})
         _mods  = _em.get("modules", {})
         _rscore= _reg.get("score", 0)
@@ -3838,21 +3841,23 @@ if st.session_state["show_landing"]:
             st.markdown('<div style="font-size:0.62rem;color:#455a64;">Indexiert auf 100 (Startpunkt = Beginn des 2-Jahres-Fensters). Steigt = erste Komponente outperformt.</div>', unsafe_allow_html=True)
 
         # ── Indikatoren-Detail Tabelle ────────────────────────────────
-        with st.expander("📋 Alle Indikatoren im Detail", expanded=False):
-            _rows = []
-            for _mk in _mod_order:
-                for _iname, _iv in _mods.get(_mk, {}).items():
-                    _z = _iv.get("z", 0)
-                    _sig = "🟢 Bullish" if _z > 0.5 else "🔴 Bearish" if _z < -0.5 else "🟡 Neutral"
-                    _rows.append({
-                        "Modul": _mk, "Indikator": _iname,
-                        "Wert": f"{_iv.get('value','')}{_iv.get('unit','')}",
-                        "Z-Score": f"{_z:+.2f}",
-                        "Signal": _sig,
-                        "Hinweis": "⚠️ Schätzwert" if _iv.get("is_mock") else "✓ Echtdaten",
-                    })
-            if _rows:
-                st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+        st.markdown("<div style='color:#546e7a;font-size:0.72rem;margin:8px 0 4px 0;'>📋 Alle Indikatoren</div>", unsafe_allow_html=True)
+        _rows = []
+        for _mk in _mod_order:
+            for _iname, _iv in _mods.get(_mk, {}).items():
+                _z = _iv.get("z", 0)
+                _sig = "🟢 Bullish" if _z > 0.5 else "🔴 Bearish" if _z < -0.5 else "🟡 Neutral"
+                _rows.append({
+                    "Modul": _mk, "Indikator": _iname,
+                    "Wert": f"{_iv.get('value','')}{_iv.get('unit','')}",
+                    "Z-Score": f"{_z:+.2f}",
+                    "Signal": _sig,
+                    "Hinweis": "⚠️ Schätzwert" if _iv.get("is_mock") else "✓ Echtdaten",
+                })
+        if _rows:
+            st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
+      except Exception as _ex:
+        st.markdown(f'<div style="color:#ff5252;font-size:0.75rem;">Fehler beim Laden des erweiterten Dashboards: {_ex}</div>', unsafe_allow_html=True)
 
     # ── Sektor-Heatmap + Sentiment ────────────────────────────────────
     _sh_col, _sent_col = st.columns([3, 2])
