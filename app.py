@@ -2511,7 +2511,7 @@ def call_ki_chat(system_prompt: str, messages: list, gemini_key: str) -> str:
     if not gemini_key:
         return "⚠️ Kein GEMINI_API_KEY konfiguriert."
     all_msgs = [{"role": "system", "content": system_prompt}] + messages
-    text, detail = _try_gemini(all_msgs, 900, 0.5, gemini_key)
+    text, detail = _try_gemini(all_msgs, 1800, 0.5, gemini_key)
     if text:
         return text
     return f"⚠️ Gemini nicht verfügbar — {detail}"
@@ -4300,22 +4300,8 @@ elif _at == 1:
     with c3:
         st.markdown(mini_card("FCF Yield", fcf_yield, 5, 2, ".1f", "%"), unsafe_allow_html=True)
 
-    # ── Inline-Detailansicht ──────────────────────────────────────────────────
+    # ── Inline-Detailansicht (nach den Charts gerendert via Anchor) ──────────
     _exp = st.session_state.get("wachstum_expanded")
-    if _exp:
-        _exp_metric, _exp_ticker, _exp_title, _exp_cp, _exp_cn = _exp
-        st.markdown("---")
-        _cl, _tl = st.columns([1, 7])
-        with _cl:
-            if st.button("✕ Schließen", key="close_wachstum_expanded"):
-                st.session_state["wachstum_expanded"] = None
-        with _tl:
-            st.markdown(
-                f"<h4 style='color:#64b5f6;margin:4px 0;'>📊 {_exp_title} — Detailansicht</h4>",
-                unsafe_allow_html=True,
-            )
-        _render_expanded_chart(_exp_ticker, _exp_metric, _exp_title, _exp_cp, _exp_cn)
-        st.markdown("---")
 
     def _show_chart(fig, metric_key, title, cp, cn, fallback_msg=None):
         """Zeigt Chart + Detailansicht-Button."""
@@ -4440,6 +4426,29 @@ elif _at == 1:
     with _gc8:
         _show_chart(_bar_chart(a_ebitda, "EBITDA Wachstum YoY", "#00e676", "#ff5252"),
                     "ebitda_growth", "EBITDA Wachstum YoY", "#00e676", "#ff5252")
+
+    # ── Detailansicht (nach Charts, damit Scroll-Position passt) ──────────
+    if _exp:
+        _exp_metric, _exp_ticker, _exp_title, _exp_cp, _exp_cn = _exp
+        # JS-Scroll zum Detail-Anker
+        components.html(
+            '<script>setTimeout(()=>{'
+            'const el=window.parent.document.getElementById("wachstum-detail");'
+            'if(el)el.scrollIntoView({behavior:"smooth",block:"start"});'
+            '},150);</script>', height=0)
+        st.markdown('<div id="wachstum-detail"></div>', unsafe_allow_html=True)
+        st.markdown("---")
+        _cl, _tl = st.columns([1, 7])
+        with _cl:
+            if st.button("✕ Schließen", key="close_wachstum_expanded"):
+                st.session_state["wachstum_expanded"] = None
+                st.rerun()
+        with _tl:
+            st.markdown(
+                f"<h4 style='color:#64b5f6;margin:4px 0;'>📊 {_exp_title} — Detailansicht</h4>",
+                unsafe_allow_html=True)
+        _render_expanded_chart(_exp_ticker, _exp_metric, _exp_title, _exp_cp, _exp_cn)
+        st.markdown("---")
 
     # ── Segment-Aufschlüsselung ────────────────────────────────────────
     st.markdown("<div class='section-header'>🥧 Umsatz nach Segment</div>", unsafe_allow_html=True)
