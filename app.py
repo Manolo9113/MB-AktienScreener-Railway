@@ -2234,16 +2234,81 @@ def load_macro_data() -> dict:
     except Exception:
         pass
 
-    # ── S&P 500 PEG Ratio ─────────────────────────────────────────────
+    # ── S&P 500 PEG Ratio (kombiniert: yfinance + multpl.com) ────────────
     try:
         _spy = yf.Ticker("SPY")
         _spy_info = _spy.info
         _sp_pe = _spy_info.get("trailingPE")
-        _sp_eg = (_spy_info.get("earningsGrowth") or 0) * 100
-        if _sp_pe and _sp_eg and _sp_eg > 0:
-            out["sp500_peg"] = round(_sp_pe / _sp_eg, 2)
+        _sp_eg_a = None   # Option A: yfinance
+        _sp_eg_b = None   # Option B: multpl.com
+
+        # ── Option A-1: earningsGrowth direkt aus yfinance ──
+        _sp_eg_yf = (_spy_info.get("earningsGrowth") or 0) * 100
+        if 1 < _sp_eg_yf < 50:
+            _sp_eg_a = round(_sp_eg_yf, 1)
+
+        # ── Option A-2: aus forwardEps / trailingEps berechnen ──
+        if not _sp_eg_a:
+            _t_eps = _spy_info.get("trailingEps") or 0
+            _f_eps = _spy_info.get("forwardEps") or 0
+            if _t_eps > 0 and _f_eps > 0:
+                _computed = (_f_eps / _t_eps - 1) * 100
+                if 1 < _computed < 50:
+                    _sp_eg_a = round(_computed, 1)
+
+        # ── Option B: multpl.com S&P 500 EPS-Tabelle scrapen ──
+        try:
+            _mr = requests.get(
+                "https://www.multpl.com/s-p-500-eps/table/by-month",
+                timeout=6,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; StocksMB/1.0)"},
+            )
+            if _mr.ok:
+                # Tabelle: <td>Apr 1, 2025</td><td>230.00</td>
+                _eps_rows = re.findall(
+                    r"<td[^>]*>([A-Z][a-z]{2}\s+\d+,\s+\d{4})</td>\s*<td[^>]*>([\d.]+)</td>",
+                    _mr.text,
+                )
+                if len(_eps_rows) >= 13:
+                    _eps_now = float(_eps_rows[0][1])
+                    _eps_1y  = float(_eps_rows[12][1])
+                    if _eps_1y > 0:
+                        _b_growth = round((_eps_now / _eps_1y - 1) * 100, 1)
+                        if 0 < _b_growth < 60:
+                            _sp_eg_b = _b_growth
+        except Exception:
+            pass
+
+        # ── Quellen kombinieren ──────────────────────────────
+        if _sp_eg_a and _sp_eg_b:
+            if abs(_sp_eg_a - _sp_eg_b) <= 8:
+                _sp_eg_final = round((_sp_eg_a + _sp_eg_b) / 2, 1)
+                _peg_src = f"Ø yfinance {_sp_eg_a:.1f}% + multpl.com {_sp_eg_b:.1f}%"
+            else:
+                _sp_eg_final = _sp_eg_b  # bei Divergenz: externe Quelle bevorzugen
+                _peg_src = f"multpl.com {_sp_eg_b:.1f}% (yfinance {_sp_eg_a:.1f}% abweichend)"
+        elif _sp_eg_a:
+            _sp_eg_final = _sp_eg_a
+            _peg_src = "yfinance forward EPS"
+        elif _sp_eg_b:
+            _sp_eg_final = _sp_eg_b
+            _peg_src = "multpl.com"
+        else:
+            _sp_eg_final = None
+            _peg_src = ""
+
+        # immer trailing + forward KGV speichern
+        if _sp_pe:
+            out["sp500_trailing_pe"] = round(_sp_pe, 1)
+        _sp_fpe = _spy_info.get("forwardPE")
+        if _sp_fpe:
+            out["sp500_forward_pe"] = round(_sp_fpe, 1)
+
+        if _sp_pe and _sp_eg_final and _sp_eg_final > 0:
+            out["sp500_peg"]        = round(_sp_pe / _sp_eg_final, 2)
+            out["sp500_peg_source"] = _peg_src
+            out["sp500_eg"]         = _sp_eg_final
         elif _sp_pe:
-            # Fallback: use 5-year avg earnings growth estimate (~7-8% for S&P 500)
             out["sp500_pe"] = round(_sp_pe, 1)
     except Exception:
         pass
@@ -3268,10 +3333,14 @@ if st.session_state["show_landing"]:
             </div>""", unsafe_allow_html=True)
 
     # ── Buffett-Indikator & S&P 500 PEG ──────────────────────────────
-    _bi = macro.get("buffett")
-    _sp_peg = macro.get("sp500_peg")
-    _sp_pe  = macro.get("sp500_pe")
-    if _bi or _sp_peg or _sp_pe:
+    _bi             = macro.get("buffett")
+    _sp_peg         = macro.get("sp500_peg")
+    _sp_pe          = macro.get("sp500_pe")
+    _sp_eg          = macro.get("sp500_eg")
+    _peg_source     = macro.get("sp500_peg_source", "")
+    _sp_trailing_pe = macro.get("sp500_trailing_pe")
+    _sp_forward_pe  = macro.get("sp500_forward_pe")
+    if _bi or _sp_peg or _sp_pe or _sp_trailing_pe:
         _bi_col, _peg_col = st.columns(2)
 
         if _bi:
@@ -3306,33 +3375,44 @@ if st.session_state["show_landing"]:
                     f'</div>',
                     unsafe_allow_html=True)
 
-        if _sp_peg or _sp_pe:
+        if _sp_peg or _sp_pe or _sp_trailing_pe:
             with _peg_col:
+                _pe_ref = _sp_trailing_pe or _sp_pe or 0
                 if _sp_peg:
-                    if _sp_peg < 1.5:   _peg_clr, _peg_lbl, _peg_interpret = "#00e676", "Günstig", f"Aktuell günstig bewertet — historischer Ø ~1,8x"
-                    elif _sp_peg < 2.0: _peg_clr, _peg_lbl, _peg_interpret = "#69f0ae", "Fair", f"Aktuell fair bewertet — im Bereich des historischen Ø (~1,8x)"
-                    elif _sp_peg < 3.0: _peg_clr, _peg_lbl, _peg_interpret = "#ffd600", "Teuer", f"Aktuell teuer — über dem historischen Ø von ~1,8x"
-                    else:               _peg_clr, _peg_lbl, _peg_interpret = "#ff5252", "Sehr teuer", f"Aktuell deutlich überbewertet — weit über dem historischen Ø (~1,8x)"
-                    _peg_bar = min(int(_sp_peg / 5 * 100), 100)
+                    if _sp_peg < 1.5:   _peg_clr, _peg_lbl = "#00e676", "Günstig"
+                    elif _sp_peg < 2.0: _peg_clr, _peg_lbl = "#69f0ae", "Fair"
+                    elif _sp_peg < 3.0: _peg_clr, _peg_lbl = "#ffd600", "Teuer"
+                    else:               _peg_clr, _peg_lbl = "#ff5252", "Sehr teuer"
+                    _peg_bar     = min(int(_sp_peg / 5 * 100), 100)
                     _peg_display = f"PEG {_sp_peg:.2f}x"
-                    _peg_note = f"PEG-Ratio = Kurs-Gewinn-Verhältnis ÷ EPS-Wachstum%. PEG {_sp_peg:.2f}x — {_peg_interpret}."
+                    _eg_str      = f" · EPS-Wachstum {_sp_eg:.1f}%" if _sp_eg else ""
+                    _src_str     = f"<br>Quelle: {_peg_source}" if _peg_source else ""
+                    _peg_note    = (f"PEG = KGV ÷ EPS-Wachstum%. PEG {_sp_peg:.2f}x — {_peg_lbl.lower()} vs. hist. Ø ~1,8x."
+                                    f"{_eg_str}.{_src_str}")
                 else:
-                    # KGV-basierte Bewertung: historischer S&P-Schnitt ~15-18x
-                    if _sp_pe < 15:   _peg_clr, _peg_lbl = "#00e676", "Günstig"
-                    elif _sp_pe < 18: _peg_clr, _peg_lbl = "#69f0ae", "Fair"
-                    elif _sp_pe < 23: _peg_clr, _peg_lbl = "#ffd600", "Leicht teuer"
-                    elif _sp_pe < 28: _peg_clr, _peg_lbl = "#ff8f00", "Teuer"
-                    else:             _peg_clr, _peg_lbl = "#ff5252", "Sehr teuer"
-                    _peg_bar = min(int((_sp_pe - 10) / 30 * 100), 100)  # skala 10–40x
-                    _peg_display = f"KGV {_sp_pe:.1f}x"
-                    _peg_note = (f"Kein EPS-Wachstum verfügbar — Bewertung über KGV. "
-                                 f"Aktuell {_sp_pe:.1f}x, historischer S&amp;P-Schnitt ~15–18x → {_peg_lbl.lower()}.")
+                    if _pe_ref < 15:   _peg_clr, _peg_lbl = "#00e676", "Günstig"
+                    elif _pe_ref < 18: _peg_clr, _peg_lbl = "#69f0ae", "Fair"
+                    elif _pe_ref < 23: _peg_clr, _peg_lbl = "#ffd600", "Leicht teuer"
+                    elif _pe_ref < 28: _peg_clr, _peg_lbl = "#ff8f00", "Teuer"
+                    else:              _peg_clr, _peg_lbl = "#ff5252", "Sehr teuer"
+                    _peg_bar     = min(int((_pe_ref - 10) / 30 * 100), 100)
+                    _peg_display = f"KGV {_pe_ref:.1f}x"
+                    _peg_note    = (f"Kein EPS-Wachstum verfügbar — Bewertung via KGV. "
+                                    f"Aktuell {_pe_ref:.1f}x, hist. S&amp;P-Schnitt ~15–18x → {_peg_lbl.lower()}.")
+
+                # KGV-Zeile: trailing + forward nebeneinander
+                _kgv_sub = ""
+                if _sp_trailing_pe:
+                    _kgv_sub += f'<span style="color:#546e7a;">KGV (trailing) </span><span style="color:#90a4ae;font-weight:600;">{_sp_trailing_pe:.1f}x</span>'
+                if _sp_forward_pe:
+                    _kgv_sub += f'&nbsp;&nbsp;<span style="color:#546e7a;">Forward KGV </span><span style="color:#90a4ae;font-weight:600;">{_sp_forward_pe:.1f}x</span>'
+
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
                     f'<span style="color:#b0bec5;">S&amp;P 500 Bewertung'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
-                    f'<span class="tt-box">Wenn PEG verfügbar: KGV ÷ EPS-Wachstum% (fair ~1,5–2,0x). Sonst: reines KGV (hist. S&amp;P-Schnitt ~15–18x). Schwäche: Wachstumsschätzungen volatil.</span></span></span>'
+                    f'<span class="tt-box">PEG = KGV ÷ EPS-Wachstum% (fair hist. ~1,5–2,0x). Quellen: yfinance forward EPS + multpl.com YoY EPS. Ohne PEG-Daten: Fallback auf trailing KGV (hist. S&amp;P-Schnitt ~15–18x).</span></span></span>'
                     f'<span style="color:{_peg_clr};font-weight:700;">{_peg_display}</span></div>'
                     f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_peg_bar}%;height:5px;border-radius:4px;background:{_peg_clr};"></div></div>'
@@ -3340,7 +3420,8 @@ if st.session_state["show_landing"]:
                     f'<span>{"0x" if _sp_peg else "10x"}</span><span style="color:{_peg_clr};">{_peg_lbl}</span><span>{"5x" if _sp_peg else "40x"}</span></div>'
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'{"&lt;1,5x = günstig · 1,5–2,0x = fair · 2–3x = teuer · &gt;3x = sehr teuer · Ø ~1,8x" if _sp_peg else "&lt;15x = günstig · 15–18x = fair · 18–23x = leicht teuer · &gt;28x = sehr teuer"}</div>'
-                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    + (f'<div style="font-size:0.62rem;margin-top:4px;">{_kgv_sub}</div>' if _kgv_sub else '')
+                    + f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
                     f'<b>Einordnung:</b> {_peg_note}</div>'
                     f'</div>',
                     unsafe_allow_html=True)
