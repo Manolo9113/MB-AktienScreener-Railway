@@ -2466,7 +2466,11 @@ def _call_gemini(api_key: str, model: str,
         if not resp.ok:
             raise ValueError(f"HTTP {resp.status_code}: {resp.text[:250]}")
         data = resp.json()
-        return data["candidates"][0]["content"]["parts"][0]["text"]
+        candidate = data["candidates"][0]
+        text = candidate["content"]["parts"][0]["text"]
+        if candidate.get("finishReason") == "MAX_TOKENS":
+            text += "\n\n⚠️ *(Antwort wurde durch Token-Limit abgeschnitten — bitte erneut versuchen)*"
+        return text
     raise ValueError(f"Modell '{model}' in v1beta und v1 nicht gefunden")
 
 
@@ -2489,7 +2493,7 @@ def _try_gemini(messages: list, max_tokens: int,
 
 def call_ki_api(system_prompt: str, user_message: str,
                 gemini_key: str,
-                max_tokens: int = 1800) -> tuple[str, str]:
+                max_tokens: int = 3000) -> tuple[str, str]:
     """Ruft Gemini an. Gibt (antwort_text, provider_label) zurück."""
     if not gemini_key:
         return ("⚠️ Kein API-Key konfiguriert. Bitte GEMINI_API_KEY "
@@ -3009,45 +3013,41 @@ if st.session_state["show_landing"]:
         _vix = macro.get("vix")
         _fg  = macro.get("fear_greed", {})
 
-        _sent_parts = []
+        _has_sentiment = bool(_vix or _fg)
 
         if _vix:
             _vix_clr = "#ff5252" if _vix > 25 else "#ffd600" if _vix > 18 else "#00e676"
             _vix_lbl = "Hohe Volatilität" if _vix > 25 else "Moderat" if _vix > 18 else "Ruhig"
             _vix_pct = min(int(_vix / 50 * 100), 100)
-            _sent_parts.append(f"""
-            <div style="margin-bottom:10px;">
-                <div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">
-                    <span style="color:#b0bec5;">VIX</span>
-                    <span style="color:{_vix_clr};font-weight:700;">{_vix}</span>
-                </div>
-                <div style="background:#0d1526;border-radius:4px;height:5px;">
-                    <div style="width:{_vix_pct}%;height:5px;border-radius:4px;background:{_vix_clr};"></div>
-                </div>
-                <div style="font-size:0.68rem;color:#546e7a;margin-top:2px;">{_vix_lbl}</div>
-            </div>""")
+            st.markdown(
+                f'<div class="insight-box" style="padding:10px 14px 6px 14px; margin-bottom:6px;">'
+                f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">'
+                f'<span style="color:#b0bec5;">VIX</span>'
+                f'<span style="color:{_vix_clr};font-weight:700;">{_vix}</span></div>'
+                f'<div style="background:#0d1526;border-radius:4px;height:5px;">'
+                f'<div style="width:{_vix_pct}%;height:5px;border-radius:4px;background:{_vix_clr};"></div></div>'
+                f'<div style="font-size:0.68rem;color:#546e7a;margin-top:2px;">{_vix_lbl}</div>'
+                f'</div>',
+                unsafe_allow_html=True)
 
         if _fg:
             _fs = _fg["score"]
             _fr = _fg.get("rating", "").replace("_", " ").title()
             _fg_clr = "#ff5252" if _fs < 25 else "#ffd600" if _fs < 45 else \
                       "#90a4ae" if _fs < 55 else "#ffd600" if _fs < 75 else "#00e676"
-            _sent_parts.append(f"""
-            <div style="margin-bottom:10px;">
-                <div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">
-                    <span style="color:#b0bec5;">Fear & Greed</span>
-                    <span style="color:{_fg_clr};font-weight:700;">{_fs} — {_fr}</span>
-                </div>
-                <div style="background:#0d1526;border-radius:4px;height:5px;">
-                    <div style="width:{_fs}%;height:5px;border-radius:4px;background:{_fg_clr};"></div>
-                </div>
-            </div>""")
+            st.markdown(
+                f'<div class="insight-box" style="padding:10px 14px 6px 14px; margin-bottom:6px;">'
+                f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">'
+                f'<span style="color:#b0bec5;">Fear &amp; Greed</span>'
+                f'<span style="color:{_fg_clr};font-weight:700;">{_fs} — {_fr}</span></div>'
+                f'<div style="background:#0d1526;border-radius:4px;height:5px;">'
+                f'<div style="width:{_fs}%;height:5px;border-radius:4px;background:{_fg_clr};"></div></div>'
+                f'</div>',
+                unsafe_allow_html=True)
 
-        if _sent_parts:
-            st.markdown(f"""<div class="insight-box" style="padding:12px 14px;">
-                {"".join(_sent_parts)}
-                <div style="font-size:0.65rem;color:#37474f;margin-top:4px;">Quelle: CBOE VIX · CNN Fear & Greed</div>
-            </div>""", unsafe_allow_html=True)
+        if _has_sentiment:
+            st.markdown('<div style="font-size:0.65rem;color:#37474f;margin-top:2px;">Quelle: CBOE VIX · CNN Fear &amp; Greed</div>',
+                        unsafe_allow_html=True)
 
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
 
