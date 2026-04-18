@@ -131,6 +131,19 @@ st.markdown("""
         color: #64b5f6;
     }
 
+    /* CSS-Tooltip — funktioniert auf Desktop (hover) und Mobile (tap/focus) */
+    .tt { position:relative; display:inline-block; cursor:help; }
+    .tt .tt-box {
+        visibility:hidden; opacity:0;
+        position:absolute; bottom:130%; left:50%; transform:translateX(-50%);
+        background:#0d2340; color:#b0bec5; font-size:0.65rem; line-height:1.5;
+        padding:8px 12px; border-radius:8px; border:1px solid #1e3a5f;
+        white-space:normal; width:220px; z-index:9999; pointer-events:none;
+        transition:opacity 0.15s;
+    }
+    .tt:hover .tt-box, .tt:focus .tt-box { visibility:visible; opacity:1; }
+    .tt-icon { color:#455a64; font-size:0.7rem; vertical-align:super; }
+
     /* Input */
     .stTextInput input {
         background: #0d1526;
@@ -513,17 +526,11 @@ def sb_remove_ticker(access_token: str, ticker: str):
 @st.cache_data(ttl=3600)
 def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
     """
-    Für japanische / nicht-US Aktien liefert yfinance.info oft 0 für Margen und Wachstum.
-    Fallback: Werte direkt aus GuV und Cashflow-Statement berechnen.
+    Für japanische / nicht-US Aktien liefert yfinance.info oft 0/None für Margen,
+    Wachstum und FCF. Fallback: direkt aus GuV, Cashflow und Bilanz berechnen.
+    FCF-Patch läuft IMMER (unabhängig von Margins) — behebt JP-FCF-Yield=0-Bug.
     """
-    needs_patch = not any([
-        info.get("grossMargins"), info.get("operatingMargins"),
-        info.get("profitMargins"), info.get("revenueGrowth"),
-    ])
-    if not needs_patch:
-        return info
-
-    info = dict(info)  # shallow copy so we don't mutate cached dict
+    info = dict(info)  # shallow copy — nie das cached dict mutieren
 
     def _get_df(*attr_names):
         for name in attr_names:
@@ -538,42 +545,62 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
     def _row(df, *names):
         for n in names:
             if n in df.index:
-                v = df.loc[n]
-                return v
+                return df.loc[n]
         return None
 
-    # ── GuV ───────────────────────────────────────────────────────────────
-    fs = _get_df("income_stmt", "financials")
-    if fs is not None and len(fs.columns) >= 2:
-        rev  = _row(fs, "Total Revenue", "TotalRevenue")
-        gp   = _row(fs, "Gross Profit", "GrossProfit")
-        op   = _row(fs, "Operating Income", "OperatingIncome", "EBIT")
-        ni   = _row(fs, "Net Income", "NetIncome", "Net Income Common Stockholders")
-
-        if rev is not None:
-            r0, r1 = float(rev.iloc[0] or 0), float(rev.iloc[1] or 1)
-            if r0 and r1:
-                info["revenueGrowth"]    = (r0 / r1) - 1
-                info["totalRevenue"]     = int(r0)
-            if gp  is not None and r0: info["grossMargins"]     = float(gp.iloc[0]  or 0) / r0
-            if op  is not None and r0: info["operatingMargins"] = float(op.iloc[0]  or 0) / r0
-            if ni  is not None and r0: info["profitMargins"]    = float(ni.iloc[0]  or 0) / r0
-
-    # ── Cashflow ──────────────────────────────────────────────────────────
+    # ── FCF immer patchen wenn 0/None (häufig bei JP/EU) ─────────────────
     if not info.get("freeCashflow"):
-        cf = _get_df("cash_flow", "cashflow")
-        if cf is not None and len(cf.columns) >= 1:
-            fcf_r = _row(cf, "Free Cash Flow", "FreeCashFlow")
-            ocf_r = _row(cf, "Operating Cash Flow", "OperatingCashFlow",
-                         "Total Cash From Operating Activities")
-            cap_r = _row(cf, "Capital Expenditure", "CapitalExpenditure",
-                         "Capital Expenditures")
-            if fcf_r is not None:
-                info["freeCashflow"] = int(float(fcf_r.iloc[0] or 0))
-            elif ocf_r is not None and cap_r is not None:
-                ocf = float(ocf_r.iloc[0] or 0)
-                cap = float(cap_r.iloc[0] or 0)   # usually negative
-                info["freeCashflow"] = int(ocf + cap)
+        # Versuch 1: operatingCashflow aus info (oft vorhanden wenn freeCashflow fehlt)
+        ocf_info = info.get("operatingCashflow")
+        if ocf_info:
+            # CapEx aus info abziehen falls verfügbar; sonst OCF × 0.75 als konservativer Proxy
+            capex_info = info.get("capitalExpenditures") or 0
+            info["freeCashflow"] = int(ocf_info - abs(capex_info))
+        else:
+            # Versuch 2: aus Cash-Flow-Statement
+            cf = _get_df("cash_flow", "cashflow")
+            if cf is not None and len(cf.columns) >= 1:
+                fcf_r = _row(cf, "Free Cash Flow", "FreeCashFlow")
+                ocf_r = _row(cf,
+                             "Operating Cash Flow", "OperatingCashFlow",
+                             "Total Cash From Operating Activities",
+                             "Cash From Operations")
+                cap_r = _row(cf,
+                             "Capital Expenditure", "CapitalExpenditure",
+                             "Capital Expenditures",
+                             "Purchase Of Property Plant And Equipment",
+                             "Purchases of PPE")
+                if fcf_r is not None:
+                    v = float(fcf_r.iloc[0] or 0)
+                    if v: info["freeCashflow"] = int(v)
+                elif ocf_r is not None:
+                    ocf = float(ocf_r.iloc[0] or 0)
+                    cap = float(cap_r.iloc[0] or 0) if cap_r is not None else 0
+                    if ocf: info["freeCashflow"] = int(ocf + cap)  # cap is negative
+
+    # ── Margen + Wachstum: nur patchen wenn alle fehlen ──────────────────
+    needs_margin_patch = not any([
+        info.get("grossMargins"), info.get("operatingMargins"),
+        info.get("profitMargins"), info.get("revenueGrowth"),
+    ])
+    if needs_margin_patch:
+        fs = _get_df("income_stmt", "financials")
+        if fs is not None and len(fs.columns) >= 2:
+            rev = _row(fs, "Total Revenue", "TotalRevenue", "Revenue")
+            gp  = _row(fs, "Gross Profit", "GrossProfit")
+            op  = _row(fs, "Operating Income", "OperatingIncome", "EBIT")
+            ni  = _row(fs, "Net Income", "NetIncome",
+                       "Net Income Common Stockholders")
+            if rev is not None:
+                r0 = float(rev.iloc[0] or 0)
+                r1 = float(rev.iloc[1] or 0)
+                if r0 and r1:
+                    info["revenueGrowth"] = (r0 / r1) - 1
+                    info["totalRevenue"]  = int(r0)
+                if r0:
+                    if gp is not None: info["grossMargins"]     = float(gp.iloc[0] or 0) / r0
+                    if op is not None: info["operatingMargins"] = float(op.iloc[0] or 0) / r0
+                    if ni is not None: info["profitMargins"]    = float(ni.iloc[0] or 0) / r0
 
     return info
 
@@ -3182,10 +3209,11 @@ if st.session_state["show_landing"]:
             clr = "#00e676" if pct >= 0 else "#ff5252"
             arrow = "▲" if pct >= 0 else "▼"
             _tip = _FX_TIPS.get(label, "")
-            _tip_icon = f' <span title="{_tip}" style="color:#37474f;cursor:help;font-size:0.65rem;">ⓘ</span>' if _tip else ""
+            _tip_html = (f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                         f'<span class="tt-box">{_tip}</span></span>') if _tip else ""
             col.markdown(f"""
             <div class="metric-card" style="text-align:center; padding:10px 6px;">
-                <div class="metric-label" style="font-size:0.68rem;">{label}{_tip_icon}</div>
+                <div class="metric-label" style="font-size:0.68rem;">{label}{_tip_html}</div>
                 <div style="color:#eceff1; font-size:0.95rem; font-weight:700; margin:3px 0;">
                     {d['price']:.{4 if d['price'] < 10 else 2}f}
                 </div>
@@ -3207,10 +3235,11 @@ if st.session_state["show_landing"]:
             else:
                 clr = "#64b5f6"
             _tip = _MACRO_TIPS.get(label, "")
-            _tip_icon = f' <span title="{_tip}" style="color:#37474f;cursor:help;font-size:0.65rem;">ⓘ</span>' if _tip else ""
+            _tip_html = (f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                         f'<span class="tt-box">{_tip}</span></span>') if _tip else ""
             col.markdown(f"""
             <div class="metric-card" style="text-align:center; padding:10px 6px;">
-                <div class="metric-label" style="font-size:0.68rem; line-height:1.3;">{label}{_tip_icon}</div>
+                <div class="metric-label" style="font-size:0.68rem; line-height:1.3;">{label}{_tip_html}</div>
                 <div style="color:{clr}; font-size:1.0rem; font-weight:700; margin:4px 0;">
                     {val:.1f}{unit}
                 </div>
@@ -3234,8 +3263,9 @@ if st.session_state["show_landing"]:
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
-                    f'<span style="color:#b0bec5;" title="Buffett-Indikator: Gesamte US-Marktkapitalisierung geteilt durch das US-BIP. Buffett nannte ihn \'wahrscheinlich den besten Einzelindikator für Börsenbewertungen\'. Historischer Mittelwert: ~80–100 %. Über 140 % = Warnsignal.">'
-                    f'Buffett-Indikator ⓘ</span>'
+                    f'<span style="color:#b0bec5;">Buffett-Indikator'
+                    f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                    f'<span class="tt-box">Gesamte US-Marktkapitalisierung ÷ US-BIP. Buffett: "wahrscheinlich der beste Einzelindikator für Börsenbewertungen." Historischer Mittelwert: ~80–100%. Über 140% = Warnsignal.</span></span></span>'
                     f'<span style="color:{_bi_clr};font-weight:700;">{_bi:.0f}%</span></div>'
                     f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_bi_pct_bar}%;height:5px;border-radius:4px;background:{_bi_clr};"></div></div>'
@@ -3261,8 +3291,9 @@ if st.session_state["show_landing"]:
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
-                    f'<span style="color:#b0bec5;" title="S&P 500 PEG Ratio = KGV (trailing) ÷ Gewinnwachstum %. Berücksichtigt Wachstum im Gegensatz zum reinen KGV. Historisch fair: 1,5–2,0x. Unter 1,5x = günstig relativ zum Wachstum. Über 3x = sehr teuer.">'
-                    f'S&amp;P 500 PEG ⓘ</span>'
+                    f'<span style="color:#b0bec5;">S&amp;P 500 PEG'
+                    f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                    f'<span class="tt-box">KGV (trailing) ÷ Gewinnwachstum%. Berücksichtigt Wachstum — besser als reines KGV. Historisch fair: 1,5–2,0x. Unter 1,5x = günstig, über 3x = sehr teuer.</span></span></span>'
                     f'<span style="color:{_peg_clr};font-weight:700;">{_peg_display}</span></div>'
                     f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_peg_bar}%;height:5px;border-radius:4px;background:{_peg_clr};"></div></div>'
@@ -3319,7 +3350,8 @@ if st.session_state["show_landing"]:
             st.markdown(
                 f'<div class="insight-box" style="padding:10px 14px 6px 14px; margin-bottom:6px;">'
                 f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">'
-                f'<span style="color:#b0bec5;" title="CBOE Volatilitätsindex. Misst erwartete Schwankungen des S&P 500 in den nächsten 30 Tagen. Unter 15 = ruhig, 15–25 = moderat, über 25 = hohe Unsicherheit (Angst).">VIX ⓘ</span>'
+                f'<span style="color:#b0bec5;">VIX<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                f'<span class="tt-box">CBOE Volatilitätsindex. Misst erwartete S&P-500-Schwankungen (30 Tage). Unter 15 = ruhig · 15–25 = moderat · über 25 = Angst/Unsicherheit.</span></span></span>'
                 f'<span style="color:{_vix_clr};font-weight:700;">{_vix}</span></div>'
                 f'<div style="background:#0d1526;border-radius:4px;height:5px;">'
                 f'<div style="width:{_vix_pct}%;height:5px;border-radius:4px;background:{_vix_clr};"></div></div>'
@@ -3335,7 +3367,8 @@ if st.session_state["show_landing"]:
             st.markdown(
                 f'<div class="insight-box" style="padding:10px 14px 6px 14px; margin-bottom:6px;">'
                 f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">'
-                f'<span style="color:#b0bec5;" title="Eigene Berechnung: VIX (40%) + SPY-30T-Momentum (35%) + Kurs über 200-Tage-MA (25%)">Sentiment-Score ⓘ</span>'
+                f'<span style="color:#b0bec5;">Sentiment-Score<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                f'<span class="tt-box">Eigene Berechnung aus: VIX-Level (40%) + SPY 30-Tage-Momentum (35%) + SPY über 200-Tage-MA (25%). Kein CNN-Datenfeed.</span></span></span>'
                 f'<span style="color:{_fg_clr};font-weight:700;">{_fs} — {_fr}</span></div>'
                 f'<div style="background:#0d1526;border-radius:4px;height:5px;">'
                 f'<div style="width:{_fs}%;height:5px;border-radius:4px;background:{_fg_clr};"></div></div>'
