@@ -2375,6 +2375,234 @@ def load_macro_data() -> dict:
     return out
 
 
+@st.cache_data(ttl=3600)
+def load_extended_macro() -> dict:
+    """
+    Erweitertes Makro-Dashboard: 7 Module mit z-Score-Normalisierung.
+    Datenquellen: FRED (CSV, kein API-Key), yfinance.
+    Gibt Modul-Daten + Zeitreihen + Regime-Score zurück.
+    """
+    out: dict = {"modules": {}, "regime": {}}
+    _today = _dt.date.today().strftime("%Y-%m-%d")
+    _start2y = (_dt.date.today() - _dt.timedelta(days=730)).strftime("%Y-%m-%d")
+    _start5y = (_dt.date.today() - _dt.timedelta(days=5 * 365)).strftime("%Y-%m-%d")
+
+    def _fred_ts(sid: str, start: str = _start2y) -> pd.Series:
+        """Holt FRED-Zeitreihe als pd.Series (kein API-Key nötig)."""
+        try:
+            r = requests.get(
+                f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}",
+                timeout=10,
+            )
+            if not r.ok:
+                return pd.Series(dtype=float, name=sid)
+            dates, vals = [], []
+            for line in r.text.strip().split("\n")[1:]:
+                p = line.split(",")
+                if len(p) == 2 and p[1].strip() not in (".", ""):
+                    try:
+                        d = pd.to_datetime(p[0].strip())
+                        if d >= pd.to_datetime(start):
+                            dates.append(d)
+                            vals.append(float(p[1].strip()))
+                    except Exception:
+                        pass
+            s = pd.Series(vals, index=pd.DatetimeIndex(dates), name=sid)
+            return s.sort_index()
+        except Exception:
+            return pd.Series(dtype=float, name=sid)
+
+    def _zscore(s: pd.Series) -> float:
+        """Z-Score des letzten Wertes vs. gesamter Zeitreihe."""
+        if len(s) < 10:
+            return 0.0
+        mu, sigma = float(s.mean()), float(s.std())
+        return 0.0 if sigma == 0 else float((s.iloc[-1] - mu) / sigma)
+
+    def _yf_ratio(t1: str, t2: str, start: str = _start2y) -> pd.Series:
+        """Verhältnis zweier yfinance-Ticker (tägliche Schlusskurse)."""
+        try:
+            d1 = yf.Ticker(t1).history(start=start)["Close"]
+            d2 = yf.Ticker(t2).history(start=start)["Close"]
+            ratio = (d1 / d2).dropna()
+            ratio.name = f"{t1}/{t2}"
+            return ratio
+        except Exception:
+            return pd.Series(dtype=float)
+
+    def _ind(value, unit, z, series, desc, signal_dir=1, is_mock=False):
+        return {"value": value, "unit": unit, "z": round(float(z), 2),
+                "series": series, "description": desc,
+                "signal_dir": signal_dir, "is_mock": is_mock}
+
+    # ── Modul 1: Wachstum / Leading Indicators ────────────────────────
+    m1 = {}
+    t10y2y_s = _fred_ts("T10Y2Y")
+    if not t10y2y_s.empty:
+        m1["Zinskurve (10J–2J)"] = _ind(
+            round(float(t10y2y_s.iloc[-1]), 2), "%", _zscore(t10y2y_s), t10y2y_s.tail(504),
+            "10J minus 2J Treasury-Spread. Negativ = Rezessionswarnung (Inversion).", 1)
+
+    icsa_s = _fred_ts("ICSA")
+    if not icsa_s.empty:
+        m1["Erstanträge Arb.-losigkeit"] = _ind(
+            int(icsa_s.iloc[-1] / 1000), "k", -_zscore(icsa_s), icsa_s.tail(104),
+            "US Erstanträge (wöchentl.). Invertiert: niedrig = starker Arbeitsmarkt = bullish.", -1)
+
+    m1["ISM Mfg. PMI (Schätzung)"] = _ind(
+        49.0, "", -0.3, pd.Series(dtype=float),
+        "ISM Einkaufsmanagerindex (kein kostenfreier Feed — Näherungswert). >50 = Expansion.", 1, True)
+
+    out["modules"]["Wachstum"] = m1
+
+    # ── Modul 2: Finanzierungsbedingungen ────────────────────────────
+    m2 = {}
+    nfci_s = _fred_ts("NFCI")
+    if not nfci_s.empty:
+        m2["Chicago Fed FCI"] = _ind(
+            round(float(nfci_s.iloc[-1]), 3), "", -_zscore(nfci_s), nfci_s.tail(104),
+            "Nat. Financial Conditions Index. Negativ = lockere Bedingungen (bullish für Märkte).", -1)
+
+    dfii10_s = _fred_ts("DFII10")
+    if not dfii10_s.empty:
+        m2["10J Realzins (TIPS)"] = _ind(
+            round(float(dfii10_s.iloc[-1]), 2), "%", -_zscore(dfii10_s), dfii10_s.tail(504),
+            "10J TIPS-Rendite (realer Zins nach Inflation). Hoher Realzins belastet Aktienmultiples.", -1)
+
+    out["modules"]["Finanzierung"] = m2
+
+    # ── Modul 3: Kreditmarkt-Risiko ───────────────────────────────────
+    m3 = {}
+    hy_s = _fred_ts("BAMLH0A0HYM2")
+    if not hy_s.empty:
+        m3["HY Spread (OAS)"] = _ind(
+            int(hy_s.iloc[-1]), "bp", -_zscore(hy_s), hy_s.tail(504),
+            "High-Yield Option-Adjusted Spread. >600bp = erhöhtes Kreditrisiko / Marktstress.", -1)
+
+    ig_s = _fred_ts("BAMLC0A0CM")
+    if not ig_s.empty:
+        m3["IG Spread (OAS)"] = _ind(
+            int(ig_s.iloc[-1]), "bp", -_zscore(ig_s), ig_s.tail(504),
+            "Investment Grade Spread. Früher Stressindikator — weitet sich vor HY-Spreads aus.", -1)
+
+    out["modules"]["Kredit"] = m3
+
+    # ── Modul 4: Marktbreite ──────────────────────────────────────────
+    m4 = {}
+    rsp_spy = _yf_ratio("RSP", "SPY")
+    if not rsp_spy.empty:
+        m4["Marktbreite (EW/KGW)"] = _ind(
+            round(float(rsp_spy.iloc[-1]), 4), "x", _zscore(rsp_spy), rsp_spy,
+            "S&P Equal Weight / Cap Weight. Steigt = breite Partizipation (bullish). Fällt = Konzentration.", 1)
+
+    try:
+        _spy_h = yf.Ticker("SPY").history(start=_start2y)["Close"]
+        _spy_ma200 = _spy_h.rolling(200).mean()
+        if not _spy_h.empty and not _spy_ma200.empty:
+            _above = 1.0 if float(_spy_h.iloc[-1]) > float(_spy_ma200.iloc[-1]) else 0.0
+            # Proxy: distance to 200MA as breadth signal
+            _dist = (_spy_h / _spy_ma200 - 1) * 100
+            m4["S&P 500 über 200-MA"] = _ind(
+                round(float(_dist.iloc[-1]), 1), "%", _zscore(_dist), _dist,
+                "SPY Abstand zur 200-Tage-Linie. Über 0% = Aufwärtstrend intakt.", 1)
+    except Exception:
+        pass
+
+    out["modules"]["Marktbreite"] = m4
+
+    # ── Modul 5: Inflationserwartungen ────────────────────────────────
+    m5 = {}
+    for sid, label, desc in [
+        ("T5YIE",  "5J Breakeven Inflation",  "5J Inflationserwartungen. Optimal 2,0–2,5%. Zu hoch = Fed-Druck, zu niedrig = Deflationsangst."),
+        ("T10YIE", "10J Breakeven Inflation", "10J Inflationserwartungen. Langfristiger Fed-Anker. >3% = restriktive Geldpolitik erwartet."),
+    ]:
+        s = _fred_ts(sid)
+        if not s.empty:
+            v = float(s.iloc[-1])
+            # Goldilocks-Zone 2,0–2,5%: Abweichung davon ist negativ
+            _ref = 2.25
+            _sigma = float(s.std()) or 0.3
+            _z = -(abs(v - _ref) / _sigma)
+            m5[label] = _ind(round(v, 2), "%", _z, s.tail(504), desc, 0)
+
+    out["modules"]["Inflation"] = m5
+
+    # ── Modul 6: Globale Liquidität ───────────────────────────────────
+    m6 = {}
+    walcl_s = _fred_ts("WALCL", start=_start5y)
+    if not walcl_s.empty and len(walcl_s) >= 52:
+        _yoy = walcl_s.pct_change(52) * 100
+        _yoy = _yoy.dropna()
+        if not _yoy.empty:
+            _wz = min(max(float(_yoy.iloc[-1]) / 20, -2), 2)
+            m6["Fed Bilanz YoY"] = _ind(
+                round(float(walcl_s.iloc[-1]) / 1e6, 2), "Bio $", round(_wz, 2), walcl_s.tail(260),
+                "Fed Bilanzsumme. QE-Expansion = bullish, QT-Kontraktion = bearish für Risikoassets.", 1)
+
+    m2sl_s = _fred_ts("M2SL", start=_start5y)
+    if not m2sl_s.empty and len(m2sl_s) >= 13:
+        _m2yoy = (m2sl_s.pct_change(12) * 100).dropna()
+        if not _m2yoy.empty:
+            m6["M2 Geldmenge YoY"] = _ind(
+                round(float(_m2yoy.iloc[-1]), 1), "%", _zscore(_m2yoy), _m2yoy.tail(60),
+                "M2-Wachstum YoY. Positiv = expansive Liquidität. Negativ = restriktives Umfeld.", 1)
+
+    try:
+        dxy_h = yf.Ticker("DX-Y.NYB").history(start=_start2y)["Close"]
+        if not dxy_h.empty:
+            m6["US-Dollar (DXY)"] = _ind(
+                round(float(dxy_h.iloc[-1]), 1), "", -_zscore(dxy_h), dxy_h,
+                "US-Dollar-Index. Starker Dollar = globaler Liquiditätsdruck (bearish für EM + Rohstoffe).", -1)
+    except Exception:
+        pass
+
+    out["modules"]["Liquidität"] = m6
+
+    # ── Modul 7: Faktor- & Regime-Analyse ────────────────────────────
+    m7 = {}
+    for t1, t2, label, desc, sdir in [
+        ("IVW", "IVE", "Growth vs. Value",       "MSCI Growth/Value ETF. Steigt Growth = Risk-On / expansive Phase.", 1),
+        ("IWM", "SPY", "Small vs. Large Cap",     "Russell 2000 / S&P 500. Small-Cap-Stärke = Risk-On, Liquiditätszufluss breit.", 1),
+        ("XLY", "XLP", "Zyklisch vs. Defensiv",  "Konsum zyklisch (XLY) / Basis (XLP). Steigt = Risk-On Regime.", 1),
+    ]:
+        r = _yf_ratio(t1, t2)
+        if not r.empty:
+            m7[label] = _ind(round(float(r.iloc[-1]), 4), "x", _zscore(r), r, desc, sdir)
+
+    out["modules"]["Faktoren"] = m7
+
+    # ── Composite Macro Regime Score ──────────────────────────────────
+    _weights = {
+        "Wachstum":   0.20, "Finanzierung": 0.20, "Kredit":    0.20,
+        "Marktbreite":0.10, "Inflation":    0.10, "Liquidität":0.10,
+        "Faktoren":   0.10,
+    }
+    _mod_scores: dict = {}
+    _total, _total_w = 0.0, 0.0
+    for mod_key, weight in _weights.items():
+        mod = out["modules"].get(mod_key, {})
+        zs = [v["z"] for v in mod.values()
+              if isinstance(v.get("z"), (int, float)) and not np.isnan(v["z"])]
+        if zs:
+            ms = float(np.clip(np.mean(zs), -3, 3))
+            _mod_scores[mod_key] = round(ms, 2)
+            _total += ms * weight
+            _total_w += weight
+
+    composite = round(_total / _total_w, 2) if _total_w > 0 else 0.0
+    if composite > 0.5:    reg_lbl, reg_clr = "Risk-On",  "#00e676"
+    elif composite > -0.5: reg_lbl, reg_clr = "Neutral",  "#ffd600"
+    else:                   reg_lbl, reg_clr = "Risk-Off", "#ff5252"
+
+    out["regime"] = {
+        "score":   composite,
+        "label":   reg_lbl,
+        "color":   reg_clr,
+        "modules": _mod_scores,
+    }
+    return out
+
+
 # ==================== INDICES + NEWS ====================
 @st.cache_data(ttl=300)
 def load_indices():
@@ -3425,6 +3653,206 @@ if st.session_state["show_landing"]:
                     f'<b>Einordnung:</b> {_peg_note}</div>'
                     f'</div>',
                     unsafe_allow_html=True)
+
+    # ── Erweitertes Makro-Dashboard (Expander) ────────────────────────
+    with st.expander("🔬 Erweitertes Makro-Dashboard — Regime-Analyse", expanded=False):
+        with st.spinner("Lade Makro-Daten …"):
+            _em = load_extended_macro()
+
+        _reg   = _em.get("regime", {})
+        _mods  = _em.get("modules", {})
+        _rscore= _reg.get("score", 0)
+        _rlbl  = _reg.get("label", "Neutral")
+        _rclr  = _reg.get("color", "#ffd600")
+        _rmod  = _reg.get("modules", {})
+
+        # ── Regime-Badge ──────────────────────────────────────────────
+        _bar_pct = int(min(max((_rscore + 3) / 6 * 100, 2), 98))
+        st.markdown(
+            f'<div class="insight-box" style="padding:12px 16px 10px;">'
+            f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
+            f'<span style="color:#b0bec5;font-size:0.82rem;font-weight:600;">🧭 Makro-Regime Score</span>'
+            f'<span style="color:{_rclr};font-size:1.2rem;font-weight:800;">{_rlbl}</span></div>'
+            f'<div style="background:#0d1526;border-radius:6px;height:8px;margin-bottom:6px;">'
+            f'<div style="width:{_bar_pct}%;height:8px;border-radius:6px;background:linear-gradient(90deg,#ff5252,#ffd600,#00e676);"></div></div>'
+            f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+            f'<span>Risk-Off</span><span style="color:{_rclr};font-weight:600;">Score: {_rscore:+.2f}</span><span>Risk-On</span></div>'
+            f'<div style="font-size:0.62rem;color:#455a64;margin-top:6px;">'
+            f'Composite aus 7 Modulen (z-Score-gewichtet). &gt;0,5 = Risk-On · −0,5–0,5 = Neutral · &lt;−0,5 = Risk-Off</div>'
+            f'</div>',
+            unsafe_allow_html=True)
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        # ── Modul-Scores Übersicht ────────────────────────────────────
+        _mod_order = ["Wachstum", "Finanzierung", "Kredit", "Marktbreite", "Inflation", "Liquidität", "Faktoren"]
+        _mod_icons = {"Wachstum":"📈", "Finanzierung":"💧", "Kredit":"⚠️",
+                      "Marktbreite":"🌐", "Inflation":"🔥", "Liquidität":"💰", "Faktoren":"🔄"}
+        _mod_cols = st.columns(len(_mod_order))
+        for _ci, _mk in enumerate(_mod_order):
+            _ms = _rmod.get(_mk, 0)
+            _mc = "#00e676" if _ms > 0.3 else "#ff5252" if _ms < -0.3 else "#ffd600"
+            _mod_cols[_ci].markdown(
+                f'<div class="metric-card" style="text-align:center;padding:8px 4px;">'
+                f'<div style="font-size:0.62rem;color:#546e7a;line-height:1.3;">{_mod_icons.get(_mk,"")}<br>{_mk}</div>'
+                f'<div style="color:{_mc};font-size:0.9rem;font-weight:700;margin-top:3px;">{_ms:+.1f}</div>'
+                f'</div>', unsafe_allow_html=True)
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        # ── Indikator-Heatmap ─────────────────────────────────────────
+        _all_names, _all_z, _all_vals, _all_units = [], [], [], []
+        for _mk in _mod_order:
+            for _iname, _iv in _mods.get(_mk, {}).items():
+                _short = _iname[:22]
+                _all_names.append(_short)
+                _all_z.append(_iv.get("z", 0))
+                _all_vals.append(f"{_iv.get('value',0)}{_iv.get('unit','')}")
+                _all_units.append("*" if _iv.get("is_mock") else "")
+
+        if _all_z:
+            import plotly.graph_objects as go
+            _z_arr = np.array([_all_z])
+            _z_clipped = np.clip(_z_arr, -3, 3)
+            _text_arr = [[f"{v}{u}" for v, u in zip(_all_vals, _all_units)]]
+            _fig_hm = go.Figure(go.Heatmap(
+                z=_z_clipped, x=_all_names, y=["Z-Score"],
+                text=_text_arr, texttemplate="%{text}",
+                colorscale=[[0,"#ff5252"],[0.5,"#ffd600"],[1,"#00e676"]],
+                zmin=-3, zmax=3, showscale=True,
+                colorbar=dict(title="Z-Score", thickness=10, len=0.8,
+                              tickvals=[-3,-1.5,0,1.5,3],
+                              ticktext=["−3 (Bär)","−1,5","0","1,5","3 (Bull)"],
+                              tickfont=dict(color="#b0bec5", size=9)),
+            ))
+            _fig_hm.update_layout(
+                template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(13,21,38,0.8)",
+                height=120, margin=dict(l=60, r=20, t=10, b=60),
+                xaxis=dict(tickangle=-35, tickfont=dict(size=9, color="#90a4ae")),
+                yaxis=dict(tickfont=dict(size=9, color="#546e7a")),
+            )
+            st.plotly_chart(_fig_hm, use_container_width=True)
+            st.markdown('<div style="font-size:0.58rem;color:#37474f;text-align:right;">* Schätzwert (kein kostenfreier Datenfeed)</div>', unsafe_allow_html=True)
+
+        # ── Zeitreihen-Charts in Tabs ─────────────────────────────────
+        _chart_tab1, _chart_tab2, _chart_tab3, _chart_tab4 = st.tabs([
+            "📉 Zinskurve & Kredit", "💧 Finanzierungsbed.", "🔥 Inflationserwart.", "🔄 Faktor-Regime"
+        ])
+
+        def _sparkline(series: pd.Series, title: str, color: str, yunit: str = "",
+                       ref_zero: bool = False, height: int = 220):
+            if series.empty or len(series) < 5:
+                return None
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=series.index, y=series.values,
+                mode="lines", line=dict(color=color, width=1.5),
+                fill="tozeroy" if ref_zero else "none",
+                fillcolor=color.replace(")", ",0.08)").replace("rgb", "rgba") if color.startswith("rgb") else color + "15",
+                name=title,
+            ))
+            if ref_zero:
+                fig.add_hline(y=0, line=dict(color="#37474f", width=1, dash="dot"))
+            fig.update_layout(
+                template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(13,21,38,0.8)", height=height,
+                margin=dict(l=0, r=0, t=22, b=0), showlegend=False,
+                title=dict(text=title, font=dict(color="#64b5f6", size=11)),
+                xaxis=dict(showgrid=False, tickfont=dict(size=8, color="#546e7a")),
+                yaxis=dict(showgrid=True, gridcolor="#1e2d45",
+                           ticksuffix=yunit, tickfont=dict(size=8, color="#546e7a")),
+            )
+            return fig
+
+        with _chart_tab1:
+            _cc1, _cc2 = st.columns(2)
+            with _cc1:
+                _s = _mods.get("Wachstum", {}).get("Zinskurve (10J–2J)", {}).get("series", pd.Series(dtype=float))
+                _f = _sparkline(_s, "Zinskurve 10J–2J (%)", "#64b5f6", "%", ref_zero=True)
+                if _f: st.plotly_chart(_f, use_container_width=True)
+                st.markdown('<div style="font-size:0.62rem;color:#455a64;">Inversion (< 0%) = historisch zuverlässiger Rezessionsindikator (Lead: 12–18 Monate).</div>', unsafe_allow_html=True)
+            with _cc2:
+                _hy = _mods.get("Kredit", {}).get("HY Spread (OAS)", {}).get("series", pd.Series(dtype=float))
+                _ig = _mods.get("Kredit", {}).get("IG Spread (OAS)", {}).get("series", pd.Series(dtype=float))
+                if not _hy.empty or not _ig.empty:
+                    _cf = go.Figure()
+                    if not _hy.empty:
+                        _cf.add_trace(go.Scatter(x=_hy.index, y=_hy.values, name="HY OAS",
+                                                  line=dict(color="#ff5252", width=1.5)))
+                    if not _ig.empty:
+                        _cf.add_trace(go.Scatter(x=_ig.index, y=_ig.values, name="IG OAS",
+                                                  line=dict(color="#ffd600", width=1.5), yaxis="y2"))
+                    _cf.update_layout(
+                        template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(13,21,38,0.8)", height=220,
+                        margin=dict(l=0, r=40, t=22, b=0),
+                        title=dict(text="Kredit-Spreads (bp)", font=dict(color="#64b5f6", size=11)),
+                        legend=dict(font=dict(size=8, color="#b0bec5"), bgcolor="rgba(0,0,0,0)"),
+                        xaxis=dict(showgrid=False, tickfont=dict(size=8, color="#546e7a")),
+                        yaxis=dict(showgrid=True, gridcolor="#1e2d45", ticksuffix="bp",
+                                   tickfont=dict(size=8, color="#ff5252")),
+                        yaxis2=dict(overlaying="y", side="right", ticksuffix="bp",
+                                    tickfont=dict(size=8, color="#ffd600"), showgrid=False),
+                    )
+                    st.plotly_chart(_cf, use_container_width=True)
+                st.markdown('<div style="font-size:0.62rem;color:#455a64;">HY-Spread >600bp = erhöhtes Kreditrisiko. IG-Spreads weiten sich typisch vor HY.</div>', unsafe_allow_html=True)
+
+        with _chart_tab2:
+            _dc1, _dc2 = st.columns(2)
+            with _dc1:
+                _s = _mods.get("Finanzierung", {}).get("Chicago Fed FCI", {}).get("series", pd.Series(dtype=float))
+                _f = _sparkline(_s, "Chicago Fed FCI", "#69f0ae", ref_zero=True)
+                if _f: st.plotly_chart(_f, use_container_width=True)
+                st.markdown('<div style="font-size:0.62rem;color:#455a64;">Negativ = lockere Finanzierungsbedingungen. Positiv = restriktiv (Druck auf Kredit & Aktien).</div>', unsafe_allow_html=True)
+            with _dc2:
+                _s = _mods.get("Finanzierung", {}).get("10J Realzins (TIPS)", {}).get("series", pd.Series(dtype=float))
+                _f = _sparkline(_s, "10J Realzins TIPS (%)", "#ff8f00", "%", ref_zero=True)
+                if _f: st.plotly_chart(_f, use_container_width=True)
+                st.markdown('<div style="font-size:0.62rem;color:#455a64;">Realzins > 2% = erheblicher Gegenwind für Wachstumsaktien und EM-Assets.</div>', unsafe_allow_html=True)
+
+        with _chart_tab3:
+            _ec1, _ec2 = st.columns(2)
+            _be5 = _mods.get("Inflation", {}).get("5J Breakeven Inflation", {}).get("series", pd.Series(dtype=float))
+            _be10= _mods.get("Inflation", {}).get("10J Breakeven Inflation",{}).get("series", pd.Series(dtype=float))
+            with _ec1:
+                _f = _sparkline(_be5, "5J Breakeven Inflation (%)", "#ce93d8", "%")
+                if _f: st.plotly_chart(_f, use_container_width=True)
+            with _ec2:
+                _f = _sparkline(_be10, "10J Breakeven Inflation (%)", "#80cbc4", "%")
+                if _f: st.plotly_chart(_f, use_container_width=True)
+            st.markdown('<div style="font-size:0.62rem;color:#455a64;">Goldilocks-Zone: 2,0–2,5%. Zu hoch = Fed-Druck. Zu niedrig = Deflationsangst. Beide Signale sind bearish.</div>', unsafe_allow_html=True)
+
+        with _chart_tab4:
+            _fc1, _fc2, _fc3 = st.columns(3)
+            for _col, _mk, _ikey, _clr in [
+                (_fc1, "Faktoren", "Growth vs. Value",     "#64b5f6"),
+                (_fc2, "Faktoren", "Small vs. Large Cap",  "#69f0ae"),
+                (_fc3, "Faktoren", "Zyklisch vs. Defensiv","#ffd600"),
+            ]:
+                _s = _mods.get(_mk, {}).get(_ikey, {}).get("series", pd.Series(dtype=float))
+                if not _s.empty:
+                    _s_norm = (_s / _s.iloc[0] * 100)
+                    _f = _sparkline(_s_norm, _ikey, _clr, height=200)
+                    if _f: _col.plotly_chart(_f, use_container_width=True)
+            st.markdown('<div style="font-size:0.62rem;color:#455a64;">Indexiert auf 100 (Startpunkt = Beginn des 2-Jahres-Fensters). Steigt = erste Komponente outperformt.</div>', unsafe_allow_html=True)
+
+        # ── Indikatoren-Detail Tabelle ────────────────────────────────
+        with st.expander("📋 Alle Indikatoren im Detail", expanded=False):
+            _rows = []
+            for _mk in _mod_order:
+                for _iname, _iv in _mods.get(_mk, {}).items():
+                    _z = _iv.get("z", 0)
+                    _sig = "🟢 Bullish" if _z > 0.5 else "🔴 Bearish" if _z < -0.5 else "🟡 Neutral"
+                    _rows.append({
+                        "Modul": _mk, "Indikator": _iname,
+                        "Wert": f"{_iv.get('value','')}{_iv.get('unit','')}",
+                        "Z-Score": f"{_z:+.2f}",
+                        "Signal": _sig,
+                        "Hinweis": "⚠️ Schätzwert" if _iv.get("is_mock") else "✓ Echtdaten",
+                    })
+            if _rows:
+                st.dataframe(pd.DataFrame(_rows), use_container_width=True, hide_index=True)
 
     # ── Sektor-Heatmap + Sentiment ────────────────────────────────────
     _sh_col, _sent_col = st.columns([3, 2])
