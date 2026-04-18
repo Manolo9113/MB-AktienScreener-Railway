@@ -3263,12 +3263,16 @@ if st.session_state["show_landing"]:
                 elif _bi < 140:_bi_clr, _bi_lbl = "#ff8f00", "Überbewertet"
                 else:          _bi_clr, _bi_lbl = "#ff5252", "Stark überbewertet"
                 _bi_pct_bar = min(int(_bi / 200 * 100), 100)
+                _bi_vs_hist = "deutlich über dem historischen Schnitt (80–100%)" if _bi > 130 else \
+                              "über dem historischen Schnitt (80–100%)" if _bi > 100 else \
+                              "im historischen Normalbereich (80–100%)" if _bi >= 80 else \
+                              "unter dem historischen Schnitt (80–100%)"
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
                     f'<span style="color:#b0bec5;">Buffett-Indikator'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
-                    f'<span class="tt-box">Gesamte US-Marktkapitalisierung ÷ US-BIP. Buffett: "wahrscheinlich der beste Einzelindikator für Börsenbewertungen." Historischer Mittelwert: ~80–100%. Über 140% = Warnsignal.</span></span></span>'
+                    f'<span class="tt-box">Gesamte US-Marktkapitalisierung (Wilshire 5000) ÷ US-BIP. Buffett nannte ihn 1999/2000 als Warnsignal vor dem Dotcom-Crash. Schwäche: kein Timing-Werkzeug — Märkte können jahrelang "überbewertet" bleiben (1996–2000). Historischer Mittelwert: ~80–100%.</span></span></span>'
                     f'<span style="color:{_bi_clr};font-weight:700;">{_bi:.0f}%</span></div>'
                     f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_bi_pct_bar}%;height:5px;border-radius:4px;background:{_bi_clr};"></div></div>'
@@ -3276,27 +3280,34 @@ if st.session_state["show_landing"]:
                     f'<span>0%</span><span style="color:{_bi_clr};">{_bi_lbl}</span><span>200%</span></div>'
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'&lt;75% = günstig · 75–90% = fair · 90–115% = leicht teuer · &gt;115% = teuer · &gt;140% = Warnsignal</div>'
+                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<b>Einordnung:</b> Aktuell {_bi:.0f}% — {_bi_vs_hist}. '
+                    f'Als Makro-Kontext-Signal geeignet, nicht als Timing-Tool. '
+                    f'Treffsicher 1999 &amp; 2007, aber kein zuverlässiger Einstiegszeitpunkt.</div>'
                     f'</div>',
                     unsafe_allow_html=True)
 
         if _sp_peg or _sp_pe:
             with _peg_col:
                 if _sp_peg:
-                    if _sp_peg < 1.5:   _peg_clr, _peg_lbl = "#00e676", "Günstig"
-                    elif _sp_peg < 2.0: _peg_clr, _peg_lbl = "#69f0ae", "Fair"
-                    elif _sp_peg < 3.0: _peg_clr, _peg_lbl = "#ffd600", "Teuer"
-                    else:               _peg_clr, _peg_lbl = "#ff5252", "Sehr teuer"
+                    if _sp_peg < 1.5:   _peg_clr, _peg_lbl, _peg_interpret = "#00e676", "Günstig", f"Aktuell günstig bewertet — historischer Ø ~1,8x"
+                    elif _sp_peg < 2.0: _peg_clr, _peg_lbl, _peg_interpret = "#69f0ae", "Fair", f"Aktuell fair bewertet — im Bereich des historischen Ø (~1,8x)"
+                    elif _sp_peg < 3.0: _peg_clr, _peg_lbl, _peg_interpret = "#ffd600", "Teuer", f"Aktuell teuer — über dem historischen Ø von ~1,8x"
+                    else:               _peg_clr, _peg_lbl, _peg_interpret = "#ff5252", "Sehr teuer", f"Aktuell deutlich überbewertet — weit über dem historischen Ø (~1,8x)"
                     _peg_bar = min(int(_sp_peg / 5 * 100), 100)
                     _peg_display = f"PEG {_sp_peg:.2f}x"
+                    _peg_note = f"PEG-Ratio = Kurs-Gewinn-Verhältnis ÷ EPS-Wachstum%. PEG {_sp_peg:.2f}x — {_peg_interpret}."
                 else:
-                    _peg_clr, _peg_lbl, _peg_bar = "#64b5f6", f"KGV {_sp_pe:.0f}", 50
-                    _peg_display = f"KGV {_sp_pe:.1f}x (kein EPS-Wachstum verfügbar)"
+                    _peg_clr, _peg_lbl, _peg_bar = "#64b5f6", "Kein PEG", 50
+                    _peg_display = f"KGV {_sp_pe:.1f}x"
+                    _peg_interpret = f"Kein EPS-Wachstum verfügbar. Reines Kurs-Gewinn-Verhältnis (KGV): {_sp_pe:.1f}x — historischer S&P-Schnitt ~15–18x."
+                    _peg_note = _peg_interpret
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
                     f'<span style="color:#b0bec5;">S&amp;P 500 PEG'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
-                    f'<span class="tt-box">KGV (trailing) ÷ Gewinnwachstum%. Berücksichtigt Wachstum — besser als reines KGV. Historisch fair: 1,5–2,0x. Unter 1,5x = günstig, über 3x = sehr teuer.</span></span></span>'
+                    f'<span class="tt-box">Kurs-Gewinn-Verhältnis (KGV) ÷ Gewinnwachstum%. Berücksichtigt Wachstum — aussagekräftiger als reines KGV. Historisch fair: 1,5–2,0x. Schwäche: Schätzungen für EPS-Wachstum können stark variieren.</span></span></span>'
                     f'<span style="color:{_peg_clr};font-weight:700;">{_peg_display}</span></div>'
                     f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_peg_bar}%;height:5px;border-radius:4px;background:{_peg_clr};"></div></div>'
@@ -3304,6 +3315,8 @@ if st.session_state["show_landing"]:
                     f'<span>0x</span><span style="color:{_peg_clr};">{_peg_lbl}</span><span>5x</span></div>'
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'&lt;1,5x = günstig · 1,5–2,0x = fair · 2–3x = teuer · &gt;3x = sehr teuer · Ø Hist: ~1,8x</div>'
+                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<b>Einordnung:</b> {_peg_note}</div>'
                     f'</div>',
                     unsafe_allow_html=True)
 
