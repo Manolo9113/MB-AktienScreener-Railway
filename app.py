@@ -511,12 +511,85 @@ def sb_remove_ticker(access_token: str, ticker: str):
 
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
+def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
+    """
+    Für japanische / nicht-US Aktien liefert yfinance.info oft 0 für Margen und Wachstum.
+    Fallback: Werte direkt aus GuV und Cashflow-Statement berechnen.
+    """
+    needs_patch = not any([
+        info.get("grossMargins"), info.get("operatingMargins"),
+        info.get("profitMargins"), info.get("revenueGrowth"),
+    ])
+    if not needs_patch:
+        return info
+
+    info = dict(info)  # shallow copy so we don't mutate cached dict
+
+    def _get_df(*attr_names):
+        for name in attr_names:
+            try:
+                df = getattr(stock, name, None)
+                if df is not None and not df.empty:
+                    return df
+            except Exception:
+                pass
+        return None
+
+    def _row(df, *names):
+        for n in names:
+            if n in df.index:
+                v = df.loc[n]
+                return v
+        return None
+
+    # ── GuV ───────────────────────────────────────────────────────────────
+    fs = _get_df("income_stmt", "financials")
+    if fs is not None and len(fs.columns) >= 2:
+        rev  = _row(fs, "Total Revenue", "TotalRevenue")
+        gp   = _row(fs, "Gross Profit", "GrossProfit")
+        op   = _row(fs, "Operating Income", "OperatingIncome", "EBIT")
+        ni   = _row(fs, "Net Income", "NetIncome", "Net Income Common Stockholders")
+
+        if rev is not None:
+            r0, r1 = float(rev.iloc[0] or 0), float(rev.iloc[1] or 1)
+            if r0 and r1:
+                info["revenueGrowth"]    = (r0 / r1) - 1
+                info["totalRevenue"]     = int(r0)
+            if gp  is not None and r0: info["grossMargins"]     = float(gp.iloc[0]  or 0) / r0
+            if op  is not None and r0: info["operatingMargins"] = float(op.iloc[0]  or 0) / r0
+            if ni  is not None and r0: info["profitMargins"]    = float(ni.iloc[0]  or 0) / r0
+
+    # ── Cashflow ──────────────────────────────────────────────────────────
+    if not info.get("freeCashflow"):
+        cf = _get_df("cash_flow", "cashflow")
+        if cf is not None and len(cf.columns) >= 1:
+            fcf_r = _row(cf, "Free Cash Flow", "FreeCashFlow")
+            ocf_r = _row(cf, "Operating Cash Flow", "OperatingCashFlow",
+                         "Total Cash From Operating Activities")
+            cap_r = _row(cf, "Capital Expenditure", "CapitalExpenditure",
+                         "Capital Expenditures")
+            if fcf_r is not None:
+                info["freeCashflow"] = int(float(fcf_r.iloc[0] or 0))
+            elif ocf_r is not None and cap_r is not None:
+                ocf = float(ocf_r.iloc[0] or 0)
+                cap = float(cap_r.iloc[0] or 0)   # usually negative
+                info["freeCashflow"] = int(ocf + cap)
+
+    return info
+
+
+@st.cache_data(ttl=3600)
 def load_yfinance(ticker: str):
     stock = yf.Ticker(ticker)
     info, hist, insider = {}, pd.DataFrame(), pd.DataFrame()
     try:
         info = stock.info
     except:
+        pass
+    try:
+        # Patch missing margins/growth from financial statements (non-US stocks)
+        info = _patch_info_from_statements(stock, info)
+    except Exception:
         pass
     try:
         _today = _dt.date.today().strftime("%Y-%m-%d")
