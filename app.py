@@ -1302,6 +1302,75 @@ def load_stock_picks():
     return growth_results[:8], value_results[:8], div_results[:8]
 
 
+_DAYTRADING_POOL = [
+    # Leveraged ETFs
+    "TQQQ", "SQQQ", "SPXL", "SPXU", "UPRO", "TNA", "TZA", "LABU", "LABD", "UVXY",
+    # Markt-Proxies
+    "SPY", "QQQ", "IWM",
+    # Volatile Mega-Caps
+    "TSLA", "NVDA", "AMD", "META", "AMZN", "MSTR", "COIN",
+    # Volatile Wachstums-Aktien
+    "PLTR", "SOFI", "HOOD", "RIVN", "NIO", "SMCI", "ARM",
+    # Volatile Sektor-ETFs
+    "ARKK", "XBI", "GDX", "KWEB", "IBIT",
+    # Financials & Energie
+    "BAC", "C", "GS", "XOM", "OXY",
+]
+
+def _compute_atr_app(hist, period=14):
+    if hist is None or len(hist) < period + 1:
+        return 0.0
+    h = hist["High"].values
+    lo = hist["Low"].values
+    c = hist["Close"].values
+    tr = [max(h[i]-lo[i], abs(h[i]-c[i-1]), abs(lo[i]-c[i-1])) for i in range(1, len(h))]
+    return float(sum(tr[-period:]) / period) if tr else 0.0
+
+@st.cache_data(ttl=3600)
+def load_daytrading_picks():
+    results = []
+    for t in _DAYTRADING_POOL:
+        try:
+            stock = yf.Ticker(t)
+            info  = stock.info
+            price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+            if not price:
+                continue
+            hist = stock.history(period="30d")
+            atr     = _compute_atr_app(hist)
+            atr_pct = round(atr / price * 100, 2) if atr and price else 0.0
+            avg_vol = info.get("averageVolume") or 0
+            today_vol = int(hist["Volume"].iloc[-1]) if len(hist) > 0 else 0
+            rel_vol = round(today_vol / avg_vol, 2) if avg_vol else 1.0
+            beta    = info.get("beta") or 1.0
+            mktcap  = (info.get("marketCap") or 0) / 1e9
+            qtype   = info.get("quoteType", "")
+            long_name = info.get("longName") or info.get("shortName") or t
+            if "3X" in long_name.upper() or "3x" in long_name or t in ("TQQQ","SQQQ","SPXL","SPXU","UPRO","TNA","TZA","LABU","LABD"):
+                typ = "Leveraged ETF"
+            elif qtype in ("ETF", "MUTUALFUND") or t in ("SPY","QQQ","IWM","ARKK","XBI","GDX","KWEB","IBIT","UVXY"):
+                typ = "ETF"
+            else:
+                typ = "Aktie"
+            week52h = info.get("fiftyTwoWeekHigh") or price
+            week52l = info.get("fiftyTwoWeekLow") or price
+            w52_pos = ((price - week52l) / (week52h - week52l) * 100) if week52h > week52l else 50
+            sort_key = atr_pct * 0.6 + min(avg_vol / 1e6, 50) * 0.4
+            results.append({
+                "ticker": t, "name": info.get("shortName") or t,
+                "price": price, "atr_pct": atr_pct,
+                "avg_vol_m": round(avg_vol / 1e6, 1),
+                "rel_vol": rel_vol, "beta": round(beta, 2),
+                "mktcap_b": round(mktcap, 0),
+                "typ": typ, "w52_pos": w52_pos,
+                "sort_key": sort_key,
+            })
+        except Exception:
+            pass
+    results.sort(key=lambda x: x["sort_key"], reverse=True)
+    return results
+
+
 # ==================== KI ANALYSE (Grok + Gemini Fallback) ====================
 
 # Preferred model order — newest first, only verified stable names as fallback
@@ -1826,6 +1895,87 @@ if st.session_state["show_landing"]:
         st.markdown(
             "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
             "⚠️ Keine Anlageberatung · Daten via Yahoo Finance · Aktualisierung alle 12 Std.</div>",
+            unsafe_allow_html=True)
+
+    # ── Daytrading Kandidaten Accordion ──
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    with st.expander("⚡  Daytrading-Kandidaten — Volatilität · Volumen · ATR%  (stündlich aktualisiert)", expanded=False):
+        with st.spinner("Lade Daytrading-Daten…"):
+            _dt_picks = load_daytrading_picks()
+
+        _dt_accent_map = {
+            "Leveraged ETF": ("#ff5252", "rgba(255,82,82,0.08)"),
+            "ETF":           ("#ffd600", "rgba(255,214,0,0.07)"),
+            "Aktie":         ("#69f0ae", "rgba(105,240,174,0.07)"),
+        }
+
+        # Legend
+        st.markdown(
+            "<div style='display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;'>"
+            "<span style='color:#ff5252;font-size:0.75rem;font-weight:700;'>■ Leveraged ETF</span>"
+            "<span style='color:#ffd600;font-size:0.75rem;font-weight:700;'>■ ETF/ETP</span>"
+            "<span style='color:#69f0ae;font-size:0.75rem;font-weight:700;'>■ Aktie</span>"
+            "<span style='color:#546e7a;font-size:0.72rem;margin-left:8px;'>"
+            "ATR% = durchschnittliche Tagesspanne · Rel.Vol > 1.5 = erhöhte Aktivität</span>"
+            "</div>",
+            unsafe_allow_html=True)
+
+        # Type headers
+        _lev_picks = [p for p in _dt_picks if p["typ"] == "Leveraged ETF"]
+        _etf_picks = [p for p in _dt_picks if p["typ"] == "ETF"]
+        _stk_picks = [p for p in _dt_picks if p["typ"] == "Aktie"]
+
+        for _section_label, _section_color, _section_picks in [
+            ("🔴 Leveraged ETFs (Nur für Profis)", "#ff5252", _lev_picks),
+            ("🟡 ETFs & ETPs", "#ffd600", _etf_picks),
+            ("🟢 Volatile Aktien", "#69f0ae", _stk_picks),
+        ]:
+            if not _section_picks:
+                continue
+            st.markdown(
+                f"<div style='color:{_section_color};font-size:0.8rem;font-weight:700;"
+                f"text-transform:uppercase;letter-spacing:1.2px;margin:14px 0 10px;"
+                f"padding-bottom:6px;border-bottom:1px solid {_section_color}30;'>"
+                f"{_section_label}</div>",
+                unsafe_allow_html=True)
+
+            _dt_cols = st.columns(4)
+            for _ci, _p in enumerate(_section_picks):
+                _ac, _bg = _dt_accent_map[_p["typ"]]
+                _rv_color = "#ff5252" if _p["rel_vol"] > 2.0 else "#ffd600" if _p["rel_vol"] > 1.5 else "#546e7a"
+                _rv_label = f"<span style='color:{_rv_color};font-weight:700;'>{_p['rel_vol']:.1f}×</span>"
+                _atr_color = "#ff5252" if _p["atr_pct"] > 5 else "#ffd600" if _p["atr_pct"] > 3 else "#69f0ae"
+                with _dt_cols[_ci % 4]:
+                    st.markdown(
+                        f"<div style='background:linear-gradient(135deg,#0d1f3c,#0a1628);"
+                        f"border:1px solid #1e3a5f;border-left:3px solid {_ac};"
+                        f"border-radius:10px;padding:11px 13px;margin-bottom:10px;{_bg}'>"
+                        f"<div style='display:flex;justify-content:space-between;align-items:baseline;'>"
+                        f"<span style='color:{_ac};font-size:0.98rem;font-weight:800;'>{_p['ticker']}</span>"
+                        f"<span style='color:#b0bec5;font-size:0.8rem;'>${_p['price']:,.2f}</span>"
+                        f"</div>"
+                        f"<div style='color:#546e7a;font-size:0.68rem;margin-bottom:6px;"
+                        f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{_p['name']}</div>"
+                        f"<div style='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;'>"
+                        f"<span style='background:rgba(255,255,255,0.05);color:{_atr_color};"
+                        f"border-radius:4px;padding:2px 6px;font-size:0.7rem;font-weight:600;'>"
+                        f"ATR {_p['atr_pct']:.1f}%</span>"
+                        f"<span style='background:rgba(255,255,255,0.05);color:#90a4ae;"
+                        f"border-radius:4px;padding:2px 6px;font-size:0.7rem;'>"
+                        f"β {_p['beta']:.1f}</span>"
+                        f"<span style='background:rgba(255,255,255,0.05);color:#90a4ae;"
+                        f"border-radius:4px;padding:2px 6px;font-size:0.7rem;'>"
+                        f"Vol {_p['avg_vol_m']:.0f}M</span>"
+                        f"</div>"
+                        f"<div style='font-size:0.7rem;color:#546e7a;'>"
+                        f"Rel.Vol: {_rv_label}"
+                        f"</div>"
+                        f"</div>",
+                        unsafe_allow_html=True)
+
+        st.markdown(
+            "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
+            "⚠️ Leveraged ETFs sind Hochrisiko-Produkte · Keine Anlageberatung · Daten via Yahoo Finance</div>",
             unsafe_allow_html=True)
 
     # ── Schnellauswahl auf Landing ──
