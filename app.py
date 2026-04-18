@@ -2185,10 +2185,11 @@ def load_macro_data() -> dict:
         out["macro"]["🇺🇸 10J Rendite"] = {"value": t10[0], "unit": "%"}
 
     # ── Eurozone via FRED ──────────────────────────────────────────────
-    # HICP YoY (bereits in %)
-    ez_cpi = _fred_last("CP0000EZ19M086NEST")
-    if ez_cpi:
-        out["macro"]["🇪🇺 Inflation"] = {"value": ez_cpi[0], "unit": "%"}
+    # HICP ist ein Indexwert (Basisjahr 2015=100), daher YoY selbst berechnen
+    ez_cpi = _fred_last("CP0000EZ19M086NEST", 13)
+    if len(ez_cpi) >= 13:
+        ez_yoy = (ez_cpi[0] / ez_cpi[12] - 1) * 100
+        out["macro"]["🇪🇺 Inflation"] = {"value": round(ez_yoy, 1), "unit": "%"}
 
     # EZB Einlagesatz
     ecb = _fred_last("ECBDFR")
@@ -2201,13 +2202,15 @@ def load_macro_data() -> dict:
         jp_yoy = (jp_cpi[0] / jp_cpi[12] - 1) * 100
         out["macro"]["🇯🇵 Inflation"] = {"value": round(jp_yoy, 1), "unit": "%"}
 
-    # ── Buffett-Indikator: Wilshire 5000 Total Market Cap / US GDP ────
+    # ── Buffett-Indikator: Wilshire 5000 / US GDP ────────────────────
+    # Wilshire 5000 Full Cap Index-Level ≈ Gesamtmarktkapitalisierung USA in Mrd. USD
+    # GDP (FRED) ebenfalls in Mrd. USD → direkt vergleichbar
     try:
-        # BOGZ1FL073164003Q = US total corporate equity market cap (millions USD, quarterly)
-        _eq = _fred_last("BOGZ1FL073164003Q")
-        _gdp = _fred_last("GDP")   # billions USD, quarterly
-        if _eq and _gdp and _gdp[0]:
-            _bi = round(_eq[0] / (_gdp[0] * 1000) * 100, 1)  # both in millions → %
+        _w5000_h = yf.Ticker("^W5000").history(period="5d")
+        _gdp = _fred_last("GDP")
+        if not _w5000_h.empty and _gdp and _gdp[0]:
+            _w5000 = float(_w5000_h["Close"].iloc[-1])
+            _bi = round(_w5000 / _gdp[0] * 100, 1)
             out["buffett"] = _bi
     except Exception:
         pass
