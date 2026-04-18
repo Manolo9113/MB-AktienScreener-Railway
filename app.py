@@ -2258,6 +2258,91 @@ def _safe_div_yield(info: dict, price: float) -> float:
         dy = raw_dy
     return min(dy, 25.0)  # cap at 25 %
 
+
+# ── Qualitäts-Screener für Landing Page ───────────────────────────────────────
+_SCREENER_WATCHLIST = [
+    "AAPL","MSFT","GOOGL","META","AMZN","NVDA","AVGO",
+    "CRM","ADBE","NOW","INTU","PANW","DDOG","MDB",
+    "TSM","ASML","AMAT","AMD",
+    "BRK-B","JPM","V","MA","AXP","SPGI","MCO",
+    "LLY","NVO","UNH","TMO","ISRG","ABT",
+    "COST","MCD","NKE","BKNG","CMG",
+    "CAT","HON","LIN","ETN",
+    "JNJ","PG","KO","WMT","HD",
+    "MSCI","MELI","CPRT","FICO","ROP",
+]
+
+def _sc_score(info: dict) -> int:
+    s = 0
+    rg = info.get("revenueGrowth") or 0
+    if rg > 0.20: s += 20
+    elif rg > 0.10: s += 12
+    elif rg > 0.03: s += 6
+    gm = info.get("grossMargins") or 0
+    if gm > 0.60: s += 20
+    elif gm > 0.40: s += 12
+    elif gm > 0.25: s += 6
+    om = info.get("operatingMargins") or 0
+    if om > 0.25: s += 15
+    elif om > 0.15: s += 9
+    elif om > 0.05: s += 4
+    fcf = info.get("freeCashflow") or 0
+    mkt = info.get("marketCap") or 1
+    fcy = fcf / mkt if mkt else 0
+    if fcy > 0.05: s += 15
+    elif fcy > 0.02: s += 8
+    elif fcy > 0: s += 4
+    roe = info.get("returnOnEquity") or 0
+    if roe > 0.25: s += 15
+    elif roe > 0.15: s += 9
+    elif roe > 0.08: s += 4
+    de = info.get("debtToEquity") or 0
+    if de < 30: s += 10
+    elif de < 80: s += 5
+    if (info.get("trailingEps") or 0) > 0: s += 5
+    return min(s, 100)
+
+def _sc_fair_value(info: dict) -> float | None:
+    eps    = info.get("trailingEps") or 0
+    rg_pct = (info.get("revenueGrowth") or 0) * 100
+    fcf    = info.get("freeCashflow") or 0
+    shares = info.get("sharesOutstanding") or 0
+    graham = eps * (8.5 + 2 * rg_pct) if (eps > 0 and 0 < rg_pct <= 50) else None
+    fcf_fv = (fcf * 20) / shares if (fcf > 0 and shares > 0) else None
+    if graham and fcf_fv:
+        return round(graham * 0.4 + fcf_fv * 0.6, 2)
+    return round(graham or fcf_fv, 2) if (graham or fcf_fv) else None
+
+@st.cache_data(ttl=14400, show_spinner=False)
+def load_screener_data() -> list[dict]:
+    """Screent ~50 Qualitätstitel; gecacht für 4 Stunden."""
+    results = []
+    for tkr in _SCREENER_WATCHLIST:
+        try:
+            info  = yf.Ticker(tkr).info
+            price = info.get("currentPrice") or info.get("regularMarketPrice")
+            if not price:
+                continue
+            score = _sc_score(info)
+            fv    = _sc_fair_value(info)
+            if score >= 65 and fv and price < fv * 0.92:
+                discount = (fv - price) / fv * 100
+                results.append({
+                    "ticker":   tkr,
+                    "name":     (info.get("shortName") or tkr)[:28],
+                    "price":    price,
+                    "fv":       fv,
+                    "discount": discount,
+                    "score":    score,
+                    "currency": info.get("currency", "USD"),
+                    "sector":   info.get("sector", ""),
+                })
+        except Exception:
+            pass
+    results.sort(key=lambda x: x["score"] * x["discount"], reverse=True)
+    return results[:8]
+
+
 @st.cache_data(ttl=43200)
 def load_stock_picks():
     growth_results, value_results, div_results, hype_results = [], [], [], []
@@ -3177,6 +3262,52 @@ if st.session_state["show_landing"]:
         st.markdown(
             "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
             "⚠️ Keine Anlageberatung · Daten via Yahoo Finance · Aktualisierung alle 12 Std.</div>",
+            unsafe_allow_html=True)
+
+    # ── Qualitäts-Screener ─────────────────────────────────────────────
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    with st.expander("🔍  Qualitäts-Screener — Score ≥ 65 & günstig unter Fair Value  (4h Cache)", expanded=False):
+        with st.spinner("Screener läuft (~30 Sek. beim ersten Aufruf)…"):
+            _sc_picks = load_screener_data()
+        if not _sc_picks:
+            st.info("Aktuell keine Aktien mit Score ≥ 65 gefunden, die ≥ 8 % unter Fair Value handeln.")
+        else:
+            st.markdown(
+                "<div style='color:#546e7a;font-size:0.75rem;margin-bottom:8px;'>"
+                f"<b>{len(_sc_picks)} Treffer</b> · Score ≥ 65 · Kurs ≥ 8 % unter geschätztem Fair Value · "
+                "Sortiert nach Score × Discount</div>",
+                unsafe_allow_html=True)
+            for _sp in _sc_picks:
+                _sp_cur  = _sp["currency"]
+                _sp_disc = _sp["discount"]
+                _sp_disc_clr = "#00e676" if _sp_disc >= 15 else "#ffd600" if _sp_disc >= 10 else "#90a4ae"
+                _sp_score_clr = "#00e676" if _sp["score"] >= 80 else "#ffd600" if _sp["score"] >= 70 else "#90a4ae"
+                st.markdown(f"""
+                <div class="metric-card" style="padding:10px 14px;margin-bottom:8px;display:flex;
+                     align-items:center;justify-content:space-between;gap:8px;">
+                  <div style="min-width:52px;">
+                    <div style="color:#eceff1;font-size:0.95rem;font-weight:700;">{_sp['ticker']}</div>
+                    <div style="color:#546e7a;font-size:0.68rem;">{_sp.get('sector','')}</div>
+                  </div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="color:#90a4ae;font-size:0.78rem;white-space:nowrap;overflow:hidden;
+                         text-overflow:ellipsis;">{_sp['name']}</div>
+                  </div>
+                  <div style="text-align:right;white-space:nowrap;">
+                    <span style="color:{_sp_score_clr};font-size:0.82rem;font-weight:700;">
+                      Score {_sp['score']}</span>
+                    <span style="color:#546e7a;font-size:0.78rem;margin:0 6px;">·</span>
+                    <span style="color:#b0bec5;font-size:0.78rem;">
+                      {_sp['price']:.2f} {_sp_cur}</span>
+                    <span style="color:#546e7a;font-size:0.78rem;margin:0 4px;">→ FV</span>
+                    <span style="color:#64b5f6;font-size:0.78rem;">{_sp['fv']:.2f}</span>
+                    <span style="color:{_sp_disc_clr};font-size:0.82rem;font-weight:700;margin-left:8px;">
+                      -{_sp_disc:.1f}%</span>
+                  </div>
+                </div>""", unsafe_allow_html=True)
+        st.markdown(
+            "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:6px;'>"
+            "⚠️ Vereinfachte Berechnung (Graham + FCF) · Kein Anlageberatung · Cache 4h</div>",
             unsafe_allow_html=True)
 
     # ── Top 10 pro Sektor ──────────────────────────────────────────────
