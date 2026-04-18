@@ -661,7 +661,7 @@ def load_quarterly_financials(ticker: str):
 
 @st.cache_data(ttl=86400)
 def load_annual_financials(ticker: str):
-    """Jahresabschluss: Umsatz, Nettogewinn, EPS, FCF, EBITDA der letzten 5 Geschäftsjahre."""
+    """Jahresabschluss: Umsatz, Nettogewinn, EPS, FCF, EBITDA, CapEx, Goodwill (5 Jahre)."""
     stock = yf.Ticker(ticker)
     rev = pd.Series(dtype=float)
     net = pd.Series(dtype=float)
@@ -669,6 +669,8 @@ def load_annual_financials(ticker: str):
     fcf = pd.Series(dtype=float)
     ebitda_s = pd.Series(dtype=float)
     shares_ann = pd.Series(dtype=float)
+    capex_s = pd.Series(dtype=float)
+    goodwill_s = pd.Series(dtype=float)
     try:
         inc = stock.income_stmt
         if inc is not None and not inc.empty:
@@ -696,9 +698,23 @@ def load_annual_financials(ticker: str):
                 fcf = cf.loc["Free Cash Flow"].dropna().sort_index()
             elif "Operating Cash Flow" in cf.index and "Capital Expenditure" in cf.index:
                 fcf = (cf.loc["Operating Cash Flow"] + cf.loc["Capital Expenditure"]).dropna().sort_index()
+            # CapEx (absolut, als positive Zahl für die Darstellung)
+            for row in ["Capital Expenditure", "Purchase Of Property Plant And Equipment"]:
+                if row in cf.index:
+                    raw = cf.loc[row].dropna().sort_index()
+                    capex_s = raw.abs()   # CapEx ist in yfinance negativ
+                    break
     except Exception:
         pass
-    return rev, net, eps, fcf, shares_ann, ebitda_s
+    try:
+        bs = stock.balance_sheet
+        if bs is not None and not bs.empty:
+            for row in ["Goodwill", "Goodwill And Other Intangible Assets"]:
+                if row in bs.index:
+                    goodwill_s = bs.loc[row].dropna().sort_index(); break
+    except Exception:
+        pass
+    return rev, net, eps, fcf, shares_ann, ebitda_s, capex_s, goodwill_s
 
 @st.cache_data(ttl=86400)
 def _sec_cik(ticker: str):
@@ -2158,6 +2174,31 @@ def load_macro_data() -> dict:
         jp_yoy = (jp_cpi[0] / jp_cpi[12] - 1) * 100
         out["macro"]["🇯🇵 Inflation"] = {"value": round(jp_yoy, 1), "unit": "%"}
 
+    # ── Buffett-Indikator: Wilshire 5000 Total Market Cap / US GDP ────
+    try:
+        # BOGZ1FL073164003Q = US total corporate equity market cap (millions USD, quarterly)
+        _eq = _fred_last("BOGZ1FL073164003Q")
+        _gdp = _fred_last("GDP")   # billions USD, quarterly
+        if _eq and _gdp and _gdp[0]:
+            _bi = round(_eq[0] / (_gdp[0] * 1000) * 100, 1)  # both in millions → %
+            out["buffett"] = _bi
+    except Exception:
+        pass
+
+    # ── S&P 500 PEG Ratio ─────────────────────────────────────────────
+    try:
+        _spy = yf.Ticker("SPY")
+        _spy_info = _spy.info
+        _sp_pe = _spy_info.get("trailingPE")
+        _sp_eg = (_spy_info.get("earningsGrowth") or 0) * 100
+        if _sp_pe and _sp_eg and _sp_eg > 0:
+            out["sp500_peg"] = round(_sp_pe / _sp_eg, 2)
+        elif _sp_pe:
+            # Fallback: use 5-year avg earnings growth estimate (~7-8% for S&P 500)
+            out["sp500_pe"] = round(_sp_pe, 1)
+    except Exception:
+        pass
+
     # ── Sektor-Heatmap via SPDR ETFs (MTD) ────────────────────────────
     _sector_etfs = {
         "Tech": "XLK", "Finanzen": "XLF", "Energie": "XLE",
@@ -3175,6 +3216,63 @@ if st.session_state["show_landing"]:
                 </div>
             </div>""", unsafe_allow_html=True)
 
+    # ── Buffett-Indikator & S&P 500 PEG ──────────────────────────────
+    _bi = macro.get("buffett")
+    _sp_peg = macro.get("sp500_peg")
+    _sp_pe  = macro.get("sp500_pe")
+    if _bi or _sp_peg or _sp_pe:
+        _bi_col, _peg_col = st.columns(2)
+
+        if _bi:
+            with _bi_col:
+                if _bi < 75:   _bi_clr, _bi_lbl = "#00e676", "Unterbewertet"
+                elif _bi < 90: _bi_clr, _bi_lbl = "#69f0ae", "Fair bewertet"
+                elif _bi < 115:_bi_clr, _bi_lbl = "#ffd600", "Leicht überbewertet"
+                elif _bi < 140:_bi_clr, _bi_lbl = "#ff8f00", "Überbewertet"
+                else:          _bi_clr, _bi_lbl = "#ff5252", "Stark überbewertet"
+                _bi_pct_bar = min(int(_bi / 200 * 100), 100)
+                st.markdown(
+                    f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                    f'<span style="color:#b0bec5;" title="Buffett-Indikator: Gesamte US-Marktkapitalisierung geteilt durch das US-BIP. Buffett nannte ihn \'wahrscheinlich den besten Einzelindikator für Börsenbewertungen\'. Historischer Mittelwert: ~80–100 %. Über 140 % = Warnsignal.">'
+                    f'Buffett-Indikator ⓘ</span>'
+                    f'<span style="color:{_bi_clr};font-weight:700;">{_bi:.0f}%</span></div>'
+                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="width:{_bi_pct_bar}%;height:5px;border-radius:4px;background:{_bi_clr};"></div></div>'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                    f'<span>0%</span><span style="color:{_bi_clr};">{_bi_lbl}</span><span>200%</span></div>'
+                    f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                    f'&lt;75% = günstig · 75–90% = fair · 90–115% = leicht teuer · &gt;115% = teuer · &gt;140% = Warnsignal</div>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+
+        if _sp_peg or _sp_pe:
+            with _peg_col:
+                if _sp_peg:
+                    if _sp_peg < 1.5:   _peg_clr, _peg_lbl = "#00e676", "Günstig"
+                    elif _sp_peg < 2.0: _peg_clr, _peg_lbl = "#69f0ae", "Fair"
+                    elif _sp_peg < 3.0: _peg_clr, _peg_lbl = "#ffd600", "Teuer"
+                    else:               _peg_clr, _peg_lbl = "#ff5252", "Sehr teuer"
+                    _peg_bar = min(int(_sp_peg / 5 * 100), 100)
+                    _peg_display = f"PEG {_sp_peg:.2f}x"
+                else:
+                    _peg_clr, _peg_lbl, _peg_bar = "#64b5f6", f"KGV {_sp_pe:.0f}", 50
+                    _peg_display = f"KGV {_sp_pe:.1f}x (kein EPS-Wachstum verfügbar)"
+                st.markdown(
+                    f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                    f'<span style="color:#b0bec5;" title="S&P 500 PEG Ratio = KGV (trailing) ÷ Gewinnwachstum %. Berücksichtigt Wachstum im Gegensatz zum reinen KGV. Historisch fair: 1,5–2,0x. Unter 1,5x = günstig relativ zum Wachstum. Über 3x = sehr teuer.">'
+                    f'S&amp;P 500 PEG ⓘ</span>'
+                    f'<span style="color:{_peg_clr};font-weight:700;">{_peg_display}</span></div>'
+                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="width:{_peg_bar}%;height:5px;border-radius:4px;background:{_peg_clr};"></div></div>'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                    f'<span>0x</span><span style="color:{_peg_clr};">{_peg_lbl}</span><span>5x</span></div>'
+                    f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                    f'&lt;1,5x = günstig · 1,5–2,0x = fair · 2–3x = teuer · &gt;3x = sehr teuer · Ø Hist: ~1,8x</div>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+
     # ── Sektor-Heatmap + Sentiment ────────────────────────────────────
     _sh_col, _sent_col = st.columns([3, 2])
 
@@ -3623,7 +3721,7 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     hist_weekly, hist_monthly, share_history, splits_data = load_yfinance_extended(ticker)
     q_rev, q_net, q_eps = load_quarterly_financials(ticker)
     earnings_surprises   = load_earnings_surprises(ticker)
-    a_rev, a_net, a_eps, a_fcf, a_shares, a_ebitda = load_annual_financials(ticker)
+    a_rev, a_net, a_eps, a_fcf, a_shares, a_ebitda, a_capex, a_goodwill = load_annual_financials(ticker)
     # Segmentdaten: sec-api.io bevorzugt, FMP als Fallback
     _secapi_seg = load_secapi_segments(ticker) if SEC_API_KEY else {"product": [], "geo": []}
     _fmp_seg    = load_segment_data(ticker)
@@ -5089,6 +5187,93 @@ elif _at == 2:
     else:
         st.markdown('<div class="metric-card" style="color:#546e7a;text-align:center;">'
                     'Quartalsdaten nicht verfügbar</div>', unsafe_allow_html=True)
+
+    # ── CapEx & Goodwill ───────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🏗️ CapEx & Goodwill</div>", unsafe_allow_html=True)
+    _cx1, _cx2 = st.columns(2)
+
+    def _simple_bar(series: pd.Series, title: str, color: str,
+                    fmt_fn=None, note: str = ""):
+        if series.empty or len(series) < 2:
+            return None
+        s = series.tail(6)
+        labels = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in s.index]
+        texts = [fmt_fn(v) if fmt_fn else fmt_large(v) for v in s.values]
+        fig = go.Figure(go.Bar(
+            x=labels, y=s.values,
+            marker_color=color,
+            text=texts, textposition="outside",
+            textfont=dict(size=10, color="#90a4ae"),
+        ))
+        fig.update_layout(
+            template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(13,21,38,0.8)", height=260,
+            margin=dict(l=0, r=0, t=30, b=0), showlegend=False,
+            yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False),
+            xaxis=dict(showgrid=False),
+            title=dict(text=f"{title}{(' · ' + note) if note else ''}",
+                       font=dict(color="#64b5f6", size=13)),
+        )
+        return fig
+
+    with _cx1:
+        _capex_note = "hohe CapEx = hohe Investitionen (Hyperscaler, Industrie)"
+        _fig_capex = _simple_bar(a_capex, "CapEx absolut", "#ef5350",
+                                 fmt_fn=fmt_large, note="")
+        if _fig_capex:
+            st.plotly_chart(_fig_capex, use_container_width=True)
+            st.markdown(
+                '<div style="font-size:0.68rem;color:#546e7a;margin-top:-8px;">'
+                '⬆ Hohe CapEx = starke Investitionen (Hyperscaler, Industrie) · '
+                'Als % des Umsatzes oder FCF einordnen</div>',
+                unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="insight-box" style="color:#546e7a;">Keine CapEx-Daten verfügbar</div>',
+                        unsafe_allow_html=True)
+
+    with _cx2:
+        _fig_gw = _simple_bar(a_goodwill, "Goodwill", "#7986cb", fmt_fn=fmt_large)
+        if _fig_gw:
+            st.plotly_chart(_fig_gw, use_container_width=True)
+            st.markdown(
+                '<div style="font-size:0.68rem;color:#546e7a;margin-top:-8px;">'
+                '⚠ Stark steigender Goodwill = viele Akquisitionen · '
+                'Abschreibungsrisiko (Impairment) beachten</div>',
+                unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="insight-box" style="color:#546e7a;">Keine Goodwill-Daten verfügbar</div>',
+                        unsafe_allow_html=True)
+
+    # CapEx als % des Umsatzes (nützlich für Hyperscaler-Vergleich)
+    if not a_capex.empty and not a_rev.empty:
+        _common_idx = a_capex.index.intersection(a_rev.index)
+        if len(_common_idx) >= 2:
+            _capex_pct = (a_capex[_common_idx] / a_rev[_common_idx] * 100).dropna()
+            if not _capex_pct.empty:
+                _labels_cp = [str(d.year) if hasattr(d, "year") else str(d)[:4]
+                              for d in _capex_pct.index]
+                _fig_cp = go.Figure(go.Bar(
+                    x=_labels_cp, y=_capex_pct.values,
+                    marker_color=["#ff8f00" if v > 15 else "#ffd600" if v > 8 else "#64b5f6"
+                                  for v in _capex_pct.values],
+                    text=[f"{v:.1f}%" for v in _capex_pct.values],
+                    textposition="outside", textfont=dict(size=10, color="#90a4ae"),
+                ))
+                _fig_cp.update_layout(
+                    template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(13,21,38,0.8)", height=220,
+                    margin=dict(l=0, r=0, t=30, b=0), showlegend=False,
+                    yaxis=dict(showgrid=True, gridcolor="#1e2d45", ticksuffix="%"),
+                    xaxis=dict(showgrid=False),
+                    title=dict(text="CapEx als % des Umsatzes",
+                               font=dict(color="#64b5f6", size=13)),
+                )
+                st.plotly_chart(_fig_cp, use_container_width=True)
+                st.markdown(
+                    '<div style="font-size:0.68rem;color:#546e7a;margin-top:-8px;">'
+                    'Benchmark: Hyperscaler (AWS/Azure/GCP) >10% · Industrie 5–10% · '
+                    'Software/Asset-light &lt;3%</div>',
+                    unsafe_allow_html=True)
 
 elif _at == 3:
     st.markdown("<div class='section-header'>Bewertungsmultiples</div>", unsafe_allow_html=True)
