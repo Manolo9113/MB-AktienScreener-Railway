@@ -2595,7 +2595,7 @@ def _try_gemini(messages: list, max_tokens: int,
 
 def call_ki_api(system_prompt: str, user_message: str,
                 gemini_key: str,
-                max_tokens: int = 3000) -> tuple[str, str]:
+                max_tokens: int = 3500) -> tuple[str, str]:
     """Ruft Gemini an. Gibt (antwort_text, provider_label) zurück."""
     if not gemini_key:
         return ("⚠️ Kein API-Key konfiguriert. Bitte GEMINI_API_KEY "
@@ -2660,6 +2660,9 @@ KI-EINFLUSS
 
 ROT-FLAGS
 - [maximal 3 klare Warnsignale — oder "Keine kritischen Warnsignale erkannt"]
+
+SEGMENTE
+[Schlüssle die wichtigsten Umsatzsegmente des Unternehmens auf. Format: "Segment — ca. X% des Umsatzes — kurze Einschätzung (wachsend/stabil/rückläufig)". Nenne 3-5 Hauptsegmente. Falls das Unternehmen kein klassisches Multi-Segment-Geschäft hat, beschreibe die wichtigsten Produktkategorien oder Regionen. Nutze dein Wissen über das Unternehmen — keine Erfindungen, aber auch kein "Daten nicht verfügbar".]
 
 Hinweis am Ende: Schreib einen einzeiligen Satz dass quantitative Zahlen allein keine vollständige Moat-Analyse erlauben und Geschäftsberichte sowie Branchenexpertise empfohlen werden. Keine Anlageberatung.
 
@@ -2754,7 +2757,7 @@ Insider-Ownership: {_fmt(insider_ownership * 100) if insider_ownership else "N/A
 Institutionell: {_fmt(institutional_ownership * 100) if institutional_ownership else "N/A"}
 Verwässerung (5J): {_fmt(dilution_pct) if dilution_pct is not None else "N/A"}
 
-Gib deine Analyse gemäß der vorgegebenen Struktur."""
+Gib deine Analyse gemäß der vorgegebenen Struktur. Schließe mit dem Abschnitt SEGMENTE ab — nutze dein allgemeines Wissen über {company_name}, da XBRL-Segmentdaten nicht immer verfügbar sind."""
 
     return system, user_msg
 
@@ -3992,6 +3995,7 @@ if st.session_state.get("grok_analysis"):
             "BEWERTUNG":        ("⚖️", "#64b5f6"),
             "KI-EINFLUSS":      ("🤖", "#ce93d8"),
             "ROT-FLAGS":        ("⚠️", "#ff8f00"),
+            "SEGMENTE":         ("🥧", "#4db6ac"),
         }
         _provider_label = st.session_state.get("grok_provider") or "KI"
         _html_parts = [
