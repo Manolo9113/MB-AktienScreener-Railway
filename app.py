@@ -2906,6 +2906,27 @@ if st.session_state["show_landing"]:
 
     st.markdown("<div style='height:36px'></div>", unsafe_allow_html=True)
 
+    # ── Marktüberblick ──
+    st.markdown("<div class='section-header'>🌍 Marktüberblick</div>", unsafe_allow_html=True)
+    with st.spinner("Lade Indizes…"):
+        indices_data = load_indices()
+
+    if indices_data:
+        idx_cols = st.columns(len(indices_data))
+        for col, (name, d) in zip(idx_cols, indices_data.items()):
+            pct = d["pct"]
+            clr = "#00e676" if pct >= 0 else "#ff5252"
+            arrow = "▲" if pct >= 0 else "▼"
+            px_str = f"{d['cur']}{d['price']:,.0f}"
+            col.markdown(f"""
+            <div class="metric-card" style="text-align:center; padding:14px 8px; cursor:default;">
+                <div class="metric-label" style="font-size:0.7rem;">{name}</div>
+                <div style="color:#eceff1; font-size:1.05rem; font-weight:700; margin:4px 0;">{px_str}</div>
+                <div style="color:{clr}; font-size:0.82rem; font-weight:600;">{arrow} {abs(pct):.2f}%</div>
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
     # ── Makro-Dashboard ───────────────────────────────────────────────
     st.markdown("<div class='section-header'>📊 Makro-Dashboard</div>", unsafe_allow_html=True)
     with st.spinner("Lade Makrodaten…"):
@@ -3028,43 +3049,7 @@ if st.session_state["show_landing"]:
                 <div style="font-size:0.65rem;color:#37474f;margin-top:4px;">Quelle: CBOE VIX · CNN Fear & Greed</div>
             </div>""", unsafe_allow_html=True)
 
-    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-
-    # ── Marktüberblick ──
-    st.markdown("<div class='section-header'>🌍 Marktüberblick</div>", unsafe_allow_html=True)
-    with st.spinner("Lade Indizes…"):
-        indices_data = load_indices()
-
-    if indices_data:
-        idx_cols = st.columns(len(indices_data))
-        for col, (name, d) in zip(idx_cols, indices_data.items()):
-            pct = d["pct"]
-            clr = "#00e676" if pct >= 0 else "#ff5252"
-            arrow = "▲" if pct >= 0 else "▼"
-            px_str = f"{d['cur']}{d['price']:,.0f}"
-            col.markdown(f"""
-            <div class="metric-card" style="text-align:center; padding:14px 8px; cursor:default;">
-                <div class="metric-label" style="font-size:0.7rem;">{name}</div>
-                <div style="color:#eceff1; font-size:1.05rem; font-weight:700; margin:4px 0;">{px_str}</div>
-                <div style="color:{clr}; font-size:0.82rem; font-weight:600;">{arrow} {abs(pct):.2f}%</div>
-            </div>""", unsafe_allow_html=True)
-
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-
-    # ── Schlagzeilen ──
-    st.markdown("<div class='section-header'>📰 Aktuelle Marktschlagzeilen</div>", unsafe_allow_html=True)
-    with st.spinner("Lade Nachrichten…"):
-        headlines = load_market_news()
-
-    if headlines:
-        for h in headlines:
-            src = f"<span style='color:#546e7a; font-size:0.72rem; margin-left:8px;'>{h['source']}</span>" if h['source'] else ""
-            st.markdown(f"""
-            <div class="metric-card" style="padding:14px 18px;">
-                <div style="color:#eceff1; font-size:0.92rem; line-height:1.4;">📌 {h['title']}{src}</div>
-            </div>""", unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="metric-card" style="color:#546e7a; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
 
     # ── Aktienempfehlungen Accordion ──
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
@@ -3193,19 +3178,6 @@ if st.session_state["show_landing"]:
             "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
             "⚠️ Keine Anlageberatung · Daten via Yahoo Finance · Aktualisierung alle 12 Std.</div>",
             unsafe_allow_html=True)
-
-    # ── Schnellauswahl auf Landing ──
-    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-header'>⚡ Beliebte Aktien</div>", unsafe_allow_html=True)
-    popular = [
-        ("AAPL","Apple"), ("MSFT","Microsoft"), ("NVDA","NVIDIA"), ("AMZN","Amazon"),
-        ("GOOGL","Alphabet"), ("META","Meta"), ("TSLA","Tesla"), ("SAP","SAP"),
-    ]
-    pop_cols = st.columns(len(popular))
-    for col, (t, name) in zip(pop_cols, popular):
-        if col.button(f"**{t}**\n{name}", use_container_width=True, key=f"lp_{t}"):
-            _go_to_ticker(t)
-            st.rerun()
 
     # ── Top 10 pro Sektor ──────────────────────────────────────────────
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
@@ -3358,6 +3330,35 @@ if st.session_state["show_landing"]:
                                      use_container_width=True):
                             _go_to_ticker(_tk)
                             st.rerun()
+
+    # ── Schlagzeilen ──
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>📰 Aktuelle Marktschlagzeilen</div>", unsafe_allow_html=True)
+    with st.spinner("Lade Nachrichten…"):
+        headlines = load_market_news()
+
+    if headlines:
+        for h in headlines:
+            src = f"<span style='color:#546e7a; font-size:0.72rem; margin-left:8px;'>{h['source']}</span>" if h['source'] else ""
+            st.markdown(f"""
+            <div class="metric-card" style="padding:14px 18px;">
+                <div style="color:#eceff1; font-size:0.92rem; line-height:1.4;">📌 {h['title']}{src}</div>
+            </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="metric-card" style="color:#546e7a; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
+
+    # ── Schnellauswahl auf Landing ──
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>⚡ Beliebte Aktien</div>", unsafe_allow_html=True)
+    popular = [
+        ("AAPL","Apple"), ("MSFT","Microsoft"), ("NVDA","NVIDIA"), ("AMZN","Amazon"),
+        ("GOOGL","Alphabet"), ("META","Meta"), ("TSLA","Tesla"), ("SAP","SAP"),
+    ]
+    pop_cols = st.columns(len(popular))
+    for col, (t, name) in zip(pop_cols, popular):
+        if col.button(f"**{t}**\n{name}", use_container_width=True, key=f"lp_{t}"):
+            _go_to_ticker(t)
+            st.rerun()
 
     st.stop()
 
@@ -4147,8 +4148,8 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
 # ==================== NAVIGATION ====================
 # Session-state-basierte Navigation (immun gegen st.rerun() und WebSocket-Reconnects)
 _TABS = [
-    "📊 Kennzahl.", "📈 Wachstum", "🏦 Bilanz", "⚖️ Bewertung",
-    "📉 Chart", "🔍 Insider", "📰 News", "🏰 Burggraben", "🔬 Piotroski",
+    "📊 Kennzahlen", "📈 Wachstum", "📋 Fundamental", "⚖️ Bewertung",
+    "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News",
 ]
 _at = st.session_state.get("active_tab", 0)
 _nav_cols = st.columns(len(_TABS))
@@ -4551,7 +4552,7 @@ elif _at == 1:
         st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Segmentdaten: SEC_API_KEY in Railway-Umgebungsvariablen setzen (sec-api.io).</div>', unsafe_allow_html=True)
 
 elif _at == 2:
-    st.markdown("<div class='section-header'>Bilanz</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>Fundamental</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(f"""
@@ -5020,7 +5021,7 @@ elif _at == 3:
                 st.info("Nicht genug Daten für DCF-Berechnung (FCF oder Shares fehlen).")
 
 # ==================== TAB 5: CHART ANALYSE ====================
-elif _at == 4:
+elif _at == 6:
     st.markdown("<div class='section-header'>📉 Technische Chart-Analyse</div>", unsafe_allow_html=True)
 
     # ── Controls row ──────────────────────────────────────────────────
@@ -5383,7 +5384,7 @@ elif _at == 4:
             </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 6: INSIDER & PEERS ====================
-elif _at == 5:
+elif _at == 7:
     col_ins, col_peers = st.columns(2)
 
     # Insider
@@ -5545,7 +5546,7 @@ elif _at == 5:
     </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 7: NEWS ====================
-elif _at == 6:
+elif _at == 8:
     st.markdown("<div class='section-header'>📰 Aktuelle News</div>", unsafe_allow_html=True)
     if NEWS_API_KEY:
         try:
@@ -5634,7 +5635,7 @@ elif _at == 6:
             st.info(f"News konnten nicht geladen werden: {ex}")
 
 # ==================== TAB 8: BURGGRABEN ====================
-elif _at == 7:
+elif _at == 5:
     # ── Header: Moat-Breite ────────────────────────────────────────────
     st.markdown("<div class='section-header'>🏰 Burggraben-Einschätzung</div>", unsafe_allow_html=True)
     mc1, mc2, mc3 = st.columns([1, 1, 2])
@@ -5795,7 +5796,7 @@ elif _at == 7:
     </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 9: PIOTROSKI F-SCORE ====================
-elif _at == 8:
+elif _at == 4:
     with st.spinner("Lade Jahresabschlüsse für F-Score…"):
         piotroski = load_piotroski(ticker)
 
