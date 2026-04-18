@@ -528,7 +528,7 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
     """
     Für japanische / nicht-US Aktien liefert yfinance.info oft 0/None für Margen,
     Wachstum und FCF. Fallback: direkt aus GuV, Cashflow und Bilanz berechnen.
-    FCF-Patch läuft IMMER (unabhängig von Margins) — behebt JP-FCF-Yield=0-Bug.
+    FCF-Patch läuft IMMER. Fuzzy row-matching deckt JP/EU Labelabweichungen ab.
     """
     info = dict(info)  # shallow copy — nie das cached dict mutieren
 
@@ -543,64 +543,83 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
         return None
 
     def _row(df, *names):
+        """Exact match first, then case-insensitive substring match."""
+        idx_lower = {str(i).lower(): i for i in df.index}
         for n in names:
             if n in df.index:
                 return df.loc[n]
+        for n in names:
+            hit = idx_lower.get(n.lower())
+            if hit is not None:
+                return df.loc[hit]
+        # Substring fallback: find first index entry containing any keyword
+        for n in names:
+            key = n.lower().replace(" ", "")
+            for orig in df.index:
+                if key in str(orig).lower().replace(" ", ""):
+                    return df.loc[orig]
         return None
 
     # ── FCF immer patchen wenn 0/None (häufig bei JP/EU) ─────────────────
     if not info.get("freeCashflow"):
-        # Versuch 1: operatingCashflow aus info (oft vorhanden wenn freeCashflow fehlt)
         ocf_info = info.get("operatingCashflow")
         if ocf_info:
-            # CapEx aus info abziehen falls verfügbar; sonst OCF × 0.75 als konservativer Proxy
             capex_info = info.get("capitalExpenditures") or 0
             info["freeCashflow"] = int(ocf_info - abs(capex_info))
         else:
-            # Versuch 2: aus Cash-Flow-Statement
             cf = _get_df("cash_flow", "cashflow")
             if cf is not None and len(cf.columns) >= 1:
-                fcf_r = _row(cf, "Free Cash Flow", "FreeCashFlow")
+                fcf_r = _row(cf, "Free Cash Flow", "FreeCashFlow", "Freecashflow")
                 ocf_r = _row(cf,
                              "Operating Cash Flow", "OperatingCashFlow",
                              "Total Cash From Operating Activities",
-                             "Cash From Operations")
+                             "Cash From Operations", "CashFlowFromOperations")
                 cap_r = _row(cf,
                              "Capital Expenditure", "CapitalExpenditure",
-                             "Capital Expenditures",
+                             "Capital Expenditures", "Capex",
                              "Purchase Of Property Plant And Equipment",
-                             "Purchases of PPE")
+                             "Purchases of PPE", "PurchaseOfPPE")
                 if fcf_r is not None:
                     v = float(fcf_r.iloc[0] or 0)
                     if v: info["freeCashflow"] = int(v)
                 elif ocf_r is not None:
                     ocf = float(ocf_r.iloc[0] or 0)
                     cap = float(cap_r.iloc[0] or 0) if cap_r is not None else 0
-                    if ocf: info["freeCashflow"] = int(ocf + cap)  # cap is negative
+                    if ocf: info["freeCashflow"] = int(ocf + cap)  # cap is negative in statements
 
-    # ── Margen + Wachstum: nur patchen wenn alle fehlen ──────────────────
+    # ── Margen + Wachstum + earningsGrowth: patchen wenn alle fehlen ─────
     needs_margin_patch = not any([
         info.get("grossMargins"), info.get("operatingMargins"),
         info.get("profitMargins"), info.get("revenueGrowth"),
     ])
-    if needs_margin_patch:
-        fs = _get_df("income_stmt", "financials")
-        if fs is not None and len(fs.columns) >= 2:
-            rev = _row(fs, "Total Revenue", "TotalRevenue", "Revenue")
-            gp  = _row(fs, "Gross Profit", "GrossProfit")
-            op  = _row(fs, "Operating Income", "OperatingIncome", "EBIT")
-            ni  = _row(fs, "Net Income", "NetIncome",
-                       "Net Income Common Stockholders")
-            if rev is not None:
-                r0 = float(rev.iloc[0] or 0)
-                r1 = float(rev.iloc[1] or 0)
-                if r0 and r1:
-                    info["revenueGrowth"] = (r0 / r1) - 1
-                    info["totalRevenue"]  = int(r0)
-                if r0:
-                    if gp is not None: info["grossMargins"]     = float(gp.iloc[0] or 0) / r0
-                    if op is not None: info["operatingMargins"] = float(op.iloc[0] or 0) / r0
-                    if ni is not None: info["profitMargins"]    = float(ni.iloc[0] or 0) / r0
+    fs = _get_df("income_stmt", "financials") if needs_margin_patch or not info.get("earningsGrowth") else None
+    if fs is not None and len(fs.columns) >= 2:
+        rev = _row(fs, "Total Revenue", "TotalRevenue", "Revenue", "Net Revenue")
+        gp  = _row(fs, "Gross Profit", "GrossProfit")
+        op  = _row(fs, "Operating Income", "OperatingIncome", "EBIT",
+                   "Operating Profit", "OperatingProfit")
+        ni  = _row(fs, "Net Income", "NetIncome",
+                   "Net Income Common Stockholders",
+                   "Net Income Applicable To Common Shares",
+                   "Net Profit", "Profit After Tax")
+
+        if needs_margin_patch and rev is not None:
+            r0 = float(rev.iloc[0] or 0)
+            r1 = float(rev.iloc[1] or 0)
+            if r0 and r1:
+                info["revenueGrowth"] = (r0 / r1) - 1
+            if r0:
+                info["totalRevenue"] = int(r0)
+                if gp is not None: info["grossMargins"]     = float(gp.iloc[0] or 0) / r0
+                if op is not None: info["operatingMargins"] = float(op.iloc[0] or 0) / r0
+                if ni is not None: info["profitMargins"]    = float(ni.iloc[0] or 0) / r0
+
+        # earningsGrowth: always compute from net income YoY if not in info
+        if not info.get("earningsGrowth") and ni is not None and len(ni) >= 2:
+            ni0 = float(ni.iloc[0] or 0)
+            ni1 = float(ni.iloc[1] or 0)
+            if ni1 and ni1 > 0:
+                info["earningsGrowth"] = (ni0 / ni1) - 1
 
     return info
 
