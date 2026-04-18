@@ -2085,6 +2085,48 @@ def load_macro_data() -> dict:
         jp_yoy = (jp_cpi[0] / jp_cpi[12] - 1) * 100
         out["macro"]["🇯🇵 Inflation"] = {"value": round(jp_yoy, 1), "unit": "%"}
 
+    # ── Sektor-Heatmap via SPDR ETFs (MTD) ────────────────────────────
+    _sector_etfs = {
+        "Tech": "XLK", "Finanzen": "XLF", "Energie": "XLE",
+        "Health": "XLV", "Konsum": "XLY", "Industrie": "XLI",
+        "Komm.": "XLC", "Immo": "XLRE", "Rohst.": "XLB", "Versorger": "XLU",
+    }
+    _m_start = _dt.date.today().replace(day=1).strftime("%Y-%m-%d")
+    _m_end   = _dt.date.today().strftime("%Y-%m-%d")
+    sector_perf: dict = {}
+    for _sname, _etf in _sector_etfs.items():
+        try:
+            _sh = yf.Ticker(_etf).history(start=_m_start, end=_m_end)
+            if len(_sh) >= 2:
+                sector_perf[_sname] = round(
+                    (_sh["Close"].iloc[-1] / _sh["Close"].iloc[0] - 1) * 100, 1)
+        except Exception:
+            pass
+    out["sectors"] = sector_perf
+
+    # ── VIX ───────────────────────────────────────────────────────────
+    try:
+        _vix = yf.Ticker("^VIX").history(period="2d")
+        if not _vix.empty:
+            out["vix"] = round(float(_vix["Close"].iloc[-1]), 1)
+    except Exception:
+        pass
+
+    # ── CNN Fear & Greed (öffentlicher Endpunkt) ──────────────────────
+    try:
+        _fg = requests.get(
+            "https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
+            timeout=6, headers={"User-Agent": "Mozilla/5.0"},
+        )
+        if _fg.ok:
+            _fgd = _fg.json().get("fear_and_greed", {})
+            _score = _fgd.get("score")
+            _rating = _fgd.get("rating", "")
+            if _score:
+                out["fear_greed"] = {"score": round(float(_score)), "rating": _rating}
+    except Exception:
+        pass
+
     return out
 
 
@@ -2907,6 +2949,83 @@ if st.session_state["show_landing"]:
                 <div style="color:{clr}; font-size:1.0rem; font-weight:700; margin:4px 0;">
                     {val:.1f}{unit}
                 </div>
+            </div>""", unsafe_allow_html=True)
+
+    # ── Sektor-Heatmap + Sentiment ────────────────────────────────────
+    _sh_col, _sent_col = st.columns([3, 2])
+
+    with _sh_col:
+        if macro.get("sectors"):
+            st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>🗺️ Sektor-Performance (MTD)</div>",
+                        unsafe_allow_html=True)
+            _secs = macro["sectors"]
+            _sorted_secs = sorted(_secs.items(), key=lambda x: x[1], reverse=True)
+            _heat_cols = st.columns(len(_sorted_secs))
+            for col, (sname, pct) in zip(_heat_cols, _sorted_secs):
+                if pct >= 2:
+                    bg, clr = "rgba(0,230,118,0.15)", "#00e676"
+                elif pct >= 0.5:
+                    bg, clr = "rgba(0,230,118,0.07)", "#69f0ae"
+                elif pct >= -0.5:
+                    bg, clr = "rgba(100,181,246,0.08)", "#90a4ae"
+                elif pct >= -2:
+                    bg, clr = "rgba(255,82,82,0.07)", "#ff8a65"
+                else:
+                    bg, clr = "rgba(255,82,82,0.15)", "#ff5252"
+                arrow = "▲" if pct >= 0 else "▼"
+                col.markdown(f"""
+                <div style="background:{bg}; border:1px solid {clr}33; border-radius:6px;
+                             text-align:center; padding:8px 4px;">
+                    <div style="font-size:0.62rem; color:#546e7a; line-height:1.2;">{sname}</div>
+                    <div style="color:{clr}; font-size:0.78rem; font-weight:700; margin-top:3px;">
+                        {arrow}{abs(pct):.1f}%
+                    </div>
+                </div>""", unsafe_allow_html=True)
+
+    with _sent_col:
+        st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>😨 Markt-Sentiment</div>",
+                    unsafe_allow_html=True)
+        _vix = macro.get("vix")
+        _fg  = macro.get("fear_greed", {})
+
+        _sent_parts = []
+
+        if _vix:
+            _vix_clr = "#ff5252" if _vix > 25 else "#ffd600" if _vix > 18 else "#00e676"
+            _vix_lbl = "Hohe Volatilität" if _vix > 25 else "Moderat" if _vix > 18 else "Ruhig"
+            _vix_pct = min(int(_vix / 50 * 100), 100)
+            _sent_parts.append(f"""
+            <div style="margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">
+                    <span style="color:#b0bec5;">VIX</span>
+                    <span style="color:{_vix_clr};font-weight:700;">{_vix}</span>
+                </div>
+                <div style="background:#0d1526;border-radius:4px;height:5px;">
+                    <div style="width:{_vix_pct}%;height:5px;border-radius:4px;background:{_vix_clr};"></div>
+                </div>
+                <div style="font-size:0.68rem;color:#546e7a;margin-top:2px;">{_vix_lbl}</div>
+            </div>""")
+
+        if _fg:
+            _fs = _fg["score"]
+            _fr = _fg.get("rating", "").replace("_", " ").title()
+            _fg_clr = "#ff5252" if _fs < 25 else "#ffd600" if _fs < 45 else \
+                      "#90a4ae" if _fs < 55 else "#ffd600" if _fs < 75 else "#00e676"
+            _sent_parts.append(f"""
+            <div style="margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">
+                    <span style="color:#b0bec5;">Fear & Greed</span>
+                    <span style="color:{_fg_clr};font-weight:700;">{_fs} — {_fr}</span>
+                </div>
+                <div style="background:#0d1526;border-radius:4px;height:5px;">
+                    <div style="width:{_fs}%;height:5px;border-radius:4px;background:{_fg_clr};"></div>
+                </div>
+            </div>""")
+
+        if _sent_parts:
+            st.markdown(f"""<div class="insight-box" style="padding:12px 14px;">
+                {"".join(_sent_parts)}
+                <div style="font-size:0.65rem;color:#37474f;margin-top:4px;">Quelle: CBOE VIX · CNN Fear & Greed</div>
             </div>""", unsafe_allow_html=True)
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
