@@ -23,8 +23,9 @@ from typing import Optional
 import requests
 import yfinance as yf
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Security
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security.api_key import APIKeyHeader
 
 # ── Shared logic aus screener.py ──────────────────────────────────────────────
 from screener import calc_score, calc_fair_value, WATCHLIST, send_telegram
@@ -32,7 +33,7 @@ from screener import calc_score, calc_fair_value, WATCHLIST, send_telegram
 app = FastAPI(
     title="StocksMB API",
     description="REST-API für StocksMB Screener & Trading Bot",
-    version="1.0.0",
+    version="1.1.0",
 )
 
 app.add_middleware(
@@ -42,7 +43,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-API_KEY = os.environ.get("STOCKSMB_API_KEY", "")  # optional: einfacher Schlüsselschutz
+API_KEY = os.environ.get("STOCKSMB_API_KEY", "")  # leer = kein Schutz (Dev-Modus)
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def _require_key(key: str = Security(_api_key_header)):
+    """Dependency: prüft X-API-Key Header wenn STOCKSMB_API_KEY gesetzt ist."""
+    if API_KEY and key != API_KEY:
+        raise HTTPException(status_code=401, detail="Ungültiger oder fehlender API-Key")
 
 # ── Value-Watchlist (~60 klassische Value-Titel) ──────────────────────────────
 VALUE_WATCHLIST = [
@@ -390,6 +398,7 @@ def health():
 def screener_quality(
     top_n: int = Query(5, ge=1, le=20),
     min_score: int = Query(65, ge=0, le=100),
+    _auth=Security(_require_key),
 ):
     """Top-Qualitätsaktien unter ihrem Fair Value (bestehende Screener-Logik)."""
     cached = _cache_get(f"quality_{top_n}_{min_score}")
@@ -412,6 +421,7 @@ def screener_quality(
 def screener_value(
     top_n: int = Query(10, ge=1, le=30),
     min_score: int = Query(55, ge=0, le=100),
+    _auth=Security(_require_key),
 ):
     """Value-Aktien: niedrige Bewertung (P/E, P/B, EV/EBITDA), FCF, Dividende."""
     cached = _cache_get(f"value_{top_n}_{min_score}")
@@ -446,7 +456,10 @@ def screener_value(
 
 
 @app.get("/screener/tradeable")
-def screener_tradeable(top_n: int = Query(15, ge=1, le=30)):
+def screener_tradeable(
+    top_n: int = Query(15, ge=1, le=30),
+    _auth=Security(_require_key),
+):
     """Gut handelbare Aktien: hohes Volumen, gute Liquidität, nützliche Volatilität."""
     cached = _cache_get(f"tradeable_{top_n}")
     if cached:
@@ -490,6 +503,7 @@ def screener_daytrading(
     min_score: int = Query(50, ge=0, le=100),
     min_atr_pct: float = Query(1.5, ge=0.0, le=20.0),
     min_volume_m: float = Query(5.0, ge=0.0),
+    _auth=Security(_require_key),
 ):
     """
     Day-Trading-Picks: Aktien mit hohem Volumen, ATR% und Beta.
@@ -587,7 +601,7 @@ def screener_daytrading(
 
 
 @app.get("/score/{ticker}")
-def get_score(ticker: str):
+def get_score(ticker: str, _auth=Security(_require_key)):
     """Alle Scores (Quality, Value, Tradeable, Daytrading) + Fair Value für einen Ticker."""
     tkr = ticker.upper()
     cached = _cache_get(f"score_{tkr}")
@@ -656,7 +670,10 @@ def get_score(ticker: str):
 
 
 @app.get("/signals")
-def get_signals(top_n: int = Query(5, ge=1, le=10)):
+def get_signals(
+    top_n: int = Query(5, ge=1, le=10),
+    _auth=Security(_require_key),
+):
     """
     Kombiniertes Trading-Signal für den Bot.
     Gibt Macro-Regime + Top-Picks beider Screener zurück.
