@@ -561,6 +561,15 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
         return None
 
     # ── FCF immer patchen wenn 0/None (häufig bei JP/EU) ─────────────────
+    def _safe_num(series_row, col_idx=0):
+        """Liest Wert aus einer DataFrame-Zeile; gibt 0 zurück bei NaN/None."""
+        try:
+            v = series_row.iloc[col_idx]
+            f = float(v)
+            return f if f == f else 0.0   # f!=f ↔ NaN
+        except Exception:
+            return 0.0
+
     if not info.get("freeCashflow"):
         ocf_info = info.get("operatingCashflow")
         if ocf_info:
@@ -580,11 +589,11 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
                              "Purchase Of Property Plant And Equipment",
                              "Purchases of PPE", "PurchaseOfPPE")
                 if fcf_r is not None:
-                    v = float(fcf_r.iloc[0] or 0)
+                    v = _safe_num(fcf_r)
                     if v: info["freeCashflow"] = int(v)
                 elif ocf_r is not None:
-                    ocf = float(ocf_r.iloc[0] or 0)
-                    cap = float(cap_r.iloc[0] or 0) if cap_r is not None else 0
+                    ocf = _safe_num(ocf_r)
+                    cap = _safe_num(cap_r) if cap_r is not None else 0.0
                     if ocf: info["freeCashflow"] = int(ocf + cap)  # cap is negative in statements
 
     # ── Margen + Wachstum + earningsGrowth: patchen wenn alle fehlen ─────
@@ -604,20 +613,20 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
                    "Net Profit", "Profit After Tax")
 
         if needs_margin_patch and rev is not None:
-            r0 = float(rev.iloc[0] or 0)
-            r1 = float(rev.iloc[1] or 0)
+            r0 = _safe_num(rev, 0)
+            r1 = _safe_num(rev, 1)
             if r0 and r1:
                 info["revenueGrowth"] = (r0 / r1) - 1
             if r0:
                 info["totalRevenue"] = int(r0)
-                if gp is not None: info["grossMargins"]     = float(gp.iloc[0] or 0) / r0
-                if op is not None: info["operatingMargins"] = float(op.iloc[0] or 0) / r0
-                if ni is not None: info["profitMargins"]    = float(ni.iloc[0] or 0) / r0
+                if gp is not None: info["grossMargins"]     = _safe_num(gp) / r0
+                if op is not None: info["operatingMargins"] = _safe_num(op) / r0
+                if ni is not None: info["profitMargins"]    = _safe_num(ni) / r0
 
         # earningsGrowth: always compute from net income YoY if not in info
         if not info.get("earningsGrowth") and ni is not None and len(ni) >= 2:
-            ni0 = float(ni.iloc[0] or 0)
-            ni1 = float(ni.iloc[1] or 0)
+            ni0 = _safe_num(ni, 0)
+            ni1 = _safe_num(ni, 1)
             if ni1 and ni1 > 0:
                 info["earningsGrowth"] = (ni0 / ni1) - 1
 
@@ -2250,18 +2259,29 @@ def load_macro_data() -> dict:
         pass
 
     # ── Shiller CAPE (P/E 10, zyklisch adjustiert) ────────────────────
-    try:
-        _cape_r = requests.get(
-            "https://www.multpl.com/shiller-pe",
-            timeout=7,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; StocksMB/1.0)"},
-        )
-        if _cape_r.ok:
-            _cape_m = re.search(r'id=["\']current-value["\'][^>]*>\s*([0-9]+\.?[0-9]*)', _cape_r.text)
-            if _cape_m:
-                out["shiller_cape"] = float(_cape_m.group(1))
-    except Exception:
-        pass
+    def _multpl_current(url: str) -> float | None:
+        """Scrape current-value from a multpl.com page. Sucht Zahl im 400-Zeichen-Fenster nach id="current-value"."""
+        try:
+            r = requests.get(url, timeout=8,
+                             headers={"User-Agent": "Mozilla/5.0 (compatible; StocksMB/1.0)"})
+            if not r.ok:
+                return None
+            # Finde Position von id="current-value" (einfache oder doppelte Anführungszeichen)
+            txt = r.text
+            for marker in ('id="current-value"', "id='current-value'"):
+                idx = txt.find(marker)
+                if idx >= 0:
+                    window = txt[idx: idx + 400]
+                    m = re.search(r'(\d+\.\d+)', window)
+                    if m:
+                        return float(m.group(1))
+            return None
+        except Exception:
+            return None
+
+    _cape_val = _multpl_current("https://www.multpl.com/shiller-pe")
+    if _cape_val:
+        out["shiller_cape"] = _cape_val
 
     # ── Market Cap / GNP ──────────────────────────────────────────────
     # Wie Buffett-Indikator, aber GNP statt GDP (berücksichtigt Auslandsgewinne)
@@ -2275,18 +2295,9 @@ def load_macro_data() -> dict:
         pass
 
     # ── Tobin's Q Proxy (S&P 500 Price/Book, multpl.com) ─────────────
-    try:
-        _pb_r = requests.get(
-            "https://www.multpl.com/s-p-500-price-to-book-value",
-            timeout=7,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; StocksMB/1.0)"},
-        )
-        if _pb_r.ok:
-            _pb_m = re.search(r'id=["\']current-value["\'][^>]*>\s*([0-9]+\.?[0-9]*)', _pb_r.text)
-            if _pb_m:
-                out["tobins_q"] = float(_pb_m.group(1))
-    except Exception:
-        pass
+    _pb_val = _multpl_current("https://www.multpl.com/s-p-500-price-to-book-value")
+    if _pb_val:
+        out["tobins_q"] = _pb_val
 
     # ── Unternehmensgewinnmarge (Hussman-Basis) ────────────────────────
     try:
