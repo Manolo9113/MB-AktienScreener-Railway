@@ -5200,7 +5200,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
 # ==================== NAVIGATION ====================
 # Session-state-basierte Navigation (immun gegen st.rerun() und WebSocket-Reconnects)
 _TABS = [
-    "📊 Kennzahlen", "📈 Wachstum", "📋 Fundamental", "⚖️ Bewertung",
+    "📊 Kennzahlen", "📈 Wachstum", "🔮 Prognose", "📋 Fundamental", "⚖️ Bewertung",
     "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News",
 ]
 _at = st.session_state.get("active_tab", 0)
@@ -5613,6 +5613,169 @@ elif _at == 1:
         st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Segmentdaten: SEC_API_KEY in Railway-Umgebungsvariablen setzen (sec-api.io).</div>', unsafe_allow_html=True)
 
 elif _at == 2:
+    # ── Prognose-Tab ──────────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>Analysten-Prognosen & Schätzungen</div>", unsafe_allow_html=True)
+
+    _t_eps   = yf_info.get("trailingEps") or 0
+    _f_eps   = yf_info.get("forwardEps") or 0
+    _t_pe    = yf_info.get("trailingPE") or 0
+    _f_pe    = yf_info.get("forwardPE") or 0
+    _t_mean  = yf_info.get("targetMeanPrice")
+    _t_high  = yf_info.get("targetHighPrice")
+    _t_low   = yf_info.get("targetLowPrice")
+    _n_anal  = yf_info.get("numberOfAnalystOpinions") or 0
+    _rec_key = yf_info.get("recommendationKey", "")
+    _rec_mean= yf_info.get("recommendationMean") or 3.0
+    _eg      = yf_info.get("earningsGrowth") or 0
+    _rg      = yf_info.get("revenueGrowth") or 0
+    _ltg     = yf_info.get("longTermPotentialGrowthRate") or yf_info.get("earningsGrowth") or 0
+
+    # Konsens-Farbe
+    _rec_color = {"strong buy": "#00e676", "buy": "#69f0ae", "hold": "#ffd600",
+                  "sell": "#ff5252", "strong sell": "#ff1744"}.get(_rec_key.lower().replace("_"," "), "#90a4ae")
+    _rec_label = _rec_key.replace("_", " ").title() or "N/A"
+
+    # ── Analyst Konsensus Banner ──────────────────────────────────────────
+    if _t_mean and price:
+        _upside = (_t_mean - price) / price * 100
+        _up_color = "#00e676" if _upside > 0 else "#ff5252"
+        st.markdown(
+            f"<div style='background:linear-gradient(135deg,#0d1f3c,#0a1628);"
+            f"border:1px solid #1e3a5f;border-left:4px solid {_rec_color};"
+            f"border-radius:12px;padding:14px 18px;margin-bottom:16px;"
+            f"display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;'>"
+            f"<div>"
+            f"<div style='color:{_rec_color};font-size:1.1rem;font-weight:800;'>{_rec_label}</div>"
+            f"<div style='color:#546e7a;font-size:0.75rem;margin-top:2px;'>{_n_anal} Analysten</div>"
+            f"</div>"
+            f"<div style='text-align:right;'>"
+            f"<div style='color:#b0bec5;font-size:0.78rem;'>Ø Kursziel</div>"
+            f"<div style='color:#fff;font-size:1.2rem;font-weight:700;'>${_t_mean:,.2f}</div>"
+            f"<div style='color:{_up_color};font-size:0.82rem;font-weight:600;'>{_upside:+.1f}% Upside</div>"
+            f"</div>"
+            f"</div>",
+            unsafe_allow_html=True)
+
+    # ── Kursziel-Range ────────────────────────────────────────────────────
+    if _t_low and _t_high and _t_mean:
+        st.markdown("<div class='section-header' style='font-size:0.75rem;margin-top:8px;'>Kursziel-Bandbreite</div>", unsafe_allow_html=True)
+        _range_span = _t_high - _t_low if _t_high > _t_low else 1
+        _cur_pos    = max(0, min(100, (price - _t_low) / _range_span * 100))
+        _mean_pos   = max(0, min(100, (_t_mean - _t_low) / _range_span * 100))
+        st.markdown(
+            f"<div style='background:#0d1526;border:1px solid #1e3a5f;border-radius:10px;padding:14px 18px;margin-bottom:14px;'>"
+            f"<div style='display:flex;justify-content:space-between;font-size:0.72rem;color:#546e7a;margin-bottom:8px;'>"
+            f"<span>Tief ${_t_low:,.0f}</span><span style='color:#ffd600;'>Ø ${_t_mean:,.0f}</span><span>Hoch ${_t_high:,.0f}</span>"
+            f"</div>"
+            f"<div style='position:relative;background:#1e2d45;border-radius:6px;height:8px;'>"
+            f"<div style='background:linear-gradient(90deg,#ff5252,#ffd600,#00e676);width:100%;height:8px;border-radius:6px;opacity:0.3;'></div>"
+            f"<div style='position:absolute;top:-4px;left:{_cur_pos:.0f}%;transform:translateX(-50%);width:16px;height:16px;"
+            f"background:#00e5ff;border-radius:50%;border:2px solid #0a1628;'></div>"
+            f"<div style='position:absolute;top:-3px;left:{_mean_pos:.0f}%;transform:translateX(-50%);width:2px;height:14px;"
+            f"background:#ffd600;border-radius:2px;'></div>"
+            f"</div>"
+            f"<div style='text-align:center;color:#00e5ff;font-size:0.72rem;margin-top:6px;'>● Aktueller Kurs</div>"
+            f"</div>",
+            unsafe_allow_html=True)
+
+    # ── EPS & Wachstum Karten ─────────────────────────────────────────────
+    st.markdown("<div class='section-header' style='font-size:0.75rem;'>EPS & Wachstums-Schätzungen</div>", unsafe_allow_html=True)
+    _pc1, _pc2, _pc3, _pc4 = st.columns(4)
+    with _pc1:
+        st.markdown(mini_card("EPS (trailing)", _t_eps or None, 5, 2, ".2f", "$"), unsafe_allow_html=True)
+    with _pc2:
+        _eps_chg = ((_f_eps / _t_eps - 1) * 100) if (_t_eps and _t_eps > 0 and _f_eps) else None
+        _eps_color = "#00e676" if (_eps_chg and _eps_chg > 0) else "#ff5252"
+        _eps_chg_str = f"<div style='color:{_eps_color};font-size:0.72rem;text-align:center;margin-top:3px;'>{_eps_chg:+.1f}% vs. trailing</div>" if _eps_chg else ""
+        st.markdown(mini_card("EPS (forward)", _f_eps or None, 5, 2, ".2f", "$") + _eps_chg_str, unsafe_allow_html=True)
+    with _pc3:
+        st.markdown(mini_card("EPS-Wachstum (YoY)", (_eg * 100) if _eg else None, 15, 5, ".1f", "%"), unsafe_allow_html=True)
+    with _pc4:
+        st.markdown(mini_card("Umsatz-Wachstum (YoY)", (_rg * 100) if _rg else None, 15, 5, ".1f", "%"), unsafe_allow_html=True)
+
+    # ── KGV Vergleich ─────────────────────────────────────────────────────
+    st.markdown("<div class='section-header' style='font-size:0.75rem;margin-top:8px;'>KGV-Vergleich: Trailing vs. Forward</div>", unsafe_allow_html=True)
+    _kc1, _kc2, _kc3 = st.columns(3)
+    with _kc1:
+        st.markdown(mini_card("KGV (trailing)", _t_pe or None, None, 20, ".1f", "x"), unsafe_allow_html=True)
+    with _kc2:
+        st.markdown(mini_card("KGV (forward)", _f_pe or None, None, 18, ".1f", "x"), unsafe_allow_html=True)
+    with _kc3:
+        _pe_disc = ((_t_pe - _f_pe) / _t_pe * 100) if (_t_pe and _f_pe and _t_pe > 0) else None
+        _pd_color = "#00e676" if (_pe_disc and _pe_disc > 0) else "#ff5252"
+        _pd_str = (f"<div class='metric-card'><div style='color:#78909c;font-size:0.7rem;font-weight:600;"
+                   f"text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;'>KGV-Kompression</div>"
+                   f"<div style='font-size:1.6rem;font-weight:800;color:{_pd_color};'>"
+                   f"{'−' if (_pe_disc or 0) > 0 else '+'}{abs(_pe_disc or 0):.1f}%</div>"
+                   f"<div style='color:#546e7a;font-size:0.72rem;margin-top:4px;'>"
+                   f"{'Forward günstiger' if (_pe_disc or 0) > 0 else 'Forward teurer'}</div></div>") if _pe_disc else mini_card("KGV-Kompression", None, None, None, ".1f", "%")
+        st.markdown(_pd_str, unsafe_allow_html=True)
+
+    # ── Analyst-Schätzungen via yfinance ─────────────────────────────────
+    st.markdown("<div class='section-header' style='font-size:0.75rem;margin-top:8px;'>Analyst-Schätzungen (Quartal & Jahr)</div>", unsafe_allow_html=True)
+    try:
+        _stock_obj = yf.Ticker(ticker)
+        _ee = _stock_obj.get_earnings_estimate()
+        _re = _stock_obj.get_revenue_estimate()
+        _period_labels = {"0q": "Akt. Quartal", "1q": "Nächstes Quartal",
+                          "0y": "Akt. Jahr", "1y": "Nächstes Jahr"}
+        _est_cols = st.columns(2)
+        for _ci, (_df, _title, _unit) in enumerate([
+            (_ee, "EPS-Schätzungen", "$"),
+            (_re, "Umsatz-Schätzungen", "Mrd $"),
+        ]):
+            with _est_cols[_ci]:
+                if _df is not None and not _df.empty:
+                    rows_html = ""
+                    for _pidx in ["0q", "1q", "0y", "1y"]:
+                        if _pidx not in _df.index:
+                            continue
+                        _row = _df.loc[_pidx]
+                        _avg = _row.get("avg") or _row.get("mean") or _row.get("Avg") or None
+                        _low_e = _row.get("low") or None
+                        _high_e= _row.get("high") or None
+                        _n     = int(_row.get("numberOfAnalysts") or _row.get("count") or 0)
+                        if _avg is None:
+                            continue
+                        if _unit == "Mrd $":
+                            _avg_str  = f"${_avg/1e9:.2f}B"
+                            _rng_str  = f"${_low_e/1e9:.1f}B – ${_high_e/1e9:.1f}B" if (_low_e and _high_e) else ""
+                        else:
+                            _avg_str  = f"${_avg:.2f}"
+                            _rng_str  = f"${_low_e:.2f} – ${_high_e:.2f}" if (_low_e and _high_e) else ""
+                        rows_html += (
+                            f"<div style='display:flex;justify-content:space-between;align-items:center;"
+                            f"padding:7px 0;border-bottom:1px solid #1e2d45;'>"
+                            f"<div>"
+                            f"<span style='color:#b0bec5;font-size:0.8rem;font-weight:600;'>{_period_labels.get(_pidx, _pidx)}</span>"
+                            f"{'<div style=\"color:#546e7a;font-size:0.68rem;\">' + _rng_str + '</div>' if _rng_str else ''}"
+                            f"</div>"
+                            f"<div style='text-align:right;'>"
+                            f"<span style='color:#00e5ff;font-size:0.88rem;font-weight:700;'>{_avg_str}</span>"
+                            f"{'<div style=\"color:#546e7a;font-size:0.68rem;\">' + str(_n) + ' Analysten</div>' if _n else ''}"
+                            f"</div>"
+                            f"</div>"
+                        )
+                    if rows_html:
+                        st.markdown(
+                            f"<div style='background:#0d1526;border:1px solid #1e3a5f;border-radius:10px;padding:12px 16px;'>"
+                            f"<div style='color:#64b5f6;font-size:0.75rem;font-weight:700;text-transform:uppercase;"
+                            f"letter-spacing:1px;margin-bottom:8px;'>{_title}</div>"
+                            f"{rows_html}</div>",
+                            unsafe_allow_html=True)
+                    else:
+                        st.markdown(f'<div class="insight-box" style="color:#546e7a;">{_title}: Keine Daten verfügbar</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<div class="insight-box" style="color:#546e7a;">{_title}: Keine Daten verfügbar</div>', unsafe_allow_html=True)
+    except Exception:
+        st.markdown('<div class="insight-box" style="color:#546e7a;">Analyst-Schätzungen nicht verfügbar.</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        "<div style='color:#37474f;font-size:0.68rem;margin-top:12px;'>"
+        "⚠️ Prognosen basieren auf Analysten-Schätzungen (Consensus) — keine Garantie. Daten: yfinance.</div>",
+        unsafe_allow_html=True)
+
+elif _at == 3:
     st.markdown("<div class='section-header'>Fundamental</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -5983,7 +6146,7 @@ elif _at == 2:
                     'Software/Asset-light &lt;3%</div>',
                     unsafe_allow_html=True)
 
-elif _at == 3:
+elif _at == 4:
     st.markdown("<div class='section-header'>Bewertungsmultiples</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -6169,7 +6332,7 @@ elif _at == 3:
                 st.info("Nicht genug Daten für DCF-Berechnung (FCF oder Shares fehlen).")
 
 # ==================== TAB 5: CHART ANALYSE ====================
-elif _at == 6:
+elif _at == 7:
     st.markdown("<div class='section-header'>📉 Technische Chart-Analyse</div>", unsafe_allow_html=True)
 
     # ── Controls row ──────────────────────────────────────────────────
@@ -6532,7 +6695,7 @@ elif _at == 6:
             </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 6: INSIDER & PEERS ====================
-elif _at == 7:
+elif _at == 8:
     col_ins, col_peers = st.columns(2)
 
     # Insider
@@ -6694,7 +6857,7 @@ elif _at == 7:
     </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 7: NEWS ====================
-elif _at == 8:
+elif _at == 9:
     st.markdown("<div class='section-header'>📰 Aktuelle News</div>", unsafe_allow_html=True)
     if NEWS_API_KEY:
         try:
@@ -6783,7 +6946,7 @@ elif _at == 8:
             st.info(f"News konnten nicht geladen werden: {ex}")
 
 # ==================== TAB 8: BURGGRABEN ====================
-elif _at == 5:
+elif _at == 6:
     # ── Header: Moat-Breite ────────────────────────────────────────────
     st.markdown("<div class='section-header'>🏰 Burggraben-Einschätzung</div>", unsafe_allow_html=True)
     mc1, mc2, mc3 = st.columns([1, 1, 2])
@@ -6944,7 +7107,7 @@ elif _at == 5:
     </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 9: PIOTROSKI F-SCORE ====================
-elif _at == 4:
+elif _at == 5:
     with st.spinner("Lade Jahresabschlüsse für F-Score…"):
         piotroski = load_piotroski(ticker)
 
