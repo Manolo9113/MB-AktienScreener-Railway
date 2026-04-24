@@ -561,6 +561,14 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
         return None
 
     # ── FCF immer patchen wenn 0/None (häufig bei JP/EU) ─────────────────
+    def _safe_num(series_row, col_idx=0):
+        """Liest Wert aus einer DataFrame-Zeile; gibt 0 zurück bei NaN/None."""
+        try:
+            f = float(series_row.iloc[col_idx])
+            return f if f == f else 0.0   # f!=f ↔ NaN
+        except Exception:
+            return 0.0
+
     if not info.get("freeCashflow"):
         ocf_info = info.get("operatingCashflow")
         if ocf_info:
@@ -580,11 +588,11 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
                              "Purchase Of Property Plant And Equipment",
                              "Purchases of PPE", "PurchaseOfPPE")
                 if fcf_r is not None:
-                    v = float(fcf_r.iloc[0] or 0)
+                    v = _safe_num(fcf_r)
                     if v: info["freeCashflow"] = int(v)
                 elif ocf_r is not None:
-                    ocf = float(ocf_r.iloc[0] or 0)
-                    cap = float(cap_r.iloc[0] or 0) if cap_r is not None else 0
+                    ocf = _safe_num(ocf_r)
+                    cap = _safe_num(cap_r) if cap_r is not None else 0.0
                     if ocf: info["freeCashflow"] = int(ocf + cap)  # cap is negative in statements
 
     # ── Margen + Wachstum + earningsGrowth: patchen wenn alle fehlen ─────
@@ -604,20 +612,20 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
                    "Net Profit", "Profit After Tax")
 
         if needs_margin_patch and rev is not None:
-            r0 = float(rev.iloc[0] or 0)
-            r1 = float(rev.iloc[1] or 0)
+            r0 = _safe_num(rev, 0)
+            r1 = _safe_num(rev, 1)
             if r0 and r1:
                 info["revenueGrowth"] = (r0 / r1) - 1
             if r0:
                 info["totalRevenue"] = int(r0)
-                if gp is not None: info["grossMargins"]     = float(gp.iloc[0] or 0) / r0
-                if op is not None: info["operatingMargins"] = float(op.iloc[0] or 0) / r0
-                if ni is not None: info["profitMargins"]    = float(ni.iloc[0] or 0) / r0
+                if gp is not None: info["grossMargins"]     = _safe_num(gp) / r0
+                if op is not None: info["operatingMargins"] = _safe_num(op) / r0
+                if ni is not None: info["profitMargins"]    = _safe_num(ni) / r0
 
         # earningsGrowth: always compute from net income YoY if not in info
         if not info.get("earningsGrowth") and ni is not None and len(ni) >= 2:
-            ni0 = float(ni.iloc[0] or 0)
-            ni1 = float(ni.iloc[1] or 0)
+            ni0 = _safe_num(ni, 0)
+            ni1 = _safe_num(ni, 1)
             if ni1 and ni1 > 0:
                 info["earningsGrowth"] = (ni0 / ni1) - 1
 
@@ -2188,6 +2196,13 @@ def load_macro_data() -> dict:
         yoy = (cpi[0] / cpi[12] - 1) * 100
         out["macro"]["🇺🇸 Inflation"] = {"value": round(yoy, 1), "unit": "%"}
 
+    # Kerninflation (Core CPI ex. Food & Energy, YoY)
+    core_cpi = _fred_last("CPILFESL", 13)
+    if len(core_cpi) >= 13:
+        core_yoy = round((core_cpi[0] / core_cpi[12] - 1) * 100, 1)
+        out["macro"]["🇺🇸 Kerninflation"] = {"value": core_yoy, "unit": "%"}
+        out["core_cpi"] = core_yoy
+
     # Arbeitslosigkeit
     unemp = _fred_last("UNRATE")
     if unemp:
@@ -2224,13 +2239,60 @@ def load_macro_data() -> dict:
     # ── Buffett-Indikator: Wilshire 5000 / US GDP ────────────────────
     # Wilshire 5000 Full Cap Index-Level ≈ Gesamtmarktkapitalisierung USA in Mrd. USD
     # GDP (FRED) ebenfalls in Mrd. USD → direkt vergleichbar
+    _w5000_val: float = 0.0
     try:
         _w5000_h = yf.Ticker("^W5000").history(period="5d")
         _gdp = _fred_last("GDP")
         if not _w5000_h.empty and _gdp and _gdp[0]:
-            _w5000 = float(_w5000_h["Close"].iloc[-1])
-            _bi = round(_w5000 / _gdp[0] * 100, 1)
+            _w5000_val = float(_w5000_h["Close"].iloc[-1])
+            _bi = round(_w5000_val / _gdp[0] * 100, 1)
             out["buffett"] = _bi
+    except Exception:
+        pass
+
+    # ── Shiller CAPE (P/E 10, zyklisch adjustiert) ────────────────────
+    def _multpl_current(url: str) -> "float | None":
+        """Scrape current-value von multpl.com. Sucht Zahl im 400-Zeichen-Fenster."""
+        try:
+            r = requests.get(url, timeout=8,
+                             headers={"User-Agent": "Mozilla/5.0 (compatible; StocksMB/1.0)"})
+            if not r.ok:
+                return None
+            txt = r.text
+            for marker in ('id="current-value"', "id='current-value'"):
+                idx = txt.find(marker)
+                if idx >= 0:
+                    window = txt[idx: idx + 400]
+                    m = re.search(r'(\d+\.\d+)', window)
+                    if m:
+                        return float(m.group(1))
+            return None
+        except Exception:
+            return None
+
+    _cape_val = _multpl_current("https://www.multpl.com/shiller-pe")
+    if _cape_val:
+        out["shiller_cape"] = _cape_val
+
+    # ── Market Cap / GNP ──────────────────────────────────────────────
+    try:
+        _gnp = _fred_last("GNP") or _fred_last("GDP")
+        if _w5000_val and _gnp and _gnp[0]:
+            out["mcap_gnp"] = round(_w5000_val / _gnp[0] * 100, 1)
+    except Exception:
+        pass
+
+    # ── Tobin's Q Proxy (S&P 500 Price/Book, multpl.com) ─────────────
+    _pb_val = _multpl_current("https://www.multpl.com/s-p-500-price-to-book-value")
+    if _pb_val:
+        out["tobins_q"] = _pb_val
+
+    # ── Unternehmensgewinnmarge (Hussman-Basis) ────────────────────────
+    try:
+        _cprofit = _fred_last("CP", 1)
+        _gdp_now = _fred_last("GDP", 1)
+        if _cprofit and _gdp_now and _gdp_now[0]:
+            out["corp_margin"] = round(_cprofit[0] / _gdp_now[0] * 100, 1)
     except Exception:
         pass
 
@@ -2310,6 +2372,25 @@ def load_macro_data() -> dict:
             out["sp500_eg"]         = _sp_eg_final
         elif _sp_pe:
             out["sp500_pe"] = round(_sp_pe, 1)
+    except Exception:
+        pass
+
+    # ── ERP (Equity Risk Premium) ─────────────────────────────────────
+    # = Forward Earnings Yield (1/ForwardPE × 100) − 10J Treasury
+    try:
+        _erp_pe  = out.get("sp500_forward_pe") or out.get("sp500_trailing_pe")
+        _erp_t10 = out.get("macro", {}).get("🇺🇸 10J Rendite", {}).get("value")
+        if _erp_pe and _erp_pe > 0 and _erp_t10:
+            out["erp"] = round(100.0 / _erp_pe - _erp_t10, 2)
+    except Exception:
+        pass
+
+    # ── Margin-adjustiertes KGV (Hussman-Stil) ────────────────────────
+    try:
+        _ma_pe_base  = out.get("sp500_trailing_pe") or out.get("sp500_pe")
+        _curr_margin = out.get("corp_margin")
+        if _ma_pe_base and _curr_margin and _curr_margin > 0:
+            out["margin_adj_pe"] = round(_ma_pe_base * (_curr_margin / 7.5), 1)
     except Exception:
         pass
 
@@ -3653,6 +3734,217 @@ if st.session_state["show_landing"]:
                     f'<b>Einordnung:</b> {_peg_note}</div>'
                     f'</div>',
                     unsafe_allow_html=True)
+
+    # ── Erweiterte Bewertungsmodelle ──────────────────────────────────
+    _shiller    = macro.get("shiller_cape")
+    _erp        = macro.get("erp")
+    _tobins_q   = macro.get("tobins_q")
+    _mcap_gnp   = macro.get("mcap_gnp")
+    _margin_adj = macro.get("margin_adj_pe")
+    _active_models = [x for x in [_shiller, _erp, _tobins_q, _mcap_gnp, _margin_adj] if x is not None]
+
+    if _active_models:
+        def _norm_score(val, cheap, fair_lo, fair_hi, expensive):
+            if val <= cheap:       return 15
+            elif val <= fair_lo:   return 35
+            elif val <= fair_hi:   return 50
+            elif val <= expensive: return 70
+            else:                  return 90
+
+        _scores = []
+        if _shiller:    _scores.append(_norm_score(_shiller,    15, 22, 28, 38))
+        if _tobins_q:   _scores.append(_norm_score(_tobins_q,   2.0, 3.0, 4.5, 6.0))
+        if _mcap_gnp:   _scores.append(_norm_score(_mcap_gnp,   75, 90, 115, 140))
+        if _bi:         _scores.append(_norm_score(_bi,         75, 90, 115, 140))
+        if _margin_adj: _scores.append(_norm_score(_margin_adj, 15, 20, 28, 38))
+        if _erp is not None:
+            _scores.append(_norm_score(-_erp, -5, -2, 0, 2))
+
+        _mv_score = round(sum(_scores) / len(_scores)) if _scores else 50
+        if _mv_score < 30:    _mv_clr, _mv_lbl = "#00e676", "Unterbewertet"
+        elif _mv_score < 45:  _mv_clr, _mv_lbl = "#69f0ae", "Günstig"
+        elif _mv_score < 57:  _mv_clr, _mv_lbl = "#ffd600", "Fair"
+        elif _mv_score < 72:  _mv_clr, _mv_lbl = "#ff8f00", "Überbewertet"
+        else:                 _mv_clr, _mv_lbl = "#ff5252", "Stark überbewertet"
+
+        st.markdown(
+            '<div style="margin-top:18px;margin-bottom:6px;font-size:0.82rem;'
+            'font-weight:600;color:#90a4ae;letter-spacing:.04em;">'
+            '📐 ERWEITERTE BEWERTUNGSMODELLE</div>',
+            unsafe_allow_html=True)
+
+        _col_a, _col_b, _col_c = st.columns(3)
+
+        if _shiller:
+            if _shiller < 15:   _sc_clr, _sc_lbl = "#00e676", "Historisch günstig"
+            elif _shiller < 22: _sc_clr, _sc_lbl = "#69f0ae", "Unter Ø"
+            elif _shiller < 28: _sc_clr, _sc_lbl = "#ffd600", "Leicht erhöht"
+            elif _shiller < 38: _sc_clr, _sc_lbl = "#ff8f00", "Hoch"
+            else:               _sc_clr, _sc_lbl = "#ff5252", "Extrem hoch"
+            _sc_bar = min(int((_shiller - 5) / 50 * 100), 100)
+            with _col_a:
+                st.markdown(
+                    f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                    f'<span style="color:#b0bec5;">Shiller CAPE'
+                    f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                    f'<span class="tt-box">Shiller KGV = S&amp;P 500 Kurs ÷ inflationsbereinigter 10-Jahres-Ø-Gewinn. '
+                    f'Campbell &amp; Shiller (1988). Hist. Ø ~17×, Dotcom-Hoch 44×. '
+                    f'Starke Prognosekraft für 10–15-j. Realrenditen — kein Timing-Tool.</span></span></span>'
+                    f'<span style="color:{_sc_clr};font-weight:700;">{_shiller:.1f}×</span></div>'
+                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="width:{_sc_bar}%;height:5px;border-radius:4px;background:{_sc_clr};"></div></div>'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                    f'<span>5×</span><span style="color:{_sc_clr};">{_sc_lbl}</span><span>55×</span></div>'
+                    f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                    f'&lt;15× = günstig · 15–22× = fair · 22–28× = teuer · &gt;38× = Dotcom-Niveau</div>'
+                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<b>Quelle:</b> multpl.com · Hist. Ø ~17×. '
+                    f'Erw. 10-j. Realrendite bei {_shiller:.0f}×: '
+                    f'{"1–3%" if _shiller > 35 else "3–5%" if _shiller > 28 else "5–7%" if _shiller > 20 else "7–10%"}.</div>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+
+        if _erp is not None:
+            if _erp > 4.0:    _erp_clr, _erp_lbl = "#00e676", "Sehr attraktiv"
+            elif _erp > 2.0:  _erp_clr, _erp_lbl = "#69f0ae", "Attraktiv"
+            elif _erp > 0.5:  _erp_clr, _erp_lbl = "#ffd600", "Neutral"
+            elif _erp > -1.0: _erp_clr, _erp_lbl = "#ff8f00", "Teuer vs. Bonds"
+            else:             _erp_clr, _erp_lbl = "#ff5252", "TINA vorbei"
+            _erp_bar = min(max(int((_erp + 3) / 9 * 100), 2), 98)
+            _fpe_disp = _sp_forward_pe or _sp_trailing_pe or 20
+            _t10_disp = macro.get("macro", {}).get("🇺🇸 10J Rendite", {}).get("value", 0)
+            with _col_b:
+                st.markdown(
+                    f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                    f'<span style="color:#b0bec5;">Equity Risk Premium'
+                    f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                    f'<span class="tt-box">ERP = Forward Earnings Yield (1/ForwardKGV×100) − 10J Treasury. '
+                    f'Hist. fair ~3–4%. Negatives ERP: Staatsanleihen rentieren besser als Aktien. '
+                    f'Einziges Modell das Zinsen direkt einbezieht.</span></span></span>'
+                    f'<span style="color:{_erp_clr};font-weight:700;">{_erp:+.2f}%</span></div>'
+                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="width:{_erp_bar}%;height:5px;border-radius:4px;background:{_erp_clr};"></div></div>'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                    f'<span>−3%</span><span style="color:{_erp_clr};">{_erp_lbl}</span><span>+6%</span></div>'
+                    f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                    f'&gt;4% = sehr attraktiv · 2–4% = fair · 0–2% = teuer · &lt;0% = Bonds besser</div>'
+                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<b>Rechnung:</b> EY {100/_fpe_disp:.1f}% − 10J {_t10_disp:.1f}% = ERP {_erp:+.2f}%.</div>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+
+        if _tobins_q:
+            if _tobins_q < 2.0:   _tq_clr, _tq_lbl = "#00e676", "Günstig"
+            elif _tobins_q < 3.0: _tq_clr, _tq_lbl = "#69f0ae", "Fair"
+            elif _tobins_q < 4.5: _tq_clr, _tq_lbl = "#ffd600", "Erhöht"
+            elif _tobins_q < 6.0: _tq_clr, _tq_lbl = "#ff8f00", "Hoch"
+            else:                 _tq_clr, _tq_lbl = "#ff5252", "Sehr hoch"
+            _tq_bar = min(int(_tobins_q / 8 * 100), 100)
+            with _col_c:
+                st.markdown(
+                    f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                    f'<span style="color:#b0bec5;">Tobin\'s Q (Proxy)'
+                    f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                    f'<span class="tt-box">Tobin\'s Q = Marktwert ÷ Wiederbeschaffungskosten. '
+                    f'Nobel-Ökonom Tobin (1969): Q&gt;1 → Markt überbewertet Realkapital. '
+                    f'Proxy: S&amp;P 500 P/B. Hist. Ø ~2,5–3,0×.</span></span></span>'
+                    f'<span style="color:{_tq_clr};font-weight:700;">{_tobins_q:.1f}×</span></div>'
+                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="width:{_tq_bar}%;height:5px;border-radius:4px;background:{_tq_clr};"></div></div>'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                    f'<span>1×</span><span style="color:{_tq_clr};">{_tq_lbl}</span><span>8×</span></div>'
+                    f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                    f'&lt;2× = günstig · 2–3× = fair · 3–4,5× = erhöht · &gt;6× = extrem</div>'
+                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<b>Proxy:</b> S&amp;P 500 P/B {_tobins_q:.1f}× (multpl.com). {_tq_lbl}.</div>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+
+        _col_d, _col_e, _col_f = st.columns(3)
+
+        if _mcap_gnp:
+            if _mcap_gnp < 75:    _mg_clr, _mg_lbl = "#00e676", "Unterbewertet"
+            elif _mcap_gnp < 90:  _mg_clr, _mg_lbl = "#69f0ae", "Fair"
+            elif _mcap_gnp < 115: _mg_clr, _mg_lbl = "#ffd600", "Leicht teuer"
+            elif _mcap_gnp < 140: _mg_clr, _mg_lbl = "#ff8f00", "Teuer"
+            else:                 _mg_clr, _mg_lbl = "#ff5252", "Stark überbewertet"
+            _mg_bar = min(int(_mcap_gnp / 200 * 100), 100)
+            with _col_d:
+                _bi_str = f'Buffett={str(int(_bi))}% (GDP) · ' if _bi else ""
+                _diff_str = f'Diff. {str(int(abs(_mcap_gnp - (_bi or 0))))}pp (Globalisierung).' if _bi else ""
+                st.markdown(
+                    f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                    f'<span style="color:#b0bec5;">Marktk. / GNP'
+                    f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                    f'<span class="tt-box">Wilshire 5000 ÷ GNP. GNP berücksichtigt Auslandsgewinne — '
+                    f'robuster für global tätige S&amp;P-500-Konzerne (~50% int. Umsatz). '
+                    f'Buffett-Indikator nutzt GDP. Hist. Ø ~80–100%.</span></span></span>'
+                    f'<span style="color:{_mg_clr};font-weight:700;">{_mcap_gnp:.0f}%</span></div>'
+                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="width:{_mg_bar}%;height:5px;border-radius:4px;background:{_mg_clr};"></div></div>'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                    f'<span>0%</span><span style="color:{_mg_clr};">{_mg_lbl}</span><span>200%</span></div>'
+                    f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                    f'&lt;75% = günstig · 75–90% = fair · 90–115% = leicht teuer · &gt;140% = Warnsignal</div>'
+                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<b>vs. Buffett:</b> {_bi_str}GNP={_mcap_gnp:.0f}%. {_diff_str}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+
+        if _margin_adj:
+            _ma_base = _sp_trailing_pe or _sp_pe or 0
+            _cm = macro.get("corp_margin", 0) or 0
+            if _margin_adj < 15:   _ma_clr, _ma_lbl = "#00e676", "Günstig"
+            elif _margin_adj < 20: _ma_clr, _ma_lbl = "#69f0ae", "Fair"
+            elif _margin_adj < 28: _ma_clr, _ma_lbl = "#ffd600", "Erhöht"
+            elif _margin_adj < 38: _ma_clr, _ma_lbl = "#ff8f00", "Hoch"
+            else:                  _ma_clr, _ma_lbl = "#ff5252", "Sehr hoch"
+            _ma_bar = min(int((_margin_adj - 5) / 50 * 100), 100)
+            with _col_e:
+                st.markdown(
+                    f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                    f'<span style="color:#b0bec5;">Margin-adj. KGV'
+                    f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                    f'<span class="tt-box">Hussman-Stil: Trailing KGV normalisiert für Gewinnmargen. '
+                    f'Wenn Margen über hist. Ø (7,5%) liegen, sind Gewinne "aufgebläht". '
+                    f'Formel: KGV × (aktuelle Marge / 7,5%).</span></span></span>'
+                    f'<span style="color:{_ma_clr};font-weight:700;">{_margin_adj:.1f}×</span></div>'
+                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="width:{_ma_bar}%;height:5px;border-radius:4px;background:{_ma_clr};"></div></div>'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                    f'<span>5×</span><span style="color:{_ma_clr};">{_ma_lbl}</span><span>55×</span></div>'
+                    f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                    f'&lt;15× = günstig · 15–20× = fair · 20–28× = erhöht · &gt;38× = extrem</div>'
+                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<b>Basis:</b> KGV {_ma_base:.1f}× · Marge {_cm:.1f}% (Ø 7,5%) → adj. {_margin_adj:.1f}×. {_ma_lbl}.</div>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+
+        with _col_f:
+            st.markdown(
+                f'<div class="insight-box" style="padding:10px 14px 8px 14px;border:1px solid {_mv_clr}30;">'
+                f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                f'<span style="color:#b0bec5;">Multivariate Composite'
+                f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                f'<span class="tt-box">Gleichgewichteter Score aller verfügbaren Modelle: '
+                f'Shiller CAPE, Tobin\'s Q, Buffett, MarktK./GNP, Margin-adj. KGV, ERP. '
+                f'50 = fair · &lt;30 = günstig · &gt;70 = überbewertet. Kein Timing-Tool.</span></span></span>'
+                f'<span style="color:{_mv_clr};font-weight:700;">{_mv_lbl}</span></div>'
+                f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                f'<div style="width:{_mv_score}%;height:5px;border-radius:4px;background:{_mv_clr};"></div></div>'
+                f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                f'<span>0</span><span style="color:{_mv_clr};">Score {_mv_score}</span><span>100</span></div>'
+                f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                f'&lt;30 = günstig · 30–45 = leicht günstig · 45–57 = fair · 57–72 = teuer · &gt;72 = sehr teuer</div>'
+                f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                f'<b>Modelle:</b> {len(_scores)} von 6 aktiv. Ø-Signal: {_mv_lbl}.</div>'
+                f'</div>',
+                unsafe_allow_html=True)
 
     # ── Erweitertes Makro-Dashboard (Expander) ────────────────────────
     try:
