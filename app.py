@@ -3752,7 +3752,8 @@ if st.session_state["show_landing"]:
                 x=series.index, y=series.values,
                 mode="lines", line=dict(color=color, width=1.5),
                 fill="tozeroy" if ref_zero else "none",
-                fillcolor=color.replace(")", ",0.08)").replace("rgb", "rgba") if color.startswith("rgb") else color + "15",
+                fillcolor=(color.replace(")", ",0.08)").replace("rgb", "rgba") if color.startswith("rgb")
+                           else f"rgba({int(color[1:3],16)},{int(color[3:5],16)},{int(color[5:7],16)},0.08)"),
                 name=title,
             ))
             if ref_zero:
