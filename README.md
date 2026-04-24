@@ -213,3 +213,128 @@ ETFs:       ARKK, XBI, GDX, KWEB, IBIT
 | **Dividende** | Yield, Payout Ratio, Consecutive Years |
 | **Analysten** | Kursziel, Upside, Consensus, # Analysten |
 | **Prognose** | Forward EPS, EPS-Schätzungen, Revenue-Schätzungen |
+
+---
+
+## API-Dokumentation
+
+Alle Endpoints außer `/` und `/health` erfordern den Header `X-API-Key` wenn `STOCKSMB_API_KEY` gesetzt ist.
+
+### Endpoints
+
+#### `GET /`
+Health-Check. Öffentlich.
+```json
+{"app": "StocksMB API", "version": "1.1.0", "status": "online"}
+```
+
+#### `GET /score/{ticker}`
+Alle Scores + Fair Value für einen Ticker.
+```bash
+curl -H "X-API-Key: deinkey" https://deine-api.railway.app/score/AAPL
+```
+```json
+{
+  "ticker": "AAPL",
+  "price": 213.49,
+  "scores": {
+    "quality": 82,
+    "value": 54,
+    "tradeable": 91,
+    "daytrading": 78,
+    "composite": 72.3
+  },
+  "daytrading_detail": {
+    "volumen": {"wert": 55.2, "einheit": "M/Tag", "label": "Extrem hoch"},
+    "atr_pct": {"wert": 1.8, "einheit": "%"},
+    "beta": {"wert": 1.24}
+  },
+  "fair_value": 198.50,
+  "discount_pct": -7.5
+}
+```
+
+#### `GET /screener/quality?top_n=5&min_score=65`
+Top-Qualitätsaktien unter Fair Value.
+
+| Parameter | Standard | Beschreibung |
+|---|---|---|
+| `top_n` | 5 | Anzahl Ergebnisse (1–20) |
+| `min_score` | 65 | Mindest-Quality-Score |
+
+#### `GET /screener/value?top_n=10&min_score=55`
+Value-Picks nach P/E, FCF, Dividende.
+
+#### `GET /screener/tradeable?top_n=15`
+Liquideste, gut handelbare Aktien.
+
+#### `GET /screener/daytrading?min_atr_pct=2.5&min_score=60&top_n=10`
+Daytrading-Kandidaten nach ATR% und Volumen.
+
+| Parameter | Standard | Beschreibung |
+|---|---|---|
+| `top_n` | 15 | Anzahl Ergebnisse |
+| `min_score` | 50 | Mindest-DT-Score |
+| `min_atr_pct` | 1.5 | Mindest-ATR% |
+| `min_volume_m` | 5.0 | Mindest-Volumen Mio/Tag |
+
+#### `GET /signals?top_n=5`
+Makro-Regime + Top-Picks für den Trading-Bot.
+```json
+{
+  "macro": {
+    "regime": "Risk-On",
+    "note": "Zinskurve normal (+0.42%)",
+    "hy_signal": "OK"
+  },
+  "bot_action": "BUY",
+  "quality_picks": [...],
+  "value_picks": [...]
+}
+```
+
+**Makro-Regime-Logik:**
+- T10Y2Y > 0.5% → Risk-On
+- T10Y2Y −0.2% bis 0.5% → Neutral
+- T10Y2Y < −0.2% → Risk-Off
+- HY-Spread > 600bp → überschreibt zu Risk-Off
+
+---
+
+## Trading Bot
+
+### Dual-Strategie
+
+```
+┌─────────────────────────────────────────────────────┐
+│  DAYTRADING (3 Slots)     │  QUALITY/SWING (2 Slots)│
+│  ─────────────────────    │  ──────────────────────  │
+│  Quelle: /screener/dt     │  Quelle: /signals        │
+│  Score ≥ 60               │  Score ≥ 70              │
+│  ATR% ≥ 2.5%              │  Discount ≥ 6%           │
+│  Position: 15%            │  Position: 20%           │
+│  Stop-Loss: −3%           │  Stop-Loss: −5%          │
+│  Take-Profit: +8%         │  Take-Profit: +15%       │
+│  Poll: alle 5 Min         │  Poll: alle 15 Min       │
+│  Close: 21:45 MEZ         │  Close: bei Risk-Off     │
+└─────────────────────────────────────────────────────┘
+```
+
+### Telegram Notifications
+Jeder Trade löst eine Nachricht aus:
+```
+⚡ PAPER BUY [DT] — TSLA
+   Kurs: 248.30 USD · 60 Stk · 14.898 USD
+   DT-Score: 78/100 · ATR: 3.2%
+   SL: −3% · TP: +8%
+```
+
+### Tagesbericht (22:05 MEZ)
+```
+📊 StocksMB Bot v2 — Tagesbericht 24.04.2026
+   Portfolio: 102.340 USD (+2.3% ggü. Start)
+   ⚡ DT-Slots: 0/3 · Realisiert: +1.840 USD (4 Trades)
+   💎 Quality-Slots: 2/2 · Realisiert: +0 USD (0 Trades)
+   💎 🟢 AAPL: +3.2%
+   💎 🟢 MSFT: +1.8%
+```
