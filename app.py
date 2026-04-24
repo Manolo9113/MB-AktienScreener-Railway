@@ -2823,6 +2823,60 @@ def load_screener_data() -> list[dict]:
     return results[:8]
 
 
+# ── Quality Top-Picks: Score ≥ 80, einmal täglich ─────────────────────────────
+_QUALITY_HIGHSCORE_POOL = list(dict.fromkeys(
+    list(_SCREENER_WATCHLIST) +
+    list(_GROWTH_POOL.keys()) +
+    list(_VALUE_POOL.keys()) +
+    ["AAPL", "MSFT", "GOOGL", "V", "MA", "ASML", "TSM", "LLY", "NVO",
+     "COST", "SPGI", "MCO", "FICO", "CPRT", "MELI", "ROP", "ISRG"]
+))
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_quality_highscore() -> list[dict]:
+    """Alle Titel mit Quality-Score ≥ 80 — einmal täglich aktualisiert."""
+    results = []
+    for tkr in _QUALITY_HIGHSCORE_POOL:
+        try:
+            info  = yf.Ticker(tkr).info
+            price = info.get("currentPrice") or info.get("regularMarketPrice")
+            if not price:
+                continue
+            score = _sc_score(info)
+            if score < 80:
+                continue
+            fv       = _sc_fair_value(info)
+            discount = round((fv - price) / fv * 100, 1) if fv and fv > 0 else None
+            rg       = round((info.get("revenueGrowth") or 0) * 100, 1)
+            gm       = round((info.get("grossMargins") or 0) * 100, 1)
+            fcf      = info.get("freeCashflow") or 0
+            mkt      = info.get("marketCap") or 1
+            fcy      = round(fcf / mkt * 100, 1) if fcf else 0
+            roe      = round((info.get("returnOnEquity") or 0) * 100, 1)
+            week52h  = info.get("fiftyTwoWeekHigh") or price
+            week52l  = info.get("fiftyTwoWeekLow") or price
+            w52_pos  = ((price - week52l) / (week52h - week52l) * 100) if week52h > week52l else 50
+            results.append({
+                "ticker": tkr,
+                "name":   (info.get("shortName") or tkr)[:28],
+                "price":  price,
+                "score":  score,
+                "fv":     fv,
+                "discount": discount,
+                "rev_growth": rg,
+                "gross_margin": gm,
+                "fcf_yield": fcy,
+                "roe": roe,
+                "sector": info.get("sector", ""),
+                "currency": info.get("currency", "USD"),
+                "w52_pos": w52_pos,
+            })
+        except Exception:
+            pass
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results
+
+
 @st.cache_data(ttl=43200)
 def load_stock_picks():
     growth_results, value_results, div_results, hype_results = [], [], [], []
@@ -4285,6 +4339,64 @@ if st.session_state["show_landing"]:
             </div>""", unsafe_allow_html=True)
     else:
         st.markdown('<div class="metric-card" style="color:#546e7a; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
+
+    # ── Quality Top-Picks (Score ≥ 80) ────────────────────────────────────────
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    with st.expander("⭐  Quality Top-Picks — Score ≥ 80  (täglich aktualisiert)", expanded=False):
+        with st.spinner("Lade Quality Top-Picks…"):
+            _qh = load_quality_highscore()
+
+        if not _qh:
+            st.markdown("<div style='color:#546e7a;text-align:center;padding:20px;'>Keine Titel mit Score ≥ 80 gefunden.</div>", unsafe_allow_html=True)
+        else:
+            st.markdown(
+                f"<div style='color:#ffd600;font-size:0.78rem;margin-bottom:14px;'>"
+                f"⭐ {len(_qh)} Titel mit Quality-Score ≥ 80 — "
+                f"Bruttomarge, ROIC, FCF Yield, Wachstum und Moat bewertet.</div>",
+                unsafe_allow_html=True)
+
+            _qh_cols = st.columns(4)
+            for _qi, _q in enumerate(_qh):
+                _score_color = "#00e676" if _q["score"] >= 90 else "#ffd600" if _q["score"] >= 85 else "#64b5f6"
+                _disc_html = ""
+                if _q["discount"] and _q["discount"] > 0:
+                    _disc_html = (f"<span style='background:rgba(0,230,118,0.12);color:#00e676;"
+                                  f"border-radius:4px;padding:2px 6px;font-size:0.7rem;font-weight:600;"
+                                  f"margin-top:4px;display:inline-block;'>-{_q['discount']:.1f}% zum FV</span>")
+                elif _q["fv"]:
+                    _disc_html = (f"<span style='background:rgba(255,82,82,0.1);color:#ff5252;"
+                                  f"border-radius:4px;padding:2px 6px;font-size:0.7rem;"
+                                  f"margin-top:4px;display:inline-block;'>über Fair Value</span>")
+                with _qh_cols[_qi % 4]:
+                    st.markdown(
+                        f"<div style='background:linear-gradient(135deg,#0d1f3c,#0a1628);"
+                        f"border:1px solid #1e3a5f;border-top:3px solid {_score_color};"
+                        f"border-radius:10px;padding:12px 14px;margin-bottom:10px;'>"
+                        f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;'>"
+                        f"<span style='color:{_score_color};font-size:1rem;font-weight:800;'>{_q['ticker']}</span>"
+                        f"<span style='background:{_score_color}22;color:{_score_color};border-radius:20px;"
+                        f"padding:2px 8px;font-size:0.72rem;font-weight:700;'>{_q['score']}/100</span>"
+                        f"</div>"
+                        f"<div style='color:#546e7a;font-size:0.68rem;margin-bottom:6px;"
+                        f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{_q['name']}</div>"
+                        f"<div style='color:#b0bec5;font-size:0.82rem;font-weight:600;margin-bottom:6px;'>"
+                        f"${_q['price']:,.2f}</div>"
+                        f"<div style='display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px;'>"
+                        f"<span style='background:rgba(255,255,255,0.05);color:#69f0ae;"
+                        f"border-radius:4px;padding:2px 5px;font-size:0.67rem;'>GM {_q['gross_margin']:.0f}%</span>"
+                        f"<span style='background:rgba(255,255,255,0.05);color:#40c4ff;"
+                        f"border-radius:4px;padding:2px 5px;font-size:0.67rem;'>FCF {_q['fcf_yield']:.1f}%</span>"
+                        f"<span style='background:rgba(255,255,255,0.05);color:#ce93d8;"
+                        f"border-radius:4px;padding:2px 5px;font-size:0.67rem;'>ROE {_q['roe']:.0f}%</span>"
+                        f"</div>"
+                        f"{_disc_html}"
+                        f"</div>",
+                        unsafe_allow_html=True)
+
+        st.markdown(
+            "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:6px;'>"
+            "⚠️ Keine Anlageberatung · Score = Qualitätsbewertung, nicht Kursprognose · Daten via Yahoo Finance</div>",
+            unsafe_allow_html=True)
 
     # ── Schnellauswahl auf Landing ──
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
