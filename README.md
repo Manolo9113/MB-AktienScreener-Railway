@@ -338,3 +338,79 @@ Jeder Trade löst eine Nachricht aus:
    💎 🟢 AAPL: +3.2%
    💎 🟢 MSFT: +1.8%
 ```
+
+---
+
+## Deployment auf Railway
+
+### Drei Services
+
+| Service | Repo | Start Command |
+|---|---|---|
+| Streamlit App | MB-AktienScreener-Railway | `streamlit run app.py --server.port $PORT` |
+| FastAPI | MB-AktienScreener-Railway | `uvicorn api:app --host 0.0.0.0 --port $PORT` |
+| Trading Bot | Trading-Bor | `python bot/bot.py` |
+
+### Schritt-für-Schritt
+
+1. Railway-Projekt öffnen → **New Service** → **GitHub Repo**
+2. Repo auswählen, Start Command eintragen
+3. Variables setzen (siehe unten)
+4. Deploy
+
+---
+
+## Umgebungsvariablen
+
+### Streamlit App
+| Variable | Pflicht | Beschreibung |
+|---|---|---|
+| `GEMINI_API_KEY` | Nein | Google Gemini für KI-Analyse |
+
+### FastAPI Service
+| Variable | Pflicht | Beschreibung |
+|---|---|---|
+| `STOCKSMB_API_KEY` | Nein* | Schützt alle Screener-Endpoints |
+
+> *Leer lassen = kein Schutz (nur für lokale Entwicklung)
+
+### Trading Bot
+| Variable | Pflicht | Beschreibung |
+|---|---|---|
+| `STOCKSMB_API_URL` | Ja | URL des FastAPI-Service auf Railway |
+| `STOCKSMB_API_KEY` | Ja* | Gleicher Key wie beim API-Service |
+| `TELEGRAM_BOT_TOKEN` | Ja | Token von @BotFather auf Telegram |
+| `TELEGRAM_CHAT_ID` | Ja | Chat-ID für Trade-Benachrichtigungen |
+
+> *Nur wenn beim API-Service gesetzt
+
+---
+
+## Datenpquellen
+
+| Quelle | Was | Kosten |
+|---|---|---|
+| **yfinance** | Kurse, Fundamentaldaten, Financials | Kostenlos |
+| **FRED API** | Makrodaten (Zinskurve, HY-Spreads, M2, DXY) | Kostenlos |
+| **FMP API** | ROIC, PEG, Kursziele, Peers | Free Tier verfügbar |
+| **multpl.com** | S&P 500 Historische KGV/EPS-Daten | Kostenlos (Scraping) |
+
+---
+
+## Nicht-US Aktien (Japan, Europa)
+
+Für japanische und europäische Aktien liefert yfinance oft `0` oder `None` für Margen, FCF und Wachstum. Die Funktion `_patch_info_from_statements()` behebt das:
+
+1. **FCF-Patch**: Berechnet FCF aus Cashflow-Statement (OCF − CapEx) mit fuzzy Row-Matching
+2. **Margen-Patch**: Berechnet Gross/Op./Profit Margin direkt aus GuV wenn fehlend
+3. **Earnings Growth**: Berechnet YoY aus Net Income wenn `earningsGrowth` fehlt
+4. **MarketCap-Fallback**: Kurs × Aktienanzahl wenn `marketCap` fehlt (für FCF Yield)
+
+---
+
+## Disclaimer
+
+> ⚠️ **Keine Anlageberatung.** Alle Daten und Scores dienen ausschließlich zu Informationszwecken.
+> Vergangene Performance ist kein Indikator für zukünftige Ergebnisse.
+> Der Paper-Trading-Bot handelt mit virtuellem Geld — kein echtes Kapital ist involviert.
+> Leveraged ETFs sind Hochrisiko-Produkte und nur für erfahrene Trader geeignet.
