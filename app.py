@@ -1132,6 +1132,71 @@ def load_earnings_surprises(ticker: str) -> list[dict]:
     return results
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_analyst_estimates(ticker: str) -> dict:
+    """Analyst EPS + Revenue forward estimates. FMP primary, yfinance fallback."""
+    out = {"eps": [], "rev": []}
+
+    # FMP earnings estimates
+    if FMP_API_KEY:
+        try:
+            r = requests.get(
+                f"https://financialmodelingprep.com/api/v3/analyst-estimates/{ticker}",
+                params={"apikey": FMP_API_KEY, "period": "annual", "limit": 4},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list):
+                    for item in data:
+                        yr = str(item.get("date", ""))[:4]
+                        eps_est = item.get("estimatedEpsAvg")
+                        rev_est = item.get("estimatedRevenueAvg")
+                        n_an = item.get("numberAnalystEstimatedEps") or item.get("numberAnalystEstimatedRevenue")
+                        if eps_est:
+                            out["eps"].append({"year": yr, "estimate": float(eps_est), "analysts": n_an})
+                        if rev_est:
+                            out["rev"].append({"year": yr, "estimate": float(rev_est), "analysts": n_an})
+        except Exception:
+            pass
+
+    # yfinance fallback for EPS estimates
+    if not out["eps"]:
+        try:
+            stock = yf.Ticker(ticker)
+            try:
+                ee = stock.get_earnings_estimate()
+            except Exception:
+                ee = getattr(stock, "earnings_estimate", None)
+            if ee is not None and not ee.empty:
+                for period, row in ee.iterrows():
+                    avg = row.get("avg") or row.get("Avg Estimate")
+                    n = row.get("numberOfAnalysts") or row.get("No. of Analysts")
+                    if avg is not None and pd.notna(avg):
+                        out["eps"].append({"year": str(period), "estimate": float(avg), "analysts": int(n) if n and pd.notna(n) else None})
+        except Exception:
+            pass
+
+    # yfinance fallback for revenue estimates
+    if not out["rev"]:
+        try:
+            stock = yf.Ticker(ticker)
+            try:
+                re_df = stock.get_revenue_estimate()
+            except Exception:
+                re_df = getattr(stock, "revenue_estimate", None)
+            if re_df is not None and not re_df.empty:
+                for period, row in re_df.iterrows():
+                    avg = row.get("avg") or row.get("Avg Estimate")
+                    n = row.get("numberOfAnalysts") or row.get("No. of Analysts")
+                    if avg is not None and pd.notna(avg):
+                        out["rev"].append({"year": str(period), "estimate": float(avg), "analysts": int(n) if n and pd.notna(n) else None})
+        except Exception:
+            pass
+
+    return out
+
+
 @st.cache_data(ttl=86400)
 def load_segment_data(ticker: str) -> dict:
     """
@@ -4759,6 +4824,7 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     hist_weekly, hist_monthly, share_history, splits_data = load_yfinance_extended(ticker)
     q_rev, q_net, q_eps = load_quarterly_financials(ticker)
     earnings_surprises   = load_earnings_surprises(ticker)
+    analyst_estimates    = load_analyst_estimates(ticker)
     a_rev, a_net, a_eps, a_fcf, a_shares, a_ebitda, a_capex, a_goodwill = load_annual_financials(ticker)
     # Segmentdaten: sec-api.io bevorzugt, FMP als Fallback
     _secapi_seg = load_secapi_segments(ticker) if SEC_API_KEY else {"product": [], "geo": []}
@@ -5530,7 +5596,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
 # ==================== NAVIGATION ====================
 # Session-state-basierte Navigation (immun gegen st.rerun() und WebSocket-Reconnects)
 _TABS = [
-    "📊 Kennzahlen", "📈 Wachstum", "📋 Fundamental", "⚖️ Bewertung",
+    "📊 Kennzahlen", "📈 Wachstum", "🔮 Prognose", "📋 Fundamental", "⚖️ Bewertung",
     "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News",
 ]
 _at = st.session_state.get("active_tab", 0)
@@ -5942,7 +6008,165 @@ elif _at == 1:
     else:
         st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Segmentdaten: SEC_API_KEY in Railway-Umgebungsvariablen setzen (sec-api.io).</div>', unsafe_allow_html=True)
 
+# ==================== TAB 2: PROGNOSE ====================
 elif _at == 2:
+    st.markdown("<div class='section-header'>🔮 Analysten-Prognosen</div>", unsafe_allow_html=True)
+
+    # ── Consensus & Price Target ──────────────────────────────────────────────
+    _rec_key   = yf_info.get("recommendationKey", "")
+    _rec_mean  = yf_info.get("recommendationMean")   # 1=Strong Buy … 5=Strong Sell
+    _n_anal    = yf_info.get("numberOfAnalystOpinions") or 0
+    _t_low     = yf_info.get("targetLowPrice")
+    _t_mean    = yf_info.get("targetMeanPrice")
+    _t_median  = yf_info.get("targetMedianPrice")
+    _t_high    = yf_info.get("targetHighPrice")
+
+    _rec_label_map = {
+        "strong_buy": ("Strong Buy",  "#26a69a"),
+        "buy":        ("Buy",         "#66bb6a"),
+        "hold":       ("Hold",        "#ffa726"),
+        "sell":       ("Sell",        "#ef5350"),
+        "strong_sell":("Strong Sell", "#b71c1c"),
+    }
+    _rec_label, _rec_color = _rec_label_map.get(
+        _rec_key, ((_rec_key.replace("_", " ").title() if _rec_key else "N/A"), "#546e7a")
+    )
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown(f"""
+        <div class="metric-card" style="border-left:4px solid {_rec_color};">
+            <div class="metric-label">Analysten-Konsens</div>
+            <div class="metric-value" style="color:{_rec_color};">{_rec_label}</div>
+            <div style="color:#78909c;font-size:0.8rem;margin-top:4px;">{_n_anal} Analysten</div>
+        </div>""", unsafe_allow_html=True)
+    with c2:
+        _upside = ((_t_mean / price - 1) * 100) if (_t_mean and price and price > 0) else None
+        _upside_color = "#26a69a" if (_upside and _upside > 5) else "#ef5350" if (_upside and _upside < -5) else "#ffa726"
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Kursziel (Ø)</div>
+            <div class="metric-value">{f"{_t_mean:.2f}" if _t_mean else "N/A"}</div>
+            <div style="color:{_upside_color};font-size:0.85rem;margin-top:4px;">
+                {f"{_upside:+.1f}% Upside" if _upside is not None else ""}
+            </div>
+        </div>""", unsafe_allow_html=True)
+    with c3:
+        _score_bar = ""
+        if _rec_mean is not None:
+            _pct = (5 - float(_rec_mean)) / 4 * 100  # 1→100%, 5→0%
+            _score_bar = f"""<div style="background:#1e2d45;border-radius:6px;height:8px;margin-top:8px;">
+                <div style="background:{_rec_color};width:{_pct:.0f}%;height:8px;border-radius:6px;"></div></div>
+                <div style="color:#78909c;font-size:0.75rem;margin-top:3px;">Score {float(_rec_mean):.1f} / 5 (1=Strong Buy)</div>"""
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Konsens-Score</div>
+            {_score_bar if _score_bar else '<div class="metric-value">N/A</div>'}
+        </div>""", unsafe_allow_html=True)
+
+    # ── Price Target Range Bar ────────────────────────────────────────────────
+    if _t_low and _t_high and price:
+        _range = _t_high - _t_low
+        _price_pct  = max(0, min(100, (_t_low > 0 and _range > 0) and ((price - _t_low) / _range * 100) or 0))
+        _mean_pct   = max(0, min(100, (_t_low > 0 and _range > 0) and ((_t_mean - _t_low) / _range * 100) if _t_mean else 0))
+        st.markdown(f"""
+        <div style="background:#0d1526;border:1px solid #1e2d45;border-radius:12px;padding:20px 24px;margin:16px 0;">
+            <div style="color:#b0bec5;font-size:0.82rem;margin-bottom:10px;font-weight:600;">KURSZIEL-SPANNE</div>
+            <div style="position:relative;background:#1e2d45;border-radius:6px;height:12px;margin:8px 0 20px 0;">
+                <div style="position:absolute;left:0;width:100%;height:12px;border-radius:6px;
+                    background:linear-gradient(90deg,#ef5350 0%,#ffa726 40%,#26a69a 100%);opacity:0.25;"></div>
+                <div style="position:absolute;left:{_mean_pct:.1f}%;transform:translateX(-50%);
+                    top:-4px;width:4px;height:20px;background:#26a69a;border-radius:2px;" title="Ø Kursziel"></div>
+                <div style="position:absolute;left:{_price_pct:.1f}%;transform:translateX(-50%);
+                    top:-6px;width:8px;height:24px;background:#ffffff;border-radius:2px;" title="Kurs"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;color:#78909c;font-size:0.8rem;">
+                <span>Tief {_t_low:.2f}</span>
+                <span style="color:#b0bec5;">● Kurs {price:.2f}</span>
+                <span>Hoch {_t_high:.2f}</span>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── EPS Estimates Table ───────────────────────────────────────────────────
+    _eps_est = analyst_estimates.get("eps", [])
+    _rev_est = analyst_estimates.get("rev", [])
+
+    if _eps_est or _rev_est:
+        c1, c2 = st.columns(2)
+        with c1:
+            if _eps_est:
+                st.markdown("<div style='color:#b0bec5;font-weight:600;font-size:0.85rem;margin-bottom:8px;'>EPS-PROGNOSEN</div>", unsafe_allow_html=True)
+                _eps_rows = ""
+                for e in _eps_est[:4]:
+                    _an_txt = f"({e['analysts']} An.)" if e.get("analysts") else ""
+                    _eps_rows += f"<tr><td>{e['year']}</td><td style='text-align:right'>{e['estimate']:.2f}</td><td style='text-align:right;color:#546e7a'>{_an_txt}</td></tr>"
+                st.markdown(f"""
+                <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                <thead><tr style="color:#546e7a;border-bottom:1px solid #1e2d45;">
+                    <th style="text-align:left;padding:4px 8px">Jahr</th>
+                    <th style="text-align:right;padding:4px 8px">EPS Est.</th>
+                    <th style="text-align:right;padding:4px 8px">Analysten</th>
+                </tr></thead>
+                <tbody style="color:#eceff1;">{_eps_rows}</tbody>
+                </table>""", unsafe_allow_html=True)
+        with c2:
+            if _rev_est:
+                st.markdown("<div style='color:#b0bec5;font-weight:600;font-size:0.85rem;margin-bottom:8px;'>UMSATZ-PROGNOSEN</div>", unsafe_allow_html=True)
+                _rev_rows = ""
+                for e in _rev_est[:4]:
+                    _an_txt = f"({e['analysts']} An.)" if e.get("analysts") else ""
+                    _rev_rows += f"<tr><td>{e['year']}</td><td style='text-align:right'>{fmt_large(e['estimate'])}</td><td style='text-align:right;color:#546e7a'>{_an_txt}</td></tr>"
+                st.markdown(f"""
+                <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                <thead><tr style="color:#546e7a;border-bottom:1px solid #1e2d45;">
+                    <th style="text-align:left;padding:4px 8px">Jahr</th>
+                    <th style="text-align:right;padding:4px 8px">Rev. Est.</th>
+                    <th style="text-align:right;padding:4px 8px">Analysten</th>
+                </tr></thead>
+                <tbody style="color:#eceff1;">{_rev_rows}</tbody>
+                </table>""", unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Keine Forward-Schätzungen verfügbar (FMP_API_KEY oder yfinance-Daten fehlen).</div>', unsafe_allow_html=True)
+
+    # ── EPS Beat/Miss History ─────────────────────────────────────────────────
+    if earnings_surprises:
+        st.markdown("<div style='color:#b0bec5;font-weight:600;font-size:0.85rem;margin:20px 0 8px 0;'>EPS BEAT / MISS HISTORY</div>", unsafe_allow_html=True)
+        _surp_rows = ""
+        for s in earnings_surprises[:8]:
+            _verdict_color = "#26a69a" if s["verdict"] == "Beat" else "#ef5350" if s["verdict"] == "Miss" else "#ffa726"
+            _est_txt = f"{s['estimate']:.2f}" if s.get("estimate") is not None else "—"
+            _surp_txt = f"{s['surp_pct']:+.1f}%" if s.get("surp_pct") else ""
+            _surp_rows += f"""<tr>
+                <td style="padding:4px 8px">{s['date']}</td>
+                <td style="text-align:right;padding:4px 8px">{_est_txt}</td>
+                <td style="text-align:right;padding:4px 8px">{s['actual']:.2f}</td>
+                <td style="text-align:right;padding:4px 8px;color:{_verdict_color}">{_surp_txt}</td>
+                <td style="text-align:center;padding:4px 8px"><span style="color:{_verdict_color};font-weight:600">{s['verdict']}</span></td>
+            </tr>"""
+        st.markdown(f"""
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+        <thead><tr style="color:#546e7a;border-bottom:1px solid #1e2d45;">
+            <th style="text-align:left;padding:4px 8px">Quartal</th>
+            <th style="text-align:right;padding:4px 8px">Schätzung</th>
+            <th style="text-align:right;padding:4px 8px">Actual EPS</th>
+            <th style="text-align:right;padding:4px 8px">Überraschung</th>
+            <th style="text-align:center;padding:4px 8px">Ergebnis</th>
+        </tr></thead>
+        <tbody style="color:#eceff1;">{_surp_rows}</tbody>
+        </table>""", unsafe_allow_html=True)
+
+    # ── Forward PE from estimates ─────────────────────────────────────────────
+    _fwd_pe = yf_info.get("forwardPE")
+    _fwd_eps = yf_info.get("forwardEps")
+    if _fwd_pe or _fwd_eps:
+        st.markdown(f"""
+        <div style="background:#0d1526;border:1px solid #1e2d45;border-radius:12px;padding:16px 24px;margin-top:20px;display:flex;gap:32px;flex-wrap:wrap;">
+            {f'<div><div style="color:#546e7a;font-size:0.78rem">Forward KGV</div><div style="color:#eceff1;font-size:1.1rem;font-weight:700">{_fwd_pe:.1f}x</div></div>' if _fwd_pe else ""}
+            {f'<div><div style="color:#546e7a;font-size:0.78rem">Forward EPS</div><div style="color:#eceff1;font-size:1.1rem;font-weight:700">{_fwd_eps:.2f}</div></div>' if _fwd_eps else ""}
+            {f'<div><div style="color:#546e7a;font-size:0.78rem">Akt. Kurs</div><div style="color:#eceff1;font-size:1.1rem;font-weight:700">{price:.2f}</div></div>'}
+        </div>""", unsafe_allow_html=True)
+
+elif _at == 3:
     st.markdown("<div class='section-header'>Fundamental</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -6313,7 +6537,7 @@ elif _at == 2:
                     'Software/Asset-light &lt;3%</div>',
                     unsafe_allow_html=True)
 
-elif _at == 3:
+elif _at == 4:
     st.markdown("<div class='section-header'>Bewertungsmultiples</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -6499,7 +6723,7 @@ elif _at == 3:
                 st.info("Nicht genug Daten für DCF-Berechnung (FCF oder Shares fehlen).")
 
 # ==================== TAB 5: CHART ANALYSE ====================
-elif _at == 6:
+elif _at == 7:
     st.markdown("<div class='section-header'>📉 Technische Chart-Analyse</div>", unsafe_allow_html=True)
 
     # ── Controls row ──────────────────────────────────────────────────
@@ -6862,7 +7086,7 @@ elif _at == 6:
             </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 6: INSIDER & PEERS ====================
-elif _at == 7:
+elif _at == 8:
     col_ins, col_peers = st.columns(2)
 
     # Insider
@@ -7023,8 +7247,8 @@ elif _at == 7:
         Glassdoor-Bewertungen und Track Record bei Kapitalallokation prüfen.
     </div>""", unsafe_allow_html=True)
 
-# ==================== TAB 7: NEWS ====================
-elif _at == 8:
+# ==================== TAB 9: NEWS ====================
+elif _at == 9:
     st.markdown("<div class='section-header'>📰 Aktuelle News</div>", unsafe_allow_html=True)
     if NEWS_API_KEY:
         try:
@@ -7113,7 +7337,7 @@ elif _at == 8:
             st.info(f"News konnten nicht geladen werden: {ex}")
 
 # ==================== TAB 8: BURGGRABEN ====================
-elif _at == 5:
+elif _at == 6:
     # ── Header: Moat-Breite ────────────────────────────────────────────
     st.markdown("<div class='section-header'>🏰 Burggraben-Einschätzung</div>", unsafe_allow_html=True)
     mc1, mc2, mc3 = st.columns([1, 1, 2])
@@ -7274,7 +7498,7 @@ elif _at == 5:
     </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 9: PIOTROSKI F-SCORE ====================
-elif _at == 4:
+elif _at == 5:
     with st.spinner("Lade Jahresabschlüsse für F-Score…"):
         piotroski = load_piotroski(ticker)
 
