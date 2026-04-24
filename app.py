@@ -629,6 +629,13 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
             if ni1 and ni1 > 0:
                 info["earningsGrowth"] = (ni0 / ni1) - 1
 
+    # ── marketCap Fallback (häufig None bei JP/EU Aktien → FCF Yield = 0) ─
+    if not info.get("marketCap"):
+        _price  = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+        _shares = info.get("sharesOutstanding") or 0
+        if _price and _shares:
+            info["marketCap"] = int(_price * _shares)
+
     return info
 
 
@@ -4570,6 +4577,156 @@ if st.session_state["show_landing"]:
             </div>""", unsafe_allow_html=True)
     else:
         st.markdown('<div class="metric-card" style="color:#546e7a; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
+
+    # ── Quality Top-Picks (Score ≥ 80, täglich aktualisiert) ──────────
+    @st.cache_data(ttl=86400, show_spinner=False)
+    def load_quality_highscore() -> list:
+        _pool = list(dict.fromkeys(
+            list(_SCREENER_WATCHLIST) +
+            list(_GROWTH_POOL.keys()) + list(_VALUE_POOL.keys())
+        ))
+        results = []
+        for tkr in _pool:
+            try:
+                st_obj = yf.Ticker(tkr)
+                info   = st_obj.info
+                info   = _patch_info_from_statements(st_obj, info)
+                sc     = _sc_score(info)
+                if sc < 80:
+                    continue
+                price  = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+                mktcap = info.get("marketCap") or 0
+                fcf    = info.get("freeCashflow") or 0
+                results.append({
+                    "ticker":       tkr,
+                    "name":         info.get("shortName", tkr),
+                    "price":        round(price, 2),
+                    "score":        sc,
+                    "rev_growth":   round((info.get("revenueGrowth") or 0) * 100, 1),
+                    "gross_margin": round((info.get("grossMargins") or 0) * 100, 1),
+                    "fcf_yield":    round(fcf / mktcap * 100, 1) if fcf and mktcap else 0,
+                    "roe":          round((info.get("returnOnEquity") or 0) * 100, 1),
+                })
+            except Exception:
+                pass
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results
+
+    with st.expander("⭐ Quality Top-Picks — Score ≥ 80 (täglich aktualisiert)", expanded=False):
+        with st.spinner("Berechne Quality-Scores…"):
+            _qtp = load_quality_highscore()
+        if _qtp:
+            st.markdown(
+                f"<div style='font-size:0.78rem;color:#90a4ae;margin-bottom:10px;'>"
+                f"{len(_qtp)} Aktien mit Score ≥ 80 — sortiert nach Quality-Score</div>",
+                unsafe_allow_html=True)
+            for _q in _qtp:
+                _sc_clr = "#00e676" if _q["score"] >= 90 else "#69f0ae" if _q["score"] >= 85 else "#ffd600"
+                st.markdown(
+                    f'<div class="metric-card" style="padding:10px 14px;margin-bottom:6px;cursor:pointer;">'
+                    f'<div style="display:flex;align-items:center;justify-content:space-between;">'
+                    f'<div>'
+                    f'<span style="font-weight:700;color:#eceff1;">{_q["ticker"]}</span>'
+                    f'<span style="color:#546e7a;font-size:0.78rem;margin-left:8px;">{_q["name"]}</span>'
+                    f'</div>'
+                    f'<span style="color:{_sc_clr};font-weight:700;font-size:1.0rem;">Score {_q["score"]}</span>'
+                    f'</div>'
+                    f'<div style="margin-top:5px;font-size:0.72rem;">'
+                    f'<span style="color:#546e7a;">Rev-Wachstum </span><span style="color:#90a4ae;">{_q["rev_growth"]:+.1f}%</span>'
+                    f'&nbsp;&nbsp;<span style="color:#546e7a;">Brutto-Marge </span><span style="color:#90a4ae;">{_q["gross_margin"]:.1f}%</span>'
+                    f'&nbsp;&nbsp;<span style="color:#546e7a;">FCF Yield </span><span style="color:#90a4ae;">{_q["fcf_yield"]:.1f}%</span>'
+                    f'&nbsp;&nbsp;<span style="color:#546e7a;">ROE </span><span style="color:#90a4ae;">{_q["roe"]:.1f}%</span>'
+                    f'</div></div>',
+                    unsafe_allow_html=True)
+                if st.button(f"Analysieren → {_q['ticker']}", key=f"qtp_{_q['ticker']}", use_container_width=False):
+                    _go_to_ticker(_q["ticker"])
+                    st.rerun()
+        else:
+            st.info("Keine Aktien mit Score ≥ 80 gefunden oder Daten werden geladen.")
+
+    # ── Daytrading Kandidaten (ATR + Volumen, stündlich aktualisiert) ───
+    _DAYTRADING_POOL = [
+        "TQQQ","SQQQ","UPRO","SPXU","QQQ","SPY","NVDA","TSLA","AMD","META",
+        "AAPL","MSFT","AMZN","GOOGL","NFLX","SMCI","ARM","PLTR","COIN","MSTR",
+        "IONQ","RIVN","LCID","SOFI","HOOD","GME","AMC","BBBY","BYND","SPCE",
+    ]
+
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def load_daytrading_picks() -> list:
+        results = []
+        for tkr in _DAYTRADING_POOL:
+            try:
+                st_obj = yf.Ticker(tkr)
+                info   = st_obj.info
+                hist30 = st_obj.history(period="30d")
+                if hist30.empty or len(hist30) < 5:
+                    continue
+                price  = float(hist30["Close"].iloc[-1])
+                if price <= 0:
+                    continue
+                # ATR%
+                high  = hist30["High"]
+                low   = hist30["Low"]
+                close = hist30["Close"]
+                prev  = close.shift(1)
+                tr    = pd.concat([high - low, (high - prev).abs(), (low - prev).abs()], axis=1).max(axis=1)
+                atr_pct = float(tr.tail(14).mean() / price * 100)
+                # Relative Volume
+                avg_vol   = float(hist30["Volume"].iloc[:-1].mean()) or 1
+                today_vol = float(hist30["Volume"].iloc[-1])
+                rel_vol   = today_vol / avg_vol
+                # Typ
+                name = info.get("shortName", tkr)
+                typ  = "Leveraged ETF" if any(x in name for x in ["3x","Ultra","ProShares","Direxion"]) \
+                       else "ETF" if info.get("quoteType") == "ETF" \
+                       else "Aktie"
+                results.append({
+                    "ticker":  tkr,
+                    "name":    name,
+                    "price":   round(price, 2),
+                    "atr_pct": round(atr_pct, 1),
+                    "rel_vol": round(rel_vol, 2),
+                    "typ":     typ,
+                    "score":   round(atr_pct * 0.6 + rel_vol * 0.4, 2),
+                })
+            except Exception:
+                pass
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:15]
+
+    with st.expander("⚡ Daytrading Kandidaten — ATR & Volumen (stündlich)", expanded=False):
+        with st.spinner("Lade Daytrading-Daten…"):
+            _dtp = load_daytrading_picks()
+        if _dtp:
+            st.markdown(
+                "<div style='font-size:0.78rem;color:#90a4ae;margin-bottom:10px;'>"
+                "Sortiert nach ATR% × 0,6 + Rel. Volumen × 0,4 — hohe Beweglichkeit priorisiert</div>",
+                unsafe_allow_html=True)
+            for _d in _dtp:
+                _typ_clr = "#ff8f00" if _d["typ"] == "Leveraged ETF" else "#64b5f6" if _d["typ"] == "ETF" else "#a5d6a7"
+                _vol_clr = "#00e676" if _d["rel_vol"] > 1.5 else "#ffd600" if _d["rel_vol"] > 0.8 else "#ff5252"
+                st.markdown(
+                    f'<div class="metric-card" style="padding:10px 14px;margin-bottom:6px;">'
+                    f'<div style="display:flex;align-items:center;justify-content:space-between;">'
+                    f'<div>'
+                    f'<span style="font-weight:700;color:#eceff1;">{_d["ticker"]}</span>'
+                    f'<span style="color:#546e7a;font-size:0.76rem;margin-left:8px;">{_d["name"]}</span>'
+                    f'<span style="background:rgba(0,0,0,0.3);color:{_typ_clr};border-radius:3px;'
+                    f'padding:1px 5px;font-size:0.65rem;margin-left:6px;">{_d["typ"]}</span>'
+                    f'</div>'
+                    f'<span style="color:#90a4ae;font-weight:600;">${_d["price"]:.2f}</span>'
+                    f'</div>'
+                    f'<div style="margin-top:5px;font-size:0.72rem;">'
+                    f'<span style="color:#546e7a;">ATR% </span><span style="color:#ff8f00;font-weight:600;">{_d["atr_pct"]:.1f}%</span>'
+                    f'&nbsp;&nbsp;<span style="color:#546e7a;">Rel. Vol </span><span style="color:{_vol_clr};font-weight:600;">{_d["rel_vol"]:.2f}×</span>'
+                    f'&nbsp;&nbsp;<span style="color:#546e7a;">Score </span><span style="color:#90a4ae;">{_d["score"]:.1f}</span>'
+                    f'</div></div>',
+                    unsafe_allow_html=True)
+                if st.button(f"Chart → {_d['ticker']}", key=f"dtp_{_d['ticker']}", use_container_width=False):
+                    _go_to_ticker(_d["ticker"])
+                    st.rerun()
+        else:
+            st.info("Daytrading-Daten werden geladen…")
 
     # ── Schnellauswahl auf Landing ──
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
