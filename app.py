@@ -2195,6 +2195,13 @@ def load_macro_data() -> dict:
         yoy = (cpi[0] / cpi[12] - 1) * 100
         out["macro"]["🇺🇸 Inflation"] = {"value": round(yoy, 1), "unit": "%"}
 
+    # Kerninflation (Core CPI ex. Food & Energy, YoY)
+    core_cpi = _fred_last("CPILFESL", 13)
+    if len(core_cpi) >= 13:
+        core_yoy = round((core_cpi[0] / core_cpi[12] - 1) * 100, 1)
+        out["macro"]["🇺🇸 Kerninflation"] = {"value": core_yoy, "unit": "%"}
+        out["core_cpi"] = core_yoy
+
     # Arbeitslosigkeit
     unemp = _fred_last("UNRATE")
     if unemp:
@@ -2231,13 +2238,62 @@ def load_macro_data() -> dict:
     # ── Buffett-Indikator: Wilshire 5000 / US GDP ────────────────────
     # Wilshire 5000 Full Cap Index-Level ≈ Gesamtmarktkapitalisierung USA in Mrd. USD
     # GDP (FRED) ebenfalls in Mrd. USD → direkt vergleichbar
+    _w5000_val: float = 0.0
     try:
         _w5000_h = yf.Ticker("^W5000").history(period="5d")
         _gdp = _fred_last("GDP")
         if not _w5000_h.empty and _gdp and _gdp[0]:
-            _w5000 = float(_w5000_h["Close"].iloc[-1])
-            _bi = round(_w5000 / _gdp[0] * 100, 1)
+            _w5000_val = float(_w5000_h["Close"].iloc[-1])
+            _bi = round(_w5000_val / _gdp[0] * 100, 1)
             out["buffett"] = _bi
+    except Exception:
+        pass
+
+    # ── Shiller CAPE (P/E 10, zyklisch adjustiert) ────────────────────
+    try:
+        _cape_r = requests.get(
+            "https://www.multpl.com/shiller-pe",
+            timeout=7,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; StocksMB/1.0)"},
+        )
+        if _cape_r.ok:
+            _cape_m = re.search(r'id=["\']current-value["\'][^>]*>\s*([0-9]+\.?[0-9]*)', _cape_r.text)
+            if _cape_m:
+                out["shiller_cape"] = float(_cape_m.group(1))
+    except Exception:
+        pass
+
+    # ── Market Cap / GNP ──────────────────────────────────────────────
+    # Wie Buffett-Indikator, aber GNP statt GDP (berücksichtigt Auslandsgewinne)
+    try:
+        _gnp = _fred_last("GNP")
+        if not _gnp:
+            _gnp = _fred_last("GDP")
+        if _w5000_val and _gnp and _gnp[0]:
+            out["mcap_gnp"] = round(_w5000_val / _gnp[0] * 100, 1)
+    except Exception:
+        pass
+
+    # ── Tobin's Q Proxy (S&P 500 Price/Book, multpl.com) ─────────────
+    try:
+        _pb_r = requests.get(
+            "https://www.multpl.com/s-p-500-price-to-book-value",
+            timeout=7,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; StocksMB/1.0)"},
+        )
+        if _pb_r.ok:
+            _pb_m = re.search(r'id=["\']current-value["\'][^>]*>\s*([0-9]+\.?[0-9]*)', _pb_r.text)
+            if _pb_m:
+                out["tobins_q"] = float(_pb_m.group(1))
+    except Exception:
+        pass
+
+    # ── Unternehmensgewinnmarge (Hussman-Basis) ────────────────────────
+    try:
+        _cprofit = _fred_last("CP", 1)   # Corporate Profits After Tax (SAAR, Mrd. USD)
+        _gdp_now = _fred_last("GDP", 1)
+        if _cprofit and _gdp_now and _gdp_now[0]:
+            out["corp_margin"] = round(_cprofit[0] / _gdp_now[0] * 100, 1)
     except Exception:
         pass
 
@@ -2317,6 +2373,29 @@ def load_macro_data() -> dict:
             out["sp500_eg"]         = _sp_eg_final
         elif _sp_pe:
             out["sp500_pe"] = round(_sp_pe, 1)
+    except Exception:
+        pass
+
+    # ── ERP (Equity Risk Premium) ─────────────────────────────────────
+    # = Forward Earnings Yield (1/ForwardPE × 100) − 10J Treasury
+    # Positiv = Aktien attraktiver als Anleihen; historisch fair ~3–4%
+    try:
+        _erp_pe  = out.get("sp500_forward_pe") or out.get("sp500_trailing_pe")
+        _erp_t10 = out.get("macro", {}).get("🇺🇸 10J Rendite", {}).get("value")
+        if _erp_pe and _erp_pe > 0 and _erp_t10:
+            out["erp"] = round(100.0 / _erp_pe - _erp_t10, 2)
+    except Exception:
+        pass
+
+    # ── Margin-adjustiertes KGV (Hussman-Stil) ────────────────────────
+    # Idee: Wenn aktuelle Gewinnmargen über hist. Ø, ist das KGV "zu niedrig" → aufwärts adjustieren
+    # Historischer Ø Unternehmensgewinn / GDP ≈ 7,5 % (1950–2020)
+    try:
+        _ma_pe_base  = out.get("sp500_trailing_pe") or out.get("sp500_pe")
+        _curr_margin = out.get("corp_margin")
+        if _ma_pe_base and _curr_margin and _curr_margin > 0:
+            _HIST_MARGIN = 7.5
+            out["margin_adj_pe"] = round(_ma_pe_base * (_curr_margin / _HIST_MARGIN), 1)
     except Exception:
         pass
 
@@ -3714,6 +3793,236 @@ if st.session_state["show_landing"]:
                     f'<b>Einordnung:</b> {_peg_note}</div>'
                     f'</div>',
                     unsafe_allow_html=True)
+
+    # ── Erweiterte Bewertungsmodelle ──────────────────────────────────
+    _shiller    = macro.get("shiller_cape")
+    _erp        = macro.get("erp")
+    _tobins_q   = macro.get("tobins_q")
+    _mcap_gnp   = macro.get("mcap_gnp")
+    _margin_adj = macro.get("margin_adj_pe")
+
+    _active_models = [x for x in [_shiller, _erp, _tobins_q, _mcap_gnp, _margin_adj] if x is not None]
+
+    if _active_models:
+        # ── Multivariate-Score (0–100, 50 = historisch fair) ─────────
+        def _norm_score(val, cheap, fair_lo, fair_hi, expensive):
+            """Mappe einen Indikatorwert auf 0–100 (50 = fair)."""
+            if val <= cheap:      return 15
+            elif val <= fair_lo:  return 35
+            elif val <= fair_hi:  return 50
+            elif val <= expensive:return 70
+            else:                 return 90
+
+        _scores = []
+        if _shiller:    _scores.append(_norm_score(_shiller,    15, 22, 28, 38))
+        if _tobins_q:   _scores.append(_norm_score(_tobins_q,   2.0, 3.0, 4.5, 6.0))
+        if _mcap_gnp:   _scores.append(_norm_score(_mcap_gnp,   75, 90, 115, 140))
+        if _bi:         _scores.append(_norm_score(_bi,         75, 90, 115, 140))
+        if _margin_adj: _scores.append(_norm_score(_margin_adj, 15, 20, 28, 38))
+        if _erp is not None:
+            _scores.append(_norm_score(-_erp, -5, -2, 0, 2))  # ERP invertiert
+
+        _mv_score = round(sum(_scores) / len(_scores)) if _scores else 50
+        if _mv_score < 30:    _mv_clr, _mv_lbl = "#00e676", "Unterbewertet"
+        elif _mv_score < 45:  _mv_clr, _mv_lbl = "#69f0ae", "Günstig"
+        elif _mv_score < 57:  _mv_clr, _mv_lbl = "#ffd600", "Fair"
+        elif _mv_score < 72:  _mv_clr, _mv_lbl = "#ff8f00", "Überbewertet"
+        else:                 _mv_clr, _mv_lbl = "#ff5252", "Stark überbewertet"
+
+        st.markdown(
+            '<div style="margin-top:18px;margin-bottom:6px;font-size:0.82rem;'
+            'font-weight:600;color:#90a4ae;letter-spacing:.04em;">'
+            '📐 ERWEITERTE BEWERTUNGSMODELLE</div>',
+            unsafe_allow_html=True)
+
+        # ── Zeile 1: Shiller CAPE | ERP | Tobin's Q ──────────────────
+        _col_a, _col_b, _col_c = st.columns(3)
+
+        if _shiller:
+            if _shiller < 15:   _sc_clr, _sc_lbl = "#00e676", "Historisch günstig"
+            elif _shiller < 22: _sc_clr, _sc_lbl = "#69f0ae", "Unter Ø"
+            elif _shiller < 28: _sc_clr, _sc_lbl = "#ffd600", "Leicht erhöht"
+            elif _shiller < 38: _sc_clr, _sc_lbl = "#ff8f00", "Hoch"
+            else:               _sc_clr, _sc_lbl = "#ff5252", "Extrem hoch"
+            _sc_bar = min(int((_shiller - 5) / 50 * 100), 100)
+            with _col_a:
+                st.markdown(
+                    f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                    f'<span style="color:#b0bec5;">Shiller CAPE'
+                    f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                    f'<span class="tt-box">Shiller KGV = S&amp;P 500 Kurs ÷ inflationsbereinigter 10-Jahres-Ø-Gewinn. '
+                    f'Entwickelt von Campbell &amp; Shiller (1988). Historischer Ø ~17×, Dotcom-Hoch 44×, '
+                    f'Finanzkrise-Hoch ~27×. Starke Prognosekraft für 10–15-j. Realrenditen — kein kurzfristiges Timing-Tool. '
+                    f'Schwäche: Accounting-Änderungen (GAAP post-2000) können Earnings künstlich drücken.</span></span></span>'
+                    f'<span style="color:{_sc_clr};font-weight:700;">{_shiller:.1f}×</span></div>'
+                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="width:{_sc_bar}%;height:5px;border-radius:4px;background:{_sc_clr};"></div></div>'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                    f'<span>5×</span><span style="color:{_sc_clr};">{_sc_lbl}</span><span>55×</span></div>'
+                    f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                    f'&lt;15× = günstig · 15–22× = fair · 22–28× = teuer · &gt;38× = Dotcom-Niveau</div>'
+                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<b>Quelle:</b> multpl.com · Hist. Ø ~17×. '
+                    f'Aktuell {_shiller:.1f}× — {_sc_lbl.lower()}. '
+                    f'Studie Shiller (2000): CAPE {_shiller:.0f}× → erwartete 10-j. Realrendite ~'
+                    f'{"1–3%" if _shiller > 35 else "3–5%" if _shiller > 28 else "5–7%" if _shiller > 20 else "7–10%"}.</div>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+
+        if _erp is not None:
+            if _erp > 4.0:    _erp_clr, _erp_lbl = "#00e676", "Sehr attraktiv"
+            elif _erp > 2.0:  _erp_clr, _erp_lbl = "#69f0ae", "Attraktiv"
+            elif _erp > 0.5:  _erp_clr, _erp_lbl = "#ffd600", "Neutral"
+            elif _erp > -1.0: _erp_clr, _erp_lbl = "#ff8f00", "Teuer vs. Bonds"
+            else:             _erp_clr, _erp_lbl = "#ff5252", "TINA vorbei"
+            _erp_bar = min(max(int((_erp + 3) / 9 * 100), 2), 98)
+            with _col_b:
+                st.markdown(
+                    f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                    f'<span style="color:#b0bec5;">Equity Risk Premium'
+                    f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                    f'<span class="tt-box">ERP = Forward Earnings Yield (1/ForwardKGV × 100) − 10J Treasury-Rendite. '
+                    f'Misst, wieviel Mehrrendite Aktien gegenüber risikoloser Anlage bieten. '
+                    f'Historisch fair ~3–4%. Bei ERP &lt;0%: Staatsanleihen rentieren besser als Aktien (relativer Bewertungs-Stress). '
+                    f'Integriert als einziges Modell die Zinssituation direkt in die Aktienbewertung.</span></span></span>'
+                    f'<span style="color:{_erp_clr};font-weight:700;">{_erp:+.2f}%</span></div>'
+                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="width:{_erp_bar}%;height:5px;border-radius:4px;background:{_erp_clr};"></div></div>'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                    f'<span>−3%</span><span style="color:{_erp_clr};">{_erp_lbl}</span><span>+6%</span></div>'
+                    f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                    f'&gt;4% = sehr attraktiv · 2–4% = fair · 0–2% = teuer · &lt;0% = Bonds besser</div>'
+                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<b>Einordnung:</b> Forward EY {100/(_sp_forward_pe or _sp_trailing_pe or 20):.1f}% − 10J {macro.get("macro",{}).get("🇺🇸 10J Rendite",{}).get("value",0):.1f}% = ERP {_erp:+.2f}%. '
+                    f'{_erp_lbl}.</div>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+
+        if _tobins_q:
+            if _tobins_q < 2.0:   _tq_clr, _tq_lbl = "#00e676", "Günstig"
+            elif _tobins_q < 3.0: _tq_clr, _tq_lbl = "#69f0ae", "Fair"
+            elif _tobins_q < 4.5: _tq_clr, _tq_lbl = "#ffd600", "Erhöht"
+            elif _tobins_q < 6.0: _tq_clr, _tq_lbl = "#ff8f00", "Hoch"
+            else:                 _tq_clr, _tq_lbl = "#ff5252", "Sehr hoch"
+            _tq_bar = min(int(_tobins_q / 8 * 100), 100)
+            with _col_c:
+                st.markdown(
+                    f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                    f'<span style="color:#b0bec5;">Tobin\'s Q (Proxy)'
+                    f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                    f'<span class="tt-box">Tobin\'s Q = Marktwert ÷ Wiederbeschaffungskosten des Kapitals. '
+                    f'Nobelpreisträger James Tobin (1969): Q &gt; 1 → Unternehmen "overpriced" vs. Realkapital. '
+                    f'Hier: S&amp;P 500 Price/Book als Proxy (echter Replacement-Cost nicht börsentäglich verfügbar). '
+                    f'Ähnliche Signale wie CAPE, aber unabhängige Methode. Hist. Ø S&amp;P P/B ~2,5–3,0×.</span></span></span>'
+                    f'<span style="color:{_tq_clr};font-weight:700;">{_tobins_q:.1f}×</span></div>'
+                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="width:{_tq_bar}%;height:5px;border-radius:4px;background:{_tq_clr};"></div></div>'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                    f'<span>1×</span><span style="color:{_tq_clr};">{_tq_lbl}</span><span>8×</span></div>'
+                    f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                    f'&lt;2× = günstig · 2–3× = fair · 3–4,5× = erhöht · &gt;6× = extrem</div>'
+                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<b>Proxy:</b> S&amp;P 500 P/B {_tobins_q:.1f}× (multpl.com). '
+                    f'Ähnliches Signal wie CAPE — Korrelation ~0,85 historisch. {_tq_lbl}.</div>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+
+        # ── Zeile 2: Marktk./GNP | Margin-adj. KGV | Multivariate ────
+        _col_d, _col_e, _col_f = st.columns(3)
+
+        if _mcap_gnp:
+            if _mcap_gnp < 75:   _mg_clr, _mg_lbl = "#00e676", "Unterbewertet"
+            elif _mcap_gnp < 90: _mg_clr, _mg_lbl = "#69f0ae", "Fair"
+            elif _mcap_gnp < 115:_mg_clr, _mg_lbl = "#ffd600", "Leicht teuer"
+            elif _mcap_gnp < 140:_mg_clr, _mg_lbl = "#ff8f00", "Teuer"
+            else:                _mg_clr, _mg_lbl = "#ff5252", "Stark überbewertet"
+            _mg_bar = min(int(_mcap_gnp / 200 * 100), 100)
+            with _col_d:
+                st.markdown(
+                    f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                    f'<span style="color:#b0bec5;">Marktk. / GNP'
+                    f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                    f'<span class="tt-box">Gesamtmarktkapitalisierung (Wilshire 5000) ÷ US-Bruttosozialprodukt (GNP statt GDP). '
+                    f'GNP berücksichtigt Auslandsgewinne amerikanischer Unternehmen — robuster für global tätige Konzerne. '
+                    f'Buffett-Indikator nutzt GDP; bei starker Globalisierung der S&amp;P-500-Gewinne (~50% international) '
+                    f'liefert GNP ein etwas günstigeres Bild. Historischer Ø ~80–100%.</span></span></span>'
+                    f'<span style="color:{_mg_clr};font-weight:700;">{_mcap_gnp:.0f}%</span></div>'
+                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="width:{_mg_bar}%;height:5px;border-radius:4px;background:{_mg_clr};"></div></div>'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                    f'<span>0%</span><span style="color:{_mg_clr};">{_mg_lbl}</span><span>200%</span></div>'
+                    f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                    f'&lt;75% = günstig · 75–90% = fair · 90–115% = leicht teuer · &gt;140% = Warnsignal</div>'
+                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<b>vs. Buffett:</b> '
+                    f'{"Buffett=" + str(int(_bi)) + "% (GDP) · " if _bi else ""}'
+                    f'GNP-Variante={_mcap_gnp:.0f}%. '
+                    f'{"Differenz " + str(int(abs(_mcap_gnp - (_bi or 0)))) + "pp spiegelt Globalisierungseffekt." if _bi else "Berücksichtigt Auslandsgewinne."}'
+                    f'</div></div>',
+                    unsafe_allow_html=True)
+
+        if _margin_adj:
+            _ma_base = _sp_trailing_pe or _sp_pe or 0
+            if _margin_adj < 15:   _ma_clr, _ma_lbl = "#00e676", "Günstig"
+            elif _margin_adj < 20: _ma_clr, _ma_lbl = "#69f0ae", "Fair"
+            elif _margin_adj < 28: _ma_clr, _ma_lbl = "#ffd600", "Erhöht"
+            elif _margin_adj < 38: _ma_clr, _ma_lbl = "#ff8f00", "Hoch"
+            else:                  _ma_clr, _ma_lbl = "#ff5252", "Sehr hoch"
+            _ma_bar = min(int((_margin_adj - 5) / 50 * 100), 100)
+            with _col_e:
+                _cm = macro.get("corp_margin", 0)
+                st.markdown(
+                    f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                    f'<span style="color:#b0bec5;">Margin-adj. KGV'
+                    f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                    f'<span class="tt-box">Hussman-Stil: Trailing KGV normalisiert für Gewinnmargen. '
+                    f'Wenn Margen über hist. Ø liegen, sind nominale Gewinne "aufgebläht" → echtes KGV höher als ausgewiesen. '
+                    f'Formel: Trailing PE × (aktuelle Marge % ÷ hist. Ø-Marge 7,5%). '
+                    f'Hussman Research: zuverlässigerer Marktbewertungs-Indikator als raw KGV. '
+                    f'Berücksichtigt Mean-Reversion der Unternehmensmargen.</span></span></span>'
+                    f'<span style="color:{_ma_clr};font-weight:700;">{_margin_adj:.1f}×</span></div>'
+                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="width:{_ma_bar}%;height:5px;border-radius:4px;background:{_ma_clr};"></div></div>'
+                    f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                    f'<span>5×</span><span style="color:{_ma_clr};">{_ma_lbl}</span><span>55×</span></div>'
+                    f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                    f'&lt;15× = günstig · 15–20× = fair · 20–28× = erhöht · &gt;38× = extrem</div>'
+                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<b>Basis:</b> Trailing KGV {_ma_base:.1f}× · Gewinnmarge {_cm:.1f}% (hist. Ø 7,5%) → adj. KGV {_margin_adj:.1f}×. '
+                    f'{_ma_lbl}.</div>'
+                    f'</div>',
+                    unsafe_allow_html=True)
+
+        # ── Multivariate Composite ────────────────────────────────────
+        _mv_bar = int(_mv_score)
+        with _col_f:
+            st.markdown(
+                f'<div class="insight-box" style="padding:10px 14px 8px 14px;border:1px solid {_mv_clr}30;">'
+                f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
+                f'<span style="color:#b0bec5;">Multivariate Composite'
+                f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                f'<span class="tt-box">Gleichgewichteter Score aus allen verfügbaren Modellen: '
+                f'Shiller CAPE, Tobin\'s Q (P/B-Proxy), Buffett-Indikator, MarktK./GNP, '
+                f'Margin-adj. KGV, Equity Risk Premium. '
+                f'50 = historisch fair · &lt;30 = günstig · &gt;70 = überbewertet. '
+                f'Kein Timing-Signal — beschreibt strukturelle Bewertungsebene.</span></span></span>'
+                f'<span style="color:{_mv_clr};font-weight:700;">{_mv_lbl}</span></div>'
+                f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                f'<div style="width:{_mv_bar}%;height:5px;border-radius:4px;background:{_mv_clr};"></div></div>'
+                f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
+                f'<span>0</span><span style="color:{_mv_clr};">Score {_mv_score}</span><span>100</span></div>'
+                f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
+                f'&lt;30 = günstig · 30–45 = leicht günstig · 45–57 = fair · 57–72 = teuer · &gt;72 = sehr teuer</div>'
+                f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                f'<b>Modelle:</b> {len(_scores)} von 6 verfügbar. '
+                f'Ø-Signal: {_mv_lbl}. Kein Timing-Werkzeug — strukturelle Einordnung.</div>'
+                f'</div>',
+                unsafe_allow_html=True)
 
     # ── Erweitertes Makro-Dashboard (Expander) ────────────────────────
     try:
