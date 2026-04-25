@@ -2969,6 +2969,85 @@ def load_screener_data() -> list[dict]:
     return results[:8]
 
 
+_DAYTRADING_POOL = [
+    "TQQQ","SQQQ","UPRO","SPXU","QQQ","SPY","NVDA","TSLA","AMD","META",
+    "AAPL","MSFT","AMZN","GOOGL","NFLX","SMCI","ARM","PLTR","COIN","MSTR",
+    "IONQ","RIVN","LCID","SOFI","HOOD","GME","AMC","BYND","SPCE","BBBY",
+]
+
+
+@st.cache_data(ttl=14400, show_spinner=False)
+def load_quality_highscore() -> list:
+    """Top-Quality-Picks aus kuratierten Growth- und Value-Pools (Score ≥ 70)."""
+    _pool = list(dict.fromkeys(list(_GROWTH_POOL.keys()) + list(_VALUE_POOL.keys())))
+    results = []
+    for tkr in _pool:
+        try:
+            info  = yf.Ticker(tkr).info
+            sc    = _sc_score(info)
+            if sc < 70:
+                continue
+            price  = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+            mktcap = info.get("marketCap") or 0
+            fcf    = info.get("freeCashflow") or 0
+            results.append({
+                "ticker":       tkr,
+                "name":         info.get("shortName", tkr),
+                "price":        round(price, 2),
+                "score":        sc,
+                "rev_growth":   round((info.get("revenueGrowth") or 0) * 100, 1),
+                "gross_margin": round((info.get("grossMargins") or 0) * 100, 1),
+                "fcf_yield":    round(fcf / mktcap * 100, 1) if fcf and mktcap else 0.0,
+                "roe":          round((info.get("returnOnEquity") or 0) * 100, 1),
+            })
+        except Exception:
+            pass
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_daytrading_picks() -> list:
+    """ATR% + relatives Volumen — top volatile tickers für Daytrader."""
+    results = []
+    for tkr in _DAYTRADING_POOL:
+        try:
+            st_obj = yf.Ticker(tkr)
+            info   = st_obj.info
+            hist30 = st_obj.history(period="30d")
+            if hist30.empty or len(hist30) < 5:
+                continue
+            price = float(hist30["Close"].iloc[-1])
+            if price <= 0:
+                continue
+            high  = hist30["High"]
+            low   = hist30["Low"]
+            close = hist30["Close"]
+            prev  = close.shift(1)
+            tr    = pd.concat([high - low, (high - prev).abs(), (low - prev).abs()], axis=1).max(axis=1)
+            atr_pct = float(tr.tail(14).mean() / price * 100)
+            avg_vol   = float(hist30["Volume"].iloc[:-1].mean()) or 1
+            today_vol = float(hist30["Volume"].iloc[-1])
+            rel_vol   = today_vol / avg_vol
+            name = info.get("shortName", tkr)
+            typ  = "Leveraged ETF" if any(x in name for x in ["3x","Ultra","ProShares","Direxion"]) \
+                   else "ETF" if info.get("quoteType") == "ETF" \
+                   else "Aktie"
+            results.append({
+                "ticker":  tkr,
+                "name":    name,
+                "price":   round(price, 2),
+                "atr_pct": round(atr_pct, 1),
+                "rel_vol": round(rel_vol, 2),
+                "typ":     typ,
+                "score":   round(atr_pct * 0.6 + rel_vol * 0.4, 2),
+            })
+        except Exception:
+            pass
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:15]
+
+
 @st.cache_data(ttl=43200)
 def load_stock_picks():
     growth_results, value_results, div_results, hype_results = [], [], [], []
@@ -4643,50 +4722,17 @@ if st.session_state["show_landing"]:
     else:
         st.markdown('<div class="metric-card" style="color:#546e7a; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
 
-    # ── Quality Top-Picks (Score ≥ 80, täglich aktualisiert) ──────────
-    @st.cache_data(ttl=86400, show_spinner=False)
-    def load_quality_highscore() -> list:
-        _pool = list(dict.fromkeys(
-            list(_SCREENER_WATCHLIST) +
-            list(_GROWTH_POOL.keys()) + list(_VALUE_POOL.keys())
-        ))
-        results = []
-        for tkr in _pool:
-            try:
-                st_obj = yf.Ticker(tkr)
-                info   = st_obj.info
-                info   = _patch_info_from_statements(st_obj, info)
-                sc     = _sc_score(info)
-                if sc < 80:
-                    continue
-                price  = info.get("currentPrice") or info.get("regularMarketPrice") or 0
-                mktcap = info.get("marketCap") or 0
-                fcf    = info.get("freeCashflow") or 0
-                results.append({
-                    "ticker":       tkr,
-                    "name":         info.get("shortName", tkr),
-                    "price":        round(price, 2),
-                    "score":        sc,
-                    "rev_growth":   round((info.get("revenueGrowth") or 0) * 100, 1),
-                    "gross_margin": round((info.get("grossMargins") or 0) * 100, 1),
-                    "fcf_yield":    round(fcf / mktcap * 100, 1) if fcf and mktcap else 0,
-                    "roe":          round((info.get("returnOnEquity") or 0) * 100, 1),
-                })
-            except Exception:
-                pass
-        results.sort(key=lambda x: x["score"], reverse=True)
-        return results
-
-    with st.expander("⭐ Quality Top-Picks — Score ≥ 80 (täglich aktualisiert)", expanded=False):
+    # ── Quality Top-Picks (Score ≥ 70, täglich aktualisiert) ──────────
+    with st.expander("⭐ Quality Top-Picks — Score ≥ 70 (täglich aktualisiert)", expanded=False):
         with st.spinner("Berechne Quality-Scores…"):
             _qtp = load_quality_highscore()
         if _qtp:
             st.markdown(
                 f"<div style='font-size:0.78rem;color:#90a4ae;margin-bottom:10px;'>"
-                f"{len(_qtp)} Aktien mit Score ≥ 80 — sortiert nach Quality-Score</div>",
+                f"{len(_qtp)} Aktien mit Score ≥ 70 — sortiert nach Quality-Score</div>",
                 unsafe_allow_html=True)
             for _q in _qtp:
-                _sc_clr = "#00e676" if _q["score"] >= 90 else "#69f0ae" if _q["score"] >= 85 else "#ffd600"
+                _sc_clr = "#00e676" if _q["score"] >= 90 else "#69f0ae" if _q["score"] >= 85 else "#ffd600" if _q["score"] >= 80 else "#ffa726"
                 st.markdown(
                     f'<div class="metric-card" style="padding:10px 14px;margin-bottom:6px;cursor:pointer;">'
                     f'<div style="display:flex;align-items:center;justify-content:space-between;">'
@@ -4707,58 +4753,9 @@ if st.session_state["show_landing"]:
                     _go_to_ticker(_q["ticker"])
                     st.rerun()
         else:
-            st.info("Keine Aktien mit Score ≥ 80 gefunden oder Daten werden geladen.")
+            st.info("Keine Qualitäts-Picks gefunden — Daten werden geladen. Bitte kurz warten.")
 
     # ── Daytrading Kandidaten (ATR + Volumen, stündlich aktualisiert) ───
-    _DAYTRADING_POOL = [
-        "TQQQ","SQQQ","UPRO","SPXU","QQQ","SPY","NVDA","TSLA","AMD","META",
-        "AAPL","MSFT","AMZN","GOOGL","NFLX","SMCI","ARM","PLTR","COIN","MSTR",
-        "IONQ","RIVN","LCID","SOFI","HOOD","GME","AMC","BBBY","BYND","SPCE",
-    ]
-
-    @st.cache_data(ttl=3600, show_spinner=False)
-    def load_daytrading_picks() -> list:
-        results = []
-        for tkr in _DAYTRADING_POOL:
-            try:
-                st_obj = yf.Ticker(tkr)
-                info   = st_obj.info
-                hist30 = st_obj.history(period="30d")
-                if hist30.empty or len(hist30) < 5:
-                    continue
-                price  = float(hist30["Close"].iloc[-1])
-                if price <= 0:
-                    continue
-                # ATR%
-                high  = hist30["High"]
-                low   = hist30["Low"]
-                close = hist30["Close"]
-                prev  = close.shift(1)
-                tr    = pd.concat([high - low, (high - prev).abs(), (low - prev).abs()], axis=1).max(axis=1)
-                atr_pct = float(tr.tail(14).mean() / price * 100)
-                # Relative Volume
-                avg_vol   = float(hist30["Volume"].iloc[:-1].mean()) or 1
-                today_vol = float(hist30["Volume"].iloc[-1])
-                rel_vol   = today_vol / avg_vol
-                # Typ
-                name = info.get("shortName", tkr)
-                typ  = "Leveraged ETF" if any(x in name for x in ["3x","Ultra","ProShares","Direxion"]) \
-                       else "ETF" if info.get("quoteType") == "ETF" \
-                       else "Aktie"
-                results.append({
-                    "ticker":  tkr,
-                    "name":    name,
-                    "price":   round(price, 2),
-                    "atr_pct": round(atr_pct, 1),
-                    "rel_vol": round(rel_vol, 2),
-                    "typ":     typ,
-                    "score":   round(atr_pct * 0.6 + rel_vol * 0.4, 2),
-                })
-            except Exception:
-                pass
-        results.sort(key=lambda x: x["score"], reverse=True)
-        return results[:15]
-
     with st.expander("⚡ Daytrading Kandidaten — ATR & Volumen (stündlich)", expanded=False):
         with st.spinner("Lade Daytrading-Daten…"):
             _dtp = load_daytrading_picks()
