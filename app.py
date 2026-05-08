@@ -6027,7 +6027,7 @@ elif _at == 1:
 elif _at == 2:
     st.markdown("<div class='section-header'>🔮 Analysten-Prognosen</div>", unsafe_allow_html=True)
 
-    # ── Consensus & Price Target ──────────────────────────────────────────────
+    # ── Rohdaten ─────────────────────────────────────────────────────────────
     _rec_key   = yf_info.get("recommendationKey", "")
     _rec_mean  = yf_info.get("recommendationMean")   # 1=Strong Buy … 5=Strong Sell
     _n_anal    = yf_info.get("numberOfAnalystOpinions") or 0
@@ -6035,151 +6035,306 @@ elif _at == 2:
     _t_mean    = yf_info.get("targetMeanPrice")
     _t_median  = yf_info.get("targetMedianPrice")
     _t_high    = yf_info.get("targetHighPrice")
+    _fwd_pe    = yf_info.get("forwardPE")
+    _fwd_eps   = yf_info.get("forwardEps")
+    _trail_eps = yf_info.get("trailingEps")
 
-    _rec_label_map = {
-        "strong_buy": ("Strong Buy",  "#26a69a"),
-        "buy":        ("Buy",         "#66bb6a"),
-        "hold":       ("Hold",        "#ffa726"),
-        "sell":       ("Sell",        "#ef5350"),
-        "strong_sell":("Strong Sell", "#b71c1c"),
-    }
-    _rec_label, _rec_color = _rec_label_map.get(
-        _rec_key, ((_rec_key.replace("_", " ").title() if _rec_key else "N/A"), "#546e7a")
-    )
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(f"""
-        <div class="metric-card" style="border-left:4px solid {_rec_color};">
-            <div class="metric-label">Analysten-Konsens</div>
-            <div class="metric-value" style="color:{_rec_color};">{_rec_label}</div>
-            <div style="color:#78909c;font-size:0.8rem;margin-top:4px;">{_n_anal} Analysten</div>
-        </div>""", unsafe_allow_html=True)
-    with c2:
-        _upside = ((_t_mean / price - 1) * 100) if (_t_mean and price and price > 0) else None
-        _upside_color = "#26a69a" if (_upside and _upside > 5) else "#ef5350" if (_upside and _upside < -5) else "#ffa726"
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Kursziel (Ø)</div>
-            <div class="metric-value">{f"{_t_mean:.2f}" if _t_mean else "N/A"}</div>
-            <div style="color:{_upside_color};font-size:0.85rem;margin-top:4px;">
-                {f"{_upside:+.1f}% Upside" if _upside is not None else ""}
-            </div>
-        </div>""", unsafe_allow_html=True)
-    with c3:
-        _score_bar = ""
-        if _rec_mean is not None:
-            _pct = (5 - float(_rec_mean)) / 4 * 100  # 1→100%, 5→0%
-            _score_bar = f"""<div style="background:#1e2d45;border-radius:6px;height:8px;margin-top:8px;">
-                <div style="background:{_rec_color};width:{_pct:.0f}%;height:8px;border-radius:6px;"></div></div>
-                <div style="color:#78909c;font-size:0.75rem;margin-top:3px;">Score {float(_rec_mean):.1f} / 5 (1=Strong Buy)</div>"""
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">Konsens-Score</div>
-            {_score_bar if _score_bar else '<div class="metric-value">N/A</div>'}
-        </div>""", unsafe_allow_html=True)
-
-    # ── Price Target Range Bar ────────────────────────────────────────────────
-    if _t_low and _t_high and price:
-        _range = _t_high - _t_low
-        _price_pct  = max(0, min(100, (_t_low > 0 and _range > 0) and ((price - _t_low) / _range * 100) or 0))
-        _mean_pct   = max(0, min(100, (_t_low > 0 and _range > 0) and ((_t_mean - _t_low) / _range * 100) if _t_mean else 0))
-        st.markdown(f"""
-        <div style="background:#0d1526;border:1px solid #1e2d45;border-radius:12px;padding:20px 24px;margin:16px 0;">
-            <div style="color:#b0bec5;font-size:0.82rem;margin-bottom:10px;font-weight:600;">KURSZIEL-SPANNE</div>
-            <div style="position:relative;background:#1e2d45;border-radius:6px;height:12px;margin:8px 0 20px 0;">
-                <div style="position:absolute;left:0;width:100%;height:12px;border-radius:6px;
-                    background:linear-gradient(90deg,#ef5350 0%,#ffa726 40%,#26a69a 100%);opacity:0.25;"></div>
-                <div style="position:absolute;left:{_mean_pct:.1f}%;transform:translateX(-50%);
-                    top:-4px;width:4px;height:20px;background:#26a69a;border-radius:2px;" title="Ø Kursziel"></div>
-                <div style="position:absolute;left:{_price_pct:.1f}%;transform:translateX(-50%);
-                    top:-6px;width:8px;height:24px;background:#ffffff;border-radius:2px;" title="Kurs"></div>
-            </div>
-            <div style="display:flex;justify-content:space-between;color:#78909c;font-size:0.8rem;">
-                <span>Tief {_t_low:.2f}</span>
-                <span style="color:#b0bec5;">● Kurs {price:.2f}</span>
-                <span>Hoch {_t_high:.2f}</span>
-            </div>
-        </div>""", unsafe_allow_html=True)
-
-    # ── EPS Estimates Table ───────────────────────────────────────────────────
     _eps_est = analyst_estimates.get("eps", [])
     _rev_est = analyst_estimates.get("rev", [])
 
-    if _eps_est or _rev_est:
-        c1, c2 = st.columns(2)
-        with c1:
-            if _eps_est:
-                st.markdown("<div style='color:#b0bec5;font-weight:600;font-size:0.85rem;margin-bottom:8px;'>EPS-PROGNOSEN</div>", unsafe_allow_html=True)
-                _eps_rows = ""
-                for e in _eps_est[:4]:
-                    _an_txt = f"({e['analysts']} An.)" if e.get("analysts") else ""
-                    _eps_rows += f"<tr><td>{e['year']}</td><td style='text-align:right'>{e['estimate']:.2f}</td><td style='text-align:right;color:#546e7a'>{_an_txt}</td></tr>"
-                st.markdown(f"""
-                <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
-                <thead><tr style="color:#546e7a;border-bottom:1px solid #1e2d45;">
-                    <th style="text-align:left;padding:4px 8px">Jahr</th>
-                    <th style="text-align:right;padding:4px 8px">EPS Est.</th>
-                    <th style="text-align:right;padding:4px 8px">Analysten</th>
-                </tr></thead>
-                <tbody style="color:#eceff1;">{_eps_rows}</tbody>
-                </table>""", unsafe_allow_html=True)
-        with c2:
-            if _rev_est:
-                st.markdown("<div style='color:#b0bec5;font-weight:600;font-size:0.85rem;margin-bottom:8px;'>UMSATZ-PROGNOSEN</div>", unsafe_allow_html=True)
-                _rev_rows = ""
-                for e in _rev_est[:4]:
-                    _an_txt = f"({e['analysts']} An.)" if e.get("analysts") else ""
-                    _rev_rows += f"<tr><td>{e['year']}</td><td style='text-align:right'>{fmt_large(e['estimate'])}</td><td style='text-align:right;color:#546e7a'>{_an_txt}</td></tr>"
-                st.markdown(f"""
-                <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
-                <thead><tr style="color:#546e7a;border-bottom:1px solid #1e2d45;">
-                    <th style="text-align:left;padding:4px 8px">Jahr</th>
-                    <th style="text-align:right;padding:4px 8px">Rev. Est.</th>
-                    <th style="text-align:right;padding:4px 8px">Analysten</th>
-                </tr></thead>
-                <tbody style="color:#eceff1;">{_rev_rows}</tbody>
-                </table>""", unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Keine Forward-Schätzungen verfügbar (FMP_API_KEY oder yfinance-Daten fehlen).</div>', unsafe_allow_html=True)
+    _rec_label_map = {
+        "strong_buy":  ("Strong Buy",  "#26a69a"),
+        "buy":         ("Kaufen",      "#66bb6a"),
+        "hold":        ("Halten",      "#ffa726"),
+        "sell":        ("Verkaufen",   "#ef5350"),
+        "strong_sell": ("Strong Sell", "#b71c1c"),
+    }
+    _rec_label, _rec_color = _rec_label_map.get(
+        _rec_key, ((_rec_key.replace("_", " ").title() if _rec_key else "—"), "#546e7a")
+    )
+    _upside      = ((_t_mean  / price - 1) * 100) if (_t_mean  and price > 0) else None
+    _upside_low  = ((_t_low   / price - 1) * 100) if (_t_low   and price > 0) else None
+    _upside_high = ((_t_high  / price - 1) * 100) if (_t_high  and price > 0) else None
 
-    # ── EPS Beat/Miss History ─────────────────────────────────────────────────
+    # Beat-Statistik
+    _beats     = sum(1 for s in earnings_surprises if s["verdict"] == "Beat")
+    _n_es      = len(earnings_surprises)
+    _beat_rate = (_beats / _n_es * 100) if _n_es else None
+    _surp_vals = [s["surp_pct"] for s in earnings_surprises if s.get("surp_pct") is not None]
+    _avg_surp  = sum(_surp_vals) / len(_surp_vals) if _surp_vals else None
+
+    # ── ABSCHNITT 1: Vier Kennzahl-Karten ────────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        _score_pct = ((5 - float(_rec_mean)) / 4 * 100) if _rec_mean else 0
+        st.markdown(f"""
+        <div class="metric-card" style="border-left:4px solid {_rec_color};">
+            <div class="metric-label">Analysten-Konsens</div>
+            <div class="metric-value" style="color:{_rec_color};font-size:1.25rem;">{_rec_label}</div>
+            <div style="background:#1e2d45;border-radius:4px;height:6px;margin:8px 0 4px 0;">
+                <div style="background:{_rec_color};width:{_score_pct:.0f}%;height:6px;border-radius:4px;"></div></div>
+            <div style="color:#546e7a;font-size:0.75rem;">{_n_anal} Analysten · Score {f"{float(_rec_mean):.1f}" if _rec_mean else "—"} / 5</div>
+        </div>""", unsafe_allow_html=True)
+    with c2:
+        _up_color = "#26a69a" if (_upside and _upside > 10) else "#ffa726" if (_upside and _upside > 0) else "#ef5350"
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Ø Kursziel (Upside)</div>
+            <div class="metric-value" style="color:{_up_color};">{f"{_cur_sym}{_t_mean:.2f}" if _t_mean else "—"}</div>
+            <div style="color:{_up_color};font-size:0.9rem;font-weight:600;margin-top:4px;">{f"{_upside:+.1f}%" if _upside is not None else ""}</div>
+            <div style="color:#546e7a;font-size:0.75rem;">{f"Spanne: {_cur_sym}{_t_low:.0f}–{_cur_sym}{_t_high:.0f}" if (_t_low and _t_high) else ""}</div>
+        </div>""", unsafe_allow_html=True)
+    with c3:
+        _fpe_color = "#26a69a" if (_fwd_pe and _fwd_pe < 20) else "#ffa726" if (_fwd_pe and _fwd_pe < 35) else "#ef5350"
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Forward KGV</div>
+            <div class="metric-value" style="color:{_fpe_color};">{f"{_fwd_pe:.1f}×" if _fwd_pe else "—"}</div>
+            <div style="color:#546e7a;font-size:0.75rem;margin-top:4px;">Trailing KGV: {f"{trailing_pe:.1f}×" if trailing_pe else "—"}</div>
+            <div style="color:#546e7a;font-size:0.75rem;">Forward EPS: {f"{_cur_sym}{_fwd_eps:.2f}" if _fwd_eps else "—"}</div>
+        </div>""", unsafe_allow_html=True)
+    with c4:
+        _br_color = "#26a69a" if (_beat_rate and _beat_rate >= 70) else "#ffa726" if (_beat_rate and _beat_rate >= 50) else "#ef5350"
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">EPS-Beat-Rate</div>
+            <div class="metric-value" style="color:{_br_color};">{f"{_beat_rate:.0f}%" if _beat_rate else "—"}</div>
+            <div style="color:#546e7a;font-size:0.75rem;margin-top:4px;">{f"{_beats}/{_n_es} Quartale" if _n_es else "Keine Daten"}</div>
+            <div style="color:#546e7a;font-size:0.75rem;">{f"Ø Überraschung: {_avg_surp:+.1f}%" if _avg_surp is not None else ""}</div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── ABSCHNITT 2: Kursziel-Spanne ─────────────────────────────────────────
+    if _t_low and _t_high and price:
+        _trange = _t_high - _t_low
+        def _tp(val):
+            if not val or not _trange: return 50
+            return max(2, min(98, (val - _t_low) / _trange * 100))
+        _pp  = _tp(price)
+        _mp  = _tp(_t_mean)   if _t_mean   else None
+        _medp = _tp(_t_median) if _t_median else None
+
+        st.markdown(f"""
+        <div style="background:#0d1526;border:1px solid #1e2d45;border-radius:14px;padding:22px 28px;margin:20px 0 6px 0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <span style="color:#b0bec5;font-weight:700;font-size:0.85rem;letter-spacing:0.05em;">KURSZIEL-SPANNE DER ANALYSTEN</span>
+                <span style="color:#546e7a;font-size:0.78rem;">{_n_anal} Analysten · {_currency}</span>
+            </div>
+            <div style="position:relative;height:14px;border-radius:7px;
+                background:linear-gradient(90deg,#ef5350 0%,#ffa726 35%,#26a69a 100%);margin-bottom:36px;">
+                <div style="position:absolute;left:{_pp:.1f}%;top:-8px;transform:translateX(-50%);
+                    width:10px;height:30px;background:#ffffff;border-radius:3px;
+                    box-shadow:0 0 10px rgba(255,255,255,0.6);" title="Aktueller Kurs"></div>
+                {f'<div style="position:absolute;left:{_mp:.1f}%;top:-5px;transform:translateX(-50%);width:3px;height:24px;background:#26a69a;border-radius:2px;opacity:0.9;" title="Ø Kursziel"></div>' if _mp else ""}
+            </div>
+            <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                <div style="text-align:center;">
+                    <div style="color:#ef5350;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_low:.2f}</div>
+                    <div style="color:#546e7a;font-size:0.7rem;">Bear-Ziel</div>
+                    <div style="color:#ef5350;font-size:0.78rem;">{f"{_upside_low:+.0f}%" if _upside_low else ""}</div>
+                </div>
+                <div style="text-align:center;background:rgba(255,255,255,0.05);border-radius:8px;padding:4px 14px;">
+                    <div style="color:#eceff1;font-weight:700;font-size:1.0rem;">{_cur_sym}{price:.2f}</div>
+                    <div style="color:#90a4ae;font-size:0.7rem;">Kurs heute</div>
+                </div>
+                {f'<div style="text-align:center;"><div style="color:#90caf9;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_median:.2f}</div><div style="color:#546e7a;font-size:0.7rem;">Median-Ziel</div></div>' if _t_median else ""}
+                <div style="text-align:center;">
+                    <div style="color:#26a69a;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_mean:.2f}</div>
+                    <div style="color:#546e7a;font-size:0.7rem;">Ø Kursziel</div>
+                    <div style="color:#26a69a;font-size:0.78rem;">{f"{_upside:+.0f}%" if _upside else ""}</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="color:#26a69a;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_high:.2f}</div>
+                    <div style="color:#546e7a;font-size:0.7rem;">Bull-Ziel</div>
+                    <div style="color:#26a69a;font-size:0.78rem;">{f"{_upside_high:+.0f}%" if _upside_high else ""}</div>
+                </div>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── ABSCHNITT 3: Multi-Jahres-Prognose-Tabelle ────────────────────────────
+    _est_by_year: dict = {}
+    for _e in _eps_est:
+        _yr = _e["year"]
+        _est_by_year.setdefault(_yr, {})["eps"] = _e["estimate"]
+        _est_by_year[_yr]["eps_an"] = _e.get("analysts")
+    for _e in _rev_est:
+        _yr = _e["year"]
+        _est_by_year.setdefault(_yr, {})["rev"] = _e["estimate"]
+        _est_by_year[_yr]["rev_an"] = _e.get("analysts")
+
+    _years_sorted = sorted(_est_by_year.keys())
+
+    if _years_sorted:
+        st.markdown(
+            "<div style='color:#b0bec5;font-weight:700;font-size:0.88rem;"
+            "letter-spacing:0.05em;margin:26px 0 10px 0;'>JAHRES-PROGNOSEN IM ÜBERBLICK</div>",
+            unsafe_allow_html=True)
+
+        _prev_eps = _trail_eps
+        _prev_rev = yf_info.get("totalRevenue")
+        _tbl_rows = ""
+
+        def _gc(v):   # growth color
+            if v is None: return "#546e7a"
+            return "#26a69a" if v > 10 else "#66bb6a" if v > 0 else "#ef5350"
+        def _pec(v):  # P/E color
+            if v is None: return "#78909c"
+            return "#26a69a" if v < 15 else "#ffa726" if v < 30 else "#ef5350"
+
+        for _yr in _years_sorted:
+            _d = _est_by_year[_yr]
+            _eps_e = _d.get("eps")
+            _rev_e = _d.get("rev")
+            _eps_an = _d.get("eps_an") or _d.get("rev_an")
+            _eps_gr = ((_eps_e / _prev_eps - 1) * 100) if (_eps_e and _prev_eps and _prev_eps > 0) else None
+            _rev_gr = ((_rev_e / _prev_rev - 1) * 100) if (_rev_e and _prev_rev and _prev_rev > 0) else None
+            _fpe_i  = (price / _eps_e) if (_eps_e and _eps_e > 0 and price) else None
+            _fps_i  = (market_cap / _rev_e) if (_rev_e and _rev_e > 0 and market_cap) else None
+            _an_txt = f'<span style="color:#37474f;font-size:0.7rem">({_eps_an} An.)</span>' if _eps_an else ""
+            _tbl_rows += f"""
+            <tr style="border-bottom:1px solid #1a2744;">
+                <td style="padding:11px 14px;font-weight:700;color:#eceff1;white-space:nowrap;">{_yr}E&nbsp;{_an_txt}</td>
+                <td style="padding:11px 14px;text-align:right;color:#b0bec5;">{fmt_large(_rev_e) if _rev_e else "—"}</td>
+                <td style="padding:11px 14px;text-align:right;font-weight:600;color:{_gc(_rev_gr)};">{f"{_rev_gr:+.1f}%" if _rev_gr is not None else "—"}</td>
+                <td style="padding:11px 14px;text-align:right;color:#b0bec5;">{f"{_cur_sym}{_eps_e:.2f}" if _eps_e is not None else "—"}</td>
+                <td style="padding:11px 14px;text-align:right;font-weight:600;color:{_gc(_eps_gr)};">{f"{_eps_gr:+.1f}%" if _eps_gr is not None else "—"}</td>
+                <td style="padding:11px 14px;text-align:right;color:{_pec(_fpe_i)};">{f"{_fpe_i:.1f}×" if _fpe_i else "—"}</td>
+                <td style="padding:11px 14px;text-align:right;color:#78909c;">{f"{_fps_i:.1f}×" if _fps_i else "—"}</td>
+            </tr>"""
+            _prev_eps = _eps_e or _prev_eps
+            _prev_rev = _rev_e or _prev_rev
+
+        st.markdown(f"""
+        <div style="overflow-x:auto;margin-bottom:6px;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.84rem;
+            background:#0d1526;border-radius:12px;overflow:hidden;">
+        <thead><tr style="background:#1a2744;">
+            <th style="padding:10px 14px;text-align:left;color:#546e7a;">Jahr</th>
+            <th style="padding:10px 14px;text-align:right;color:#546e7a;">Umsatz (E)</th>
+            <th style="padding:10px 14px;text-align:right;color:#546e7a;">Umsatz-Wachstum</th>
+            <th style="padding:10px 14px;text-align:right;color:#546e7a;">EPS (E)</th>
+            <th style="padding:10px 14px;text-align:right;color:#546e7a;">EPS-Wachstum</th>
+            <th style="padding:10px 14px;text-align:right;color:#546e7a;">Fwd. KGV</th>
+            <th style="padding:10px 14px;text-align:right;color:#546e7a;">Fwd. KUV</th>
+        </tr></thead>
+        <tbody style="color:#eceff1;">{_tbl_rows}</tbody>
+        </table>
+        </div>
+        <div style="color:#37474f;font-size:0.71rem;">
+        E = Analystenschätzung. KGV/KUV basiert auf Kurs {_cur_sym}{price:.2f} / MarketCap {fmt_large(market_cap)}.
+        </div>""", unsafe_allow_html=True)
+    elif not _eps_est and not _rev_est:
+        st.markdown(
+            '<div class="insight-box" style="color:#546e7a;margin-top:16px;">'
+            'ℹ️ Keine Forward-Schätzungen verfügbar — FMP_API_KEY setzen oder Ticker hat keine Analystencoverage.</div>',
+            unsafe_allow_html=True)
+
+    # ── ABSCHNITT 4: Investmentthese (auto-generiert) ─────────────────────────
+    _thesis = []
+
+    if _rec_label and _rec_label != "—":
+        _thesis.append(
+            f"<strong>{_n_anal} Analysten</strong> empfehlen aktuell "
+            f"<strong style='color:{_rec_color}'>{_rec_label}</strong>.")
+
+    if _upside is not None:
+        _thesis.append(
+            f"Das durchschnittliche Kursziel von <strong>{_cur_sym}{_t_mean:.2f}</strong> "
+            f"impliziert <strong style='color:{'#26a69a' if _upside > 0 else '#ef5350'}'>"
+            f"{_upside:+.1f}% Upside-Potenzial</strong> zum aktuellen Kurs.")
+
+    if len(_eps_est) >= 2 and _trail_eps and _trail_eps > 0:
+        _eps_last = _eps_est[-1].get("estimate")
+        _n_fwd = len(_eps_est)
+        if _eps_last and _eps_last > 0:
+            _eps_cagr = ((_eps_last / _trail_eps) ** (1 / _n_fwd) - 1) * 100
+            _eg_color = "#26a69a" if _eps_cagr > 10 else "#ffa726" if _eps_cagr > 0 else "#ef5350"
+            _thesis.append(
+                f"Über {_n_fwd} Jahr{'e' if _n_fwd > 1 else ''} wird ein EPS-Wachstum von "
+                f"<strong style='color:{_eg_color}'>{_eps_cagr:.1f}% p.a.</strong> erwartet "
+                f"(von {_cur_sym}{_trail_eps:.2f} auf {_cur_sym}{_eps_last:.2f}).")
+
+    if len(_rev_est) >= 2 and yf_info.get("totalRevenue"):
+        _rev_base = yf_info["totalRevenue"]
+        _rev_last_e = _rev_est[-1].get("estimate")
+        if _rev_last_e and _rev_base > 0:
+            _rev_cagr = ((_rev_last_e / _rev_base) ** (1 / len(_rev_est)) - 1) * 100
+            _rg_color = "#26a69a" if _rev_cagr > 8 else "#ffa726" if _rev_cagr > 0 else "#ef5350"
+            _thesis.append(
+                f"Der Umsatz soll mit <strong style='color:{_rg_color}'>{_rev_cagr:.1f}% p.a.</strong> wachsen.")
+
+    if _fwd_pe:
+        _pe_v = ("günstig (<20×)" if _fwd_pe < 20 else "fair (20–30×)" if _fwd_pe < 30
+                 else "ambitioniert (30–50×)" if _fwd_pe < 50 else "sehr hoch (>50×)")
+        _pe_c = "#26a69a" if _fwd_pe < 20 else "#66bb6a" if _fwd_pe < 30 else "#ffa726" if _fwd_pe < 50 else "#ef5350"
+        _thesis.append(
+            f"Das Forward-KGV von <strong style='color:{_pe_c}'>{_fwd_pe:.1f}×</strong> "
+            f"gilt als <strong style='color:{_pe_c}'>{_pe_v}</strong>.")
+
+    if _beat_rate is not None and _n_es >= 4:
+        _br_v = ("übertrifft die Erwartungen konsistent" if _beat_rate >= 75
+                 else "trifft die Erwartungen meist" if _beat_rate >= 50
+                 else "verfehlt die Erwartungen häufig")
+        _thesis.append(
+            f"Das Management <strong>{_br_v}</strong> "
+            f"({_beat_rate:.0f}% Beat-Rate, Ø {_avg_surp:+.1f}% Überraschung).")
+
+    if _thesis:
+        st.markdown(f"""
+        <div style="background:linear-gradient(135deg,#0b1e10 0%,#0d1526 100%);
+            border:1px solid #1b3d20;border-radius:14px;padding:20px 26px;margin:22px 0;">
+            <div style="color:#81c784;font-weight:700;font-size:0.8rem;
+                letter-spacing:0.08em;margin-bottom:12px;">📋 INVESTMENTTHESE — ANALYSTENKONSENS</div>
+            <div style="color:#cfd8dc;font-size:0.88rem;line-height:1.8;">
+                {"&nbsp; ".join(_thesis)}
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── ABSCHNITT 5: EPS-Überraschungen (Beat/Miss-History) ─────────────────
     if earnings_surprises:
-        st.markdown("<div style='color:#b0bec5;font-weight:600;font-size:0.85rem;margin:20px 0 8px 0;'>EPS BEAT / MISS HISTORY</div>", unsafe_allow_html=True)
+        _bi = "✅" if (_beat_rate and _beat_rate >= 70) else "⚠️" if (_beat_rate and _beat_rate >= 50) else "❌"
+        st.markdown(
+            f"<div style='color:#b0bec5;font-weight:700;font-size:0.85rem;"
+            f"letter-spacing:0.05em;margin:24px 0 10px 0;'>"
+            f"EPS-ÜBERRASCHUNGEN — LETZTE {_n_es} QUARTALE&nbsp;&nbsp;"
+            f"{f'{_bi} {_beats}/{_n_es} Beat ({_beat_rate:.0f}%)' if _beat_rate else ''}</div>",
+            unsafe_allow_html=True)
         _surp_rows = ""
-        for s in earnings_surprises[:8]:
-            _verdict_color = "#26a69a" if s["verdict"] == "Beat" else "#ef5350" if s["verdict"] == "Miss" else "#ffa726"
-            _est_txt = f"{s['estimate']:.2f}" if s.get("estimate") is not None else "—"
-            _surp_txt = f"{s['surp_pct']:+.1f}%" if s.get("surp_pct") else ""
-            _surp_rows += f"""<tr>
-                <td style="padding:4px 8px">{s['date']}</td>
-                <td style="text-align:right;padding:4px 8px">{_est_txt}</td>
-                <td style="text-align:right;padding:4px 8px">{s['actual']:.2f}</td>
-                <td style="text-align:right;padding:4px 8px;color:{_verdict_color}">{_surp_txt}</td>
-                <td style="text-align:center;padding:4px 8px"><span style="color:{_verdict_color};font-weight:600">{s['verdict']}</span></td>
+        for _s in earnings_surprises[:8]:
+            _vc   = "#26a69a" if _s["verdict"] == "Beat" else "#ef5350" if _s["verdict"] == "Miss" else "#ffa726"
+            _sval = _s.get("surp_pct") or 0
+            _bw   = min(abs(_sval) * 2.5, 100)
+            _surp_rows += f"""
+            <tr style="border-bottom:1px solid #0d1526;">
+                <td style="padding:9px 12px;color:#90a4ae;">{_s['date']}</td>
+                <td style="padding:9px 12px;text-align:right;color:#546e7a;">
+                    {f"{_cur_sym}{_s['estimate']:.2f}" if _s.get("estimate") is not None else "—"}</td>
+                <td style="padding:9px 12px;text-align:right;color:#eceff1;font-weight:600;">
+                    {_cur_sym}{_s['actual']:.2f}</td>
+                <td style="padding:9px 12px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <div style="background:#1e2d45;border-radius:3px;height:7px;width:70px;flex-shrink:0;">
+                            <div style="background:{_vc};width:{_bw:.0f}%;height:7px;border-radius:3px;"></div></div>
+                        <span style="color:{_vc};font-weight:600;font-size:0.8rem;">
+                            {f"{_sval:+.1f}%" if _sval else "—"}</span>
+                    </div>
+                </td>
+                <td style="padding:9px 12px;text-align:center;">
+                    <span style="color:{_vc};font-weight:700;font-size:0.78rem;">{_s['verdict']}</span>
+                </td>
             </tr>"""
         st.markdown(f"""
-        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
-        <thead><tr style="color:#546e7a;border-bottom:1px solid #1e2d45;">
-            <th style="text-align:left;padding:4px 8px">Quartal</th>
-            <th style="text-align:right;padding:4px 8px">Schätzung</th>
-            <th style="text-align:right;padding:4px 8px">Actual EPS</th>
-            <th style="text-align:right;padding:4px 8px">Überraschung</th>
-            <th style="text-align:center;padding:4px 8px">Ergebnis</th>
+        <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;
+            background:#0d1526;border-radius:12px;overflow:hidden;">
+        <thead><tr style="background:#1a2744;">
+            <th style="padding:9px 12px;text-align:left;color:#546e7a;">Quartal</th>
+            <th style="padding:9px 12px;text-align:right;color:#546e7a;">Schätzung</th>
+            <th style="padding:9px 12px;text-align:right;color:#546e7a;">Actual EPS</th>
+            <th style="padding:9px 12px;color:#546e7a;">Überraschung</th>
+            <th style="padding:9px 12px;text-align:center;color:#546e7a;">Ergebnis</th>
         </tr></thead>
         <tbody style="color:#eceff1;">{_surp_rows}</tbody>
-        </table>""", unsafe_allow_html=True)
-
-    # ── Forward PE from estimates ─────────────────────────────────────────────
-    _fwd_pe = yf_info.get("forwardPE")
-    _fwd_eps = yf_info.get("forwardEps")
-    if _fwd_pe or _fwd_eps:
-        st.markdown(f"""
-        <div style="background:#0d1526;border:1px solid #1e2d45;border-radius:12px;padding:16px 24px;margin-top:20px;display:flex;gap:32px;flex-wrap:wrap;">
-            {f'<div><div style="color:#546e7a;font-size:0.78rem">Forward KGV</div><div style="color:#eceff1;font-size:1.1rem;font-weight:700">{_fwd_pe:.1f}x</div></div>' if _fwd_pe else ""}
-            {f'<div><div style="color:#546e7a;font-size:0.78rem">Forward EPS</div><div style="color:#eceff1;font-size:1.1rem;font-weight:700">{_fwd_eps:.2f}</div></div>' if _fwd_eps else ""}
-            {f'<div><div style="color:#546e7a;font-size:0.78rem">Akt. Kurs</div><div style="color:#eceff1;font-size:1.1rem;font-weight:700">{price:.2f}</div></div>'}
-        </div>""", unsafe_allow_html=True)
+        </table></div>""", unsafe_allow_html=True)
 
 elif _at == 3:
     st.markdown("<div class='section-header'>Fundamental</div>", unsafe_allow_html=True)
