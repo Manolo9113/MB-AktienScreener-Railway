@@ -577,16 +577,22 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
         else:
             cf = _get_df("cash_flow", "cashflow")
             if cf is not None and len(cf.columns) >= 1:
-                fcf_r = _row(cf, "Free Cash Flow", "FreeCashFlow", "Freecashflow")
+                fcf_r = _row(cf, "Free Cash Flow", "FreeCashFlow", "Freecashflow",
+                             "Free Cashflow", "Net Free Cash Flow")
                 ocf_r = _row(cf,
                              "Operating Cash Flow", "OperatingCashFlow",
                              "Total Cash From Operating Activities",
-                             "Cash From Operations", "CashFlowFromOperations")
+                             "Cash From Operations", "CashFlowFromOperations",
+                             "Net Cash From Operating Activities",
+                             "Net Cash Provided By Operating Activities",
+                             "Cash Flows From Operating Activities")
                 cap_r = _row(cf,
                              "Capital Expenditure", "CapitalExpenditure",
                              "Capital Expenditures", "Capex",
                              "Purchase Of Property Plant And Equipment",
-                             "Purchases of PPE", "PurchaseOfPPE")
+                             "Purchases of PPE", "PurchaseOfPPE",
+                             "Acquisition Of PPE", "Purchase Of Fixed Assets",
+                             "Capital Spending")
                 if fcf_r is not None:
                     v = _safe_num(fcf_r)
                     if v: info["freeCashflow"] = int(v)
@@ -631,8 +637,10 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
 
     # ── marketCap Fallback (häufig None bei JP/EU Aktien → FCF Yield = 0) ─
     if not info.get("marketCap"):
-        _price  = info.get("currentPrice") or info.get("regularMarketPrice") or 0
-        _shares = info.get("sharesOutstanding") or 0
+        _price = (info.get("currentPrice") or info.get("regularMarketPrice")
+                  or info.get("previousClose") or info.get("open") or 0)
+        _shares = (info.get("sharesOutstanding") or info.get("impliedSharesOutstanding")
+                   or info.get("floatShares") or 0)
         if _price and _shares:
             info["marketCap"] = int(_price * _shares)
 
@@ -4908,6 +4916,16 @@ recommendation = yf_info.get("recommendationKey", "").replace("_", " ").title()
 sector = yf_info.get("sector", "")
 industry = yf_info.get("industry", "")
 
+# ── Currency symbol (JPY, EUR, GBP, … → use correct symbol everywhere) ───
+_currency = yf_info.get("currency", "USD") or "USD"
+_cur_sym = {
+    "USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥", "CNY": "¥",
+    "CHF": "Fr.", "HKD": "HK$", "CAD": "CA$", "AUD": "A$",
+    "KRW": "₩", "SEK": "kr", "NOK": "kr", "DKK": "kr",
+    "TWD": "NT$", "SGD": "S$", "INR": "₹", "BRL": "R$",
+    "MXN": "MX$", "ZAR": "R", "TRY": "₺", "ILS": "₪",
+}.get(_currency, _currency + " ")
+
 # Peer-Fallback: wenn FMP keine Peers liefert → Sektor-basierte Liste
 if not peers and sector:
     peers = [t for t in SECTOR_PEERS_FALLBACK.get(sector, []) if t != ticker][:5]
@@ -5004,9 +5022,9 @@ st.markdown(f"""
                 {'<span style="background:#1a2e1a; color:#00e676; border-radius:6px; padding:3px 10px; font-size:0.78rem; font-weight:600;">📅 Earnings: ' + earnings_date_str + '</span>' if earnings_date_str else ''}
             </div>
             <div style="margin-top:12px;">
-                <div class="header-price" style="font-size:1.8rem; text-align:left;">${price:.2f}</div>
-                <div class="{change_class}">{change_arrow} {abs(price_change):.2f} ({abs(price_change_pct):.2f}%)</div>
-                {'<div style="color:#546e7a; font-size:0.78rem; margin-top:2px;">Ziel: $' + f'{target_mean:.2f}' + ' <span style="color:' + ('#00e676' if upside and upside > 0 else '#ff5252') + '">(' + ('+' if upside and upside > 0 else '') + f'{upside:.1f}%)' + '</span></div>' if upside else ''}
+                <div class="header-price" style="font-size:1.8rem; text-align:left;">{_cur_sym}{price:.2f}</div>
+                <div class="{change_class}">{change_arrow} {_cur_sym}{abs(price_change):.2f} ({abs(price_change_pct):.2f}%)</div>
+                {'<div style="color:#546e7a; font-size:0.78rem; margin-top:2px;">Ziel: ' + _cur_sym + f'{target_mean:.2f}' + ' <span style="color:' + ('#00e676' if upside and upside > 0 else '#ff5252') + '">(' + ('+' if upside and upside > 0 else '') + f'{upside:.1f}%)' + '</span></div>' if upside else ''}
             </div>
         </div>
     </div>
@@ -5132,9 +5150,9 @@ if week52_pos is not None:
             </div>
         </div>
         <div style="display:flex; justify-content:space-between; margin-top:8px;">
-            <span style="color:#546e7a; font-size:0.78rem;">${week52_low:.2f}</span>
-            <span style="color:#eceff1; font-size:0.85rem; font-weight:600;">${price:.2f}</span>
-            <span style="color:#546e7a; font-size:0.78rem;">${week52_high:.2f}</span>
+            <span style="color:#546e7a; font-size:0.78rem;">{_cur_sym}{week52_low:.2f}</span>
+            <span style="color:#eceff1; font-size:0.85rem; font-weight:600;">{_cur_sym}{price:.2f}</span>
+            <span style="color:#546e7a; font-size:0.78rem;">{_cur_sym}{week52_high:.2f}</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -5154,7 +5172,7 @@ if st.session_state.get("show_wl_compare") and len(st.session_state.get("watchli
         _cmp_rows.append({
             "Ticker":       _t,
             "Name":         _d.get("name", _t)[:22],
-            "Kurs":         f"${_d['price']:.2f}" if _d.get("price") else "—",
+            "Kurs":         f"{_cur_sym}{_d['price']:.2f}" if _d.get("price") else "—",
             "Mkt Cap":      fmt_large(_d.get("mkt_cap")),
             "KGV":          f"{_d['pe']:.1f}x" if _d.get("pe") else "—",
             "Bruttomarge":  f"{_d['gm']:.1f}%",
@@ -5446,7 +5464,7 @@ if len(hist_plot) >= 2:
     if dcf_fair_val and dcf_fair_val > 0:
         fv_color = "#00e676" if dcf_fair_val > price else "#ff5252"
         fig.add_hline(y=dcf_fair_val, line_dash="dot", line_color=fv_color, line_width=2,
-                      annotation_text=f"DCF Fair Value ${dcf_fair_val:.0f}",
+                      annotation_text=f"DCF Fair Value {_cur_sym}{dcf_fair_val:.0f}",
                       annotation_font_color=fv_color, row=1, col=1)
 
     # Analyst target line
@@ -5494,7 +5512,7 @@ if len(hist_plot) >= 2:
                "deutlich unterbewertet (<-2σ)" if pos_sigma < -2 else \
                "fair bewertet (nahe Trend)"
 
-    dcf_text = f" | DCF Fair Value: <strong style='color:{'#00e676' if dcf_fair_val and dcf_fair_val > price else '#ff5252'}'>${dcf_fair_val:.2f}</strong>" if dcf_fair_val else ""
+    dcf_text = f" | DCF Fair Value: <strong style='color:{'#00e676' if dcf_fair_val and dcf_fair_val > price else '#ff5252'}'>{_cur_sym}{dcf_fair_val:.2f}</strong>" if dcf_fair_val else ""
     st.markdown(f"""
     <div class="insight-box">
         <strong>📊 Chart-Analyse:</strong> {ticker} notiert aktuell
@@ -5517,7 +5535,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
         "revenue_growth": (_ex_rev,    lambda v: fmt_large(v), ""),
         "net":            (_ex_net,    lambda v: fmt_large(v), ""),
         "net_growth":     (_ex_net,    lambda v: fmt_large(v), ""),
-        "eps":            (_ex_eps,    lambda v: f"${v:.2f}",  ""),
+        "eps":            (_ex_eps,    lambda v: f"{_cur_sym}{v:.2f}",  ""),
         "fcf":            (_ex_fcf,    lambda v: fmt_large(v), ""),
         "fcf_growth":     (_ex_fcf,    lambda v: fmt_large(v), ""),
         "ebitda":         (_ex_ebitda, lambda v: fmt_large(v), ""),
@@ -5844,7 +5862,7 @@ elif _at == 1:
     with _gc4:
         if not a_eps.empty and len(a_eps) >= 2:
             _show_chart(_bar_chart(a_eps, "EPS (Diluted) — Trend", "#00e5ff", "#ff5252",
-                                   is_growth=False, value_fmt=lambda v: f"${v:.2f}"),
+                                   is_growth=False, value_fmt=lambda v: f"{_cur_sym}{v:.2f}"),
                         "eps", "EPS (Diluted)", "#00e5ff", "#ff5252")
         elif not a_net.empty:
             _show_chart(_bar_chart(a_net, "Nettogewinn absolut", "#64b5f6", "#ff5252",
@@ -6665,7 +6683,7 @@ elif _at == 4:
             ))
             _fig_dcf.add_hline(y=price, line_dash="dot", line_color="#ffd600",
                                line_width=1.5,
-                               annotation_text=f"Kurs ${price:.0f}",
+                               annotation_text=f"Kurs {_cur_sym}{price:.0f}",
                                annotation_font_color="#ffd600")
             _fig_dcf.update_layout(
                 template="plotly_dark",
