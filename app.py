@@ -3502,6 +3502,8 @@ if "portfolio_df" not in st.session_state:
     st.session_state["portfolio_df"] = None
 if "portfolio_isin_map" not in st.session_state:
     st.session_state["portfolio_isin_map"] = {}
+if "portfolio_csv_bytes" not in st.session_state:
+    st.session_state["portfolio_csv_bytes"] = None
 
 def _go_to_ticker(t):
     st.session_state["ticker"] = t
@@ -3618,15 +3620,121 @@ def _openfigi_batch(isins: tuple) -> dict:
     return result
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _get_eur_fx_rate(from_currency: str) -> float:
+    """Wechselkurs: 1 from_currency = X EUR (gecacht 1h)."""
+    if from_currency in ('EUR', ''):
+        return 1.0
+    try:
+        fi = yf.Ticker(f"{from_currency}EUR=X").fast_info
+        rate = getattr(fi, 'last_price', None)
+        return float(rate) if rate and float(rate) > 0 else 1.0
+    except Exception:
+        return 1.0
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def _portfolio_price(ticker: str):
-    """Aktuellen Kurs für Portfolio-Position (gecacht 5 Min)."""
+    """Aktuellen Kurs in EUR für Portfolio-Position (gecacht 5 Min)."""
     try:
         fi = yf.Ticker(ticker).fast_info
         p = getattr(fi, 'last_price', None) or getattr(fi, 'regular_market_price', None)
-        return float(p) if p else None
+        if not p:
+            return None
+        price = float(p)
+        currency = str(getattr(fi, 'currency', 'EUR') or 'EUR').strip()
+        if currency == 'GBp':
+            price /= 100.0
+            currency = 'GBP'
+        if currency != 'EUR':
+            price *= _get_eur_fx_rate(currency)
+        return price
     except Exception:
         return None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _build_performance(csv_bytes: bytes, benchmark_ticker: str):
+    """Portfolio vs Benchmark Performance. Gibt (dates, invested, bm_value) zurück."""
+    df = None
+    for enc in ['utf-8-sig', 'utf-8', 'latin-1']:
+        try:
+            df = pd.read_csv(io.BytesIO(csv_bytes), sep=';', decimal=',',
+                             encoding=enc, dtype=str)
+            break
+        except Exception:
+            continue
+    if df is None or df.empty:
+        return None
+    df.columns = df.columns.str.strip()
+    date_col = None
+    for c in ['Datum', 'Ausführungsdatum', 'Ausführung Datum', 'Handelsdatum', 'Datum/Uhrzeit', 'Date']:
+        if c in df.columns:
+            date_col = c
+            break
+    if date_col is None:
+        return None
+    if 'Status' in df.columns:
+        df = df[df['Status'] == 'ausgeführt'].copy()
+    if df.empty or 'Richtung' not in df.columns or 'Wert' not in df.columns:
+        return None
+    df['_date'] = pd.to_datetime(df[date_col].astype(str).str[:10], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['_date'])
+    df['_wert'] = pd.to_numeric(
+        df['Wert'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
+        errors='coerce'
+    ).fillna(0.0)
+    df['_eur'] = df['_wert'].abs()
+    df.loc[df['Richtung'] == 'Verkauf', '_eur'] = -df.loc[df['Richtung'] == 'Verkauf', '_wert'].abs()
+    df = df[df['Richtung'].isin(['Kauf', 'Verkauf'])].sort_values('_date').reset_index(drop=True)
+    if df.empty:
+        return None
+    first_date = df['_date'].min()
+    today = pd.Timestamp.today().normalize()
+    try:
+        bm_raw = yf.download(benchmark_ticker, start=first_date - pd.Timedelta(days=10),
+                             end=today + pd.Timedelta(days=1), interval='1d',
+                             progress=False, auto_adjust=True)
+        if bm_raw.empty:
+            return None
+        bm = bm_raw['Close'].squeeze()
+        if isinstance(bm, pd.DataFrame):
+            bm = bm.iloc[:, 0]
+        bm.index = pd.to_datetime(bm.index).normalize()
+    except Exception:
+        return None
+    month_ends = pd.date_range(
+        start=first_date.to_period('M').to_timestamp('M'),
+        end=today.to_period('M').to_timestamp('M'),
+        freq='ME'
+    )
+    dates_out, invested_out, bm_val_out = [], [], []
+    cumulative_invested = 0.0
+    bm_units = 0.0
+    tx_pointer = 0
+    for month_end in month_ends:
+        while tx_pointer < len(df) and df.loc[tx_pointer, '_date'] <= month_end:
+            row = df.loc[tx_pointer]
+            eur = row['_eur']
+            bm_before = bm[bm.index <= row['_date']]
+            if not bm_before.empty:
+                bm_price_at_tx = float(bm_before.iloc[-1])
+                if bm_price_at_tx > 0 and abs(eur) > 1e-6:
+                    bm_units += eur / bm_price_at_tx
+            cumulative_invested += eur
+            tx_pointer += 1
+        if cumulative_invested <= 0:
+            continue
+        bm_at_end = bm[bm.index <= month_end]
+        if bm_at_end.empty:
+            continue
+        bm_price_end = float(bm_at_end.iloc[-1])
+        dates_out.append(month_end)
+        invested_out.append(round(cumulative_invested, 2))
+        bm_val_out.append(round(bm_units * bm_price_end, 2))
+    if not dates_out:
+        return None
+    return dates_out, invested_out, bm_val_out
 
 
 # ==================== SIDEBAR ====================
@@ -4960,6 +5068,7 @@ if st.session_state.get("show_portfolio"):
 
     if uploaded:
         raw = uploaded.read()
+        st.session_state["portfolio_csv_bytes"] = raw
         with st.spinner("Positionen werden berechnet…"):
             df_port = _parse_portfolio_csv(raw)
         if df_port.empty:
@@ -5012,71 +5121,130 @@ if st.session_state.get("show_portfolio"):
                        delta=f"{pnl_pct:+.1f}%" if pnl_pct else None)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-        # ── Aktien & ETFs ────────────────────────────────────────────
-        if not stocks_etf.empty:
-            st.markdown("<div class='section-header'>📈 Aktien & ETFs</div>", unsafe_allow_html=True)
-            for _, row in stocks_etf.iterrows():
-                tkr = isin_map.get(row['ISIN'])
-                cur_price = prices.get(row['ISIN'])
-                cur_val = cur_price * row['shares'] if cur_price else None
-                pnl_pos = ((cur_val - row['cost_basis']) / row['cost_basis'] * 100) if (cur_val and row['cost_basis'] > 0) else None
+        tab_pos, tab_perf = st.tabs(["📊 Positionen", "📈 Performance"])
 
-                c1, c2, c3, c4, c5 = st.columns([3, 1.2, 1.2, 1.2, 1])
-                with c1:
-                    st.markdown(
-                        f"<div style='color:#eceff1;font-weight:600;font-size:0.95rem;'>{row['name'][:40]}</div>"
-                        f"<div style='color:#546e7a;font-size:0.72rem;'>{row['ISIN']} · {row['wkn']}"
-                        f"{' · ' + tkr if tkr else ' · kein Ticker'}</div>",
-                        unsafe_allow_html=True)
-                with c2:
-                    st.markdown(
-                        f"<div style='color:#78909c;font-size:0.72rem;'>Anteile</div>"
-                        f"<div style='color:#eceff1;font-size:0.9rem;font-weight:600;'>{row['shares']:.4f}</div>",
-                        unsafe_allow_html=True)
-                with c3:
-                    st.markdown(
-                        f"<div style='color:#78909c;font-size:0.72rem;'>Ø Kaufkurs</div>"
-                        f"<div style='color:#eceff1;font-size:0.9rem;font-weight:600;'>{row['avg_cost']:.2f}</div>",
-                        unsafe_allow_html=True)
-                with c4:
-                    if cur_price:
-                        clr = '#00e676' if pnl_pos and pnl_pos >= 0 else '#ff5252'
+        with tab_pos:
+            # ── Aktien & ETFs ────────────────────────────────────────────
+            if not stocks_etf.empty:
+                st.markdown("<div class='section-header'>📈 Aktien & ETFs</div>", unsafe_allow_html=True)
+                for _, row in stocks_etf.iterrows():
+                    tkr = isin_map.get(row['ISIN'])
+                    cur_price = prices.get(row['ISIN'])
+                    cur_val = cur_price * row['shares'] if cur_price else None
+                    pnl_pos = ((cur_val - row['cost_basis']) / row['cost_basis'] * 100) if (cur_val and row['cost_basis'] > 0) else None
+
+                    c1, c2, c3, c4, c5 = st.columns([3, 1.2, 1.2, 1.2, 1])
+                    with c1:
                         st.markdown(
-                            f"<div style='color:#78909c;font-size:0.72rem;'>Kurs / P&L</div>"
-                            f"<div style='color:#eceff1;font-size:0.9rem;font-weight:600;'>{cur_price:.2f}</div>"
-                            f"<div style='color:{clr};font-size:0.8rem;'>{pnl_pos:+.1f}%</div>",
+                            f"<div style='color:#eceff1;font-weight:600;font-size:0.95rem;'>{row['name'][:40]}</div>"
+                            f"<div style='color:#546e7a;font-size:0.72rem;'>{row['ISIN']} · {row['wkn']}"
+                            f"{' · ' + tkr if tkr else ' · kein Ticker'}</div>",
                             unsafe_allow_html=True)
-                    else:
-                        st.markdown("<div style='color:#546e7a;font-size:0.8rem;margin-top:14px;'>kein Kurs</div>",
-                                    unsafe_allow_html=True)
-                with c5:
-                    if tkr:
-                        if st.button("Analysieren", key=f"pf_ana_{row['ISIN']}", use_container_width=True):
-                            _go_to_ticker(tkr)
-                            st.rerun()
-                st.markdown("<hr style='border-color:#1e2d45;margin:6px 0;'>", unsafe_allow_html=True)
+                    with c2:
+                        st.markdown(
+                            f"<div style='color:#78909c;font-size:0.72rem;'>Anteile</div>"
+                            f"<div style='color:#eceff1;font-size:0.9rem;font-weight:600;'>{row['shares']:.4f}</div>",
+                            unsafe_allow_html=True)
+                    with c3:
+                        st.markdown(
+                            f"<div style='color:#78909c;font-size:0.72rem;'>Ø Kaufkurs</div>"
+                            f"<div style='color:#eceff1;font-size:0.9rem;font-weight:600;'>€ {row['avg_cost']:.2f}</div>",
+                            unsafe_allow_html=True)
+                    with c4:
+                        if cur_price:
+                            clr = '#00e676' if pnl_pos and pnl_pos >= 0 else '#ff5252'
+                            st.markdown(
+                                f"<div style='color:#78909c;font-size:0.72rem;'>Kurs (€) / P&L</div>"
+                                f"<div style='color:#eceff1;font-size:0.9rem;font-weight:600;'>€ {cur_price:.2f}</div>"
+                                f"<div style='color:{clr};font-size:0.8rem;'>{pnl_pos:+.1f}%</div>",
+                                unsafe_allow_html=True)
+                        else:
+                            st.markdown("<div style='color:#546e7a;font-size:0.8rem;margin-top:14px;'>kein Kurs</div>",
+                                        unsafe_allow_html=True)
+                    with c5:
+                        if tkr:
+                            if st.button("Analysieren", key=f"pf_ana_{row['ISIN']}", use_container_width=True):
+                                _go_to_ticker(tkr)
+                                st.rerun()
+                    st.markdown("<hr style='border-color:#1e2d45;margin:6px 0;'>", unsafe_allow_html=True)
 
-        # ── Warrants ────────────────────────────────────────────────
-        if not warrants.empty:
-            with st.expander(f"⚠️ Optionsscheine / Zertifikate ({len(warrants)} Positionen — kein Screening möglich)"):
-                for _, row in warrants.iterrows():
+            # ── Warrants ────────────────────────────────────────────────
+            if not warrants.empty:
+                with st.expander(f"⚠️ Optionsscheine / Zertifikate ({len(warrants)} Positionen — kein Screening möglich)"):
+                    for _, row in warrants.iterrows():
+                        st.markdown(
+                            f"**{row['name'][:50]}** · {row['ISIN']} · WKN {row['wkn']} · "
+                            f"{row['shares']:.4f} Stk. · Ø {row['avg_cost']:.2f}",
+                            unsafe_allow_html=True)
+
+            # ── Krypto ──────────────────────────────────────────────────
+            if not crypto.empty:
+                st.markdown("<div class='section-header'>₿ Krypto</div>", unsafe_allow_html=True)
+                for _, row in crypto.iterrows():
                     st.markdown(
-                        f"**{row['name'][:50]}** · {row['ISIN']} · WKN {row['wkn']} · "
-                        f"{row['shares']:.4f} Stk. · Ø {row['avg_cost']:.2f}",
+                        f"**{row['name']}** · {row['shares']:.6f} Stk. · Ø {row['avg_cost']:.4f} · "
+                        f"Investiert: €{row['cost_basis']:,.2f}",
                         unsafe_allow_html=True)
 
-        # ── Krypto ──────────────────────────────────────────────────
-        if not crypto.empty:
-            st.markdown("<div class='section-header'>₿ Krypto</div>", unsafe_allow_html=True)
-            for _, row in crypto.iterrows():
-                st.markdown(
-                    f"**{row['name']}** · {row['shares']:.6f} Stk. · Ø {row['avg_cost']:.4f} · "
-                    f"Investiert: €{row['cost_basis']:,.2f}",
-                    unsafe_allow_html=True)
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            st.caption("Kurse in EUR umgerechnet (Wechselkurs via yFinance). P&L basiert auf dem Ø-Kaufkurs aus der Orderhistorie. "
+                       "Krypto-Kurse werden von yFinance nicht unterstützt.")
 
-        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-        st.caption("Kurse in der nativen Währung der Börse. P&L basiert auf dem Ø-Kaufkurs aus der Orderhistorie. "
-                   "Krypto-Kurse werden von yFinance nicht unterstützt.")
+        with tab_perf:
+            _BENCHMARKS = {
+                "S&P 500 — SXR8.DE": "SXR8.DE",
+                "MSCI World — VWCE.DE": "VWCE.DE",
+                "NASDAQ 100 — EQQQ.DE": "EQQQ.DE",
+                "DAX — EXS1.DE": "EXS1.DE",
+            }
+            bm_label = st.selectbox("Benchmark auswählen", list(_BENCHMARKS.keys()), key="pf_bm_select")
+            bm_ticker = _BENCHMARKS[bm_label]
+            _csv_bytes = st.session_state.get("portfolio_csv_bytes")
+            if _csv_bytes:
+                with st.spinner("Performance-Daten werden berechnet…"):
+                    _perf = _build_performance(_csv_bytes, bm_ticker)
+                if _perf is None:
+                    st.warning("Performance-Berechnung nicht möglich. Stelle sicher, dass die CSV eine Datums-Spalte enthält.")
+                else:
+                    _dates_p, _invested_p, _bm_p = _perf
+                    import plotly.graph_objects as _go
+                    _fig = _go.Figure()
+                    _fig.add_trace(_go.Scatter(
+                        x=_dates_p, y=_invested_p,
+                        name="Investiert (kumuliert)",
+                        line=dict(color="#ffd600", width=2, dash="dot"),
+                        fill="tozeroy", fillcolor="rgba(255,214,0,0.07)"
+                    ))
+                    _fig.add_trace(_go.Scatter(
+                        x=_dates_p, y=_bm_p,
+                        name=f"Benchmark ({bm_label})",
+                        line=dict(color="#42a5f5", width=2.5),
+                        fill="tozeroy", fillcolor="rgba(66,165,245,0.09)"
+                    ))
+                    _fig.update_layout(
+                        template="plotly_dark", height=430,
+                        paper_bgcolor="#0a1628", plot_bgcolor="#0a1628",
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                        margin=dict(l=10, r=10, t=44, b=10),
+                        xaxis=dict(showgrid=False, title=""),
+                        yaxis=dict(showgrid=True, gridcolor="#1e2d45",
+                                   tickprefix="€", tickformat=",.0f"),
+                        hovermode="x unified",
+                    )
+                    st.plotly_chart(_fig, use_container_width=True)
+                    if _bm_p and _invested_p[-1] > 0:
+                        _bm_gain_eur = _bm_p[-1] - _invested_p[-1]
+                        _bm_gain_pct = (_bm_p[-1] / _invested_p[-1] - 1) * 100
+                        _sc1, _sc2, _sc3 = st.columns(3)
+                        _sc1.metric("Investiert gesamt", f"€ {_invested_p[-1]:,.0f}")
+                        _sc2.metric(f"{bm_label} heute", f"€ {_bm_p[-1]:,.0f}")
+                        _sc3.metric("Benchmark-Rendite", f"{_bm_gain_pct:+.1f}%",
+                                    delta=f"{_bm_gain_eur:+,.0f} €",
+                                    delta_color="normal" if _bm_gain_eur >= 0 else "inverse")
+                    st.caption("Methodik: Jeder Kauf simuliert einen gleichwertigen Kauf des Benchmarks. "
+                               "Verkäufe reduzieren die Benchmark-Position anteilig. Transaktionskosten bleiben unberücksichtigt.")
+            else:
+                st.info("📂 Lade zuerst deine Orderhistorie-CSV hoch, um die Performance zu berechnen.")
 
     elif df_port is None:
         st.info("📂 Bitte lade deine Orderhistorie-CSV hoch.\n\n"
