@@ -6966,8 +6966,26 @@ elif _at == 4:
     # DCF
     if show_dcf:
         st.markdown("<div class='section-header'>💰 DCF Szenarien — Bull / Base / Bear</div>", unsafe_allow_html=True)
-
-        # ── Szenario-Annahmen (basierend auf Rev. Growth) ──────────────
+        st.markdown(f"""
+        <div class="insight-box" style="margin-bottom:16px; line-height:1.7;">
+            <strong>Was ist der DCF Fair Value?</strong>
+            Der Discounted-Cashflow-Wert ist der heutige Barwert aller zukünftig erwarteten Free Cashflows —
+            diskontiert mit einem Zinssatz, der Risiko und Opportunitätskosten widerspiegelt.
+            Er beantwortet: <em>„Was wäre die Aktie wert, wenn ich alle künftigen Cashflows heute ausbezahlt bekäme?"</em><br><br>
+            <strong>Wie einordnen?</strong>
+            <ul style="margin:4px 0 0 16px; padding:0;">
+                <li>Der Wert ist <strong>kein Kursziel</strong>, sondern ein Anker für die Bewertungsdiskussion.</li>
+                <li>Liegt der Kurs <em>unter</em> dem Bear-Szenario → mögliche <strong>Margin of Safety</strong> (Benjamin Graham).</li>
+                <li>Liegt der Kurs <em>über</em> dem Bull-Szenario → Markt preist starkes Wachstum ein — Enttäuschungspotenzial hoch.</li>
+                <li>Die Berechnung steht und fällt mit den Annahmen (GIGO). Kleines Delta bei der Wachstumsrate = grosser Effekt auf den Endwert.</li>
+            </ul>
+            <span style="color:#546e7a; font-size:0.78rem;">
+                Akt. FCF: <strong>{fmt_large(fcf) if fcf else "N/A"}</strong> ·
+                Rev. Growth: <strong>{rev_growth:.1f}%</strong> ·
+                Alle Werte in {_currency} · Keine Anlageberatung.
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
         _rg = rev_growth or 5
         _scenarios = {
             "🐻 Bear": {
@@ -7050,6 +7068,21 @@ elif _at == 4:
                 xaxis=dict(showgrid=False),
             )
             st.plotly_chart(_fig_dcf, use_container_width=True)
+            _fv_min = min(_fv_values)
+            _fv_max = max(_fv_values)
+            if price < _fv_min:
+                _dcf_interp = f"✅ Kurs liegt <strong>unter allen 3 Szenarien</strong> — breite Margin of Safety, sofern die Cashflow-Annahmen realistisch sind."
+                _dcf_interp_bg = "rgba(0,230,118,0.07)"
+            elif price > _fv_max:
+                _dcf_interp = f"⚠️ Kurs liegt <strong>über allen 3 Szenarien</strong> — Markt preist starkes Wachstum ein, das über dem Bull-Case liegt. Hohes Enttäuschungspotenzial."
+                _dcf_interp_bg = "rgba(255,82,82,0.07)"
+            else:
+                _dcf_interp = f"ℹ️ Kurs liegt <strong>innerhalb der Szenario-Spanne</strong> — die Bewertung hängt davon ab, welches Szenario du für realistisch hältst."
+                _dcf_interp_bg = "rgba(100,181,246,0.07)"
+            st.markdown(
+                f'<div style="background:{_dcf_interp_bg};border-radius:10px;padding:10px 16px;'
+                f'font-size:0.83rem;color:#b0bec5;margin:-8px 0 12px 0;">{_dcf_interp}</div>',
+                unsafe_allow_html=True)
 
         # ── Manueller Rechner (aufklappbar) ────────────────────────────
         with st.expander("⚙️ Eigenes Szenario berechnen", expanded=False):
