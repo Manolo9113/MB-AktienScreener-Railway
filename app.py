@@ -3736,6 +3736,83 @@ def _build_performance(csv_bytes: bytes, benchmark_ticker: str):
         return None
     return dates_out, invested_out, bm_val_out
 
+_SECTOR_DE = {
+    'Technology': 'IT & Technologie',
+    'Communication Services': 'Telekommunikation',
+    'Consumer Cyclical': 'Nicht-Basiskonsumgüter',
+    'Consumer Defensive': 'Basiskonsumgüter',
+    'Financial Services': 'Finanzwesen',
+    'Healthcare': 'Gesundheitswesen',
+    'Industrials': 'Industrie',
+    'Energy': 'Energie',
+    'Basic Materials': 'Grundstoffe',
+    'Real Estate': 'Immobilien',
+    'Utilities': 'Versorger',
+}
+
+_SECTOR_COLORS = {
+    'IT & Technologie': '#1565c0',
+    'Telekommunikation': '#00acc1',
+    'Nicht-Basiskonsumgüter': '#43a047',
+    'Basiskonsumgüter': '#81c784',
+    'Finanzwesen': '#f9a825',
+    'Gesundheitswesen': '#7cb342',
+    'Industrie': '#8e24aa',
+    'Energie': '#e64a19',
+    'Grundstoffe': '#795548',
+    'Immobilien': '#f06292',
+    'Versorger': '#ffd740',
+    'ETF / Fonds': '#42a5f5',
+    'Krypto': '#ff7043',
+    'Optionsscheine': '#90a4ae',
+    'Sonstige': '#546e7a',
+}
+
+_REGION_COLORS = {
+    'Amerika': '#1565c0',
+    'Europa': '#43a047',
+    'Asien': '#e64a19',
+    'Australien': '#ffd740',
+    'Global': '#42a5f5',
+    'Sonstige': '#546e7a',
+}
+
+_ASSET_COLORS = {
+    'Aktien': '#1565c0',
+    'ETF / Fonds': '#42a5f5',
+    'Krypto': '#ff7043',
+    'Optionsscheine': '#90a4ae',
+}
+
+_EU_SFX  = {'DE','PA','AS','L','MI','MC','SW','ST','CO','OL','HE','BR','VX','IR','LS','VI','WA','PR'}
+_ASI_SFX = {'T','HK','SS','SZ','KS','BO','NS','SI','KL','BK','TWO','TW'}
+_AUS_SFX = {'AX','NZ'}
+_AM_SFX  = {'SA','MX','CN','TO','V'}
+
+
+def _ticker_to_region(ticker: str) -> str:
+    if not ticker or '.' not in ticker:
+        return 'Amerika'
+    sfx = ticker.rsplit('.', 1)[1].upper()
+    if sfx in _EU_SFX:  return 'Europa'
+    if sfx in _ASI_SFX: return 'Asien'
+    if sfx in _AUS_SFX: return 'Australien'
+    if sfx in _AM_SFX:  return 'Amerika'
+    return 'Sonstige'
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _get_ticker_info_cached(ticker: str) -> dict:
+    """Sektor + QuoteType via yFinance (gecacht 24h)."""
+    try:
+        info = yf.Ticker(ticker).info
+        return {
+            'sector':     info.get('sector') or '',
+            'quote_type': info.get('quoteType') or 'EQUITY',
+        }
+    except Exception:
+        return {'sector': '', 'quote_type': 'EQUITY'}
+
 
 # ==================== SIDEBAR ====================
 with st.sidebar:
@@ -5121,7 +5198,7 @@ if st.session_state.get("show_portfolio"):
                        delta=f"{pnl_pct:+.1f}%" if pnl_pct else None)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-        tab_pos, tab_perf = st.tabs(["📊 Positionen", "📈 Performance"])
+        tab_pos, tab_alloc, tab_perf = st.tabs(["📊 Positionen", "🥧 Aufteilung", "📈 Performance"])
 
         with tab_pos:
             # ── Aktien & ETFs ────────────────────────────────────────────
@@ -5189,6 +5266,91 @@ if st.session_state.get("show_portfolio"):
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
             st.caption("Kurse in EUR umgerechnet (Wechselkurs via yFinance). P&L basiert auf dem Ø-Kaufkurs aus der Orderhistorie. "
                        "Krypto-Kurse werden von yFinance nicht unterstützt.")
+
+        with tab_alloc:
+            if stocks_etf.empty and crypto.empty:
+                st.info("Keine Positionsdaten vorhanden.")
+            else:
+                with st.spinner("Sektordaten werden geladen (einmalig, dann gecacht)…"):
+                    _alloc_infos = {}
+                    for _isin in stocks_etf['ISIN']:
+                        _tkr2 = isin_map.get(_isin)
+                        if _tkr2:
+                            _alloc_infos[_isin] = _get_ticker_info_cached(_tkr2)
+
+                _alloc_rows = []
+                for _, _arow in df_port.iterrows():
+                    _tkr2  = isin_map.get(_arow['ISIN'], '')
+                    _info2 = _alloc_infos.get(_arow['ISIN'], {})
+                    _prc   = prices.get(_arow['ISIN'])
+                    _val   = (_prc if _prc else _arow['avg_cost']) * _arow['shares']
+
+                    if _arow['is_crypto']:
+                        _ac, _reg = 'Krypto', 'Global'
+                    elif _arow['is_warrant']:
+                        _ac, _reg = 'Optionsscheine', _ticker_to_region(_tkr2)
+                    elif _info2.get('quote_type') == 'ETF':
+                        _ac, _reg = 'ETF / Fonds', _ticker_to_region(_tkr2)
+                    else:
+                        _ac, _reg = 'Aktien', _ticker_to_region(_tkr2)
+
+                    _sec_de = _SECTOR_DE.get(_info2.get('sector', ''), _info2.get('sector', ''))
+                    if not _sec_de or _ac in ('ETF / Fonds', 'Krypto', 'Optionsscheine'):
+                        _sec_de = _ac
+
+                    _alloc_rows.append({'value': max(0.0, _val),
+                                        'asset': _ac, 'region': _reg, 'sector': _sec_de})
+
+                _adf = pd.DataFrame(_alloc_rows)
+                _tot = _adf['value'].sum()
+
+                def _mk_donut(col, cmap, title):
+                    _g = _adf.groupby(col)['value'].sum().sort_values(ascending=False)
+                    _lbls = _g.index.tolist()
+                    _vals = _g.values.tolist()
+                    _cols = [cmap.get(l, '#546e7a') for l in _lbls]
+                    _fig  = go.Figure(go.Pie(
+                        labels=_lbls, values=_vals, hole=0.62,
+                        marker=dict(colors=_cols, line=dict(color='#0a1628', width=2)),
+                        textinfo='none',
+                        hovertemplate='<b>%{label}</b><br>€ %{value:,.0f} · %{percent}<extra></extra>',
+                    ))
+                    _fig.update_layout(
+                        template='plotly_dark', paper_bgcolor='#0a1628', plot_bgcolor='#0a1628',
+                        showlegend=False, height=240,
+                        margin=dict(l=5, r=5, t=5, b=5),
+                    )
+                    return _fig, _g
+
+                _col1, _col2, _col3 = st.columns(3)
+                for _col_st, _grp_col, _cmap, _title in [
+                    (_col1, 'asset',  _ASSET_COLORS,  'Assetklassen'),
+                    (_col2, 'region', _REGION_COLORS, 'Regionen'),
+                    (_col3, 'sector', _SECTOR_COLORS, 'Branchen'),
+                ]:
+                    with _col_st:
+                        st.markdown(
+                            f"<div style='text-align:center;color:#90a4ae;font-size:0.8rem;"
+                            f"font-weight:600;letter-spacing:.08em;text-transform:uppercase;"
+                            f"margin-bottom:4px;'>{_title}</div>", unsafe_allow_html=True)
+                        _fig_d, _grp_d = _mk_donut(_grp_col, _cmap, _title)
+                        st.plotly_chart(_fig_d, use_container_width=True)
+                        for _lbl, _v in _grp_d.items():
+                            _pct = _v / _tot * 100 if _tot > 0 else 0
+                            _clr = _cmap.get(_lbl, '#546e7a')
+                            st.markdown(
+                                f"<div style='display:flex;justify-content:space-between;"
+                                f"align-items:center;padding:4px 2px;"
+                                f"border-bottom:1px solid #1a2740;'>"
+                                f"<span style='color:#eceff1;font-size:0.82rem;'>"
+                                f"<span style='color:{_clr};'>●</span> {_lbl}</span>"
+                                f"<span style='color:#90a4ae;font-size:0.82rem;font-weight:600;'>"
+                                f"{_pct:.1f}%</span></div>",
+                                unsafe_allow_html=True)
+
+                st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+                st.caption("Sektoren via yFinance (leer = kein Sektor-Mapping verfügbar). "
+                           "Regionen basieren auf der Börsenlistung. ETFs nicht nach Inhalt aufgebrochen.")
 
         with tab_perf:
             _BENCHMARKS = {
