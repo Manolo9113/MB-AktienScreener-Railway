@@ -3814,6 +3814,81 @@ def _get_ticker_info_cached(ticker: str) -> dict:
         return {'sector': '', 'quote_type': 'EQUITY'}
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _calc_portfolio_irr(csv_bytes: bytes, current_eur_value: float):
+    """IZF (Internen Zinsfuß) + einfache Rendite aus Orderhistorie-Cashflows.
+    Gibt zurück: (irr_annual, simple_return, days_total, total_invested) oder Nones."""
+    current_eur_value = round(current_eur_value, 0)
+    df = None
+    for enc in ['utf-8-sig', 'utf-8', 'latin-1']:
+        try:
+            df = pd.read_csv(io.BytesIO(csv_bytes), sep=';', decimal=',', encoding=enc, dtype=str)
+            break
+        except Exception:
+            continue
+    if df is None or df.empty:
+        return None, None, None, None
+    df.columns = df.columns.str.strip()
+    date_col = None
+    for c in ['Datum', 'Ausführungsdatum', 'Ausführung Datum', 'Handelsdatum', 'Datum/Uhrzeit', 'Date']:
+        if c in df.columns:
+            date_col = c
+            break
+    if not date_col or 'Richtung' not in df.columns or 'Wert' not in df.columns:
+        return None, None, None, None
+    if 'Status' in df.columns:
+        df = df[df['Status'] == 'ausgeführt'].copy()
+    df['_date'] = pd.to_datetime(df[date_col].astype(str).str[:10], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['_date'])
+    df['_wert'] = pd.to_numeric(
+        df['Wert'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
+        errors='coerce'
+    ).fillna(0.0)
+    df = df[df['Richtung'].isin(['Kauf', 'Verkauf'])].copy()
+    df['_cf'] = -df['_wert'].abs()
+    df.loc[df['Richtung'] == 'Verkauf', '_cf'] = df.loc[df['Richtung'] == 'Verkauf', '_wert'].abs()
+    df = df.sort_values('_date').reset_index(drop=True)
+    if df.empty:
+        return None, None, None, None
+    today = pd.Timestamp.today().normalize()
+    t0 = df['_date'].min()
+    days_total = max(1, (today - t0).days)
+    total_invested = df.loc[df['_cf'] < 0, '_cf'].abs().sum()
+    total_received = df.loc[df['_cf'] > 0, '_cf'].sum()
+    if total_invested <= 0:
+        return None, None, days_total, total_invested
+    simple_return = (current_eur_value + total_received - total_invested) / total_invested
+    if days_total < 14:
+        return None, simple_return, days_total, total_invested
+    flows = list(zip(df['_date'].tolist(), df['_cf'].tolist()))
+    flows.append((today, float(current_eur_value)))
+
+    def _npv(r):
+        acc = 0.0
+        for d, cf in flows:
+            yrs = (d - t0).days / 365.25
+            acc += cf / ((1.0 + r) ** yrs)
+        return acc
+
+    lo, hi = -0.95, 15.0
+    try:
+        npv_lo, npv_hi = _npv(lo), _npv(hi)
+        if npv_lo * npv_hi > 0:
+            return None, simple_return, days_total, total_invested
+        for _ in range(200):
+            mid = (lo + hi) / 2.0
+            if _npv(mid) > 0:
+                lo = mid
+            else:
+                hi = mid
+            if hi - lo < 1e-8:
+                break
+        irr = (lo + hi) / 2.0
+    except Exception:
+        return None, simple_return, days_total, total_invested
+    return irr, simple_return, days_total, total_invested
+
+
 # ==================== SIDEBAR ====================
 with st.sidebar:
     st.markdown("""
@@ -5353,20 +5428,114 @@ if st.session_state.get("show_portfolio"):
                            "Regionen basieren auf der Börsenlistung. ETFs nicht nach Inhalt aufgebrochen.")
 
         with tab_perf:
-            _BENCHMARKS = {
-                "S&P 500 — SXR8.DE": "SXR8.DE",
-                "MSCI World — VWCE.DE": "VWCE.DE",
-                "NASDAQ 100 — EQQQ.DE": "EQQQ.DE",
-                "DAX — EXS1.DE": "EXS1.DE",
-            }
-            bm_label = st.selectbox("Benchmark auswählen", list(_BENCHMARKS.keys()), key="pf_bm_select")
-            bm_ticker = _BENCHMARKS[bm_label]
             _csv_bytes = st.session_state.get("portfolio_csv_bytes")
-            if _csv_bytes:
-                with st.spinner("Performance-Daten werden berechnet…"):
+            if not _csv_bytes:
+                st.info("📂 Lade zuerst deine Orderhistorie-CSV hoch, um die Performance zu berechnen.")
+            else:
+                # ── Rendite-Kennzahlen ────────────────────────────────────
+                _cur_val_perf = current_total or 0.0
+                with st.spinner("Renditekennzahlen werden berechnet…"):
+                    _irr, _simple_ret, _days, _invested_total = _calc_portfolio_irr(
+                        _csv_bytes, _cur_val_perf)
+
+                _INFL = 2.2
+                _irr_pct       = _irr * 100 if _irr is not None else None
+                _simple_pct    = _simple_ret * 100 if _simple_ret is not None else None
+                _real_ret_pct  = (_irr_pct - _INFL) if _irr_pct is not None else None
+                _years_str     = f"{_days // 365} J. {(_days % 365) // 30} M." if _days else "—"
+
+                def _kpi(label, value, color="#eceff1", sub=None):
+                    sub_html = f"<div style='color:#546e7a;font-size:0.72rem;margin-top:2px;'>{sub}</div>" if sub else ""
+                    return (f"<div style='background:#0d1a2e;border:1px solid #1e2d45;border-radius:10px;"
+                            f"padding:14px 16px;text-align:center;'>"
+                            f"<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+                            f"letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;'>{label}</div>"
+                            f"<div style='color:{color};font-size:1.4rem;font-weight:800;'>{value}</div>"
+                            f"{sub_html}</div>")
+
+                _k1, _k2, _k3, _k4 = st.columns(4)
+                with _k1:
+                    _v = f"{_irr_pct:+.2f}% p.a." if _irr_pct is not None else "—"
+                    _c = "#00e676" if (_irr_pct or 0) >= 0 else "#ff5252"
+                    st.markdown(_kpi("IZF (Zinsfuß)", _v, _c, "Interner Zinsfuß p.a."), unsafe_allow_html=True)
+                with _k2:
+                    _v = f"{_simple_pct:+.1f}%" if _simple_pct is not None else "—"
+                    _c = "#00e676" if (_simple_pct or 0) >= 0 else "#ff5252"
+                    st.markdown(_kpi("Gesamtrendite", _v, _c, "auf investiertes Kapital"), unsafe_allow_html=True)
+                with _k3:
+                    _v = f"{_real_ret_pct:+.2f}% p.a." if _real_ret_pct is not None else "—"
+                    _c = "#00e676" if (_real_ret_pct or 0) >= 0 else "#ff5252"
+                    st.markdown(_kpi("Realrendite", _v, _c, f"IZF − Inflation ({_INFL}%)"), unsafe_allow_html=True)
+                with _k4:
+                    st.markdown(_kpi("Anlagedauer", _years_str, "#eceff1",
+                                     f"€ {_invested_total:,.0f} investiert" if _invested_total else None),
+                                unsafe_allow_html=True)
+
+                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+                # ── Top / Flop ────────────────────────────────────────────
+                if not stocks_etf.empty and prices:
+                    _tf_rows = []
+                    for _, _tfrow in stocks_etf.iterrows():
+                        _p = prices.get(_tfrow['ISIN'])
+                        if not _p:
+                            continue
+                        _cv  = _p * _tfrow['shares']
+                        _pnl = (_cv - _tfrow['cost_basis']) / _tfrow['cost_basis'] * 100 if _tfrow['cost_basis'] > 0 else 0
+                        _pnl_eur = _cv - _tfrow['cost_basis']
+                        _tf_rows.append({'name': _tfrow['name'][:28], 'val': _cv,
+                                         'pnl_pct': _pnl, 'pnl_eur': _pnl_eur})
+                    if _tf_rows:
+                        _tfdf = pd.DataFrame(_tf_rows).sort_values('pnl_pct', ascending=False)
+                        _top3 = _tfdf.head(3)
+                        _flop3 = _tfdf.tail(3).iloc[::-1]
+
+                        st.markdown("<div class='section-header'>🏆 Top / Flop (Gesamtrendite)</div>",
+                                    unsafe_allow_html=True)
+                        _ta, _tb = st.columns(2)
+
+                        def _tf_card(row, positive):
+                            _sign = "+" if positive else ""
+                            _clr  = "#00e676" if positive else "#ff5252"
+                            _bg   = "rgba(0,230,118,0.06)" if positive else "rgba(255,82,82,0.06)"
+                            return (f"<div style='background:{_bg};border:1px solid #1e2d45;"
+                                    f"border-radius:8px;padding:10px 14px;margin-bottom:6px;"
+                                    f"display:flex;justify-content:space-between;align-items:center;'>"
+                                    f"<div><div style='color:#eceff1;font-size:0.88rem;font-weight:600;'>"
+                                    f"{row['name']}</div>"
+                                    f"<div style='color:#546e7a;font-size:0.74rem;'>€ {row['val']:,.0f}</div></div>"
+                                    f"<div style='text-align:right;'>"
+                                    f"<div style='color:{_clr};font-size:1rem;font-weight:800;'>"
+                                    f"{_sign}{row['pnl_pct']:.1f}%</div>"
+                                    f"<div style='color:{_clr};font-size:0.74rem;opacity:.8;'>"
+                                    f"{_sign}€ {abs(row['pnl_eur']):,.0f}</div></div></div>")
+
+                        with _ta:
+                            st.markdown("**Top Gewinner**")
+                            for _, _r in _top3.iterrows():
+                                st.markdown(_tf_card(_r, True), unsafe_allow_html=True)
+                        with _tb:
+                            st.markdown("**Flop Verlierer**")
+                            for _, _r in _flop3.iterrows():
+                                st.markdown(_tf_card(_r, False), unsafe_allow_html=True)
+
+                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+                # ── Benchmark-Vergleich ───────────────────────────────────
+                st.markdown("<div class='section-header'>📊 Benchmark-Vergleich</div>",
+                            unsafe_allow_html=True)
+                _BENCHMARKS = {
+                    "S&P 500 — SXR8.DE": "SXR8.DE",
+                    "MSCI World — VWCE.DE": "VWCE.DE",
+                    "NASDAQ 100 — EQQQ.DE": "EQQQ.DE",
+                    "DAX — EXS1.DE": "EXS1.DE",
+                }
+                bm_label = st.selectbox("Benchmark auswählen", list(_BENCHMARKS.keys()), key="pf_bm_select")
+                bm_ticker = _BENCHMARKS[bm_label]
+                with st.spinner("Benchmark-Daten werden geladen…"):
                     _perf = _build_performance(_csv_bytes, bm_ticker)
                 if _perf is None:
-                    st.warning("Performance-Berechnung nicht möglich. Stelle sicher, dass die CSV eine Datums-Spalte enthält.")
+                    st.warning("Benchmark-Berechnung nicht möglich — CSV benötigt eine Datums-Spalte.")
                 else:
                     _dates_p, _invested_p, _bm_p = _perf
                     import plotly.graph_objects as _go
@@ -5384,10 +5553,10 @@ if st.session_state.get("show_portfolio"):
                         fill="tozeroy", fillcolor="rgba(66,165,245,0.09)"
                     ))
                     _fig.update_layout(
-                        template="plotly_dark", height=430,
+                        template="plotly_dark", height=380,
                         paper_bgcolor="#0a1628", plot_bgcolor="#0a1628",
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-                        margin=dict(l=10, r=10, t=44, b=10),
+                        margin=dict(l=10, r=10, t=36, b=10),
                         xaxis=dict(showgrid=False, title=""),
                         yaxis=dict(showgrid=True, gridcolor="#1e2d45",
                                    tickprefix="€", tickformat=",.0f"),
@@ -5404,9 +5573,7 @@ if st.session_state.get("show_portfolio"):
                                     delta=f"{_bm_gain_eur:+,.0f} €",
                                     delta_color="normal" if _bm_gain_eur >= 0 else "inverse")
                     st.caption("Methodik: Jeder Kauf simuliert einen gleichwertigen Kauf des Benchmarks. "
-                               "Verkäufe reduzieren die Benchmark-Position anteilig. Transaktionskosten bleiben unberücksichtigt.")
-            else:
-                st.info("📂 Lade zuerst deine Orderhistorie-CSV hoch, um die Performance zu berechnen.")
+                               "Verkäufe reduzieren die Benchmark-Position anteilig. Kosten nicht berücksichtigt.")
 
     elif df_port is None:
         st.info("📂 Bitte lade deine Orderhistorie-CSV hoch.\n\n"
