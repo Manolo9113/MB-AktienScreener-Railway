@@ -564,8 +564,7 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
     def _safe_num(series_row, col_idx=0):
         """Liest Wert aus einer DataFrame-Zeile; gibt 0 zurück bei NaN/None."""
         try:
-            v = series_row.iloc[col_idx]
-            f = float(v)
+            f = float(series_row.iloc[col_idx])
             return f if f == f else 0.0   # f!=f ↔ NaN
         except Exception:
             return 0.0
@@ -578,16 +577,22 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
         else:
             cf = _get_df("cash_flow", "cashflow")
             if cf is not None and len(cf.columns) >= 1:
-                fcf_r = _row(cf, "Free Cash Flow", "FreeCashFlow", "Freecashflow")
+                fcf_r = _row(cf, "Free Cash Flow", "FreeCashFlow", "Freecashflow",
+                             "Free Cashflow", "Net Free Cash Flow")
                 ocf_r = _row(cf,
                              "Operating Cash Flow", "OperatingCashFlow",
                              "Total Cash From Operating Activities",
-                             "Cash From Operations", "CashFlowFromOperations")
+                             "Cash From Operations", "CashFlowFromOperations",
+                             "Net Cash From Operating Activities",
+                             "Net Cash Provided By Operating Activities",
+                             "Cash Flows From Operating Activities")
                 cap_r = _row(cf,
                              "Capital Expenditure", "CapitalExpenditure",
                              "Capital Expenditures", "Capex",
                              "Purchase Of Property Plant And Equipment",
-                             "Purchases of PPE", "PurchaseOfPPE")
+                             "Purchases of PPE", "PurchaseOfPPE",
+                             "Acquisition Of PPE", "Purchase Of Fixed Assets",
+                             "Capital Spending")
                 if fcf_r is not None:
                     v = _safe_num(fcf_r)
                     if v: info["freeCashflow"] = int(v)
@@ -632,15 +637,17 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
 
     # ── marketCap Fallback (häufig None bei JP/EU Aktien → FCF Yield = 0) ─
     if not info.get("marketCap"):
-        _price  = info.get("currentPrice") or info.get("regularMarketPrice") or 0
-        _shares = info.get("sharesOutstanding") or 0
+        _price = (info.get("currentPrice") or info.get("regularMarketPrice")
+                  or info.get("previousClose") or info.get("open") or 0)
+        _shares = (info.get("sharesOutstanding") or info.get("impliedSharesOutstanding")
+                   or info.get("floatShares") or 0)
         if _price and _shares:
             info["marketCap"] = int(_price * _shares)
 
     return info
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300)   # 5 min — kurze TTL damit Kurs + Earnings-Reaktionen aktuell sind
 def load_yfinance(ticker: str):
     stock = yf.Ticker(ticker)
     info, hist, insider = {}, pd.DataFrame(), pd.DataFrame()
@@ -1131,6 +1138,71 @@ def load_earnings_surprises(ticker: str) -> list[dict]:
         pass
 
     return results
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_analyst_estimates(ticker: str) -> dict:
+    """Analyst EPS + Revenue forward estimates. FMP primary, yfinance fallback."""
+    out = {"eps": [], "rev": []}
+
+    # FMP earnings estimates
+    if FMP_API_KEY:
+        try:
+            r = requests.get(
+                f"https://financialmodelingprep.com/api/v3/analyst-estimates/{ticker}",
+                params={"apikey": FMP_API_KEY, "period": "annual", "limit": 4},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list):
+                    for item in data:
+                        yr = str(item.get("date", ""))[:4]
+                        eps_est = item.get("estimatedEpsAvg")
+                        rev_est = item.get("estimatedRevenueAvg")
+                        n_an = item.get("numberAnalystEstimatedEps") or item.get("numberAnalystEstimatedRevenue")
+                        if eps_est:
+                            out["eps"].append({"year": yr, "estimate": float(eps_est), "analysts": n_an})
+                        if rev_est:
+                            out["rev"].append({"year": yr, "estimate": float(rev_est), "analysts": n_an})
+        except Exception:
+            pass
+
+    # yfinance fallback for EPS estimates
+    if not out["eps"]:
+        try:
+            stock = yf.Ticker(ticker)
+            try:
+                ee = stock.get_earnings_estimate()
+            except Exception:
+                ee = getattr(stock, "earnings_estimate", None)
+            if ee is not None and not ee.empty:
+                for period, row in ee.iterrows():
+                    avg = row.get("avg") or row.get("Avg Estimate")
+                    n = row.get("numberOfAnalysts") or row.get("No. of Analysts")
+                    if avg is not None and pd.notna(avg):
+                        out["eps"].append({"year": str(period), "estimate": float(avg), "analysts": int(n) if n and pd.notna(n) else None})
+        except Exception:
+            pass
+
+    # yfinance fallback for revenue estimates
+    if not out["rev"]:
+        try:
+            stock = yf.Ticker(ticker)
+            try:
+                re_df = stock.get_revenue_estimate()
+            except Exception:
+                re_df = getattr(stock, "revenue_estimate", None)
+            if re_df is not None and not re_df.empty:
+                for period, row in re_df.iterrows():
+                    avg = row.get("avg") or row.get("Avg Estimate")
+                    n = row.get("numberOfAnalysts") or row.get("No. of Analysts")
+                    if avg is not None and pd.notna(avg):
+                        out["rev"].append({"year": str(period), "estimate": float(avg), "analysts": int(n) if n and pd.notna(n) else None})
+        except Exception:
+            pass
+
+    return out
 
 
 @st.cache_data(ttl=86400)
@@ -2259,14 +2331,13 @@ def load_macro_data() -> dict:
         pass
 
     # ── Shiller CAPE (P/E 10, zyklisch adjustiert) ────────────────────
-    def _multpl_current(url: str) -> float | None:
-        """Scrape current-value from a multpl.com page. Sucht Zahl im 400-Zeichen-Fenster nach id="current-value"."""
+    def _multpl_current(url: str) -> "float | None":
+        """Scrape current-value von multpl.com. Sucht Zahl im 400-Zeichen-Fenster."""
         try:
             r = requests.get(url, timeout=8,
                              headers={"User-Agent": "Mozilla/5.0 (compatible; StocksMB/1.0)"})
             if not r.ok:
                 return None
-            # Finde Position von id="current-value" (einfache oder doppelte Anführungszeichen)
             txt = r.text
             for marker in ('id="current-value"', "id='current-value'"):
                 idx = txt.find(marker)
@@ -2284,11 +2355,8 @@ def load_macro_data() -> dict:
         out["shiller_cape"] = _cape_val
 
     # ── Market Cap / GNP ──────────────────────────────────────────────
-    # Wie Buffett-Indikator, aber GNP statt GDP (berücksichtigt Auslandsgewinne)
     try:
-        _gnp = _fred_last("GNP")
-        if not _gnp:
-            _gnp = _fred_last("GDP")
+        _gnp = _fred_last("GNP") or _fred_last("GDP")
         if _w5000_val and _gnp and _gnp[0]:
             out["mcap_gnp"] = round(_w5000_val / _gnp[0] * 100, 1)
     except Exception:
@@ -2301,7 +2369,7 @@ def load_macro_data() -> dict:
 
     # ── Unternehmensgewinnmarge (Hussman-Basis) ────────────────────────
     try:
-        _cprofit = _fred_last("CP", 1)   # Corporate Profits After Tax (SAAR, Mrd. USD)
+        _cprofit = _fred_last("CP", 1)
         _gdp_now = _fred_last("GDP", 1)
         if _cprofit and _gdp_now and _gdp_now[0]:
             out["corp_margin"] = round(_cprofit[0] / _gdp_now[0] * 100, 1)
@@ -2389,7 +2457,6 @@ def load_macro_data() -> dict:
 
     # ── ERP (Equity Risk Premium) ─────────────────────────────────────
     # = Forward Earnings Yield (1/ForwardPE × 100) − 10J Treasury
-    # Positiv = Aktien attraktiver als Anleihen; historisch fair ~3–4%
     try:
         _erp_pe  = out.get("sp500_forward_pe") or out.get("sp500_trailing_pe")
         _erp_t10 = out.get("macro", {}).get("🇺🇸 10J Rendite", {}).get("value")
@@ -2399,14 +2466,11 @@ def load_macro_data() -> dict:
         pass
 
     # ── Margin-adjustiertes KGV (Hussman-Stil) ────────────────────────
-    # Idee: Wenn aktuelle Gewinnmargen über hist. Ø, ist das KGV "zu niedrig" → aufwärts adjustieren
-    # Historischer Ø Unternehmensgewinn / GDP ≈ 7,5 % (1950–2020)
     try:
         _ma_pe_base  = out.get("sp500_trailing_pe") or out.get("sp500_pe")
         _curr_margin = out.get("corp_margin")
         if _ma_pe_base and _curr_margin and _curr_margin > 0:
-            _HIST_MARGIN = 7.5
-            out["margin_adj_pe"] = round(_ma_pe_base * (_curr_margin / _HIST_MARGIN), 1)
+            out["margin_adj_pe"] = round(_ma_pe_base * (_curr_margin / 7.5), 1)
     except Exception:
         pass
 
@@ -2913,58 +2977,83 @@ def load_screener_data() -> list[dict]:
     return results[:8]
 
 
-# ── Quality Top-Picks: Score ≥ 80, einmal täglich ─────────────────────────────
-_QUALITY_HIGHSCORE_POOL = list(dict.fromkeys(
-    list(_SCREENER_WATCHLIST) +
-    list(_GROWTH_POOL.keys()) +
-    list(_VALUE_POOL.keys()) +
-    ["AAPL", "MSFT", "GOOGL", "V", "MA", "ASML", "TSM", "LLY", "NVO",
-     "COST", "SPGI", "MCO", "FICO", "CPRT", "MELI", "ROP", "ISRG"]
-))
+_DAYTRADING_POOL = [
+    "TQQQ","SQQQ","UPRO","SPXU","QQQ","SPY","NVDA","TSLA","AMD","META",
+    "AAPL","MSFT","AMZN","GOOGL","NFLX","SMCI","ARM","PLTR","COIN","MSTR",
+    "IONQ","RIVN","LCID","SOFI","HOOD","GME","AMC","BYND","SPCE","BBBY",
+]
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def load_quality_highscore() -> list[dict]:
-    """Alle Titel mit Quality-Score ≥ 80 — einmal täglich aktualisiert."""
+
+@st.cache_data(ttl=14400, show_spinner=False)
+def load_quality_highscore() -> list:
+    """Top-Quality-Picks aus kuratierten Growth- und Value-Pools (Score ≥ 70)."""
+    _pool = list(dict.fromkeys(list(_GROWTH_POOL.keys()) + list(_VALUE_POOL.keys())))
     results = []
-    for tkr in _QUALITY_HIGHSCORE_POOL:
+    for tkr in _pool:
         try:
             info  = yf.Ticker(tkr).info
-            price = info.get("currentPrice") or info.get("regularMarketPrice")
-            if not price:
+            sc    = _sc_score(info)
+            if sc < 70:
                 continue
-            score = _sc_score(info)
-            if score < 80:
-                continue
-            fv       = _sc_fair_value(info)
-            discount = round((fv - price) / fv * 100, 1) if fv and fv > 0 else None
-            rg       = round((info.get("revenueGrowth") or 0) * 100, 1)
-            gm       = round((info.get("grossMargins") or 0) * 100, 1)
-            fcf      = info.get("freeCashflow") or 0
-            mkt      = info.get("marketCap") or 1
-            fcy      = round(fcf / mkt * 100, 1) if fcf else 0
-            roe      = round((info.get("returnOnEquity") or 0) * 100, 1)
-            week52h  = info.get("fiftyTwoWeekHigh") or price
-            week52l  = info.get("fiftyTwoWeekLow") or price
-            w52_pos  = ((price - week52l) / (week52h - week52l) * 100) if week52h > week52l else 50
+            price  = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+            mktcap = info.get("marketCap") or 0
+            fcf    = info.get("freeCashflow") or 0
             results.append({
-                "ticker": tkr,
-                "name":   (info.get("shortName") or tkr)[:28],
-                "price":  price,
-                "score":  score,
-                "fv":     fv,
-                "discount": discount,
-                "rev_growth": rg,
-                "gross_margin": gm,
-                "fcf_yield": fcy,
-                "roe": roe,
-                "sector": info.get("sector", ""),
-                "currency": info.get("currency", "USD"),
-                "w52_pos": w52_pos,
+                "ticker":       tkr,
+                "name":         info.get("shortName", tkr),
+                "price":        round(price, 2),
+                "score":        sc,
+                "rev_growth":   round((info.get("revenueGrowth") or 0) * 100, 1),
+                "gross_margin": round((info.get("grossMargins") or 0) * 100, 1),
+                "fcf_yield":    round(fcf / mktcap * 100, 1) if fcf and mktcap else 0.0,
+                "roe":          round((info.get("returnOnEquity") or 0) * 100, 1),
             })
         except Exception:
             pass
     results.sort(key=lambda x: x["score"], reverse=True)
     return results
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_daytrading_picks() -> list:
+    """ATR% + relatives Volumen — top volatile tickers für Daytrader."""
+    results = []
+    for tkr in _DAYTRADING_POOL:
+        try:
+            st_obj = yf.Ticker(tkr)
+            info   = st_obj.info
+            hist30 = st_obj.history(period="30d")
+            if hist30.empty or len(hist30) < 5:
+                continue
+            price = float(hist30["Close"].iloc[-1])
+            if price <= 0:
+                continue
+            high  = hist30["High"]
+            low   = hist30["Low"]
+            close = hist30["Close"]
+            prev  = close.shift(1)
+            tr    = pd.concat([high - low, (high - prev).abs(), (low - prev).abs()], axis=1).max(axis=1)
+            atr_pct = float(tr.tail(14).mean() / price * 100)
+            avg_vol   = float(hist30["Volume"].iloc[:-1].mean()) or 1
+            today_vol = float(hist30["Volume"].iloc[-1])
+            rel_vol   = today_vol / avg_vol
+            name = info.get("shortName", tkr)
+            typ  = "Leveraged ETF" if any(x in name for x in ["3x","Ultra","ProShares","Direxion"]) \
+                   else "ETF" if info.get("quoteType") == "ETF" \
+                   else "Aktie"
+            results.append({
+                "ticker":  tkr,
+                "name":    name,
+                "price":   round(price, 2),
+                "atr_pct": round(atr_pct, 1),
+                "rel_vol": round(rel_vol, 2),
+                "typ":     typ,
+                "score":   round(atr_pct * 0.6 + rel_vol * 0.4, 2),
+            })
+        except Exception:
+            pass
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:15]
 
 
 @st.cache_data(ttl=43200)
@@ -3811,18 +3900,15 @@ if st.session_state["show_landing"]:
     _tobins_q   = macro.get("tobins_q")
     _mcap_gnp   = macro.get("mcap_gnp")
     _margin_adj = macro.get("margin_adj_pe")
-
     _active_models = [x for x in [_shiller, _erp, _tobins_q, _mcap_gnp, _margin_adj] if x is not None]
 
     if _active_models:
-        # ── Multivariate-Score (0–100, 50 = historisch fair) ─────────
         def _norm_score(val, cheap, fair_lo, fair_hi, expensive):
-            """Mappe einen Indikatorwert auf 0–100 (50 = fair)."""
-            if val <= cheap:      return 15
-            elif val <= fair_lo:  return 35
-            elif val <= fair_hi:  return 50
-            elif val <= expensive:return 70
-            else:                 return 90
+            if val <= cheap:       return 15
+            elif val <= fair_lo:   return 35
+            elif val <= fair_hi:   return 50
+            elif val <= expensive: return 70
+            else:                  return 90
 
         _scores = []
         if _shiller:    _scores.append(_norm_score(_shiller,    15, 22, 28, 38))
@@ -3831,7 +3917,7 @@ if st.session_state["show_landing"]:
         if _bi:         _scores.append(_norm_score(_bi,         75, 90, 115, 140))
         if _margin_adj: _scores.append(_norm_score(_margin_adj, 15, 20, 28, 38))
         if _erp is not None:
-            _scores.append(_norm_score(-_erp, -5, -2, 0, 2))  # ERP invertiert
+            _scores.append(_norm_score(-_erp, -5, -2, 0, 2))
 
         _mv_score = round(sum(_scores) / len(_scores)) if _scores else 50
         if _mv_score < 30:    _mv_clr, _mv_lbl = "#00e676", "Unterbewertet"
@@ -3846,7 +3932,6 @@ if st.session_state["show_landing"]:
             '📐 ERWEITERTE BEWERTUNGSMODELLE</div>',
             unsafe_allow_html=True)
 
-        # ── Zeile 1: Shiller CAPE | ERP | Tobin's Q ──────────────────
         _col_a, _col_b, _col_c = st.columns(3)
 
         if _shiller:
@@ -3863,9 +3948,8 @@ if st.session_state["show_landing"]:
                     f'<span style="color:#b0bec5;">Shiller CAPE'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
                     f'<span class="tt-box">Shiller KGV = S&amp;P 500 Kurs ÷ inflationsbereinigter 10-Jahres-Ø-Gewinn. '
-                    f'Entwickelt von Campbell &amp; Shiller (1988). Historischer Ø ~17×, Dotcom-Hoch 44×, '
-                    f'Finanzkrise-Hoch ~27×. Starke Prognosekraft für 10–15-j. Realrenditen — kein kurzfristiges Timing-Tool. '
-                    f'Schwäche: Accounting-Änderungen (GAAP post-2000) können Earnings künstlich drücken.</span></span></span>'
+                    f'Campbell &amp; Shiller (1988). Hist. Ø ~17×, Dotcom-Hoch 44×. '
+                    f'Starke Prognosekraft für 10–15-j. Realrenditen — kein Timing-Tool.</span></span></span>'
                     f'<span style="color:{_sc_clr};font-weight:700;">{_shiller:.1f}×</span></div>'
                     f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_sc_bar}%;height:5px;border-radius:4px;background:{_sc_clr};"></div></div>'
@@ -3875,8 +3959,7 @@ if st.session_state["show_landing"]:
                     f'&lt;15× = günstig · 15–22× = fair · 22–28× = teuer · &gt;38× = Dotcom-Niveau</div>'
                     f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
                     f'<b>Quelle:</b> multpl.com · Hist. Ø ~17×. '
-                    f'Aktuell {_shiller:.1f}× — {_sc_lbl.lower()}. '
-                    f'Studie Shiller (2000): CAPE {_shiller:.0f}× → erwartete 10-j. Realrendite ~'
+                    f'Erw. 10-j. Realrendite bei {_shiller:.0f}×: '
                     f'{"1–3%" if _shiller > 35 else "3–5%" if _shiller > 28 else "5–7%" if _shiller > 20 else "7–10%"}.</div>'
                     f'</div>',
                     unsafe_allow_html=True)
@@ -3888,16 +3971,17 @@ if st.session_state["show_landing"]:
             elif _erp > -1.0: _erp_clr, _erp_lbl = "#ff8f00", "Teuer vs. Bonds"
             else:             _erp_clr, _erp_lbl = "#ff5252", "TINA vorbei"
             _erp_bar = min(max(int((_erp + 3) / 9 * 100), 2), 98)
+            _fpe_disp = _sp_forward_pe or _sp_trailing_pe or 20
+            _t10_disp = macro.get("macro", {}).get("🇺🇸 10J Rendite", {}).get("value", 0)
             with _col_b:
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
                     f'<span style="color:#b0bec5;">Equity Risk Premium'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
-                    f'<span class="tt-box">ERP = Forward Earnings Yield (1/ForwardKGV × 100) − 10J Treasury-Rendite. '
-                    f'Misst, wieviel Mehrrendite Aktien gegenüber risikoloser Anlage bieten. '
-                    f'Historisch fair ~3–4%. Bei ERP &lt;0%: Staatsanleihen rentieren besser als Aktien (relativer Bewertungs-Stress). '
-                    f'Integriert als einziges Modell die Zinssituation direkt in die Aktienbewertung.</span></span></span>'
+                    f'<span class="tt-box">ERP = Forward Earnings Yield (1/ForwardKGV×100) − 10J Treasury. '
+                    f'Hist. fair ~3–4%. Negatives ERP: Staatsanleihen rentieren besser als Aktien. '
+                    f'Einziges Modell das Zinsen direkt einbezieht.</span></span></span>'
                     f'<span style="color:{_erp_clr};font-weight:700;">{_erp:+.2f}%</span></div>'
                     f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_erp_bar}%;height:5px;border-radius:4px;background:{_erp_clr};"></div></div>'
@@ -3906,8 +3990,7 @@ if st.session_state["show_landing"]:
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'&gt;4% = sehr attraktiv · 2–4% = fair · 0–2% = teuer · &lt;0% = Bonds besser</div>'
                     f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
-                    f'<b>Einordnung:</b> Forward EY {100/(_sp_forward_pe or _sp_trailing_pe or 20):.1f}% − 10J {macro.get("macro",{}).get("🇺🇸 10J Rendite",{}).get("value",0):.1f}% = ERP {_erp:+.2f}%. '
-                    f'{_erp_lbl}.</div>'
+                    f'<b>Rechnung:</b> EY {100/_fpe_disp:.1f}% − 10J {_t10_disp:.1f}% = ERP {_erp:+.2f}%.</div>'
                     f'</div>',
                     unsafe_allow_html=True)
 
@@ -3924,10 +4007,9 @@ if st.session_state["show_landing"]:
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
                     f'<span style="color:#b0bec5;">Tobin\'s Q (Proxy)'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
-                    f'<span class="tt-box">Tobin\'s Q = Marktwert ÷ Wiederbeschaffungskosten des Kapitals. '
-                    f'Nobelpreisträger James Tobin (1969): Q &gt; 1 → Unternehmen "overpriced" vs. Realkapital. '
-                    f'Hier: S&amp;P 500 Price/Book als Proxy (echter Replacement-Cost nicht börsentäglich verfügbar). '
-                    f'Ähnliche Signale wie CAPE, aber unabhängige Methode. Hist. Ø S&amp;P P/B ~2,5–3,0×.</span></span></span>'
+                    f'<span class="tt-box">Tobin\'s Q = Marktwert ÷ Wiederbeschaffungskosten. '
+                    f'Nobel-Ökonom Tobin (1969): Q&gt;1 → Markt überbewertet Realkapital. '
+                    f'Proxy: S&amp;P 500 P/B. Hist. Ø ~2,5–3,0×.</span></span></span>'
                     f'<span style="color:{_tq_clr};font-weight:700;">{_tobins_q:.1f}×</span></div>'
                     f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_tq_bar}%;height:5px;border-radius:4px;background:{_tq_clr};"></div></div>'
@@ -3936,31 +4018,30 @@ if st.session_state["show_landing"]:
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'&lt;2× = günstig · 2–3× = fair · 3–4,5× = erhöht · &gt;6× = extrem</div>'
                     f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
-                    f'<b>Proxy:</b> S&amp;P 500 P/B {_tobins_q:.1f}× (multpl.com). '
-                    f'Ähnliches Signal wie CAPE — Korrelation ~0,85 historisch. {_tq_lbl}.</div>'
+                    f'<b>Proxy:</b> S&amp;P 500 P/B {_tobins_q:.1f}× (multpl.com). {_tq_lbl}.</div>'
                     f'</div>',
                     unsafe_allow_html=True)
 
-        # ── Zeile 2: Marktk./GNP | Margin-adj. KGV | Multivariate ────
         _col_d, _col_e, _col_f = st.columns(3)
 
         if _mcap_gnp:
-            if _mcap_gnp < 75:   _mg_clr, _mg_lbl = "#00e676", "Unterbewertet"
-            elif _mcap_gnp < 90: _mg_clr, _mg_lbl = "#69f0ae", "Fair"
-            elif _mcap_gnp < 115:_mg_clr, _mg_lbl = "#ffd600", "Leicht teuer"
-            elif _mcap_gnp < 140:_mg_clr, _mg_lbl = "#ff8f00", "Teuer"
-            else:                _mg_clr, _mg_lbl = "#ff5252", "Stark überbewertet"
+            if _mcap_gnp < 75:    _mg_clr, _mg_lbl = "#00e676", "Unterbewertet"
+            elif _mcap_gnp < 90:  _mg_clr, _mg_lbl = "#69f0ae", "Fair"
+            elif _mcap_gnp < 115: _mg_clr, _mg_lbl = "#ffd600", "Leicht teuer"
+            elif _mcap_gnp < 140: _mg_clr, _mg_lbl = "#ff8f00", "Teuer"
+            else:                 _mg_clr, _mg_lbl = "#ff5252", "Stark überbewertet"
             _mg_bar = min(int(_mcap_gnp / 200 * 100), 100)
             with _col_d:
+                _bi_str = f'Buffett={str(int(_bi))}% (GDP) · ' if _bi else ""
+                _diff_str = f'Diff. {str(int(abs(_mcap_gnp - (_bi or 0))))}pp (Globalisierung).' if _bi else ""
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
                     f'<span style="color:#b0bec5;">Marktk. / GNP'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
-                    f'<span class="tt-box">Gesamtmarktkapitalisierung (Wilshire 5000) ÷ US-Bruttosozialprodukt (GNP statt GDP). '
-                    f'GNP berücksichtigt Auslandsgewinne amerikanischer Unternehmen — robuster für global tätige Konzerne. '
-                    f'Buffett-Indikator nutzt GDP; bei starker Globalisierung der S&amp;P-500-Gewinne (~50% international) '
-                    f'liefert GNP ein etwas günstigeres Bild. Historischer Ø ~80–100%.</span></span></span>'
+                    f'<span class="tt-box">Wilshire 5000 ÷ GNP. GNP berücksichtigt Auslandsgewinne — '
+                    f'robuster für global tätige S&amp;P-500-Konzerne (~50% int. Umsatz). '
+                    f'Buffett-Indikator nutzt GDP. Hist. Ø ~80–100%.</span></span></span>'
                     f'<span style="color:{_mg_clr};font-weight:700;">{_mcap_gnp:.0f}%</span></div>'
                     f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_mg_bar}%;height:5px;border-radius:4px;background:{_mg_clr};"></div></div>'
@@ -3969,15 +4050,13 @@ if st.session_state["show_landing"]:
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'&lt;75% = günstig · 75–90% = fair · 90–115% = leicht teuer · &gt;140% = Warnsignal</div>'
                     f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
-                    f'<b>vs. Buffett:</b> '
-                    f'{"Buffett=" + str(int(_bi)) + "% (GDP) · " if _bi else ""}'
-                    f'GNP-Variante={_mcap_gnp:.0f}%. '
-                    f'{"Differenz " + str(int(abs(_mcap_gnp - (_bi or 0)))) + "pp spiegelt Globalisierungseffekt." if _bi else "Berücksichtigt Auslandsgewinne."}'
-                    f'</div></div>',
+                    f'<b>vs. Buffett:</b> {_bi_str}GNP={_mcap_gnp:.0f}%. {_diff_str}</div>'
+                    f'</div>',
                     unsafe_allow_html=True)
 
         if _margin_adj:
             _ma_base = _sp_trailing_pe or _sp_pe or 0
+            _cm = macro.get("corp_margin", 0) or 0
             if _margin_adj < 15:   _ma_clr, _ma_lbl = "#00e676", "Günstig"
             elif _margin_adj < 20: _ma_clr, _ma_lbl = "#69f0ae", "Fair"
             elif _margin_adj < 28: _ma_clr, _ma_lbl = "#ffd600", "Erhöht"
@@ -3985,17 +4064,14 @@ if st.session_state["show_landing"]:
             else:                  _ma_clr, _ma_lbl = "#ff5252", "Sehr hoch"
             _ma_bar = min(int((_margin_adj - 5) / 50 * 100), 100)
             with _col_e:
-                _cm = macro.get("corp_margin", 0)
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
                     f'<span style="color:#b0bec5;">Margin-adj. KGV'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
                     f'<span class="tt-box">Hussman-Stil: Trailing KGV normalisiert für Gewinnmargen. '
-                    f'Wenn Margen über hist. Ø liegen, sind nominale Gewinne "aufgebläht" → echtes KGV höher als ausgewiesen. '
-                    f'Formel: Trailing PE × (aktuelle Marge % ÷ hist. Ø-Marge 7,5%). '
-                    f'Hussman Research: zuverlässigerer Marktbewertungs-Indikator als raw KGV. '
-                    f'Berücksichtigt Mean-Reversion der Unternehmensmargen.</span></span></span>'
+                    f'Wenn Margen über hist. Ø (7,5%) liegen, sind Gewinne "aufgebläht". '
+                    f'Formel: KGV × (aktuelle Marge / 7,5%).</span></span></span>'
                     f'<span style="color:{_ma_clr};font-weight:700;">{_margin_adj:.1f}×</span></div>'
                     f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_ma_bar}%;height:5px;border-radius:4px;background:{_ma_clr};"></div></div>'
@@ -4004,34 +4080,28 @@ if st.session_state["show_landing"]:
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'&lt;15× = günstig · 15–20× = fair · 20–28× = erhöht · &gt;38× = extrem</div>'
                     f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
-                    f'<b>Basis:</b> Trailing KGV {_ma_base:.1f}× · Gewinnmarge {_cm:.1f}% (hist. Ø 7,5%) → adj. KGV {_margin_adj:.1f}×. '
-                    f'{_ma_lbl}.</div>'
+                    f'<b>Basis:</b> KGV {_ma_base:.1f}× · Marge {_cm:.1f}% (Ø 7,5%) → adj. {_margin_adj:.1f}×. {_ma_lbl}.</div>'
                     f'</div>',
                     unsafe_allow_html=True)
 
-        # ── Multivariate Composite ────────────────────────────────────
-        _mv_bar = int(_mv_score)
         with _col_f:
             st.markdown(
                 f'<div class="insight-box" style="padding:10px 14px 8px 14px;border:1px solid {_mv_clr}30;">'
                 f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
                 f'<span style="color:#b0bec5;">Multivariate Composite'
                 f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
-                f'<span class="tt-box">Gleichgewichteter Score aus allen verfügbaren Modellen: '
-                f'Shiller CAPE, Tobin\'s Q (P/B-Proxy), Buffett-Indikator, MarktK./GNP, '
-                f'Margin-adj. KGV, Equity Risk Premium. '
-                f'50 = historisch fair · &lt;30 = günstig · &gt;70 = überbewertet. '
-                f'Kein Timing-Signal — beschreibt strukturelle Bewertungsebene.</span></span></span>'
+                f'<span class="tt-box">Gleichgewichteter Score aller verfügbaren Modelle: '
+                f'Shiller CAPE, Tobin\'s Q, Buffett, MarktK./GNP, Margin-adj. KGV, ERP. '
+                f'50 = fair · &lt;30 = günstig · &gt;70 = überbewertet. Kein Timing-Tool.</span></span></span>'
                 f'<span style="color:{_mv_clr};font-weight:700;">{_mv_lbl}</span></div>'
                 f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
-                f'<div style="width:{_mv_bar}%;height:5px;border-radius:4px;background:{_mv_clr};"></div></div>'
+                f'<div style="width:{_mv_score}%;height:5px;border-radius:4px;background:{_mv_clr};"></div></div>'
                 f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
                 f'<span>0</span><span style="color:{_mv_clr};">Score {_mv_score}</span><span>100</span></div>'
                 f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                 f'&lt;30 = günstig · 30–45 = leicht günstig · 45–57 = fair · 57–72 = teuer · &gt;72 = sehr teuer</div>'
                 f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
-                f'<b>Modelle:</b> {len(_scores)} von 6 verfügbar. '
-                f'Ø-Signal: {_mv_lbl}. Kein Timing-Werkzeug — strukturelle Einordnung.</div>'
+                f'<b>Modelle:</b> {len(_scores)} von 6 aktiv. Ø-Signal: {_mv_lbl}.</div>'
                 f'</div>',
                 unsafe_allow_html=True)
 
@@ -4660,63 +4730,73 @@ if st.session_state["show_landing"]:
     else:
         st.markdown('<div class="metric-card" style="color:#546e7a; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
 
-    # ── Quality Top-Picks (Score ≥ 80) ────────────────────────────────────────
-    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    with st.expander("⭐  Quality Top-Picks — Score ≥ 80  (täglich aktualisiert)", expanded=False):
-        with st.spinner("Lade Quality Top-Picks…"):
-            _qh = load_quality_highscore()
-
-        if not _qh:
-            st.markdown("<div style='color:#546e7a;text-align:center;padding:20px;'>Keine Titel mit Score ≥ 80 gefunden.</div>", unsafe_allow_html=True)
-        else:
+    # ── Quality Top-Picks (Score ≥ 70, täglich aktualisiert) ──────────
+    with st.expander("⭐ Quality Top-Picks — Score ≥ 70 (täglich aktualisiert)", expanded=False):
+        with st.spinner("Berechne Quality-Scores…"):
+            _qtp = load_quality_highscore()
+        if _qtp:
             st.markdown(
-                f"<div style='color:#ffd600;font-size:0.78rem;margin-bottom:14px;'>"
-                f"⭐ {len(_qh)} Titel mit Quality-Score ≥ 80 — "
-                f"Bruttomarge, ROIC, FCF Yield, Wachstum und Moat bewertet.</div>",
+                f"<div style='font-size:0.78rem;color:#90a4ae;margin-bottom:10px;'>"
+                f"{len(_qtp)} Aktien mit Score ≥ 70 — sortiert nach Quality-Score</div>",
                 unsafe_allow_html=True)
+            for _q in _qtp:
+                _sc_clr = "#00e676" if _q["score"] >= 90 else "#69f0ae" if _q["score"] >= 85 else "#ffd600" if _q["score"] >= 80 else "#ffa726"
+                st.markdown(
+                    f'<div class="metric-card" style="padding:10px 14px;margin-bottom:6px;cursor:pointer;">'
+                    f'<div style="display:flex;align-items:center;justify-content:space-between;">'
+                    f'<div>'
+                    f'<span style="font-weight:700;color:#eceff1;">{_q["ticker"]}</span>'
+                    f'<span style="color:#546e7a;font-size:0.78rem;margin-left:8px;">{_q["name"]}</span>'
+                    f'</div>'
+                    f'<span style="color:{_sc_clr};font-weight:700;font-size:1.0rem;">Score {_q["score"]}</span>'
+                    f'</div>'
+                    f'<div style="margin-top:5px;font-size:0.72rem;">'
+                    f'<span style="color:#546e7a;">Rev-Wachstum </span><span style="color:#90a4ae;">{_q["rev_growth"]:+.1f}%</span>'
+                    f'&nbsp;&nbsp;<span style="color:#546e7a;">Brutto-Marge </span><span style="color:#90a4ae;">{_q["gross_margin"]:.1f}%</span>'
+                    f'&nbsp;&nbsp;<span style="color:#546e7a;">FCF Yield </span><span style="color:#90a4ae;">{_q["fcf_yield"]:.1f}%</span>'
+                    f'&nbsp;&nbsp;<span style="color:#546e7a;">ROE </span><span style="color:#90a4ae;">{_q["roe"]:.1f}%</span>'
+                    f'</div></div>',
+                    unsafe_allow_html=True)
+                if st.button(f"Analysieren → {_q['ticker']}", key=f"qtp_{_q['ticker']}", use_container_width=False):
+                    _go_to_ticker(_q["ticker"])
+                    st.rerun()
+        else:
+            st.info("Keine Qualitäts-Picks gefunden — Daten werden geladen. Bitte kurz warten.")
 
-            _qh_cols = st.columns(4)
-            for _qi, _q in enumerate(_qh):
-                _score_color = "#00e676" if _q["score"] >= 90 else "#ffd600" if _q["score"] >= 85 else "#64b5f6"
-                _disc_html = ""
-                if _q["discount"] and _q["discount"] > 0:
-                    _disc_html = (f"<span style='background:rgba(0,230,118,0.12);color:#00e676;"
-                                  f"border-radius:4px;padding:2px 6px;font-size:0.7rem;font-weight:600;"
-                                  f"margin-top:4px;display:inline-block;'>-{_q['discount']:.1f}% zum FV</span>")
-                elif _q["fv"]:
-                    _disc_html = (f"<span style='background:rgba(255,82,82,0.1);color:#ff5252;"
-                                  f"border-radius:4px;padding:2px 6px;font-size:0.7rem;"
-                                  f"margin-top:4px;display:inline-block;'>über Fair Value</span>")
-                with _qh_cols[_qi % 4]:
-                    st.markdown(
-                        f"<div style='background:linear-gradient(135deg,#0d1f3c,#0a1628);"
-                        f"border:1px solid #1e3a5f;border-top:3px solid {_score_color};"
-                        f"border-radius:10px;padding:12px 14px;margin-bottom:10px;'>"
-                        f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;'>"
-                        f"<span style='color:{_score_color};font-size:1rem;font-weight:800;'>{_q['ticker']}</span>"
-                        f"<span style='background:{_score_color}22;color:{_score_color};border-radius:20px;"
-                        f"padding:2px 8px;font-size:0.72rem;font-weight:700;'>{_q['score']}/100</span>"
-                        f"</div>"
-                        f"<div style='color:#546e7a;font-size:0.68rem;margin-bottom:6px;"
-                        f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{_q['name']}</div>"
-                        f"<div style='color:#b0bec5;font-size:0.82rem;font-weight:600;margin-bottom:6px;'>"
-                        f"${_q['price']:,.2f}</div>"
-                        f"<div style='display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px;'>"
-                        f"<span style='background:rgba(255,255,255,0.05);color:#69f0ae;"
-                        f"border-radius:4px;padding:2px 5px;font-size:0.67rem;'>GM {_q['gross_margin']:.0f}%</span>"
-                        f"<span style='background:rgba(255,255,255,0.05);color:#40c4ff;"
-                        f"border-radius:4px;padding:2px 5px;font-size:0.67rem;'>FCF {_q['fcf_yield']:.1f}%</span>"
-                        f"<span style='background:rgba(255,255,255,0.05);color:#ce93d8;"
-                        f"border-radius:4px;padding:2px 5px;font-size:0.67rem;'>ROE {_q['roe']:.0f}%</span>"
-                        f"</div>"
-                        f"{_disc_html}"
-                        f"</div>",
-                        unsafe_allow_html=True)
-
-        st.markdown(
-            "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:6px;'>"
-            "⚠️ Keine Anlageberatung · Score = Qualitätsbewertung, nicht Kursprognose · Daten via Yahoo Finance</div>",
-            unsafe_allow_html=True)
+    # ── Daytrading Kandidaten (ATR + Volumen, stündlich aktualisiert) ───
+    with st.expander("⚡ Daytrading Kandidaten — ATR & Volumen (stündlich)", expanded=False):
+        with st.spinner("Lade Daytrading-Daten…"):
+            _dtp = load_daytrading_picks()
+        if _dtp:
+            st.markdown(
+                "<div style='font-size:0.78rem;color:#90a4ae;margin-bottom:10px;'>"
+                "Sortiert nach ATR% × 0,6 + Rel. Volumen × 0,4 — hohe Beweglichkeit priorisiert</div>",
+                unsafe_allow_html=True)
+            for _d in _dtp:
+                _typ_clr = "#ff8f00" if _d["typ"] == "Leveraged ETF" else "#64b5f6" if _d["typ"] == "ETF" else "#a5d6a7"
+                _vol_clr = "#00e676" if _d["rel_vol"] > 1.5 else "#ffd600" if _d["rel_vol"] > 0.8 else "#ff5252"
+                st.markdown(
+                    f'<div class="metric-card" style="padding:10px 14px;margin-bottom:6px;">'
+                    f'<div style="display:flex;align-items:center;justify-content:space-between;">'
+                    f'<div>'
+                    f'<span style="font-weight:700;color:#eceff1;">{_d["ticker"]}</span>'
+                    f'<span style="color:#546e7a;font-size:0.76rem;margin-left:8px;">{_d["name"]}</span>'
+                    f'<span style="background:rgba(0,0,0,0.3);color:{_typ_clr};border-radius:3px;'
+                    f'padding:1px 5px;font-size:0.65rem;margin-left:6px;">{_d["typ"]}</span>'
+                    f'</div>'
+                    f'<span style="color:#90a4ae;font-weight:600;">${_d["price"]:.2f}</span>'
+                    f'</div>'
+                    f'<div style="margin-top:5px;font-size:0.72rem;">'
+                    f'<span style="color:#546e7a;">ATR% </span><span style="color:#ff8f00;font-weight:600;">{_d["atr_pct"]:.1f}%</span>'
+                    f'&nbsp;&nbsp;<span style="color:#546e7a;">Rel. Vol </span><span style="color:{_vol_clr};font-weight:600;">{_d["rel_vol"]:.2f}×</span>'
+                    f'&nbsp;&nbsp;<span style="color:#546e7a;">Score </span><span style="color:#90a4ae;">{_d["score"]:.1f}</span>'
+                    f'</div></div>',
+                    unsafe_allow_html=True)
+                if st.button(f"Chart → {_d['ticker']}", key=f"dtp_{_d['ticker']}", use_container_width=False):
+                    _go_to_ticker(_d["ticker"])
+                    st.rerun()
+        else:
+            st.info("Daytrading-Daten werden geladen…")
 
     # ── Schnellauswahl auf Landing ──
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
@@ -4749,6 +4829,7 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     hist_weekly, hist_monthly, share_history, splits_data = load_yfinance_extended(ticker)
     q_rev, q_net, q_eps = load_quarterly_financials(ticker)
     earnings_surprises   = load_earnings_surprises(ticker)
+    analyst_estimates    = load_analyst_estimates(ticker)
     a_rev, a_net, a_eps, a_fcf, a_shares, a_ebitda, a_capex, a_goodwill = load_annual_financials(ticker)
     # Segmentdaten: sec-api.io bevorzugt, FMP als Fallback
     _secapi_seg = load_secapi_segments(ticker) if SEC_API_KEY else {"product": [], "geo": []}
@@ -4779,8 +4860,15 @@ if hist.empty or not yf_info:
     st.stop()
 
 # ==================== DERIVED METRICS ====================
-price = hist["Close"].iloc[-1]
-price_prev = hist["Close"].iloc[-2] if len(hist) > 1 else price
+# regularMarketPrice / currentPrice sind bei yfinance ca. 15 Min. verzögert
+# und spiegeln den aktuellen Handelstag wider — hist["Close"].iloc[-1] wäre
+# nur der letzte gespeicherte Tagesschlusskurs (= Vortag während Handelszeit).
+price = (yf_info.get("regularMarketPrice")
+         or yf_info.get("currentPrice")
+         or (float(hist["Close"].iloc[-1]) if not hist.empty else 0.0))
+price_prev = (yf_info.get("regularMarketPreviousClose")
+              or yf_info.get("previousClose")
+              or (float(hist["Close"].iloc[-2]) if len(hist) > 1 else price))
 price_change = price - price_prev
 price_change_pct = (price_change / price_prev * 100) if price_prev != 0 else 0
 
@@ -4835,6 +4923,16 @@ recommendation = yf_info.get("recommendationKey", "").replace("_", " ").title()
 sector = yf_info.get("sector", "")
 industry = yf_info.get("industry", "")
 
+# ── Currency symbol (JPY, EUR, GBP, … → use correct symbol everywhere) ───
+_currency = yf_info.get("currency", "USD") or "USD"
+_cur_sym = {
+    "USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥", "CNY": "¥",
+    "CHF": "Fr.", "HKD": "HK$", "CAD": "CA$", "AUD": "A$",
+    "KRW": "₩", "SEK": "kr", "NOK": "kr", "DKK": "kr",
+    "TWD": "NT$", "SGD": "S$", "INR": "₹", "BRL": "R$",
+    "MXN": "MX$", "ZAR": "R", "TRY": "₺", "ILS": "₪",
+}.get(_currency, _currency + " ")
+
 # Peer-Fallback: wenn FMP keine Peers liefert → Sektor-basierte Liste
 if not peers and sector:
     peers = [t for t in SECTOR_PEERS_FALLBACK.get(sector, []) if t != ticker][:5]
@@ -4867,12 +4965,21 @@ short_pct_float = yf_info.get("shortPercentOfFloat")
 total_shareholder_yield = (fcf_yield + dividend_yield) if (fcf and market_cap) else (dividend_yield if dividend_yield else None)
 earnings_ts = yf_info.get("earningsTimestamp") or yf_info.get("earningsDate")
 earnings_date_str = ""
+earnings_days_until = None
 try:
-    from datetime import datetime
+    from datetime import datetime, date as _date
     if isinstance(earnings_ts, (int, float)) and earnings_ts > 0:
-        earnings_date_str = datetime.fromtimestamp(earnings_ts).strftime("%d.%m.%Y")
+        _edt = datetime.fromtimestamp(earnings_ts).date()
+        earnings_date_str = _edt.strftime("%d.%m.%Y")
+        _days = (_edt - _date.today()).days
+        if 0 <= _days <= 90:
+            earnings_days_until = _days
     elif isinstance(earnings_ts, list) and earnings_ts:
-        earnings_date_str = pd.Timestamp(earnings_ts[0]).strftime("%d.%m.%Y")
+        _edt = pd.Timestamp(earnings_ts[0]).date()
+        earnings_date_str = _edt.strftime("%d.%m.%Y")
+        _days = (_edt - _date.today()).days
+        if 0 <= _days <= 90:
+            earnings_days_until = _days
 except:
     pass
 
@@ -4905,6 +5012,41 @@ if week52_high and week52_low and week52_high != week52_low:
 # Upside to analyst target
 upside = ((target_mean - price) / price * 100) if target_mean and price else None
 
+# ── Pre-compute header badge HTML ───────────────────────────────────────────
+_earnings_badge = ""
+if earnings_date_str:
+    if earnings_days_until is not None:
+        if earnings_days_until == 0:
+            _ed_label = "📅 Earnings heute"
+        elif earnings_days_until == 1:
+            _ed_label = "📅 Earnings morgen"
+        else:
+            _ed_label = f"📅 Earnings in {earnings_days_until} Tagen"
+        _ed_txt_color = "#ff6f00" if earnings_days_until <= 7 else "#ffd600" if earnings_days_until <= 14 else "#00e676"
+        _ed_bg_color  = "#2d1800" if earnings_days_until <= 7 else "#2d2600" if earnings_days_until <= 14 else "#1a2e1a"
+        _earnings_badge = (
+            f'<span style="background:{_ed_bg_color}; color:{_ed_txt_color}; border-radius:6px;'
+            f' padding:3px 10px; font-size:0.78rem; font-weight:600;">'
+            f'{_ed_label} ({earnings_date_str})</span>'
+        )
+    else:
+        _earnings_badge = (
+            f'<span style="background:#1a2e1a; color:#00e676; border-radius:6px;'
+            f' padding:3px 10px; font-size:0.78rem; font-weight:600;">'
+            f'📅 Earnings: {earnings_date_str}</span>'
+        )
+
+_target_badge = ""
+if upside is not None and target_mean:
+    _udir    = "+" if upside > 0 else ""
+    _ucolor  = "#00e676" if upside > 10 else "#ffd600" if upside > 0 else "#ff5252"
+    _ubg     = "#1a2e1a" if upside > 10 else "#2a2200" if upside > 0 else "#2d1a1a"
+    _target_badge = (
+        f'<span style="background:{_ubg}; color:{_ucolor}; border-radius:6px;'
+        f' padding:3px 10px; font-size:0.78rem; font-weight:600;">'
+        f'🎯 Kursziel {_cur_sym}{target_mean:.2f} ({_udir}{upside:.1f}%)</span>'
+    )
+
 # ==================== HEADER ====================
 change_class = "header-change-pos" if price_change >= 0 else "header-change-neg"
 change_arrow = "▲" if price_change >= 0 else "▼"
@@ -4928,27 +5070,30 @@ st.markdown(f"""
             <div class="header-sub">{ticker} · {sector} · {industry}</div>
             <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                 <span style="background:#1a2744; color:#64b5f6; border-radius:6px; padding:3px 10px; font-size:0.8rem; font-weight:600;">{recommendation}</span>
-                {'<span style="background:#1a2e1a; color:#00e676; border-radius:6px; padding:3px 10px; font-size:0.78rem; font-weight:600;">📅 Earnings: ' + earnings_date_str + '</span>' if earnings_date_str else ''}
+                {_earnings_badge}
+                {_target_badge}
             </div>
             <div style="margin-top:12px;">
-                <div class="header-price" style="font-size:1.8rem; text-align:left;">${price:.2f}</div>
-                <div class="{change_class}">{change_arrow} {abs(price_change):.2f} ({abs(price_change_pct):.2f}%)</div>
-                {'<div style="color:#546e7a; font-size:0.78rem; margin-top:2px;">Ziel: $' + f'{target_mean:.2f}' + ' <span style="color:' + ('#00e676' if upside and upside > 0 else '#ff5252') + '">(' + ('+' if upside and upside > 0 else '') + f'{upside:.1f}%)' + '</span></div>' if upside else ''}
+                <div class="header-price" style="font-size:1.8rem; text-align:left;">{_cur_sym}{price:.2f}</div>
+                <div class="{change_class}">{change_arrow} {_cur_sym}{abs(price_change):.2f} ({abs(price_change_pct):.2f}%)</div>
             </div>
         </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
+import datetime as _dtnow
+_now_str = _dtnow.datetime.now().strftime("%H:%M Uhr")
 st.markdown(
-    "<div style='color:#37474f;font-size:0.7rem;margin:-8px 0 10px 0;'>"
-    "⏱ Kursdaten via Yahoo Finance · ca. 15–20 Min. verzögert · Keine Echtzeitkurse</div>",
+    f"<div style='color:#37474f;font-size:0.7rem;margin:-8px 0 10px 0;'>"
+    f"⏱ Kursdaten via Yahoo Finance · ca. 15–20 Min. verzögert · Keine Echtzeitkurse · "
+    f"Geladen: {_now_str} · Cache max. 5 Min.</div>",
     unsafe_allow_html=True)
 
-# ── Watchlist-Button ──────────────────────────────────────────────
+# ── Watchlist-Button + Refresh ─────────────────────────────────────
 _wl_curr = st.session_state.get("watchlist", [])
 _in_wl   = any(w["ticker"] == ticker for w in _wl_curr)
-_wl_b1, _ = st.columns([1, 6])
+_wl_b1, _wl_b2, _ = st.columns([1, 1, 5])
 with _wl_b1:
     if _in_wl:
         if st.button("✅ Gemerkt", key="wl_rm", help="Aus Watchlist entfernen"):
@@ -4961,6 +5106,13 @@ with _wl_b1:
             _uid = (st.session_state.get("sb_user") or {}).get("id", "")
             sb_add_ticker(st.session_state.get("sb_access_token", ""), _uid, ticker, company_name)
             st.rerun()
+with _wl_b2:
+    if st.button("🔄 Aktualisieren", key="refresh_data",
+                 help="Kurs und Daten sofort neu laden (Cache leeren)"):
+        load_yfinance.clear()
+        load_fmp_metrics.clear()
+        load_analyst_estimates.clear()
+        st.rerun()
 
 # ==================== SCORE + KEY METRICS ROW ====================
 if show_rule_of_40:
@@ -5046,11 +5198,28 @@ if not show_rule_of_40:
 # ==================== 52-WEEK BAR ====================
 if week52_pos is not None:
     bar_color = "#00e676" if week52_pos > 70 else "#ffd600" if week52_pos > 30 else "#ff5252"
+    _dist_to_high_pct = ((week52_high - price) / price * 100) if week52_high and price else None
+    if week52_pos >= 90:
+        _52w_label, _52w_label_color = "Nahe Jahreshoch", "#ff6f00"
+    elif week52_pos >= 70:
+        _52w_label, _52w_label_color = "Oberes Drittel", "#00e676"
+    elif week52_pos >= 30:
+        _52w_label, _52w_label_color = "Mid-Range", "#ffd600"
+    elif week52_pos >= 10:
+        _52w_label, _52w_label_color = "Unteres Drittel", "#ff7043"
+    else:
+        _52w_label, _52w_label_color = "Nahe Jahrestief", "#ff5252"
+    _dist_html = (f' · <span style="color:#78909c;">noch {_dist_to_high_pct:.1f}% bis Jahreshoch</span>'
+                  if _dist_to_high_pct and _dist_to_high_pct > 0.5 else "")
     st.markdown(f"""
     <div style="background:#0d1526; border:1px solid #1e3a5f; border-radius:14px; padding:16px 22px; margin-bottom:20px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <span style="color:#78909c; font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px;">52-Wochen Range</span>
-            <span style="color:#64b5f6; font-size:0.82rem; font-weight:600;">{week52_pos:.0f}% vom Tief</span>
+            <span style="font-size:0.82rem;">
+                <span style="color:{_52w_label_color}; font-weight:700;">{_52w_label}</span>
+                <span style="color:#64b5f6; font-weight:600;"> · {week52_pos:.0f}% vom Tief</span>
+                {_dist_html}
+            </span>
         </div>
         <div style="background:#1e2d45; border-radius:8px; height:8px; position:relative;">
             <div style="background:{bar_color}; width:{week52_pos:.0f}%; height:100%; border-radius:8px;"></div>
@@ -5059,9 +5228,9 @@ if week52_pos is not None:
             </div>
         </div>
         <div style="display:flex; justify-content:space-between; margin-top:8px;">
-            <span style="color:#546e7a; font-size:0.78rem;">${week52_low:.2f}</span>
-            <span style="color:#eceff1; font-size:0.85rem; font-weight:600;">${price:.2f}</span>
-            <span style="color:#546e7a; font-size:0.78rem;">${week52_high:.2f}</span>
+            <span style="color:#546e7a; font-size:0.78rem;">{_cur_sym}{week52_low:.2f} Tief</span>
+            <span style="color:#eceff1; font-size:0.85rem; font-weight:600;">{_cur_sym}{price:.2f}</span>
+            <span style="color:#546e7a; font-size:0.78rem;">Hoch {_cur_sym}{week52_high:.2f}</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -5081,7 +5250,7 @@ if st.session_state.get("show_wl_compare") and len(st.session_state.get("watchli
         _cmp_rows.append({
             "Ticker":       _t,
             "Name":         _d.get("name", _t)[:22],
-            "Kurs":         f"${_d['price']:.2f}" if _d.get("price") else "—",
+            "Kurs":         f"{_cur_sym}{_d['price']:.2f}" if _d.get("price") else "—",
             "Mkt Cap":      fmt_large(_d.get("mkt_cap")),
             "KGV":          f"{_d['pe']:.1f}x" if _d.get("pe") else "—",
             "Bruttomarge":  f"{_d['gm']:.1f}%",
@@ -5373,7 +5542,7 @@ if len(hist_plot) >= 2:
     if dcf_fair_val and dcf_fair_val > 0:
         fv_color = "#00e676" if dcf_fair_val > price else "#ff5252"
         fig.add_hline(y=dcf_fair_val, line_dash="dot", line_color=fv_color, line_width=2,
-                      annotation_text=f"DCF Fair Value ${dcf_fair_val:.0f}",
+                      annotation_text=f"DCF Fair Value {_cur_sym}{dcf_fair_val:.0f}",
                       annotation_font_color=fv_color, row=1, col=1)
 
     # Analyst target line
@@ -5421,7 +5590,7 @@ if len(hist_plot) >= 2:
                "deutlich unterbewertet (<-2σ)" if pos_sigma < -2 else \
                "fair bewertet (nahe Trend)"
 
-    dcf_text = f" | DCF Fair Value: <strong style='color:{'#00e676' if dcf_fair_val and dcf_fair_val > price else '#ff5252'}'>${dcf_fair_val:.2f}</strong>" if dcf_fair_val else ""
+    dcf_text = f" | DCF Fair Value: <strong style='color:{'#00e676' if dcf_fair_val and dcf_fair_val > price else '#ff5252'}'>{_cur_sym}{dcf_fair_val:.2f}</strong>" if dcf_fair_val else ""
     st.markdown(f"""
     <div class="insight-box">
         <strong>📊 Chart-Analyse:</strong> {ticker} notiert aktuell
@@ -5444,7 +5613,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
         "revenue_growth": (_ex_rev,    lambda v: fmt_large(v), ""),
         "net":            (_ex_net,    lambda v: fmt_large(v), ""),
         "net_growth":     (_ex_net,    lambda v: fmt_large(v), ""),
-        "eps":            (_ex_eps,    lambda v: f"${v:.2f}",  ""),
+        "eps":            (_ex_eps,    lambda v: f"{_cur_sym}{v:.2f}",  ""),
         "fcf":            (_ex_fcf,    lambda v: fmt_large(v), ""),
         "fcf_growth":     (_ex_fcf,    lambda v: fmt_large(v), ""),
         "ebitda":         (_ex_ebitda, lambda v: fmt_large(v), ""),
@@ -5771,7 +5940,7 @@ elif _at == 1:
     with _gc4:
         if not a_eps.empty and len(a_eps) >= 2:
             _show_chart(_bar_chart(a_eps, "EPS (Diluted) — Trend", "#00e5ff", "#ff5252",
-                                   is_growth=False, value_fmt=lambda v: f"${v:.2f}"),
+                                   is_growth=False, value_fmt=lambda v: f"{_cur_sym}{v:.2f}"),
                         "eps", "EPS (Diluted)", "#00e5ff", "#ff5252")
         elif not a_net.empty:
             _show_chart(_bar_chart(a_net, "Nettogewinn absolut", "#64b5f6", "#ff5252",
@@ -5932,168 +6101,318 @@ elif _at == 1:
     else:
         st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Segmentdaten: SEC_API_KEY in Railway-Umgebungsvariablen setzen (sec-api.io).</div>', unsafe_allow_html=True)
 
+# ==================== TAB 2: PROGNOSE ====================
 elif _at == 2:
-    # ── Prognose-Tab ──────────────────────────────────────────────────────────
-    st.markdown("<div class='section-header'>Analysten-Prognosen & Schätzungen</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>🔮 Analysten-Prognosen</div>", unsafe_allow_html=True)
 
-    _t_eps   = yf_info.get("trailingEps") or 0
-    _f_eps   = yf_info.get("forwardEps") or 0
-    _t_pe    = yf_info.get("trailingPE") or 0
-    _f_pe    = yf_info.get("forwardPE") or 0
-    _t_mean  = yf_info.get("targetMeanPrice")
-    _t_high  = yf_info.get("targetHighPrice")
-    _t_low   = yf_info.get("targetLowPrice")
-    _n_anal  = yf_info.get("numberOfAnalystOpinions") or 0
-    _rec_key = yf_info.get("recommendationKey", "")
-    _rec_mean= yf_info.get("recommendationMean") or 3.0
-    _eg      = yf_info.get("earningsGrowth") or 0
-    _rg      = yf_info.get("revenueGrowth") or 0
-    _ltg     = yf_info.get("longTermPotentialGrowthRate") or yf_info.get("earningsGrowth") or 0
+    # ── Rohdaten ─────────────────────────────────────────────────────────────
+    _rec_key   = yf_info.get("recommendationKey", "")
+    _rec_mean  = yf_info.get("recommendationMean")   # 1=Strong Buy … 5=Strong Sell
+    _n_anal    = yf_info.get("numberOfAnalystOpinions") or 0
+    _t_low     = yf_info.get("targetLowPrice")
+    _t_mean    = yf_info.get("targetMeanPrice")
+    _t_median  = yf_info.get("targetMedianPrice")
+    _t_high    = yf_info.get("targetHighPrice")
+    _fwd_pe    = yf_info.get("forwardPE")
+    _fwd_eps   = yf_info.get("forwardEps")
+    _trail_eps = yf_info.get("trailingEps")
 
-    # Konsens-Farbe
-    _rec_color = {"strong buy": "#00e676", "buy": "#69f0ae", "hold": "#ffd600",
-                  "sell": "#ff5252", "strong sell": "#ff1744"}.get(_rec_key.lower().replace("_"," "), "#90a4ae")
-    _rec_label = _rec_key.replace("_", " ").title() or "N/A"
+    _eps_est = analyst_estimates.get("eps", [])
+    _rev_est = analyst_estimates.get("rev", [])
 
-    # ── Analyst Konsensus Banner ──────────────────────────────────────────
-    if _t_mean and price:
-        _upside = (_t_mean - price) / price * 100
-        _up_color = "#00e676" if _upside > 0 else "#ff5252"
+    _rec_label_map = {
+        "strong_buy":  ("Strong Buy",  "#26a69a"),
+        "buy":         ("Kaufen",      "#66bb6a"),
+        "hold":        ("Halten",      "#ffa726"),
+        "sell":        ("Verkaufen",   "#ef5350"),
+        "strong_sell": ("Strong Sell", "#b71c1c"),
+    }
+    _rec_label, _rec_color = _rec_label_map.get(
+        _rec_key, ((_rec_key.replace("_", " ").title() if _rec_key else "—"), "#546e7a")
+    )
+    _upside      = ((_t_mean  / price - 1) * 100) if (_t_mean  and price > 0) else None
+    _upside_low  = ((_t_low   / price - 1) * 100) if (_t_low   and price > 0) else None
+    _upside_high = ((_t_high  / price - 1) * 100) if (_t_high  and price > 0) else None
+
+    # Beat-Statistik
+    _beats     = sum(1 for s in earnings_surprises if s["verdict"] == "Beat")
+    _n_es      = len(earnings_surprises)
+    _beat_rate = (_beats / _n_es * 100) if _n_es else None
+    _surp_vals = [s["surp_pct"] for s in earnings_surprises if s.get("surp_pct") is not None]
+    _avg_surp  = sum(_surp_vals) / len(_surp_vals) if _surp_vals else None
+
+    # ── ABSCHNITT 1: Vier Kennzahl-Karten ────────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        _score_pct = ((5 - float(_rec_mean)) / 4 * 100) if _rec_mean else 0
+        st.markdown(f"""
+        <div class="metric-card" style="border-left:4px solid {_rec_color};">
+            <div class="metric-label">Analysten-Konsens</div>
+            <div class="metric-value" style="color:{_rec_color};font-size:1.25rem;">{_rec_label}</div>
+            <div style="background:#1e2d45;border-radius:4px;height:6px;margin:8px 0 4px 0;">
+                <div style="background:{_rec_color};width:{_score_pct:.0f}%;height:6px;border-radius:4px;"></div></div>
+            <div style="color:#546e7a;font-size:0.75rem;">{_n_anal} Analysten · Score {f"{float(_rec_mean):.1f}" if _rec_mean else "—"} / 5</div>
+        </div>""", unsafe_allow_html=True)
+    with c2:
+        _up_color = "#26a69a" if (_upside and _upside > 10) else "#ffa726" if (_upside and _upside > 0) else "#ef5350"
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Ø Kursziel (Upside)</div>
+            <div class="metric-value" style="color:{_up_color};">{f"{_cur_sym}{_t_mean:.2f}" if _t_mean else "—"}</div>
+            <div style="color:{_up_color};font-size:0.9rem;font-weight:600;margin-top:4px;">{f"{_upside:+.1f}%" if _upside is not None else ""}</div>
+            <div style="color:#546e7a;font-size:0.75rem;">{f"Spanne: {_cur_sym}{_t_low:.0f}–{_cur_sym}{_t_high:.0f}" if (_t_low and _t_high) else ""}</div>
+        </div>""", unsafe_allow_html=True)
+    with c3:
+        _fpe_color = "#26a69a" if (_fwd_pe and _fwd_pe < 20) else "#ffa726" if (_fwd_pe and _fwd_pe < 35) else "#ef5350"
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Forward KGV</div>
+            <div class="metric-value" style="color:{_fpe_color};">{f"{_fwd_pe:.1f}×" if _fwd_pe else "—"}</div>
+            <div style="color:#546e7a;font-size:0.75rem;margin-top:4px;">Trailing KGV: {f"{trailing_pe:.1f}×" if trailing_pe else "—"}</div>
+            <div style="color:#546e7a;font-size:0.75rem;">Forward EPS: {f"{_cur_sym}{_fwd_eps:.2f}" if _fwd_eps else "—"}</div>
+        </div>""", unsafe_allow_html=True)
+    with c4:
+        _br_color = "#26a69a" if (_beat_rate and _beat_rate >= 70) else "#ffa726" if (_beat_rate and _beat_rate >= 50) else "#ef5350"
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">EPS-Beat-Rate</div>
+            <div class="metric-value" style="color:{_br_color};">{f"{_beat_rate:.0f}%" if _beat_rate else "—"}</div>
+            <div style="color:#546e7a;font-size:0.75rem;margin-top:4px;">{f"{_beats}/{_n_es} Quartale" if _n_es else "Keine Daten"}</div>
+            <div style="color:#546e7a;font-size:0.75rem;">{f"Ø Überraschung: {_avg_surp:+.1f}%" if _avg_surp is not None else ""}</div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── ABSCHNITT 2: Kursziel-Spanne ─────────────────────────────────────────
+    if _t_low and _t_high and price:
+        _trange = _t_high - _t_low
+        def _tp(val):
+            if not val or not _trange: return 50
+            return max(2, min(98, (val - _t_low) / _trange * 100))
+        _pp  = _tp(price)
+        _mp  = _tp(_t_mean)   if _t_mean   else None
+        _medp = _tp(_t_median) if _t_median else None
+
+        st.markdown(f"""
+        <div style="background:#0d1526;border:1px solid #1e2d45;border-radius:14px;padding:22px 28px;margin:20px 0 6px 0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <span style="color:#b0bec5;font-weight:700;font-size:0.85rem;letter-spacing:0.05em;">KURSZIEL-SPANNE DER ANALYSTEN</span>
+                <span style="color:#546e7a;font-size:0.78rem;">{_n_anal} Analysten · {_currency}</span>
+            </div>
+            <div style="position:relative;height:14px;border-radius:7px;
+                background:linear-gradient(90deg,#ef5350 0%,#ffa726 35%,#26a69a 100%);margin-bottom:36px;">
+                <div style="position:absolute;left:{_pp:.1f}%;top:-8px;transform:translateX(-50%);
+                    width:10px;height:30px;background:#ffffff;border-radius:3px;
+                    box-shadow:0 0 10px rgba(255,255,255,0.6);" title="Aktueller Kurs"></div>
+                {f'<div style="position:absolute;left:{_mp:.1f}%;top:-5px;transform:translateX(-50%);width:3px;height:24px;background:#26a69a;border-radius:2px;opacity:0.9;" title="Ø Kursziel"></div>' if _mp else ""}
+            </div>
+            <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                <div style="text-align:center;">
+                    <div style="color:#ef5350;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_low:.2f}</div>
+                    <div style="color:#546e7a;font-size:0.7rem;">Bear-Ziel</div>
+                    <div style="color:#ef5350;font-size:0.78rem;">{f"{_upside_low:+.0f}%" if _upside_low else ""}</div>
+                </div>
+                <div style="text-align:center;background:rgba(255,255,255,0.05);border-radius:8px;padding:4px 14px;">
+                    <div style="color:#eceff1;font-weight:700;font-size:1.0rem;">{_cur_sym}{price:.2f}</div>
+                    <div style="color:#90a4ae;font-size:0.7rem;">Kurs heute</div>
+                </div>
+                {f'<div style="text-align:center;"><div style="color:#90caf9;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_median:.2f}</div><div style="color:#546e7a;font-size:0.7rem;">Median-Ziel</div></div>' if _t_median else ""}
+                <div style="text-align:center;">
+                    <div style="color:#26a69a;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_mean:.2f}</div>
+                    <div style="color:#546e7a;font-size:0.7rem;">Ø Kursziel</div>
+                    <div style="color:#26a69a;font-size:0.78rem;">{f"{_upside:+.0f}%" if _upside else ""}</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="color:#26a69a;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_high:.2f}</div>
+                    <div style="color:#546e7a;font-size:0.7rem;">Bull-Ziel</div>
+                    <div style="color:#26a69a;font-size:0.78rem;">{f"{_upside_high:+.0f}%" if _upside_high else ""}</div>
+                </div>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── ABSCHNITT 3: Multi-Jahres-Prognose-Tabelle ────────────────────────────
+    _est_by_year: dict = {}
+    for _e in _eps_est:
+        _yr = _e["year"]
+        _est_by_year.setdefault(_yr, {})["eps"] = _e["estimate"]
+        _est_by_year[_yr]["eps_an"] = _e.get("analysts")
+    for _e in _rev_est:
+        _yr = _e["year"]
+        _est_by_year.setdefault(_yr, {})["rev"] = _e["estimate"]
+        _est_by_year[_yr]["rev_an"] = _e.get("analysts")
+
+    _years_sorted = sorted(_est_by_year.keys())
+
+    if _years_sorted:
         st.markdown(
-            f"<div style='background:linear-gradient(135deg,#0d1f3c,#0a1628);"
-            f"border:1px solid #1e3a5f;border-left:4px solid {_rec_color};"
-            f"border-radius:12px;padding:14px 18px;margin-bottom:16px;"
-            f"display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;'>"
-            f"<div>"
-            f"<div style='color:{_rec_color};font-size:1.1rem;font-weight:800;'>{_rec_label}</div>"
-            f"<div style='color:#546e7a;font-size:0.75rem;margin-top:2px;'>{_n_anal} Analysten</div>"
-            f"</div>"
-            f"<div style='text-align:right;'>"
-            f"<div style='color:#b0bec5;font-size:0.78rem;'>Ø Kursziel</div>"
-            f"<div style='color:#fff;font-size:1.2rem;font-weight:700;'>${_t_mean:,.2f}</div>"
-            f"<div style='color:{_up_color};font-size:0.82rem;font-weight:600;'>{_upside:+.1f}% Upside</div>"
-            f"</div>"
-            f"</div>",
+            "<div style='color:#b0bec5;font-weight:700;font-size:0.88rem;"
+            "letter-spacing:0.05em;margin:26px 0 10px 0;'>JAHRES-PROGNOSEN IM ÜBERBLICK</div>",
             unsafe_allow_html=True)
 
-    # ── Kursziel-Range ────────────────────────────────────────────────────
-    if _t_low and _t_high and _t_mean:
-        st.markdown("<div class='section-header' style='font-size:0.75rem;margin-top:8px;'>Kursziel-Bandbreite</div>", unsafe_allow_html=True)
-        _range_span = _t_high - _t_low if _t_high > _t_low else 1
-        _cur_pos    = max(0, min(100, (price - _t_low) / _range_span * 100))
-        _mean_pos   = max(0, min(100, (_t_mean - _t_low) / _range_span * 100))
+        _prev_eps = _trail_eps
+        _prev_rev = yf_info.get("totalRevenue")
+        _tbl_rows = ""
+
+        def _gc(v):   # growth color
+            if v is None: return "#546e7a"
+            return "#26a69a" if v > 10 else "#66bb6a" if v > 0 else "#ef5350"
+        def _pec(v):  # P/E color
+            if v is None: return "#78909c"
+            return "#26a69a" if v < 15 else "#ffa726" if v < 30 else "#ef5350"
+
+        for _yr in _years_sorted:
+            _d = _est_by_year[_yr]
+            _eps_e = _d.get("eps")
+            _rev_e = _d.get("rev")
+            _eps_an = _d.get("eps_an") or _d.get("rev_an")
+            _eps_gr = ((_eps_e / _prev_eps - 1) * 100) if (_eps_e and _prev_eps and _prev_eps > 0) else None
+            _rev_gr = ((_rev_e / _prev_rev - 1) * 100) if (_rev_e and _prev_rev and _prev_rev > 0) else None
+            _fpe_i  = (price / _eps_e) if (_eps_e and _eps_e > 0 and price) else None
+            _fps_i  = (market_cap / _rev_e) if (_rev_e and _rev_e > 0 and market_cap) else None
+            _an_txt = f'<span style="color:#37474f;font-size:0.7rem">({_eps_an} An.)</span>' if _eps_an else ""
+            _tbl_rows += f"""
+            <tr style="border-bottom:1px solid #1a2744;">
+                <td style="padding:11px 14px;font-weight:700;color:#eceff1;white-space:nowrap;">{_yr}E&nbsp;{_an_txt}</td>
+                <td style="padding:11px 14px;text-align:right;color:#b0bec5;">{fmt_large(_rev_e) if _rev_e else "—"}</td>
+                <td style="padding:11px 14px;text-align:right;font-weight:600;color:{_gc(_rev_gr)};">{f"{_rev_gr:+.1f}%" if _rev_gr is not None else "—"}</td>
+                <td style="padding:11px 14px;text-align:right;color:#b0bec5;">{f"{_cur_sym}{_eps_e:.2f}" if _eps_e is not None else "—"}</td>
+                <td style="padding:11px 14px;text-align:right;font-weight:600;color:{_gc(_eps_gr)};">{f"{_eps_gr:+.1f}%" if _eps_gr is not None else "—"}</td>
+                <td style="padding:11px 14px;text-align:right;color:{_pec(_fpe_i)};">{f"{_fpe_i:.1f}×" if _fpe_i else "—"}</td>
+                <td style="padding:11px 14px;text-align:right;color:#78909c;">{f"{_fps_i:.1f}×" if _fps_i else "—"}</td>
+            </tr>"""
+            _prev_eps = _eps_e or _prev_eps
+            _prev_rev = _rev_e or _prev_rev
+
+        st.markdown(f"""
+        <div style="overflow-x:auto;margin-bottom:6px;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.84rem;
+            background:#0d1526;border-radius:12px;overflow:hidden;">
+        <thead><tr style="background:#1a2744;">
+            <th style="padding:10px 14px;text-align:left;color:#546e7a;">Jahr</th>
+            <th style="padding:10px 14px;text-align:right;color:#546e7a;">Umsatz (E)</th>
+            <th style="padding:10px 14px;text-align:right;color:#546e7a;">Umsatz-Wachstum</th>
+            <th style="padding:10px 14px;text-align:right;color:#546e7a;">EPS (E)</th>
+            <th style="padding:10px 14px;text-align:right;color:#546e7a;">EPS-Wachstum</th>
+            <th style="padding:10px 14px;text-align:right;color:#546e7a;">Fwd. KGV</th>
+            <th style="padding:10px 14px;text-align:right;color:#546e7a;">Fwd. KUV</th>
+        </tr></thead>
+        <tbody style="color:#eceff1;">{_tbl_rows}</tbody>
+        </table>
+        </div>
+        <div style="color:#37474f;font-size:0.71rem;">
+        E = Analystenschätzung. KGV/KUV basiert auf Kurs {_cur_sym}{price:.2f} / MarketCap {fmt_large(market_cap)}.
+        </div>""", unsafe_allow_html=True)
+    elif not _eps_est and not _rev_est:
         st.markdown(
-            f"<div style='background:#0d1526;border:1px solid #1e3a5f;border-radius:10px;padding:14px 18px;margin-bottom:14px;'>"
-            f"<div style='display:flex;justify-content:space-between;font-size:0.72rem;color:#546e7a;margin-bottom:8px;'>"
-            f"<span>Tief ${_t_low:,.0f}</span><span style='color:#ffd600;'>Ø ${_t_mean:,.0f}</span><span>Hoch ${_t_high:,.0f}</span>"
-            f"</div>"
-            f"<div style='position:relative;background:#1e2d45;border-radius:6px;height:8px;'>"
-            f"<div style='background:linear-gradient(90deg,#ff5252,#ffd600,#00e676);width:100%;height:8px;border-radius:6px;opacity:0.3;'></div>"
-            f"<div style='position:absolute;top:-4px;left:{_cur_pos:.0f}%;transform:translateX(-50%);width:16px;height:16px;"
-            f"background:#00e5ff;border-radius:50%;border:2px solid #0a1628;'></div>"
-            f"<div style='position:absolute;top:-3px;left:{_mean_pos:.0f}%;transform:translateX(-50%);width:2px;height:14px;"
-            f"background:#ffd600;border-radius:2px;'></div>"
-            f"</div>"
-            f"<div style='text-align:center;color:#00e5ff;font-size:0.72rem;margin-top:6px;'>● Aktueller Kurs</div>"
-            f"</div>",
+            '<div class="insight-box" style="color:#546e7a;margin-top:16px;">'
+            'ℹ️ Keine Forward-Schätzungen verfügbar — FMP_API_KEY setzen oder Ticker hat keine Analystencoverage.</div>',
             unsafe_allow_html=True)
 
-    # ── EPS & Wachstum Karten ─────────────────────────────────────────────
-    st.markdown("<div class='section-header' style='font-size:0.75rem;'>EPS & Wachstums-Schätzungen</div>", unsafe_allow_html=True)
-    _pc1, _pc2, _pc3, _pc4 = st.columns(4)
-    with _pc1:
-        st.markdown(mini_card("EPS (trailing)", _t_eps or None, 5, 2, ".2f", "$"), unsafe_allow_html=True)
-    with _pc2:
-        _eps_chg = ((_f_eps / _t_eps - 1) * 100) if (_t_eps and _t_eps > 0 and _f_eps) else None
-        _eps_color = "#00e676" if (_eps_chg and _eps_chg > 0) else "#ff5252"
-        _eps_chg_str = f"<div style='color:{_eps_color};font-size:0.72rem;text-align:center;margin-top:3px;'>{_eps_chg:+.1f}% vs. trailing</div>" if _eps_chg else ""
-        st.markdown(mini_card("EPS (forward)", _f_eps or None, 5, 2, ".2f", "$") + _eps_chg_str, unsafe_allow_html=True)
-    with _pc3:
-        st.markdown(mini_card("EPS-Wachstum (YoY)", (_eg * 100) if _eg else None, 15, 5, ".1f", "%"), unsafe_allow_html=True)
-    with _pc4:
-        st.markdown(mini_card("Umsatz-Wachstum (YoY)", (_rg * 100) if _rg else None, 15, 5, ".1f", "%"), unsafe_allow_html=True)
+    # ── ABSCHNITT 4: Investmentthese (auto-generiert) ─────────────────────────
+    _thesis = []
 
-    # ── KGV Vergleich ─────────────────────────────────────────────────────
-    st.markdown("<div class='section-header' style='font-size:0.75rem;margin-top:8px;'>KGV-Vergleich: Trailing vs. Forward</div>", unsafe_allow_html=True)
-    _kc1, _kc2, _kc3 = st.columns(3)
-    with _kc1:
-        st.markdown(mini_card("KGV (trailing)", _t_pe or None, None, 20, ".1f", "x"), unsafe_allow_html=True)
-    with _kc2:
-        st.markdown(mini_card("KGV (forward)", _f_pe or None, None, 18, ".1f", "x"), unsafe_allow_html=True)
-    with _kc3:
-        _pe_disc = ((_t_pe - _f_pe) / _t_pe * 100) if (_t_pe and _f_pe and _t_pe > 0) else None
-        _pd_color = "#00e676" if (_pe_disc and _pe_disc > 0) else "#ff5252"
-        _pd_str = (f"<div class='metric-card'><div style='color:#78909c;font-size:0.7rem;font-weight:600;"
-                   f"text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;'>KGV-Kompression</div>"
-                   f"<div style='font-size:1.6rem;font-weight:800;color:{_pd_color};'>"
-                   f"{'−' if (_pe_disc or 0) > 0 else '+'}{abs(_pe_disc or 0):.1f}%</div>"
-                   f"<div style='color:#546e7a;font-size:0.72rem;margin-top:4px;'>"
-                   f"{'Forward günstiger' if (_pe_disc or 0) > 0 else 'Forward teurer'}</div></div>") if _pe_disc else mini_card("KGV-Kompression", None, None, None, ".1f", "%")
-        st.markdown(_pd_str, unsafe_allow_html=True)
+    if _rec_label and _rec_label != "—":
+        _thesis.append(
+            f"<strong>{_n_anal} Analysten</strong> empfehlen aktuell "
+            f"<strong style='color:{_rec_color}'>{_rec_label}</strong>.")
 
-    # ── Analyst-Schätzungen via yfinance ─────────────────────────────────
-    st.markdown("<div class='section-header' style='font-size:0.75rem;margin-top:8px;'>Analyst-Schätzungen (Quartal & Jahr)</div>", unsafe_allow_html=True)
-    try:
-        _stock_obj = yf.Ticker(ticker)
-        _ee = _stock_obj.get_earnings_estimate()
-        _re = _stock_obj.get_revenue_estimate()
-        _period_labels = {"0q": "Akt. Quartal", "1q": "Nächstes Quartal",
-                          "0y": "Akt. Jahr", "1y": "Nächstes Jahr"}
-        _est_cols = st.columns(2)
-        for _ci, (_df, _title, _unit) in enumerate([
-            (_ee, "EPS-Schätzungen", "$"),
-            (_re, "Umsatz-Schätzungen", "Mrd $"),
-        ]):
-            with _est_cols[_ci]:
-                if _df is not None and not _df.empty:
-                    rows_html = ""
-                    for _pidx in ["0q", "1q", "0y", "1y"]:
-                        if _pidx not in _df.index:
-                            continue
-                        _row = _df.loc[_pidx]
-                        _avg = _row.get("avg") or _row.get("mean") or _row.get("Avg") or None
-                        _low_e = _row.get("low") or None
-                        _high_e= _row.get("high") or None
-                        _n     = int(_row.get("numberOfAnalysts") or _row.get("count") or 0)
-                        if _avg is None:
-                            continue
-                        if _unit == "Mrd $":
-                            _avg_str  = f"${_avg/1e9:.2f}B"
-                            _rng_str  = f"${_low_e/1e9:.1f}B – ${_high_e/1e9:.1f}B" if (_low_e and _high_e) else ""
-                        else:
-                            _avg_str  = f"${_avg:.2f}"
-                            _rng_str  = f"${_low_e:.2f} – ${_high_e:.2f}" if (_low_e and _high_e) else ""
-                        rows_html += (
-                            f"<div style='display:flex;justify-content:space-between;align-items:center;"
-                            f"padding:7px 0;border-bottom:1px solid #1e2d45;'>"
-                            f"<div>"
-                            f"<span style='color:#b0bec5;font-size:0.8rem;font-weight:600;'>{_period_labels.get(_pidx, _pidx)}</span>"
-                            f"{'<div style=\"color:#546e7a;font-size:0.68rem;\">' + _rng_str + '</div>' if _rng_str else ''}"
-                            f"</div>"
-                            f"<div style='text-align:right;'>"
-                            f"<span style='color:#00e5ff;font-size:0.88rem;font-weight:700;'>{_avg_str}</span>"
-                            f"{'<div style=\"color:#546e7a;font-size:0.68rem;\">' + str(_n) + ' Analysten</div>' if _n else ''}"
-                            f"</div>"
-                            f"</div>"
-                        )
-                    if rows_html:
-                        st.markdown(
-                            f"<div style='background:#0d1526;border:1px solid #1e3a5f;border-radius:10px;padding:12px 16px;'>"
-                            f"<div style='color:#64b5f6;font-size:0.75rem;font-weight:700;text-transform:uppercase;"
-                            f"letter-spacing:1px;margin-bottom:8px;'>{_title}</div>"
-                            f"{rows_html}</div>",
-                            unsafe_allow_html=True)
-                    else:
-                        st.markdown(f'<div class="insight-box" style="color:#546e7a;">{_title}: Keine Daten verfügbar</div>', unsafe_allow_html=True)
-                else:
-                    st.markdown(f'<div class="insight-box" style="color:#546e7a;">{_title}: Keine Daten verfügbar</div>', unsafe_allow_html=True)
-    except Exception:
-        st.markdown('<div class="insight-box" style="color:#546e7a;">Analyst-Schätzungen nicht verfügbar.</div>', unsafe_allow_html=True)
+    if _upside is not None:
+        _thesis.append(
+            f"Das durchschnittliche Kursziel von <strong>{_cur_sym}{_t_mean:.2f}</strong> "
+            f"impliziert <strong style='color:{'#26a69a' if _upside > 0 else '#ef5350'}'>"
+            f"{_upside:+.1f}% Upside-Potenzial</strong> zum aktuellen Kurs.")
 
-    st.markdown(
-        "<div style='color:#37474f;font-size:0.68rem;margin-top:12px;'>"
-        "⚠️ Prognosen basieren auf Analysten-Schätzungen (Consensus) — keine Garantie. Daten: yfinance.</div>",
-        unsafe_allow_html=True)
+    if len(_eps_est) >= 2 and _trail_eps and _trail_eps > 0:
+        _eps_last = _eps_est[-1].get("estimate")
+        _n_fwd = len(_eps_est)
+        if _eps_last and _eps_last > 0:
+            _eps_cagr = ((_eps_last / _trail_eps) ** (1 / _n_fwd) - 1) * 100
+            _eg_color = "#26a69a" if _eps_cagr > 10 else "#ffa726" if _eps_cagr > 0 else "#ef5350"
+            _thesis.append(
+                f"Über {_n_fwd} Jahr{'e' if _n_fwd > 1 else ''} wird ein EPS-Wachstum von "
+                f"<strong style='color:{_eg_color}'>{_eps_cagr:.1f}% p.a.</strong> erwartet "
+                f"(von {_cur_sym}{_trail_eps:.2f} auf {_cur_sym}{_eps_last:.2f}).")
+
+    if len(_rev_est) >= 2 and yf_info.get("totalRevenue"):
+        _rev_base = yf_info["totalRevenue"]
+        _rev_last_e = _rev_est[-1].get("estimate")
+        if _rev_last_e and _rev_base > 0:
+            _rev_cagr = ((_rev_last_e / _rev_base) ** (1 / len(_rev_est)) - 1) * 100
+            _rg_color = "#26a69a" if _rev_cagr > 8 else "#ffa726" if _rev_cagr > 0 else "#ef5350"
+            _thesis.append(
+                f"Der Umsatz soll mit <strong style='color:{_rg_color}'>{_rev_cagr:.1f}% p.a.</strong> wachsen.")
+
+    if _fwd_pe:
+        _pe_v = ("günstig (<20×)" if _fwd_pe < 20 else "fair (20–30×)" if _fwd_pe < 30
+                 else "ambitioniert (30–50×)" if _fwd_pe < 50 else "sehr hoch (>50×)")
+        _pe_c = "#26a69a" if _fwd_pe < 20 else "#66bb6a" if _fwd_pe < 30 else "#ffa726" if _fwd_pe < 50 else "#ef5350"
+        _thesis.append(
+            f"Das Forward-KGV von <strong style='color:{_pe_c}'>{_fwd_pe:.1f}×</strong> "
+            f"gilt als <strong style='color:{_pe_c}'>{_pe_v}</strong>.")
+
+    if _beat_rate is not None and _n_es >= 4:
+        _br_v = ("übertrifft die Erwartungen konsistent" if _beat_rate >= 75
+                 else "trifft die Erwartungen meist" if _beat_rate >= 50
+                 else "verfehlt die Erwartungen häufig")
+        _thesis.append(
+            f"Das Management <strong>{_br_v}</strong> "
+            f"({_beat_rate:.0f}% Beat-Rate, Ø {_avg_surp:+.1f}% Überraschung).")
+
+    if _thesis:
+        st.markdown(f"""
+        <div style="background:linear-gradient(135deg,#0b1e10 0%,#0d1526 100%);
+            border:1px solid #1b3d20;border-radius:14px;padding:20px 26px;margin:22px 0;">
+            <div style="color:#81c784;font-weight:700;font-size:0.8rem;
+                letter-spacing:0.08em;margin-bottom:12px;">📋 INVESTMENTTHESE — ANALYSTENKONSENS</div>
+            <div style="color:#cfd8dc;font-size:0.88rem;line-height:1.8;">
+                {"&nbsp; ".join(_thesis)}
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── ABSCHNITT 5: EPS-Überraschungen (Beat/Miss-History) ─────────────────
+    if earnings_surprises:
+        _bi = "✅" if (_beat_rate and _beat_rate >= 70) else "⚠️" if (_beat_rate and _beat_rate >= 50) else "❌"
+        st.markdown(
+            f"<div style='color:#b0bec5;font-weight:700;font-size:0.85rem;"
+            f"letter-spacing:0.05em;margin:24px 0 10px 0;'>"
+            f"EPS-ÜBERRASCHUNGEN — LETZTE {_n_es} QUARTALE&nbsp;&nbsp;"
+            f"{f'{_bi} {_beats}/{_n_es} Beat ({_beat_rate:.0f}%)' if _beat_rate else ''}</div>",
+            unsafe_allow_html=True)
+        _surp_rows = ""
+        for _s in earnings_surprises[:8]:
+            _vc   = "#26a69a" if _s["verdict"] == "Beat" else "#ef5350" if _s["verdict"] == "Miss" else "#ffa726"
+            _sval = _s.get("surp_pct") or 0
+            _bw   = min(abs(_sval) * 2.5, 100)
+            _surp_rows += f"""
+            <tr style="border-bottom:1px solid #0d1526;">
+                <td style="padding:9px 12px;color:#90a4ae;">{_s['date']}</td>
+                <td style="padding:9px 12px;text-align:right;color:#546e7a;">
+                    {f"{_cur_sym}{_s['estimate']:.2f}" if _s.get("estimate") is not None else "—"}</td>
+                <td style="padding:9px 12px;text-align:right;color:#eceff1;font-weight:600;">
+                    {_cur_sym}{_s['actual']:.2f}</td>
+                <td style="padding:9px 12px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <div style="background:#1e2d45;border-radius:3px;height:7px;width:70px;flex-shrink:0;">
+                            <div style="background:{_vc};width:{_bw:.0f}%;height:7px;border-radius:3px;"></div></div>
+                        <span style="color:{_vc};font-weight:600;font-size:0.8rem;">
+                            {f"{_sval:+.1f}%" if _sval else "—"}</span>
+                    </div>
+                </td>
+                <td style="padding:9px 12px;text-align:center;">
+                    <span style="color:{_vc};font-weight:700;font-size:0.78rem;">{_s['verdict']}</span>
+                </td>
+            </tr>"""
+        st.markdown(f"""
+        <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;
+            background:#0d1526;border-radius:12px;overflow:hidden;">
+        <thead><tr style="background:#1a2744;">
+            <th style="padding:9px 12px;text-align:left;color:#546e7a;">Quartal</th>
+            <th style="padding:9px 12px;text-align:right;color:#546e7a;">Schätzung</th>
+            <th style="padding:9px 12px;text-align:right;color:#546e7a;">Actual EPS</th>
+            <th style="padding:9px 12px;color:#546e7a;">Überraschung</th>
+            <th style="padding:9px 12px;text-align:center;color:#546e7a;">Ergebnis</th>
+        </tr></thead>
+        <tbody style="color:#eceff1;">{_surp_rows}</tbody>
+        </table></div>""", unsafe_allow_html=True)
 
 elif _at == 3:
     st.markdown("<div class='section-header'>Fundamental</div>", unsafe_allow_html=True)
@@ -6597,7 +6916,7 @@ elif _at == 4:
             ))
             _fig_dcf.add_hline(y=price, line_dash="dot", line_color="#ffd600",
                                line_width=1.5,
-                               annotation_text=f"Kurs ${price:.0f}",
+                               annotation_text=f"Kurs {_cur_sym}{price:.0f}",
                                annotation_font_color="#ffd600")
             _fig_dcf.update_layout(
                 template="plotly_dark",
@@ -7176,7 +7495,7 @@ elif _at == 8:
         Glassdoor-Bewertungen und Track Record bei Kapitalallokation prüfen.
     </div>""", unsafe_allow_html=True)
 
-# ==================== TAB 7: NEWS ====================
+# ==================== TAB 9: NEWS ====================
 elif _at == 9:
     st.markdown("<div class='section-header'>📰 Aktuelle News</div>", unsafe_allow_html=True)
     if NEWS_API_KEY:
