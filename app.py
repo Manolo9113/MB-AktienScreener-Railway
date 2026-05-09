@@ -3634,23 +3634,37 @@ def _get_eur_fx_rate(from_currency: str) -> float:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _portfolio_price(ticker: str):
-    """Aktuellen Kurs in EUR für Portfolio-Position (gecacht 5 Min)."""
+def _portfolio_quote_ext(ticker: str) -> dict:
+    """Kursdaten in EUR: Preis, 52W-Range, Tagesveränderung, FX-Rate (gecacht 5 Min)."""
+    _empty = {'price_eur': None, 'year_high_eur': None, 'year_low_eur': None,
+              'day_chg_pct': None, 'fx': 1.0}
     try:
         fi = yf.Ticker(ticker).fast_info
-        p = getattr(fi, 'last_price', None) or getattr(fi, 'regular_market_price', None)
-        if not p:
-            return None
-        price = float(p)
+        price = float(getattr(fi, 'last_price', None) or getattr(fi, 'regular_market_price', None) or 0)
+        if not price:
+            return _empty
         currency = str(getattr(fi, 'currency', 'EUR') or 'EUR').strip()
         if currency == 'GBp':
             price /= 100.0
             currency = 'GBP'
-        if currency != 'EUR':
-            price *= _get_eur_fx_rate(currency)
-        return price
+        fx = _get_eur_fx_rate(currency) if currency != 'EUR' else 1.0
+        y_high  = getattr(fi, 'year_high', None)
+        y_low   = getattr(fi, 'year_low', None)
+        day_chg = getattr(fi, 'regular_market_change_percent', None)
+        return {
+            'price_eur':     price * fx,
+            'year_high_eur': float(y_high) * fx if y_high else None,
+            'year_low_eur':  float(y_low)  * fx if y_low  else None,
+            'day_chg_pct':   float(day_chg) if day_chg is not None else None,
+            'fx':            fx,
+        }
     except Exception:
-        return None
+        return _empty
+
+
+def _portfolio_price(ticker: str):
+    """Wrapper → aktueller Kurs in EUR (gecacht via _portfolio_quote_ext)."""
+    return _portfolio_quote_ext(ticker).get('price_eur')
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -3807,11 +3821,56 @@ def _get_ticker_info_cached(ticker: str) -> dict:
     try:
         info = yf.Ticker(ticker).info
         return {
-            'sector':     info.get('sector') or '',
-            'quote_type': info.get('quoteType') or 'EQUITY',
+            'sector':          info.get('sector') or '',
+            'quote_type':      info.get('quoteType') or 'EQUITY',
+            'recommendation':  (info.get('recommendationKey') or '').lower(),
+            'target_native':   info.get('targetMeanPrice'),
+            'div_rate_native': info.get('trailingAnnualDividendRate') or 0.0,
         }
     except Exception:
-        return {'sector': '', 'quote_type': 'EQUITY'}
+        return {'sector': '', 'quote_type': 'EQUITY', 'recommendation': '',
+                'target_native': None, 'div_rate_native': 0.0}
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _sparklines_bulk(tickers: tuple) -> dict:
+    """Batch-Download 3M-Wochendaten → SVG-Sparklines (gecacht 1h, 1 API-Call)."""
+    if not tickers:
+        return {}
+    try:
+        raw = yf.download(list(tickers), period='3mo', interval='1wk',
+                          progress=False, auto_adjust=True)
+        if raw.empty:
+            return {}
+        close = raw['Close']
+
+        def _to_svg(vals):
+            if len(vals) < 4:
+                return ''
+            mn, mx = min(vals), max(vals)
+            rng = mx - mn or 1
+            w, h = 110, 32
+            pts = ' '.join(f"{int(i/(len(vals)-1)*w)},{int((1-(v-mn)/rng)*(h-6)+3)}"
+                           for i, v in enumerate(vals))
+            clr = '#00e676' if vals[-1] >= vals[0] else '#ff5252'
+            return (f'<svg width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
+                    f'<polyline points="{pts}" fill="none" stroke="{clr}" '
+                    f'stroke-width="1.8" stroke-linejoin="round"/></svg>')
+
+        result = {}
+        if isinstance(close, pd.Series):
+            vals = close.dropna().tolist()
+            if tickers:
+                result[tickers[0]] = _to_svg(vals)
+        else:
+            for col in close.columns:
+                vals = close[col].dropna().tolist()
+                svg = _to_svg(vals)
+                if svg:
+                    result[str(col)] = svg
+        return result
+    except Exception:
+        return {}
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -5245,12 +5304,32 @@ if st.session_state.get("show_portfolio"):
 
         # Kurse laden
         prices: dict = {}
+        quotes_ext: dict = {}
         if not stocks_etf.empty:
             with st.spinner("Aktuelle Kurse werden geladen…"):
                 for isin in stocks_etf['ISIN']:
                     tkr = isin_map.get(isin)
                     if tkr:
-                        prices[isin] = _portfolio_price(tkr)
+                        _q = _portfolio_quote_ext(tkr)
+                        prices[isin] = _q.get('price_eur')
+                        quotes_ext[isin] = _q
+
+        # Analyst- & Sektordaten vorladen (24h gecacht)
+        _alloc_infos: dict = {}
+        if not stocks_etf.empty:
+            with st.spinner("Analyst- & Sektordaten werden geladen (gecacht 24h)…"):
+                for isin in stocks_etf['ISIN']:
+                    tkr = isin_map.get(isin)
+                    if tkr:
+                        _alloc_infos[isin] = _get_ticker_info_cached(tkr)
+
+        # Sparklines (Bulk-Download, 1 API-Call für alle Positionen)
+        _sparklines: dict = {}
+        if not stocks_etf.empty:
+            _spark_tickers = tuple(t for t in [isin_map.get(i) for i in stocks_etf['ISIN']] if t)
+            if _spark_tickers:
+                with st.spinner("Sparklines werden geladen…"):
+                    _sparklines = _sparklines_bulk(_spark_tickers)
 
         # ── Zusammenfassung ──────────────────────────────────────────
         total_invested = df_port['cost_basis'].sum()
@@ -5279,46 +5358,106 @@ if st.session_state.get("show_portfolio"):
             # ── Aktien & ETFs ────────────────────────────────────────────
             if not stocks_etf.empty:
                 st.markdown("<div class='section-header'>📈 Aktien & ETFs</div>", unsafe_allow_html=True)
+                _RBADGE = {'strongbuy':('Strong Buy','#00e676'),'buy':('Kaufen','#00e676'),
+                              'hold':('Halten','#ffd600'),'sell':('Verkaufen','#ff5252'),
+                              'strongsell':('Strong Sell','#ff5252')}
                 for _, row in stocks_etf.iterrows():
-                    tkr = isin_map.get(row['ISIN'])
+                    tkr       = isin_map.get(row['ISIN'])
                     cur_price = prices.get(row['ISIN'])
-                    cur_val = cur_price * row['shares'] if cur_price else None
-                    pnl_pos = ((cur_val - row['cost_basis']) / row['cost_basis'] * 100) if (cur_val and row['cost_basis'] > 0) else None
+                    cur_val   = cur_price * row['shares'] if cur_price else None
+                    pnl_pos   = ((cur_val - row['cost_basis']) / row['cost_basis'] * 100) if (cur_val and row['cost_basis'] > 0) else None
+                    _qx  = quotes_ext.get(row['ISIN'], {})
+                    _inf = _alloc_infos.get(row['ISIN'], {})
 
-                    c1, c2, c3, c4, c5 = st.columns([3, 1.2, 1.2, 1.2, 1])
+                    c1, c2, c3, c4, c5 = st.columns([3, 1.1, 1.1, 1.6, 1])
                     with c1:
+                        _rl, _rc = _RBADGE.get(_inf.get('recommendation',''), ('',''))
+                        _badge_h = (f"<span style='background:{_rc}22;color:{_rc};font-size:0.62rem;"
+                                    f"padding:1px 5px;border-radius:3px;margin-left:5px;font-weight:600;'>{_rl}</span>") if _rl else ''
+                        _tgt = _inf.get('target_native')
+                        _tgt_h = ''
+                        if _tgt and cur_price and _qx.get('fx'):
+                            _up = (_tgt * _qx['fx'] / cur_price - 1) * 100
+                            _uc = '#00e676' if _up >= 0 else '#ff5252'
+                            _tgt_h = f"<span style='color:{_uc};font-size:0.62rem;margin-left:4px;'>KZ {_up:+.0f}%</span>"
+                        _spark_h = (f"<div style='margin-top:3px;line-height:0;'>{_sparklines[tkr]}</div>"
+                                    if tkr and tkr in _sparklines else '')
                         st.markdown(
-                            f"<div style='color:#eceff1;font-weight:600;font-size:0.95rem;'>{row['name'][:40]}</div>"
+                            f"<div style='color:#eceff1;font-weight:600;font-size:0.93rem;'>{row['name'][:36]}{_badge_h}{_tgt_h}</div>"
                             f"<div style='color:#546e7a;font-size:0.72rem;'>{row['ISIN']} · {row['wkn']}"
-                            f"{' · ' + tkr if tkr else ' · kein Ticker'}</div>",
+                            f"{' · '+tkr if tkr else ''}</div>{_spark_h}",
                             unsafe_allow_html=True)
                     with c2:
                         st.markdown(
                             f"<div style='color:#78909c;font-size:0.72rem;'>Anteile</div>"
-                            f"<div style='color:#eceff1;font-size:0.9rem;font-weight:600;'>{row['shares']:.4f}</div>",
+                            f"<div style='color:#eceff1;font-size:0.88rem;font-weight:600;'>{row['shares']:.4f}</div>",
                             unsafe_allow_html=True)
                     with c3:
                         st.markdown(
-                            f"<div style='color:#78909c;font-size:0.72rem;'>Ø Kaufkurs</div>"
-                            f"<div style='color:#eceff1;font-size:0.9rem;font-weight:600;'>€ {row['avg_cost']:.2f}</div>",
+                            f"<div style='color:#78909c;font-size:0.72rem;'>Ø Kurs</div>"
+                            f"<div style='color:#eceff1;font-size:0.88rem;font-weight:600;'>€ {row['avg_cost']:.2f}</div>",
                             unsafe_allow_html=True)
                     with c4:
                         if cur_price:
-                            clr = '#00e676' if pnl_pos and pnl_pos >= 0 else '#ff5252'
+                            _clr = '#00e676' if pnl_pos and pnl_pos >= 0 else '#ff5252'
+                            _dc  = _qx.get('day_chg_pct')
+                            _dc_h = (f"<span style='color:{'#00e676' if _dc>=0 else '#ff5252'};"
+                                     f"font-size:0.68rem;'> {_dc:+.2f}%</span>") if _dc is not None else ''
+                            _yh, _yl = _qx.get('year_high_eur'), _qx.get('year_low_eur')
+                            _52h = ''
+                            if _yh and _yl and _yh > _yl and cur_price:
+                                _pp = max(0, min(100, (cur_price - _yl) / (_yh - _yl) * 100))
+                                _52h = (f"<div style='margin-top:4px;'>"
+                                        f"<div style='display:flex;justify-content:space-between;"
+                                        f"color:#37474f;font-size:0.6rem;'>"
+                                        f"<span>€{_yl:.0f}</span><span style='color:#455a64;'>52W</span>"
+                                        f"<span>€{_yh:.0f}</span></div>"
+                                        f"<div style='background:#1a2740;border-radius:3px;height:4px;margin-top:2px;'>"
+                                        f"<div style='background:#42a5f5;width:{_pp:.0f}%;height:4px;border-radius:3px;'>"
+                                        f"</div></div></div>")
                             st.markdown(
-                                f"<div style='color:#78909c;font-size:0.72rem;'>Kurs (€) / P&L</div>"
-                                f"<div style='color:#eceff1;font-size:0.9rem;font-weight:600;'>€ {cur_price:.2f}</div>"
-                                f"<div style='color:{clr};font-size:0.8rem;'>{pnl_pos:+.1f}%</div>",
+                                f"<div style='color:#78909c;font-size:0.72rem;'>Kurs · Heute · P&L</div>"
+                                f"<div style='color:#eceff1;font-size:0.88rem;font-weight:600;'>€ {cur_price:.2f}{_dc_h}</div>"
+                                f"<div style='color:{_clr};font-size:0.8rem;font-weight:600;'>"
+                                f"{pnl_pos:+.1f}% (€ {cur_val - row['cost_basis']:+,.0f})</div>{_52h}",
                                 unsafe_allow_html=True)
                         else:
                             st.markdown("<div style='color:#546e7a;font-size:0.8rem;margin-top:14px;'>kein Kurs</div>",
                                         unsafe_allow_html=True)
                     with c5:
                         if tkr:
-                            if st.button("Analysieren", key=f"pf_ana_{row['ISIN']}", use_container_width=True):
+                            if st.button("🔍", key=f"pf_ana_{row['ISIN']}", use_container_width=True,
+                                         help=f"Vollanalyse: {row['name'][:30]}"):
                                 _go_to_ticker(tkr)
                                 st.rerun()
-                    st.markdown("<hr style='border-color:#1e2d45;margin:6px 0;'>", unsafe_allow_html=True)
+                    st.markdown("<hr style='border-color:#1a2740;margin:5px 0;'>", unsafe_allow_html=True)
+
+            # ── Dividenden-Schätzung ─────────────────────────────────
+            if not stocks_etf.empty and _alloc_infos:
+                _div_items = []
+                for _, _dr in stocks_etf.iterrows():
+                    _drate = float(_alloc_infos.get(_dr['ISIN'], {}).get('div_rate_native') or 0)
+                    if _drate > 0:
+                        _dfx  = quotes_ext.get(_dr['ISIN'], {}).get('fx', 1.0)
+                        _deur = _drate * _dfx * _dr['shares']
+                        _dp   = prices.get(_dr['ISIN'])
+                        _dyld = (_drate * _dfx / _dp * 100) if _dp else None
+                        _div_items.append({'name': _dr['name'][:34], 'eur': _deur, 'yield': _dyld})
+                if _div_items:
+                    _div_sum = sum(d['eur'] for d in _div_items)
+                    with st.expander(
+                        f"💰 Dividenden-Schätzung — ca. € {_div_sum:,.0f} / Jahr "
+                        f"({len(_div_items)} Positionen)"):
+                        for _di in sorted(_div_items, key=lambda x: x['eur'], reverse=True):
+                            _ys = f"  ·  {_di['yield']:.2f}% Div.-Rendite" if _di['yield'] else ""
+                            st.markdown(
+                                f"<div style='display:flex;justify-content:space-between;padding:4px 2px;"
+                                f"border-bottom:1px solid #1a2740;'>"
+                                f"<span style='color:#eceff1;font-size:0.82rem;'>{_di['name']}</span>"
+                                f"<span style='color:#ffd600;font-size:0.82rem;font-weight:600;'>"
+                                f"€ {_di['eur']:,.0f}/Jahr{_ys}</span></div>",
+                                unsafe_allow_html=True)
+                        st.caption("Quelle: trailingAnnualDividendRate (yFinance). Schätzung, nicht garantiert.")
 
             # ── Warrants ────────────────────────────────────────────────
             if not warrants.empty:
@@ -5346,13 +5485,6 @@ if st.session_state.get("show_portfolio"):
             if stocks_etf.empty and crypto.empty:
                 st.info("Keine Positionsdaten vorhanden.")
             else:
-                with st.spinner("Sektordaten werden geladen (einmalig, dann gecacht)…"):
-                    _alloc_infos = {}
-                    for _isin in stocks_etf['ISIN']:
-                        _tkr2 = isin_map.get(_isin)
-                        if _tkr2:
-                            _alloc_infos[_isin] = _get_ticker_info_cached(_tkr2)
-
                 _alloc_rows = []
                 for _, _arow in df_port.iterrows():
                     _tkr2  = isin_map.get(_arow['ISIN'], '')
