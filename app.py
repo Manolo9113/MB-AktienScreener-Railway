@@ -5158,13 +5158,12 @@ _METRIC_TOOLTIPS = {
     "Net Cash/Share":    "Netto-Cash je Aktie — (Cash - Schulden) / Aktienanzahl. Positiv = Netto-Gläubiger. Sicherheitspuffer bei Abschwüngen.",
 }
 
-def mini_card(label, value, good, ok, fmt=".1f", suffix="", inverse=False, tooltip=None):
+def mini_card(label, value, good, ok, fmt=".1f", suffix="", inverse=False, tooltip=None, bench=None):
     b = badge(value, good, ok, fmt, inverse)
     val_str = f"{value:{fmt}}{suffix}" if value is not None else "N/A"
     tip = tooltip or _METRIC_TOOLTIPS.get(label, "")
     tip_html = ""
     if tip:
-        # Escape all HTML special chars to avoid breaking the card structure
         tip_safe = tip.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
         tip_html = (
             f'<div class="mcard-tip-wrap">'
@@ -5172,28 +5171,93 @@ def mini_card(label, value, good, ok, fmt=".1f", suffix="", inverse=False, toolt
             f'<div class="mcard-tip-bubble">{tip_safe}</div>'
             f'</div>'
         )
-    # Single-line HTML — no blank lines inside divs (avoids Streamlit markdown parser switching modes)
+    bench_html = ""
+    if bench is not None and value is not None:
+        _bdiff = value - bench
+        _bdir  = "+" if _bdiff >= 0 else ""
+        _bc    = "#00e676" if _bdiff >= 0 else "#ff5252"
+        bench_html = (
+            f'<div style="margin-top:3px; font-size:0.67rem; color:#546e7a;">'
+            f'Sektor ∅ {bench:{fmt}}{suffix}'
+            f' <span style="color:{_bc};">({_bdir}{_bdiff:{fmt}})</span>'
+            f'</div>'
+        )
     return (
         f'<div class="metric-card" style="position:relative;">'
         f'{tip_html}'
         f'<div class="metric-label">{label}</div>'
         f'<div class="metric-value">{val_str}</div>'
         f'<div style="margin-top:6px;">{b}</div>'
+        f'{bench_html}'
         f'</div>'
     )
 
+_sb = SECTOR_BENCHMARKS.get(sector, {})
 if show_rule_of_40:
     with col_r40:
         st.markdown(mini_card("Rule of 40", rule_of_40, 40, 20, ".1f", "%"), unsafe_allow_html=True)
 with col_roic:
-    st.markdown(mini_card("ROIC", roic_val, 20, 10, ".1f", "%"), unsafe_allow_html=True)
+    st.markdown(mini_card("ROIC", roic_val, 20, 10, ".1f", "%", bench=_sb.get("ROIC")), unsafe_allow_html=True)
 with col_fcf:
-    st.markdown(mini_card("FCF Yield", fcf_yield, 5, 2, ".1f", "%"), unsafe_allow_html=True)
+    st.markdown(mini_card("FCF Yield", fcf_yield, 5, 2, ".1f", "%", bench=_sb.get("FCF Yield")), unsafe_allow_html=True)
 with col_gm:
-    st.markdown(mini_card("Gross Margin", gross_margin, 60, 40, ".1f", "%"), unsafe_allow_html=True)
+    st.markdown(mini_card("Gross Margin", gross_margin, 60, 40, ".1f", "%", bench=_sb.get("Bruttomarge")), unsafe_allow_html=True)
 if not show_rule_of_40:
     with col_rev:
-        st.markdown(mini_card("Rev. Growth", rev_growth, 15, 5, ".1f", "%"), unsafe_allow_html=True)
+        st.markdown(mini_card("Rev. Growth", rev_growth, 15, 5, ".1f", "%", bench=_sb.get("Umsatzwachstum")), unsafe_allow_html=True)
+
+# ==================== SCORE-BREAKDOWN ====================
+with st.expander("📊 Score-Breakdown — Warum dieser Score?", expanded=False):
+    _bd_items = []
+    if show_rule_of_40:
+        _bd_items.append(("Rule of 40", rule_of_40, 40, 20, 20, "%", False))
+    _bd_items += [
+        ("Bruttomarge",   gross_margin,     60,  40, 15, "%", False),
+        ("ROIC",          roic_val,         20,  10, 15, "%", False),
+        ("Umsatzwachstum",rev_growth,       15,   5, 12, "%", False),
+        ("FCF Yield",     fcf_yield,         5,   2, 12, "%", False),
+        ("Gewinnmarge",   profit_margin,    15,   5, 10, "%", False),
+        ("Op. Marge",     operating_margin, 20,  10,  8, "%", False),
+        ("PEG Ratio",     peg_ratio,       1.5, 2.5,  8, "x", True),
+    ]
+    _bd_rows = []
+    for _lbl, _val, _good, _ok, _w, _sfx, _inv in _bd_items:
+        if _val is None:
+            _icon, _pts, _rc = "➖", 0, "#546e7a"
+            _val_str = "N/A"
+        elif (_inv and _val <= _good) or (not _inv and _val >= _good):
+            _icon, _pts, _rc = "✅", _w, "#00e676"
+            _val_str = f"{_val:.1f}{_sfx}"
+        elif (_inv and _val <= _ok) or (not _inv and _val >= _ok):
+            _icon, _pts, _rc = "🟡", _w // 2, "#ffd600"
+            _val_str = f"{_val:.1f}{_sfx}"
+        else:
+            _icon, _pts, _rc = "❌", 0, "#ff5252"
+            _val_str = f"{_val:.1f}{_sfx}"
+        _thresh_str = (f"≤{_good}{_sfx}" if _inv else f"≥{_good}{_sfx}")
+        _bd_rows.append((_icon, _lbl, _val_str, _thresh_str, _pts, _w, _rc))
+    _bd_html = (
+        '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;">'
+        '<tr style="color:#546e7a;border-bottom:1px solid #1e3a5f;">'
+        '<th style="text-align:left;padding:4px 6px;"></th>'
+        '<th style="text-align:left;padding:4px 6px;">Kriterium</th>'
+        '<th style="text-align:right;padding:4px 6px;">Wert</th>'
+        '<th style="text-align:right;padding:4px 6px;">Ziel</th>'
+        '<th style="text-align:right;padding:4px 6px;">Punkte</th>'
+        '</tr>'
+    )
+    for _icon, _lbl, _val_str, _thresh_str, _pts, _w, _rc in _bd_rows:
+        _bd_html += (
+            f'<tr style="border-bottom:1px solid #0d1526;">'
+            f'<td style="padding:5px 6px;">{_icon}</td>'
+            f'<td style="padding:5px 6px;color:#eceff1;">{_lbl}</td>'
+            f'<td style="padding:5px 6px;text-align:right;color:{_rc};font-weight:600;">{_val_str}</td>'
+            f'<td style="padding:5px 6px;text-align:right;color:#546e7a;">{_thresh_str}</td>'
+            f'<td style="padding:5px 6px;text-align:right;color:{_rc};">{_pts}/{_w}</td>'
+            f'</tr>'
+        )
+    _bd_html += f'</table><div style="margin-top:8px;color:#546e7a;font-size:0.75rem;">Score = erzielte Punkte / max. Punkte × 100 — aktuell: {quality_score}/100</div>'
+    st.markdown(_bd_html, unsafe_allow_html=True)
 
 # ==================== 52-WEEK BAR ====================
 if week52_pos is not None:
@@ -5751,12 +5815,69 @@ if _at == 0:
         st.markdown(mini_card("EV/EBITDA", ev_ebitda, 0, 15, ".1f", "x", inverse=True,
                               tooltip="Enterprise Value / EBITDA — Bewertungsmultiple unabhängig von Kapitalstruktur & Steuern. <10x günstig, 10–20x fair, >20x teuer."), unsafe_allow_html=True)
 
-    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-    _dy_c1, _dy_c2 = st.columns([1, 4])
-    with _dy_c1:
+    # ── Dividenden-Scorecard ──────────────────────────────────────────
+    _payout_ratio = (yf_info.get("payoutRatio") or 0) * 100
+    _annual_div   = yf_info.get("trailingAnnualDividendRate") or 0
+    _ex_div_ts    = yf_info.get("exDividendDate")
+    _ex_div_str   = ""
+    try:
+        if isinstance(_ex_div_ts, (int, float)) and _ex_div_ts > 0:
+            from datetime import datetime as _dtx
+            _ex_div_str = _dtx.fromtimestamp(_ex_div_ts).strftime("%d.%m.%Y")
+    except Exception:
+        pass
+    _div_streak = _DIVIDEND_POOL.get(ticker.upper())  # (desc, years) or None
+
+    if dividend_yield > 0 or _annual_div > 0:
+        st.markdown("<div class='section-header'>💰 Dividenden-Scorecard</div>", unsafe_allow_html=True)
+        _dsc1, _dsc2, _dsc3, _dsc4 = st.columns(4)
         _dy_label = "Dividend Yield ⚠️" if _div_yield_suspicious else "Dividend Yield"
         _dy_tooltip = "Wert >15 % — bitte manuell prüfen (möglicher Datenfehler)" if _div_yield_suspicious else None
-        st.markdown(mini_card(_dy_label, dividend_yield, 3, 1, ".2f", "%", tooltip=_dy_tooltip), unsafe_allow_html=True)
+        with _dsc1:
+            st.markdown(mini_card(_dy_label, dividend_yield, 3, 1, ".2f", "%", tooltip=_dy_tooltip), unsafe_allow_html=True)
+        with _dsc2:
+            st.markdown(mini_card("Payout Ratio", _payout_ratio if _payout_ratio > 0 else None,
+                                  0, 60, ".0f", "%", inverse=True,
+                                  tooltip="Ausschüttungsquote: <60% = nachhaltig, >90% = potenziell gefährdet."), unsafe_allow_html=True)
+        with _dsc3:
+            _ann_str = f"{_cur_sym}{_annual_div:.2f}" if _annual_div else "N/A"
+            st.markdown(
+                f'<div class="metric-card">'
+                f'<div class="metric-label">Jährl. Dividende</div>'
+                f'<div class="metric-value">{_ann_str}</div>'
+                f'<div style="margin-top:6px;"><span class="metric-badge-gray">je Aktie</span></div>'
+                f'</div>', unsafe_allow_html=True)
+        with _dsc4:
+            if _div_streak:
+                _streak_years = _div_streak[1]
+                _streak_title = "Dividend King" if _streak_years >= 50 else "Dividend Aristocrat" if _streak_years >= 25 else "Wachstums-Dividende"
+                _streak_color = "#ffd600" if _streak_years >= 50 else "#00e676" if _streak_years >= 25 else "#64b5f6"
+                st.markdown(
+                    f'<div class="metric-card">'
+                    f'<div class="metric-label">Dividenden-Serie</div>'
+                    f'<div class="metric-value" style="color:{_streak_color};">{_streak_years}J</div>'
+                    f'<div style="margin-top:6px;"><span style="color:{_streak_color};font-size:0.75rem;font-weight:700;">{_streak_title}</span></div>'
+                    f'</div>', unsafe_allow_html=True)
+            elif _ex_div_str:
+                st.markdown(
+                    f'<div class="metric-card">'
+                    f'<div class="metric-label">Ex-Dividende</div>'
+                    f'<div class="metric-value" style="font-size:1rem;">{_ex_div_str}</div>'
+                    f'<div style="margin-top:6px;"><span class="metric-badge-gray">letztes Datum</span></div>'
+                    f'</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    f'<div class="metric-card">'
+                    f'<div class="metric-label">Ex-Dividende</div>'
+                    f'<div class="metric-value" style="font-size:1rem;">N/A</div>'
+                    f'<div style="margin-top:6px;"><span class="metric-badge-gray">–</span></div>'
+                    f'</div>', unsafe_allow_html=True)
+    else:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        _dy_c1, _dy_c2 = st.columns([1, 4])
+        with _dy_c1:
+            st.markdown(mini_card("Dividend Yield", None, 3, 1, ".2f", "%",
+                                  tooltip="Keine Dividende bekannt."), unsafe_allow_html=True)
 
     # ── Branchenvergleich ──────────────────────────────────────────────
     st.markdown("<div class='section-header'>🌍 Branchenvergleich</div>", unsafe_allow_html=True)
@@ -6982,9 +7103,11 @@ elif _at == 7:
     with _c2:
         chart_type = st.radio("Chart-Typ", ["Candlestick", "Linie"], horizontal=True, key="ctype")
     with _c3:
-        _lcol, _rcol = st.columns(2)
+        _lcol, _mcol, _rcol = st.columns(3)
         with _lcol:
-            show_sp500 = st.checkbox("S&P 500 Vergleich", value=False, key="show_sp500")
+            show_sp500 = st.checkbox("vs. S&P 500", value=False, key="show_sp500")
+        with _mcol:
+            show_nasdaq = st.checkbox("vs. NASDAQ", value=False, key="show_nasdaq")
         with _rcol:
             show_log = st.checkbox("Log. Skala", value=False, key="log_scale")
 
@@ -7096,6 +7219,39 @@ elif _at == 7:
                                 x=_x_dates, y=_sp_scaled.values,
                                 name="S&P 500 (relativ)",
                                 line=dict(color="#78909c", width=1.5, dash="dot"),
+                            ), row=1, col=1)
+                except Exception:
+                    pass
+
+        # ── NASDAQ (QQQ) comparison ────────────────────────────────────
+        if show_nasdaq:
+            if chart_type == "Candlestick":
+                st.caption("ℹ️ NASDAQ Vergleich nur im Linie-Modus verfügbar")
+            else:
+                try:
+                    _nq_days = 2*365+10 if "Wöchentlich" in chart_mode else 5*365+10
+                    _nq_start = (_dt.date.today() - _dt.timedelta(days=_nq_days)).strftime("%Y-%m-%d")
+                    _nq_end   = _dt.date.today().strftime("%Y-%m-%d")
+                    _nq_hist  = yf.Ticker("QQQ").history(
+                        start=_nq_start, end=_nq_end,
+                        interval="1wk" if "Wöchentlich" in chart_mode else
+                                 "1mo" if "Monatlich"   in chart_mode else "1d"
+                    )
+                    if not _nq_hist.empty:
+                        _nq_close = _nq_hist["Close"].copy()
+                        _nq_close.index = pd.to_datetime(_nq_close.index).normalize().tz_localize(None)
+                        _cd_index_norm2 = pd.to_datetime(chart_data.index).normalize().tz_localize(None)
+                        _nq_reindexed   = _nq_close.reindex(_cd_index_norm2, method="ffill").dropna()
+                        if not _nq_reindexed.empty and not close.empty:
+                            _stock_start2 = float(close.iloc[0])
+                            _nq_start_val = float(_nq_reindexed.iloc[0])
+                            _nq_scaled    = _nq_reindexed * (_stock_start2 / _nq_start_val)
+                            _valid_mask2  = _cd_index_norm2.isin(_nq_reindexed.index)
+                            _x_dates2     = chart_data.index[_valid_mask2]
+                            fig_ta.add_trace(go.Scatter(
+                                x=_x_dates2, y=_nq_scaled.values,
+                                name="NASDAQ (relativ)",
+                                line=dict(color="#7c4dff", width=1.5, dash="dot"),
                             ), row=1, col=1)
                 except Exception:
                     pass
