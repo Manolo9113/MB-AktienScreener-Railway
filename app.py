@@ -3948,6 +3948,66 @@ def _calc_portfolio_irr(csv_bytes: bytes, current_eur_value: float):
     return irr, simple_return, days_total, total_invested
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _detect_savings_plans(csv_bytes: bytes) -> list:
+    """Erkennt regelmäßige Sparpläne: gleiche ISIN, regelmäßige Intervalle, ähnliche Beträge."""
+    df = None
+    for enc in ['utf-8-sig', 'utf-8', 'latin-1']:
+        try:
+            df = pd.read_csv(io.BytesIO(csv_bytes), sep=';', decimal=',', encoding=enc, dtype=str)
+            break
+        except Exception:
+            continue
+    if df is None or df.empty:
+        return []
+    df.columns = df.columns.str.strip()
+    date_col = None
+    for c in ['Datum', 'Ausführungsdatum', 'Ausführung Datum', 'Handelsdatum', 'Datum/Uhrzeit', 'Date']:
+        if c in df.columns:
+            date_col = c
+            break
+    if not date_col or 'Richtung' not in df.columns or 'Wert' not in df.columns:
+        return []
+    if 'Status' in df.columns:
+        df = df[df['Status'] == 'ausgeführt'].copy()
+    df = df[df['Richtung'] == 'Kauf'].copy()
+    df['_date'] = pd.to_datetime(df[date_col].astype(str).str[:10], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['_date'])
+    df['_wert'] = pd.to_numeric(
+        df['Wert'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
+        errors='coerce'
+    ).fillna(0.0).abs()
+    plans = []
+    for isin, grp in df.groupby('ISIN'):
+        grp = grp.sort_values('_date').reset_index(drop=True)
+        if len(grp) < 3:
+            continue
+        dates   = grp['_date'].tolist()
+        amounts = grp['_wert'].tolist()
+        ivls    = [(dates[i+1] - dates[i]).days for i in range(len(dates) - 1)]
+        if not ivls:
+            continue
+        mean_iv = sum(ivls) / len(ivls)
+        if mean_iv < 7:
+            continue
+        std_iv  = (sum((x - mean_iv) ** 2 for x in ivls) / len(ivls)) ** 0.5 if len(ivls) > 1 else 0
+        cv_iv   = std_iv / mean_iv if mean_iv > 0 else 1
+        if cv_iv > 0.65:
+            continue
+        if   13 <= mean_iv <= 20:  freq = "2-wöchentlich"
+        elif 20 <= mean_iv <= 45:  freq = "monatlich"
+        elif 45 <= mean_iv <= 80:  freq = "zweimonatlich"
+        elif 80 <= mean_iv <= 105: freq = "quartalsweise"
+        else:                      freq = f"alle ~{int(mean_iv)} Tage"
+        avg_amt = sum(amounts) / len(amounts)
+        name    = grp['Name'].iloc[0] if 'Name' in grp.columns else isin
+        plans.append({'isin': isin, 'name': str(name)[:38], 'count': len(grp),
+                      'avg_amount': avg_amt, 'total': sum(amounts),
+                      'start': dates[0].strftime('%b %Y'), 'last': dates[-1].strftime('%b %Y'),
+                      'freq': freq})
+    return sorted(plans, key=lambda x: x['total'], reverse=True)
+
+
 # ==================== SIDEBAR ====================
 with st.sidebar:
     st.markdown("""
@@ -5481,6 +5541,29 @@ if st.session_state.get("show_portfolio"):
             st.caption("Kurse in EUR umgerechnet (Wechselkurs via yFinance). P&L basiert auf dem Ø-Kaufkurs aus der Orderhistorie. "
                        "Krypto-Kurse werden von yFinance nicht unterstützt.")
 
+            # ── Sparplan-Erkennung ────────────────────────────────────
+            _csv_sp = st.session_state.get("portfolio_csv_bytes")
+            if _csv_sp:
+                _plans = _detect_savings_plans(_csv_sp)
+                if _plans:
+                    with st.expander(f"🗓️ Erkannte Sparpläne — {len(_plans)} gefunden"):
+                        for _pl in _plans:
+                            _c1p, _c2p = st.columns([2, 1])
+                            with _c1p:
+                                st.markdown(
+                                    f"<div style='color:#eceff1;font-size:0.88rem;font-weight:600;'>{_pl['name']}</div>"
+                                    f"<div style='color:#546e7a;font-size:0.72rem;'>{_pl['isin']} · "
+                                    f"seit {_pl['start']} · letzter Kauf {_pl['last']}</div>",
+                                    unsafe_allow_html=True)
+                            with _c2p:
+                                st.markdown(
+                                    f"<div style='color:#64b5f6;font-size:0.82rem;font-weight:600;'>"
+                                    f"≈ € {_pl['avg_amount']:.0f} · {_pl['freq']}</div>"
+                                    f"<div style='color:#546e7a;font-size:0.72rem;'>"
+                                    f"{_pl['count']}× · gesamt € {_pl['total']:,.0f}</div>",
+                                    unsafe_allow_html=True)
+                            st.markdown("<hr style='border-color:#1a2740;margin:5px 0;'>", unsafe_allow_html=True)
+
         with tab_alloc:
             if stocks_etf.empty and crypto.empty:
                 st.info("Keine Positionsdaten vorhanden.")
@@ -5559,6 +5642,41 @@ if st.session_state.get("show_portfolio"):
                 st.caption("Sektoren via yFinance (leer = kein Sektor-Mapping verfügbar). "
                            "Regionen basieren auf der Börsenlistung. ETFs nicht nach Inhalt aufgebrochen.")
 
+                # ── Konzentrations-Risiko ─────────────────────────────
+                st.markdown("<div class='section-header'>📊 Konzentrations-Risiko</div>",
+                            unsafe_allow_html=True)
+                _pv = {}
+                for _, _cr in df_port.iterrows():
+                    _p2 = prices.get(_cr['ISIN'])
+                    _pv[_cr['name'][:32]] = (_p2 * _cr['shares']) if _p2 else _cr['cost_basis']
+                _ptotal = sum(_pv.values()) or 1
+                _pshares = {k: v / _ptotal * 100 for k, v in _pv.items()}
+                _hhi = sum(s ** 2 for s in _pshares.values())
+                if   _hhi < 1500: _hhi_label, _hhi_col = "Gut diversifiziert ✓", "#00e676"
+                elif _hhi < 2500: _hhi_label, _hhi_col = "Moderat konzentriert", "#ffd600"
+                else:             _hhi_label, _hhi_col = "Hoch konzentriert ⚠️", "#ff5252"
+                _hc1, _hc2, _hc3 = st.columns(3)
+                _hc1.metric("HHI (Herfindahl-Index)", f"{_hhi:.0f}")
+                _hc2.metric("Bewertung", _hhi_label)
+                _hc3.metric("Positionen gesamt", len(_pshares))
+                st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+                _top10 = sorted(_pshares.items(), key=lambda x: x[1], reverse=True)[:10]
+                _warn_pos = [n for n, s in _pshares.items() if s > 20]
+                if _warn_pos:
+                    st.warning(f"⚠️ Hohe Einzelkonzentration (>20%): {', '.join(_warn_pos)}")
+                for _pn, _ps in _top10:
+                    _bar_w = int(_ps * 4)
+                    _bar_c = "#ff5252" if _ps > 20 else "#42a5f5" if _ps > 10 else "#546e7a"
+                    st.markdown(
+                        f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:5px;'>"
+                        f"<div style='color:#90a4ae;font-size:0.78rem;min-width:180px;'>{_pn}</div>"
+                        f"<div style='background:#1a2740;border-radius:3px;flex:1;height:8px;'>"
+                        f"<div style='background:{_bar_c};width:{min(100,_bar_w)}%;height:8px;border-radius:3px;'>"
+                        f"</div></div>"
+                        f"<div style='color:#eceff1;font-size:0.8rem;font-weight:600;min-width:40px;text-align:right;'>"
+                        f"{_ps:.1f}%</div></div>",
+                        unsafe_allow_html=True)
+
         with tab_perf:
             _csv_bytes = st.session_state.get("portfolio_csv_bytes")
             if not _csv_bytes:
@@ -5604,6 +5722,29 @@ if st.session_state.get("show_portfolio"):
                                 unsafe_allow_html=True)
 
                 st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+                # ── Steuer-Schätzung ──────────────────────────────────────
+                _KEST = 0.26375
+                _FSA  = 1000.0
+                _cur_val_tax   = current_total or 0.0
+                _unrealized_g  = _cur_val_tax - (stocks_etf['cost_basis'].sum() if not stocks_etf.empty else 0)
+                _taxable_g     = max(0.0, _unrealized_g - _FSA)
+                _kest_estimate = _taxable_g * _KEST
+                _net_after_tax = _cur_val_tax - _kest_estimate
+                _clr_tax = '#ff7043' if _kest_estimate > 0 else '#546e7a'
+                st.markdown("<div class='section-header'>💶 Steuer-Schätzung (unrealisiert)</div>",
+                            unsafe_allow_html=True)
+                _tx1, _tx2, _tx3, _tx4 = st.columns(4)
+                _tx1.metric("Unrealisierter Gewinn",
+                            f"€ {_unrealized_g:+,.0f}" if _unrealized_g else "—")
+                _tx2.metric("Freistellungsauftrag", f"€ {_FSA:,.0f}")
+                _tx3.metric("KESt + Soli (26,375%)",
+                            f"€ {_kest_estimate:,.0f}" if _kest_estimate > 0 else "€ 0")
+                _tx4.metric("Netto nach Steuer",
+                            f"€ {_net_after_tax:,.0f}" if _net_after_tax else "—")
+                st.caption("⚠️ Schätzung: Aktiengewinne 26,375% (25% KESt + 5,5% Soli). "
+                           "ETF-Teilfreistellung (30%) nicht berücksichtigt. Verlustverrechnung nicht einbezogen.")
+                st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
                 # ── Top / Flop ────────────────────────────────────────────
                 if not stocks_etf.empty and prices:
