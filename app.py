@@ -420,6 +420,37 @@ st.markdown("""
             padding: 5px 2px !important;
         }
     }
+
+    /* Kein horizontales Scrollen auf Mobile */
+    html, body {
+        overflow-x: hidden !important;
+        max-width: 100vw !important;
+    }
+    .stApp, section[data-testid="stMain"], .main {
+        overflow-x: hidden !important;
+        max-width: 100vw !important;
+    }
+    .main .block-container {
+        overflow-x: hidden !important;
+        max-width: 100% !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+    @media (max-width: 768px) {
+        .main .block-container {
+            padding-left: 0.75rem !important;
+            padding-right: 0.75rem !important;
+        }
+        /* Tabellen und breite Elemente scrollbar, aber Container bleibt */
+        .stDataFrame, [data-testid="stTable"] {
+            overflow-x: auto !important;
+            max-width: 100% !important;
+        }
+        /* Plotly Charts */
+        .js-plotly-plot, .plotly {
+            max-width: 100% !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -5385,6 +5416,23 @@ if st.session_state.get("show_portfolio"):
         crypto     = df_port[df_port['is_crypto']].copy()
         warrants   = df_port[df_port['is_warrant']].copy()
 
+        # Krypto-Kurse via yFinance (XRP-EUR, BTC-EUR, etc.)
+        _crypto_prices: dict = {}
+        if not crypto.empty:
+            import re as _re
+            for _, _crow in crypto.iterrows():
+                _nm = str(_crow.get('name', ''))
+                _m = _re.search(r'\(([A-Z]{2,10})\)', _nm)
+                _sym = _m.group(1) if _m else (_nm.strip().upper() if _nm.strip().upper().isalpha() and len(_nm.strip()) <= 8 else None)
+                if _sym:
+                    try:
+                        _fi = yf.Ticker(f"{_sym}-EUR").fast_info
+                        _cp = getattr(_fi, 'last_price', None)
+                        if _cp and float(_cp) > 0:
+                            _crypto_prices[_crow['ISIN']] = float(_cp)
+                    except Exception:
+                        pass
+
         # Kurse laden
         prices: dict = {}
         quotes_ext: dict = {}
@@ -5425,33 +5473,47 @@ if st.session_state.get("show_portfolio"):
             p = prices.get(row['ISIN'])
             if p:
                 current_vals.append(p * row['shares'])
-        current_total = sum(current_vals) if current_vals else None
-        pnl_eur = current_total - stocks_etf['cost_basis'].sum() if current_total else None
-        pnl_pct = (pnl_eur / stocks_etf['cost_basis'].sum() * 100) if (pnl_eur and stocks_etf['cost_basis'].sum() > 0) else None
+        _crypto_val = sum(_crypto_prices.get(r['ISIN'], 0) * r['shares'] for _, r in crypto.iterrows())
+        _priced_stocks_val = sum(current_vals)
+        current_total = (_priced_stocks_val + _crypto_val) if (current_vals or _crypto_val) else None
+        _priced_cost  = stocks_etf.loc[stocks_etf['ISIN'].isin([r['ISIN'] for r in [dict(row) for _, row in stocks_etf.iterrows() if prices.get(row['ISIN'])]]),'cost_basis'].sum()
+        _crypto_cost  = crypto.loc[crypto['ISIN'].isin(_crypto_prices),'cost_basis'].sum() if not crypto.empty else 0.0
+        pnl_eur = (_priced_stocks_val + _crypto_val) - (_priced_cost + _crypto_cost) if current_total else None
+        _pnl_base = _priced_cost + _crypto_cost
+        pnl_pct = (pnl_eur / _pnl_base * 100) if (pnl_eur is not None and _pnl_base > 0) else None
+        _unpriced = len(stocks_etf) - len([i for i in stocks_etf['ISIN'] if prices.get(i)])
+        _unpriced += len(crypto) - len(_crypto_prices)
 
-        _pnl_str  = f"{'+' if (pnl_eur or 0) >= 0 else ''}{pnl_eur:,.0f} ({pnl_pct:+.1f}%)" if pnl_eur is not None else "—"
+        _pnl_str  = f"{pnl_eur:+,.0f} ({pnl_pct:+.1f}%)" if pnl_eur is not None else "—"
         _pnl_col  = "#00e676" if (pnl_eur or 0) >= 0 else "#ff5252"
         _cur_str  = f"€ {current_total:,.0f}" if current_total else "—"
+        _unpriced_note = f"<div style='color:#78909c;font-size:0.62rem;margin-top:2px;'>{_unpriced} ohne Kurs</div>" if _unpriced > 0 else ""
         st.markdown(f"""
-        <div style='display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;'>
+        <div style='display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:6px;'>
           <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;'>
             <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Positionen</div>
             <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>{len(df_port)}</div>
+            <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>Aktien · ETFs · Krypto</div>
           </div>
           <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;'>
             <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Investiert</div>
             <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>€ {total_invested:,.0f}</div>
+            <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>Ø-Kaufkurs × Anteile</div>
           </div>
           <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;'>
             <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Aktueller Wert</div>
             <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>{_cur_str}</div>
+            {_unpriced_note}
           </div>
           <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;'>
-            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>P&L</div>
+            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>P&L (unrealisiert)</div>
             <div style='color:{_pnl_col};font-size:1.05rem;font-weight:700;margin-top:2px;'>{_pnl_str}</div>
+            <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>offene Positionen</div>
           </div>
         </div>
         """, unsafe_allow_html=True)
+        st.caption("ℹ️ Aktueller Wert enthält nur bewertete Positionen (kein Verrechnungskonto, keine Dividenden). "
+                   "Realisierte Gewinne & Gesamtrendite → Performance-Tab.")
 
         tab_pos, tab_alloc, tab_perf = st.tabs(["📊 Positionen", "🥧 Aufteilung", "📈 Performance"])
 
@@ -5573,14 +5635,29 @@ if st.session_state.get("show_portfolio"):
             if not crypto.empty:
                 st.markdown("<div class='section-header'>₿ Krypto</div>", unsafe_allow_html=True)
                 for _, row in crypto.iterrows():
+                    _cp = _crypto_prices.get(row['ISIN'])
+                    _cv = _cp * row['shares'] if _cp else None
+                    _cpnl = (_cv - row['cost_basis']) if _cv is not None else None
+                    _cpnl_pct = (_cpnl / row['cost_basis'] * 100) if (_cpnl is not None and row['cost_basis'] > 0) else None
+                    _cv_str = f"€ {_cv:,.2f}" if _cv else "—"
+                    _cpnl_str = f"{_cpnl:+,.2f} ({_cpnl_pct:+.1f}%)" if _cpnl is not None else "—"
+                    _cpnl_col = "#00e676" if (_cpnl or 0) >= 0 else "#ff5252"
+                    _price_str = f"€ {_cp:,.4f}" if _cp else "kein Kurs"
                     st.markdown(
-                        f"**{row['name']}** · {row['shares']:.6f} Stk. · Ø {row['avg_cost']:.4f} · "
-                        f"Investiert: €{row['cost_basis']:,.2f}",
+                        f"<div style='background:#0d1f35;border-radius:8px;padding:10px 14px;"
+                        f"border:1px solid #1a2740;margin-bottom:6px;display:flex;"
+                        f"justify-content:space-between;align-items:center;'>"
+                        f"<div><div style='color:#eceff1;font-size:0.9rem;font-weight:600;'>₿ {row['name']}</div>"
+                        f"<div style='color:#546e7a;font-size:0.7rem;margin-top:2px;'>"
+                        f"{row['ISIN']} · {row['shares']:.6f} Stk. · Ø {row['avg_cost']:.4f} · Kurs: {_price_str}</div></div>"
+                        f"<div style='text-align:right;'>"
+                        f"<div style='color:#eceff1;font-size:0.95rem;font-weight:700;'>{_cv_str}</div>"
+                        f"<div style='color:{_cpnl_col};font-size:0.75rem;'>{_cpnl_str}</div>"
+                        f"</div></div>",
                         unsafe_allow_html=True)
 
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            st.caption("Kurse in EUR umgerechnet (Wechselkurs via yFinance). P&L basiert auf dem Ø-Kaufkurs aus der Orderhistorie. "
-                       "Krypto-Kurse werden von yFinance nicht unterstützt.")
+            st.caption("Kurse in EUR umgerechnet (Wechselkurs via yFinance). P&L basiert auf dem Ø-Kaufkurs aus der Orderhistorie.")
 
             # ── Sparplan-Erkennung ────────────────────────────────────
             _csv_sp = st.session_state.get("portfolio_csv_bytes")
