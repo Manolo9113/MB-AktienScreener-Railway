@@ -6101,6 +6101,32 @@ if st.session_state.get("show_etf_analyzer"):
             'XDWD.DE':  [('SXR8.DE','iShares MSCI World'),('VWCE.DE','Vanguard All-World'),('LCUW.DE','Amundi MSCI World')],
         }
 
+        # Issuer-Logo-Mapping
+        _ISSUER_META = {
+            'iShares':    {'logo': 'https://logo.clearbit.com/ishares.com',    'color': '#00b347'},
+            'Vanguard':   {'logo': 'https://logo.clearbit.com/vanguard.com',   'color': '#cc0000'},
+            'Xtrackers':  {'logo': 'https://logo.clearbit.com/dws.com',        'color': '#1a6aff'},
+            'Amundi':     {'logo': 'https://logo.clearbit.com/amundi.com',     'color': '#ff6600'},
+            'SPDR':       {'logo': 'https://logo.clearbit.com/ssga.com',       'color': '#ffd700'},
+            'Invesco':    {'logo': 'https://logo.clearbit.com/invesco.com',    'color': '#0066cc'},
+            'WisdomTree': {'logo': 'https://logo.clearbit.com/wisdomtree.com', 'color': '#009933'},
+            'Lyxor':      {'logo': 'https://logo.clearbit.com/amundi.com',     'color': '#00a86b'},
+            'Franklin':   {'logo': 'https://logo.clearbit.com/franklintempleton.com', 'color': '#003087'},
+            'HSBC':       {'logo': 'https://logo.clearbit.com/hsbc.com',       'color': '#db0011'},
+            'L&G':        {'logo': 'https://logo.clearbit.com/lgim.com',       'color': '#6600cc'},
+            'BNP':        {'logo': 'https://logo.clearbit.com/bnpparibas.com', 'color': '#00965e'},
+        }
+        _SIMILAR_ETF_MAP = {
+            'SXR8.DE':  [('VWCE.DE','Vanguard FTSE All-World'),('XDWD.DE','Xtrackers MSCI World'),('LCUW.DE','Amundi MSCI World')],
+            'VWCE.DE':  [('SXR8.DE','iShares MSCI World'),('XDWD.DE','Xtrackers MSCI World'),('FWRA.DE','Invesco FTSE All-World')],
+            'SXR2.DE':  [('CSPX.L','iShares S&P 500 USD'),('VUSD.L','Vanguard S&P 500'),('XSPX.DE','Xtrackers S&P 500')],
+            'EQQQ.DE':  [('XNAS.DE','Xtrackers NASDAQ-100'),('CSNDX.L','iShares NASDAQ-100'),('SXRV.DE','iShares NASDAQ-100 EUR')],
+            'EXS1.DE':  [('DBXD.DE','Xtrackers DAX'),('DAXE.DE','Amundi DAX'),('XDDX.DE','Xtrackers DAX ESG')],
+            'IS3N.DE':  [('XMME.DE','Xtrackers MSCI EM'),('VFEM.L','Vanguard FTSE EM'),('PAEM.PA','SPDR MSCI EM')],
+            'LCUW.DE':  [('SXR8.DE','iShares MSCI World'),('VWCE.DE','Vanguard All-World'),('XDWD.DE','Xtrackers MSCI World')],
+            'XDWD.DE':  [('SXR8.DE','iShares MSCI World'),('VWCE.DE','Vanguard All-World'),('LCUW.DE','Amundi MSCI World')],
+        }
+
         if not _ei:
             st.error(f"Keine Daten für '{_etf_tkr}' gefunden. Bitte Ticker prüfen.")
         else:
