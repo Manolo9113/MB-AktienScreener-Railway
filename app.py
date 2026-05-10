@@ -5986,21 +5986,44 @@ if st.session_state.get("show_etf_analyzer"):
 
     # ── ETF-Suchindex (ISIN / WKN / Name → Ticker) ───────────────────────
     _ETF_DB = {
-        # ISIN → ticker
+        # Global
         'IE00B4L5Y983':'SXR8.DE','IE00B3RBWM25':'VWCE.DE','IE0031442068':'SXR2.DE',
         'IE00B4L5YC18':'IS3N.DE','IE00BJ0KDQ92':'XDWD.DE','IE0032895942':'EQQQ.DE',
         'DE0005933931':'EXS1.DE','LU1781541179':'LCUW.DE','IE00B0M62Q58':'IWRD.L',
         'IE00B52MJY50':'IMEA.DE','IE00B6R52259':'IQQH.DE','LU0274208692':'XDWT.DE',
         'IE00BKM4GZ66':'IS3R.DE','LU1437016972':'XMME.DE','IE00BD45KH83':'FWRA.DE',
+        'IE00B6YX5C33':'SPY5.DE','IE00B3RBWM25':'VWCE.DE','IE00B8GKDB10':'VHYL.L',
+        'IE00BF4RFH31':'IUSN.DE','LU0392494562':'XMWO.DE','IE00B52SFT06':'IUSE.DE',
+        # Europa
+        'LU1681048804':'MEUD.DE','DE0005933956':'EXW1.DE','FR0007054358':'LYPS.DE',
+        'IE0031442069':'IQQY.DE','LU0322253229':'XESC.DE','IE00BKWQ0M75':'SPYY.DE',
+        'IE00B4K48X80':'IEUA.DE','LU0274209233':'XEUR.DE','IE00B3ZW0K18':'IEMC.DE',
+        'IE00B02KXH56':'IQQE.DE','LU0650624025':'ZPRX.DE',
+        # Japan / Asien
+        'IE00B4L5YX21':'EXV5.DE','LU0274209740':'XDJP.DE','IE00B02KXK85':'IQQJ.DE',
+        'IE00B5VL8F07':'IQQC.DE','IE00B52SF786':'IQQD.DE','IE00B4TX3B59':'IQQP.DE',
+        # Dividend
+        'IE00B3F81R35':'ISPA.DE','IE00B8GKDB10':'VHYL.L','DE0002635299':'IDVY.L',
+        'IE00BYYHSQ67':'QDIV.DE','LU0292096186':'XDIV.DE',
+        # Themen
+        'IE00B1XNHC34':'IQQH.DE','IE00BYVJRR92':'WTAI.L','IE00BKM4GZ66':'IS3R.DE',
         # WKN → ticker
         'A0RPWH':'SXR8.DE','A1JX52':'VWCE.DE','622391':'SXR2.DE','A0HGWC':'IS3N.DE',
         'DBX1MW':'XDWD.DE','A0YEDL':'EQQQ.DE','593393':'EXS1.DE','ETF127':'LCUW.DE',
-        'A2PKXG':'FWRA.DE','A0MZBE':'XMME.DE','A111EG':'IS3R.DE',
-        # Kurzname → ticker
+        'A2PKXG':'FWRA.DE','A0MZBE':'XMME.DE','A111EG':'IS3R.DE','A1JWXY':'SPY5.DE',
+        'A1T8FV':'VHYL.L','A2DWBY':'IUSN.DE','ETF091':'MEUD.DE','593395':'EXW1.DE',
+        'A0YEDL':'EQQQ.DE','A0YBR5':'EXV5.DE','A1H5EU':'IQQC.DE','LYX0RT':'LYPS.DE',
+        # Name → ticker
         'msci world':'SXR8.DE','msci em':'IS3N.DE','msci emerging':'IS3N.DE',
         'all world':'VWCE.DE','ftse all world':'VWCE.DE','sp500':'SXR2.DE',
         's&p 500':'SXR2.DE','nasdaq':'EQQQ.DE','nasdaq100':'EQQQ.DE','dax':'EXS1.DE',
-        'amundi world':'LCUW.DE','xtrackers world':'XDWD.DE',
+        'amundi world':'LCUW.DE','xtrackers world':'XDWD.DE','vanguard world':'VWCE.DE',
+        'eurostoxx 50':'MEUD.DE','eurostoxx50':'MEUD.DE','euro stoxx 50':'MEUD.DE',
+        'stoxx 50':'MEUD.DE','stoxx europe 50':'MEUD.DE','eurostoxx':'MEUD.DE',
+        'msci europe':'IQQY.DE','msci japan':'EXV5.DE','msci china':'IQQC.DE',
+        'msci usa':'IUSE.DE','nasdaq 100':'EQQQ.DE','small cap':'IUSN.DE',
+        'clean energy':'IQQH.DE','dividend':'VHYL.L','hochdividende':'VHYL.L',
+        'ftse 100':'ISF.L','msci asia':'IQQP.DE',
     }
 
     @st.cache_data(ttl=3600, show_spinner=False)
@@ -6034,22 +6057,85 @@ if st.session_state.get("show_etf_analyzer"):
 
     # ── Statische TER-Datenbank (amtliche KIID-Werte, ändert sich kaum) ──────
     _ETF_STATIC_TER = {
+        # Global
         'SXR8.DE':0.0020,'VWCE.DE':0.0022,'SXR2.DE':0.0007,'IS3N.DE':0.0020,
         'IS3R.DE':0.0018,'XDWD.DE':0.0020,'EQQQ.DE':0.0030,'EXS1.DE':0.0016,
         'LCUW.DE':0.0012,'FWRA.DE':0.0015,'IQQH.DE':0.0065,'XMME.DE':0.0025,
         'IMEA.DE':0.0018,'SPY5.DE':0.0003,'VWRL.L':0.0022,'IWDA.AS':0.0020,
         'CNDX.L':0.0033,'XDWD.L':0.0020,'VUSA.L':0.0007,'EUNL.DE':0.0020,
-        'DBXD.DE':0.0009,'IS3S.DE':0.0025,'XMEA.DE':0.0025,'QDVE.DE':0.0020,
+        'DBXD.DE':0.0009,'IS3S.DE':0.0025,'XMEA.DE':0.0025,'IUSN.DE':0.0035,
+        'IUSE.DE':0.0015,'VHYL.L':0.0022,'XMWO.DE':0.0020,
+        # Europa
+        'MEUD.DE':0.0015,'EXW1.DE':0.0010,'LYPS.DE':0.0007,'IQQY.DE':0.0012,
+        'XESC.DE':0.0020,'SPYY.DE':0.0012,'IEUA.DE':0.0012,'XEUR.DE':0.0020,
+        'IQQE.DE':0.0040,'IEMC.DE':0.0030,'ZPRX.DE':0.0015,
+        # Japan / Asien
+        'EXV5.DE':0.0012,'XDJP.DE':0.0015,'IQQJ.DE':0.0040,
+        'IQQC.DE':0.0074,'IQQD.DE':0.0061,'IQQP.DE':0.0060,
+        # Dividend
+        'ISPA.DE':0.0040,'QDIV.DE':0.0025,'XDIV.DE':0.0025,'IDVY.L':0.0040,
     }
 
     # ── US-Datenticker (für yFinance funds_data + FMP — XETRA hat kaum Daten) ─
     _ETF_DATA_TKR = {
+        # Global
         'SXR8.DE':'URTH','VWCE.DE':'VT','SXR2.DE':'IVV','IS3N.DE':'IEMG',
         'IS3R.DE':'IEMG','XDWD.DE':'URTH','EQQQ.DE':'QQQ','EXS1.DE':'EWG',
         'LCUW.DE':'IVV','FWRA.DE':'VT','IQQH.DE':'ICLN','XMME.DE':'EEM',
         'IMEA.DE':'IEMG','SPY5.DE':'SPY','VWRL.L':'VT','IWDA.AS':'URTH',
         'CNDX.L':'QQQ','DBXD.DE':'EWG','VUSA.L':'IVV','EUNL.DE':'URTH',
+        'IUSN.DE':'SCHA','IUSE.DE':'IVV','VHYL.L':'VYM','XMWO.DE':'URTH',
+        # Europa
+        'MEUD.DE':'FEZ','EXW1.DE':'FEZ','LYPS.DE':'FEZ','IQQY.DE':'VGK',
+        'XESC.DE':'FEZ','SPYY.DE':'VGK','IEUA.DE':'VGK','XEUR.DE':'VGK',
+        'IQQE.DE':'VGK','IEMC.DE':'VGK','ZPRX.DE':'VGK',
+        # Japan / Asien
+        'EXV5.DE':'EWJ','XDJP.DE':'EWJ','IQQJ.DE':'EWJ',
+        'IQQC.DE':'MCHI','IQQD.DE':'EEM','IQQP.DE':'EPP',
+        # Dividend
+        'ISPA.DE':'SCHD','QDIV.DE':'VYM','XDIV.DE':'VYM','IDVY.L':'VYM',
     }
+
+    # ── Suchdatenbank für Live-Vorschläge (Ticker, Name, ISIN, WKN, TER-Text) ─
+    _ETF_SEARCH_DB = [
+        # Global
+        ('SXR8.DE', 'iShares Core MSCI World UCITS',        'IE00B4L5Y983','A0RPWH', '0,20%'),
+        ('VWCE.DE', 'Vanguard FTSE All-World UCITS Acc',     'IE00B3RBWM25','A1JX52', '0,22%'),
+        ('SXR2.DE', 'iShares Core S&P 500 UCITS',            'IE0031442068','622391', '0,07%'),
+        ('IS3N.DE', 'iShares Core MSCI EM IMI UCITS',        'IE00B4L5YC18','A0HGWC', '0,20%'),
+        ('XDWD.DE', 'Xtrackers MSCI World Swap UCITS',       'IE00BJ0KDQ92','DBX1MW', '0,20%'),
+        ('EQQQ.DE', 'Invesco NASDAQ-100 UCITS',              'IE0032895942','A0YEDL', '0,30%'),
+        ('EXS1.DE', 'iShares Core DAX UCITS',                'DE0005933931','593393', '0,16%'),
+        ('LCUW.DE', 'Amundi MSCI World UCITS',               'LU1781541179','ETF127', '0,12%'),
+        ('FWRA.DE', 'Invesco FTSE All-World UCITS Acc',      'IE00BD45KH83','A2PKXG', '0,15%'),
+        ('SPY5.DE', 'SPDR S&P 500 UCITS',                   'IE00B6YX5C33','A1JWXY', '0,03%'),
+        ('VHYL.L',  'Vanguard FTSE All-World High Dividend', 'IE00B8GKDB10','A1T8FV', '0,22%'),
+        ('IUSN.DE', 'iShares MSCI World Small Cap UCITS',    'IE00BF4RFH31','A2DWBY', '0,35%'),
+        ('IUSE.DE', 'iShares MSCI USA UCITS',                'IE00B52SFT06','A1CL19', '0,15%'),
+        ('IWRD.L',  'iShares MSCI World UCITS (USD Dist)',   'IE00B0M62Q58','A0HGV5', '0,50%'),
+        ('XMWO.DE', 'Xtrackers MSCI World Swap UCITS 1C',   'LU0392494562','DBX1ME', '0,19%'),
+        # Europa
+        ('MEUD.DE', 'Amundi EURO STOXX 50 UCITS',           'LU1681048804','ETF091', '0,15%'),
+        ('EXW1.DE', 'iShares Core EURO STOXX 50 UCITS',     'DE0005933956','593395', '0,10%'),
+        ('LYPS.DE', 'Lyxor Core EURO STOXX 50 DR UCITS',    'FR0007054358','LYX0RT', '0,07%'),
+        ('IQQY.DE', 'iShares MSCI Europe UCITS',             'IE0031442069','A0HGWC', '0,12%'),
+        ('XESC.DE', 'Xtrackers Euro Stoxx 50 UCITS',        'LU0322253229','DBX1ME', '0,09%'),
+        ('SPYY.DE', 'SPDR MSCI Europe UCITS',               'IE00BKWQ0M75','A2H9Q5', '0,12%'),
+        ('IEUA.DE', 'iShares Core MSCI Europe UCITS',        'IE00B4K48X80','A0YEDG', '0,12%'),
+        ('IQQE.DE', 'iShares STOXX Europe 600 UCITS',        'IE00B02KXH56','263528', '0,20%'),
+        # Japan / Asien
+        ('EXV5.DE', 'iShares Core MSCI Japan IMI UCITS',    'IE00B4L5YX21','A0YBR5', '0,12%'),
+        ('XDJP.DE', 'Xtrackers MSCI Japan Swap UCITS',      'LU0274209740','DBX1MJ', '0,15%'),
+        ('IQQC.DE', 'iShares MSCI China UCITS',              'IE00B5VL8F07','A1H5EU', '0,74%'),
+        ('IQQP.DE', 'iShares MSCI AC Far East ex-Japan',    'IE00B4TX3B59','A0YEDJ', '0,74%'),
+        # Dividend
+        ('ISPA.DE', 'iShares STOXX Europe Select Div 30',   'IE00B3F81R35','A0H0744','0,40%'),
+        ('QDIV.DE', 'iShares MSCI World Quality Div UCITS', 'IE00BYYHSQ67','A2DWBY', '0,38%'),
+        ('IDVY.L',  'iShares Euro Dividend UCITS',           'DE0002635299','263529', '0,40%'),
+        # Themen
+        ('IQQH.DE', 'iShares Global Clean Energy UCITS',    'IE00B1XNHC34','A0MZBE', '0,65%'),
+        ('XMME.DE', 'Xtrackers MSCI EM Swap UCITS',         'LU1437016972','A2H9GB', '0,20%'),
+    ]
 
     @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_perf_hist(ticker: str) -> dict:
@@ -6294,6 +6380,29 @@ if st.session_state.get("show_etf_analyzer"):
     if _etf_go and _etf_raw.strip():
         st.session_state["etf_ticker_input"] = _etf_raw.strip()
         st.rerun()
+
+    # ── Live-Vorschläge beim Tippen ───────────────────────────────────────
+    _q_raw = _etf_raw.strip()
+    _q_low = _q_raw.lower()
+    if len(_q_raw) >= 2:
+        _sug_hits = []
+        for _stk, _snm, _sisin, _swkn, _ster in _ETF_SEARCH_DB:
+            if (_q_low in _snm.lower() or _q_low in _stk.lower()
+                    or _q_low in _sisin.lower() or _q_low in _swkn.lower()):
+                _sug_hits.append((_stk, _snm, _sisin, _swkn, _ster))
+            if len(_sug_hits) >= 6:
+                break
+        if _sug_hits and _q_raw.upper() not in [h[0].upper() for h in _sug_hits]:
+            st.markdown("<div style='color:#546e7a;font-size:0.72rem;"
+                        "margin:6px 0 4px 0;'>Vorschläge:</div>", unsafe_allow_html=True)
+            _sug_cols = st.columns(min(len(_sug_hits), 3))
+            for _si, (_stk, _snm, _sisin, _swkn, _ster) in enumerate(_sug_hits):
+                with _sug_cols[_si % 3]:
+                    _sug_label = f"**{_snm[:32]}**\n{_stk} · TER {_ster}"
+                    if st.button(_sug_label, key=f"_sug_{_stk}_{_si}",
+                                 use_container_width=True):
+                        st.session_state["etf_ticker_input"] = _stk
+                        st.rerun()
 
     # ── Beliebte ETFs als Cards ───────────────────────────────────────────
     st.markdown("<div style='color:#78909c;font-size:0.72rem;text-transform:uppercase;"
