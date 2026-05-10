@@ -5902,41 +5902,77 @@ if st.session_state.get("show_portfolio"):
 if st.session_state.get("show_etf_analyzer"):
 
     @st.cache_data(ttl=3600, show_spinner=False)
+    def _etf_perf_hist(ticker: str) -> dict:
+        """Berechnet YTD / 3J / 5J aus Kurshistorie (zuverlässig für XETRA-ETFs)."""
+        import datetime as _dtt
+        try:
+            raw = yf.download(ticker, period='6y', interval='1mo',
+                              progress=False, auto_adjust=True)
+            if raw.empty:
+                return {}
+            cl = raw['Close']
+            if isinstance(cl, pd.DataFrame):
+                cl = cl.iloc[:, 0]
+            cl = cl.dropna()
+            if cl.empty:
+                return {}
+            now_ts  = cl.index[-1]
+            last_px = float(cl.iloc[-1])
+            # Timezone-aware index handling
+            tz = getattr(now_ts, 'tzinfo', None)
+            def _ts(dt):
+                return pd.Timestamp(dt, tz=tz) if tz else pd.Timestamp(dt)
+            # YTD
+            ytd_start = _ts(_dtt.date(now_ts.year, 1, 1))
+            ytd_cl    = cl[cl.index >= ytd_start]
+            ytd = (last_px / float(ytd_cl.iloc[0]) - 1) if len(ytd_cl) > 0 else None
+            # 1Y simple
+            cl_1y = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=370))]
+            r1y   = (last_px / float(cl_1y.iloc[0]) - 1) if len(cl_1y) > 6 else None
+            # 3Y annualized
+            cl_3y = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=3*365+10))]
+            r3y   = ((last_px / float(cl_3y.iloc[0])) ** (1/3) - 1) if len(cl_3y) > 18 else None
+            # 5Y annualized
+            cl_5y = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=5*365+15))]
+            r5y   = ((last_px / float(cl_5y.iloc[0])) ** (1/5) - 1) if len(cl_5y) > 36 else None
+            return {'ytd': ytd, 'ret_1y': r1y, 'ret_3y': r3y, 'ret_5y': r5y}
+        except Exception:
+            return {}
+
+    @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_info(ticker: str) -> dict:
         try:
             t   = yf.Ticker(ticker)
             inf = t.info or {}
-            # Ausschüttungsart aus Name ableiten
             name_l = (inf.get('longName') or '').lower()
-            if 'acc' in name_l or 'thesaurierend' in name_l or 'accumul' in name_l:
-                distrib = 'Thesaurierend'
-            elif 'dist' in name_l or 'ausschütt' in name_l or 'distribut' in name_l:
-                distrib = 'Ausschüttend'
+            if 'acc' in name_l or 'accumul' in name_l or 'thesaurierend' in name_l:
+                distrib = 'Thesaurierend (Acc)'
+            elif 'dist' in name_l or 'distribut' in name_l or 'ausschütt' in name_l:
+                distrib = 'Ausschüttend (Dist)'
             elif (inf.get('dividendYield') or 0) > 0.001:
-                distrib = 'Ausschüttend'
+                distrib = 'Ausschüttend (Dist)'
             else:
                 distrib = '—'
-            # Domizil aus Exchange/ISIN schätzen
             exch = (inf.get('exchange') or '').upper()
-            _domicile_map = {
-                'XETRA': 'Deutschland', 'GER': 'Deutschland', 'FRA': 'Deutschland',
-                'LSE': 'Irland', 'L': 'Irland', 'ARCA': 'USA', 'NYSE': 'USA',
-                'BATS': 'USA', 'SIX': 'Luxemburg', 'EURONEXT': 'Luxemburg',
-            }
-            domicile = _domicile_map.get(exch, inf.get('country') or '—')
+            _dom = {'XETRA': 'Irland/DE', 'GER': 'DE', 'FRA': 'DE',
+                    'LSE': 'Irland', 'L': 'Irland', 'ARCA': 'USA', 'NYSE': 'USA',
+                    'BATS': 'USA', 'SIX': 'Luxemburg', 'PA': 'Irland/LU'}
+            domicile = _dom.get(exch, inf.get('country') or '—')
+            # TER: yfinance Feldnamen variieren je nach ETF-Anbieter
+            ter = (inf.get('annualReportExpenseRatio')
+                   or inf.get('totalExpenseRatio')
+                   or inf.get('expenseRatio'))
+            aum = (inf.get('totalAssets')
+                   or inf.get('fundTotalAssets'))
             return {
                 'name':        inf.get('longName') or inf.get('shortName') or ticker,
                 'currency':    inf.get('currency', 'EUR'),
-                'aum':         inf.get('totalAssets'),
-                'ter':         inf.get('annualReportExpenseRatio'),
+                'aum':         aum,
+                'ter':         ter,
                 'nav':         inf.get('navPrice') or inf.get('previousClose'),
-                'ytd':         inf.get('ytdReturn'),
-                'ret_3y':      inf.get('threeYearAverageReturn'),
-                'ret_5y':      inf.get('fiveYearAverageReturn'),
                 'category':    inf.get('category') or '',
                 'fund_family': inf.get('fundFamily') or '',
                 'inception':   inf.get('fundInceptionDate'),
-                'beta':        inf.get('beta3Year'),
                 'distribution':distrib,
                 'domicile':    domicile,
                 'exchange':    exch or '—',
@@ -5948,31 +5984,44 @@ if st.session_state.get("show_etf_analyzer"):
 
     @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_holdings(ticker: str) -> tuple:
-        """Returns (sector_weights_dict, top_holdings_df)."""
+        """Returns (sector_weights, top_holdings_df, country_weights, asset_classes)."""
         try:
             fd = yf.Ticker(ticker).funds_data
             sw = getattr(fd, 'sector_weightings', None) or {}
             th = getattr(fd, 'top_holdings', None)
             if th is None or (hasattr(th, 'empty') and th.empty):
                 th = pd.DataFrame()
-            return sw, th
+            # Länder/Regionen
+            eq = getattr(fd, 'equity_holdings', None)
+            cw = {}
+            if eq is not None and hasattr(eq, 'to_dict'):
+                eq_d = eq.to_dict() if not hasattr(eq, 'empty') else {}
+                cw = eq_d.get('countryWeights', {})
+            # Asset-Klassen
+            ac = getattr(fd, 'asset_classes', None) or {}
+            if hasattr(ac, 'to_dict'):
+                ac = ac.to_dict()
+            return sw, th, cw, ac
         except Exception:
-            return {}, pd.DataFrame()
+            return {}, pd.DataFrame(), {}, {}
 
     @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_vs_bm(etf: str, bm: str, period: str) -> pd.DataFrame:
-        raw = yf.download([etf, bm], period=period, interval='1wk',
-                          progress=False, auto_adjust=True)
-        if raw.empty:
+        try:
+            raw = yf.download([etf, bm], period=period, interval='1wk',
+                              progress=False, auto_adjust=True)
+            if raw.empty:
+                return pd.DataFrame()
+            cl = raw['Close']
+            if isinstance(cl, pd.Series):
+                cl = cl.to_frame()
+            cl = cl.dropna(how='all')
+            for col in cl.columns:
+                first = cl[col].dropna().iloc[0] if not cl[col].dropna().empty else 1
+                cl[col] = cl[col] / first * 100
+            return cl
+        except Exception:
             return pd.DataFrame()
-        cl = raw['Close']
-        if isinstance(cl, pd.Series):
-            cl = cl.to_frame()
-        cl = cl.dropna(how='all')
-        for col in cl.columns:
-            first = cl[col].dropna().iloc[0] if not cl[col].dropna().empty else 1
-            cl[col] = cl[col] / first * 100
-        return cl
 
     # ── Header ───────────────────────────────────────────────────────────
     st.markdown("""
@@ -6017,8 +6066,40 @@ if st.session_state.get("show_etf_analyzer"):
 
     if _etf_tkr:
         with st.spinner(f"ETF-Daten für {_etf_tkr} werden geladen…"):
-            _ei = _etf_info(_etf_tkr)
-            _sw, _th = _etf_holdings(_etf_tkr)
+            _ei   = _etf_info(_etf_tkr)
+            _perf = _etf_perf_hist(_etf_tkr)
+            _sw, _th, _cw, _ac = _etf_holdings(_etf_tkr)
+        # Performance aus Kurshistorie ergänzen (zuverlässiger als yfinance info-Felder)
+        _ei['ytd']    = _ei.get('ytd')    or _perf.get('ytd')
+        _ei['ret_3y'] = _ei.get('ret_3y') or _perf.get('ret_3y')
+        _ei['ret_5y'] = _ei.get('ret_5y') or _perf.get('ret_5y')
+        _ei['ret_1y'] = _perf.get('ret_1y')
+
+        # Issuer-Logo-Mapping
+        _ISSUER_META = {
+            'iShares':    {'logo': 'https://logo.clearbit.com/ishares.com',    'color': '#00b347'},
+            'Vanguard':   {'logo': 'https://logo.clearbit.com/vanguard.com',   'color': '#cc0000'},
+            'Xtrackers':  {'logo': 'https://logo.clearbit.com/dws.com',        'color': '#1a6aff'},
+            'Amundi':     {'logo': 'https://logo.clearbit.com/amundi.com',     'color': '#ff6600'},
+            'SPDR':       {'logo': 'https://logo.clearbit.com/ssga.com',       'color': '#ffd700'},
+            'Invesco':    {'logo': 'https://logo.clearbit.com/invesco.com',    'color': '#0066cc'},
+            'WisdomTree': {'logo': 'https://logo.clearbit.com/wisdomtree.com', 'color': '#009933'},
+            'Lyxor':      {'logo': 'https://logo.clearbit.com/amundi.com',     'color': '#00a86b'},
+            'Franklin':   {'logo': 'https://logo.clearbit.com/franklintempleton.com', 'color': '#003087'},
+            'HSBC':       {'logo': 'https://logo.clearbit.com/hsbc.com',       'color': '#db0011'},
+            'L&G':        {'logo': 'https://logo.clearbit.com/lgim.com',       'color': '#6600cc'},
+            'BNP':        {'logo': 'https://logo.clearbit.com/bnpparibas.com', 'color': '#00965e'},
+        }
+        _SIMILAR_ETF_MAP = {
+            'SXR8.DE':  [('VWCE.DE','Vanguard FTSE All-World'),('XDWD.DE','Xtrackers MSCI World'),('LCUW.DE','Amundi MSCI World')],
+            'VWCE.DE':  [('SXR8.DE','iShares MSCI World'),('XDWD.DE','Xtrackers MSCI World'),('FWRA.DE','Invesco FTSE All-World')],
+            'SXR2.DE':  [('CSPX.L','iShares S&P 500 USD'),('VUSD.L','Vanguard S&P 500'),('XSPX.DE','Xtrackers S&P 500')],
+            'EQQQ.DE':  [('XNAS.DE','Xtrackers NASDAQ-100'),('CSNDX.L','iShares NASDAQ-100'),('SXRV.DE','iShares NASDAQ-100 EUR')],
+            'EXS1.DE':  [('DBXD.DE','Xtrackers DAX'),('DAXE.DE','Amundi DAX'),('XDDX.DE','Xtrackers DAX ESG')],
+            'IS3N.DE':  [('XMME.DE','Xtrackers MSCI EM'),('VFEM.L','Vanguard FTSE EM'),('PAEM.PA','SPDR MSCI EM')],
+            'LCUW.DE':  [('SXR8.DE','iShares MSCI World'),('VWCE.DE','Vanguard All-World'),('XDWD.DE','Xtrackers MSCI World')],
+            'XDWD.DE':  [('SXR8.DE','iShares MSCI World'),('VWCE.DE','Vanguard All-World'),('LCUW.DE','Amundi MSCI World')],
+        }
 
         # Issuer-Logo-Mapping
         _ISSUER_META = {
@@ -6111,54 +6192,72 @@ if st.session_state.get("show_etf_analyzer"):
                                 st.session_state["etf_show_similar"] = False
                                 st.rerun()
 
-            # ── Kennzahlen (3 Reihen à 4) ────────────────────────────────
+            # ── Kennzahlen (CSS-Grid, 4 Spalten — auch auf Mobile) ──────
             st.markdown("<div class='section-header'>📊 Kennzahlen</div>", unsafe_allow_html=True)
-            def _kmc(col, lbl, val, sub=None):
-                _sh = f"<div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>{sub}</div>" if sub else ""
-                col.markdown(
-                    f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
-                    f"padding:10px;text-align:center;min-height:72px;display:flex;flex-direction:column;"
-                    f"justify-content:center;'>"
-                    f"<div style='color:#78909c;font-size:0.63rem;text-transform:uppercase;"
-                    f"letter-spacing:.06em;'>{lbl}</div>"
-                    f"<div style='color:#eceff1;font-size:1.05rem;font-weight:700;margin-top:3px;'>{val}</div>"
-                    f"{_sh}</div>", unsafe_allow_html=True)
+            def _kcard(lbl, val, sub=""):
+                _sv = f"<div style='color:#546e7a;font-size:0.6rem;margin-top:2px;'>{sub}</div>" if sub else ""
+                return (f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
+                        f"padding:10px 8px;text-align:center;'>"
+                        f"<div style='color:#78909c;font-size:0.62rem;text-transform:uppercase;"
+                        f"letter-spacing:.05em;'>{lbl}</div>"
+                        f"<div style='color:#eceff1;font-size:1rem;font-weight:700;margin-top:4px;'>{val}</div>"
+                        f"{_sv}</div>")
 
-            _aum_str = (f"€ {_ei['aum']/1e9:.1f} Mrd" if (_ei.get('aum') or 0) > 1e9
-                        else f"€ {_ei['aum']/1e6:.0f} Mio" if _ei.get('aum') else "—")
-            _ter_str = f"{_ei['ter']*100:.2f}%" if _ei.get('ter') else "—"
-            _nav_str = f"{_ei.get('nav'):.2f} {_ei.get('currency','')}" if _ei.get('nav') else "—"
-            _ytd_str = f"{_ei['ytd']*100:+.1f}%" if _ei.get('ytd') else "—"
-            _r3y_str = f"{_ei['ret_3y']*100:+.1f}% p.a." if _ei.get('ret_3y') else "—"
-            _r5y_str = f"{_ei['ret_5y']*100:+.1f}% p.a." if _ei.get('ret_5y') else "—"
-            _div_str = f"{_ei['div_yield']*100:.2f}%" if _ei.get('div_yield') else "—"
-            _inc_str = "—"
+            _aum_s = (f"€ {_ei['aum']/1e9:.1f} Mrd" if (_ei.get('aum') or 0) > 1e9
+                      else f"€ {_ei['aum']/1e6:.0f} Mio" if _ei.get('aum') else "—")
+            _ter_s = f"{_ei['ter']*100:.2f}%" if _ei.get('ter') else "—"
+            _nav_s = f"{_ei.get('nav'):.2f} {_ei.get('currency','')}" if _ei.get('nav') else "—"
+            _ytd_s = f"{_ei['ytd']*100:+.1f}%" if _ei.get('ytd') else "—"
+            _r1y_s = f"{_ei.get('ret_1y',0)*100:+.1f}%" if _ei.get('ret_1y') else "—"
+            _r3y_s = f"{_ei['ret_3y']*100:+.1f}% p.a." if _ei.get('ret_3y') else "—"
+            _r5y_s = f"{_ei['ret_5y']*100:+.1f}% p.a." if _ei.get('ret_5y') else "—"
+            _div_s = f"{_ei['div_yield']*100:.2f}%" if _ei.get('div_yield') else "—"
+            _inc_s = "—"
             if _ei.get('inception'):
                 try:
                     import datetime as _dt
-                    _inc_str = _dt.datetime.fromtimestamp(_ei['inception']).strftime('%d.%m.%Y')
+                    _inc_s = _dt.datetime.fromtimestamp(_ei['inception']).strftime('%d.%m.%Y')
                 except Exception:
                     pass
 
-            _row1 = st.columns(4)
-            _kmc(_row1[0], "Fondsvolumen (AUM)", _aum_str, "verwaltetes Vermögen")
-            _kmc(_row1[1], "TER / Kosten p.a.", _ter_str, "Gesamtkostenquote")
-            _kmc(_row1[2], "NAV (letzter Kurs)", _nav_str, "Nettoinventarwert")
-            _kmc(_row1[3], "Handelswährung", _ei.get('currency', '—'), "Börsenwährung")
+            # Rendite-Farben
+            def _rcol(v): return "#00e676" if (v or 0) >= 0 else "#ff5252"
+            _ytd_c = _rcol(_ei.get('ytd', 0))
+            _r1y_c = _rcol(_ei.get('ret_1y', 0))
+            _r3y_c = _rcol(_ei.get('ret_3y', 0))
+            _r5y_c = _rcol(_ei.get('ret_5y', 0))
 
-            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-            _row2 = st.columns(4)
-            _kmc(_row2[0], "YTD-Rendite", _ytd_str, "laufendes Jahr")
-            _kmc(_row2[1], "3J-Rendite p.a.", _r3y_str, "Ø jährlich (3 Jahre)")
-            _kmc(_row2[2], "5J-Rendite p.a.", _r5y_str, "Ø jährlich (5 Jahre)")
-            _kmc(_row2[3], "Ausschüttungsrendite", _div_str, _ei.get('distribution', '—'))
+            def _kcard_col(lbl, val, sub="", color="#eceff1"):
+                _sv = f"<div style='color:#546e7a;font-size:0.6rem;margin-top:2px;'>{sub}</div>" if sub else ""
+                return (f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
+                        f"padding:10px 8px;text-align:center;'>"
+                        f"<div style='color:#78909c;font-size:0.62rem;text-transform:uppercase;"
+                        f"letter-spacing:.05em;'>{lbl}</div>"
+                        f"<div style='color:{color};font-size:1rem;font-weight:700;margin-top:4px;'>{val}</div>"
+                        f"{_sv}</div>")
 
-            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-            _row3 = st.columns(4)
-            _kmc(_row3[0], "Fondsdomiziil", _ei.get('domicile', '—'), "Registrierungsland")
-            _kmc(_row3[1], "Ausschüttungsart", _ei.get('distribution', '—'), "Acc / Dist")
-            _kmc(_row3[2], "Handelsbörse", _ei.get('exchange', '—'), "Listing")
-            _kmc(_row3[3], "Auflagedatum", _inc_str, "Fondsstart")
+            _grid4 = "display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px;"
+            st.markdown(
+                f"<div style='{_grid4}'>"
+                + _kcard("Fondsvolumen", _aum_s, "AUM")
+                + _kcard("TER Kosten p.a.", _ter_s, "Gesamtkostenquote")
+                + _kcard("NAV / Kurs", _nav_s, "Nettoinventarwert")
+                + _kcard("Währung", _ei.get('currency','—'), "Handelswährung")
+                + "</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='{_grid4}'>"
+                + _kcard_col("YTD", _ytd_s, "laufendes Jahr", _ytd_c)
+                + _kcard_col("1J-Rendite", _r1y_s, "letzte 12 Monate", _r1y_c)
+                + _kcard_col("3J p.a.", _r3y_s, "Ø jährlich (3J)", _r3y_c)
+                + _kcard_col("5J p.a.", _r5y_s, "Ø jährlich (5J)", _r5y_c)
+                + "</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='{_grid4}'>"
+                + _kcard("Fondsdomiziil", _ei.get('domicile','—'), "Registrierungsland")
+                + _kcard("Ausschüttung", _ei.get('distribution','—'), "Acc / Dist")
+                + _kcard("Aussch.-Rendite", _div_s, "Dividendenrendite")
+                + _kcard("Auflagedatum", _inc_s, "Fondsstart")
+                + "</div>", unsafe_allow_html=True)
 
             st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
@@ -6238,10 +6337,50 @@ if st.session_state.get("show_etf_analyzer"):
                 else:
                     st.info("Keine Holdings-Daten verfügbar.")
 
+            # ── Regionale Aufteilung ─────────────────────────────────────
+            if _cw:
+                st.markdown("<div class='section-header'>🌍 Regionale Aufteilung</div>",
+                            unsafe_allow_html=True)
+                _REG_CLR = {
+                    'United States':'#1565c0','Germany':'#43a047','Japan':'#e64a19',
+                    'United Kingdom':'#7b1fa2','France':'#0097a7','Switzerland':'#c62828',
+                    'Canada':'#f57f17','Australia':'#00695c','China':'#d32f2f',
+                    'India':'#f9a825','South Korea':'#1b5e20','Taiwan':'#880e4f',
+                    'Netherlands':'#e65100','Sweden':'#37474f','Denmark':'#006064',
+                }
+                _cw_sorted = dict(sorted(_cw.items(), key=lambda x: x[1], reverse=True)[:12])
+                _cw_tot    = sum(_cw_sorted.values()) or 1
+                _reg_ra, _reg_rb = st.columns([1, 1])
+                with _reg_ra:
+                    _rf = go.Figure(go.Pie(
+                        labels=list(_cw_sorted.keys()),
+                        values=[round(v*100,2) for v in _cw_sorted.values()],
+                        hole=0.6,
+                        marker=dict(colors=[_REG_CLR.get(k,'#546e7a') for k in _cw_sorted],
+                                    line=dict(color='#0a1628',width=2)),
+                        textinfo='none',
+                        hovertemplate='<b>%{label}</b><br>%{value:.1f}%<extra></extra>'))
+                    _rf.update_layout(template='plotly_dark',paper_bgcolor='#0a1628',
+                                      plot_bgcolor='#0a1628',showlegend=False,height=230,
+                                      margin=dict(l=5,r=5,t=5,b=5))
+                    st.plotly_chart(_rf, use_container_width=True)
+                with _reg_rb:
+                    for _rk, _rv in list(_cw_sorted.items())[:10]:
+                        _rpct = _rv * 100
+                        _rc   = _REG_CLR.get(_rk, '#546e7a')
+                        _rbar = min(int(_rpct * 3), 100)
+                        st.markdown(
+                            f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
+                            f"<span style='color:{_rc};font-size:0.72rem;'>●</span>"
+                            f"<span style='color:#eceff1;font-size:0.78rem;flex:1;'>{_rk[:20]}</span>"
+                            f"<div style='background:#1a2740;border-radius:3px;width:60px;height:6px;'>"
+                            f"<div style='background:{_rc};width:{_rbar}%;height:6px;border-radius:3px;'></div></div>"
+                            f"<span style='color:#90a4ae;font-size:0.78rem;min-width:36px;text-align:right;'>"
+                            f"{_rpct:.1f}%</span></div>", unsafe_allow_html=True)
+
             # ── Benchmark-Vergleich ──────────────────────────────────────
             st.markdown("<div class='section-header'>📈 Benchmark-Vergleich</div>",
                         unsafe_allow_html=True)
-            _bm_c1, _bm_c2 = st.columns([2, 1])
             _BM_OPTIONS = {
                 "MSCI World (SXR8.DE)": "SXR8.DE",
                 "FTSE All-World (VWCE.DE)": "VWCE.DE",
@@ -6250,15 +6389,16 @@ if st.session_state.get("show_etf_analyzer"):
                 "DAX (EXS1.DE)": "EXS1.DE",
                 "MSCI EM (IS3N.DE)": "IS3N.DE",
             }
-            _bm_sel  = _bm_c1.selectbox("Vergleich mit", list(_BM_OPTIONS.keys()),
+            # Smart Default: erstes Benchmark das nicht der ETF selbst ist
+            _bm_defaults = [k for k, v in _BM_OPTIONS.items() if v != _etf_tkr]
+            _bm_c1, _bm_c2 = st.columns([2, 1])
+            _bm_sel  = _bm_c1.selectbox("Vergleich mit", _bm_defaults,
                                           key="etf_bm_sel", label_visibility="collapsed")
             _per_sel = _bm_c2.selectbox("Zeitraum", ["1y", "3y", "5y", "10y"],
                                          index=1, key="etf_per_sel", label_visibility="collapsed")
             _bm_tkr  = _BM_OPTIONS[_bm_sel]
 
-            if _bm_tkr == _etf_tkr:
-                st.info("ETF und Benchmark sind identisch.")
-            else:
+            if True:
                 with st.spinner("Performance-Daten werden geladen…"):
                     _cmp_df = _etf_vs_bm(_etf_tkr, _bm_tkr, _per_sel)
 
