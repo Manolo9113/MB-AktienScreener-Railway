@@ -1,0 +1,31 @@
+name: StocksMB Daily Screener
+
+on:
+  schedule:
+    # Mo–Fr um 07:15 MEZ (= 06:15 UTC, Sommer) / 07:15 MEZ (= 06:15 UTC)
+    # Anpassung für Winterzeit: 06:15 UTC = 07:15 MEZ
+    - cron: '15 6 * * 1-5'
+  workflow_dispatch:   # Manuell auslösbar (zum Testen)
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Abhängigkeiten installieren
+        run: pip install yfinance==0.2.54 pandas requests --quiet
+
+      - name: Screener ausführen
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python screener.py
