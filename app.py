@@ -3817,19 +3817,31 @@ def _ticker_to_region(ticker: str) -> str:
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _get_ticker_info_cached(ticker: str) -> dict:
-    """Sektor + QuoteType via yFinance (gecacht 24h)."""
+    """Sektor + QuoteType via yFinance (gecacht 24h). Timeout 4s pro Call."""
+    import concurrent.futures as _cf
+    _empty = {'sector': '', 'quote_type': 'EQUITY', 'recommendation': '',
+              'target_native': None, 'div_rate_native': 0.0}
     try:
-        info = yf.Ticker(ticker).info
-        return {
-            'sector':          info.get('sector') or '',
-            'quote_type':      info.get('quoteType') or 'EQUITY',
-            'recommendation':  (info.get('recommendationKey') or '').lower(),
-            'target_native':   info.get('targetMeanPrice'),
-            'div_rate_native': info.get('trailingAnnualDividendRate') or 0.0,
-        }
+        # quote_type sofort via fast_info (kein Netzwerk-Hang möglich)
+        fi = yf.Ticker(ticker).fast_info
+        qt = str(getattr(fi, 'quote_type', 'EQUITY') or 'EQUITY').upper()
+        _empty['quote_type'] = qt
+        # Vollständige Info mit 4s Timeout
+        with _cf.ThreadPoolExecutor(max_workers=1) as _ex:
+            _fut = _ex.submit(lambda: yf.Ticker(ticker).info)
+            try:
+                info = _fut.result(timeout=4.0)
+                return {
+                    'sector':          info.get('sector') or '',
+                    'quote_type':      (info.get('quoteType') or qt).upper(),
+                    'recommendation':  (info.get('recommendationKey') or '').lower(),
+                    'target_native':   info.get('targetMeanPrice'),
+                    'div_rate_native': info.get('trailingAnnualDividendRate') or 0.0,
+                }
+            except _cf.TimeoutError:
+                return _empty
     except Exception:
-        return {'sector': '', 'quote_type': 'EQUITY', 'recommendation': '',
-                'target_native': None, 'div_rate_native': 0.0}
+        return _empty
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -5374,14 +5386,18 @@ if st.session_state.get("show_portfolio"):
                         prices[isin] = _q.get('price_eur')
                         quotes_ext[isin] = _q
 
-        # Analyst- & Sektordaten vorladen (24h gecacht)
+        # Analyst- & Sektordaten vorladen (24h gecacht, max 4s/Ticker)
         _alloc_infos: dict = {}
         if not stocks_etf.empty:
-            with st.spinner("Analyst- & Sektordaten werden geladen (gecacht 24h)…"):
-                for isin in stocks_etf['ISIN']:
-                    tkr = isin_map.get(isin)
-                    if tkr:
-                        _alloc_infos[isin] = _get_ticker_info_cached(tkr)
+            _info_isins = [(isin_map.get(isin), isin)
+                          for isin in stocks_etf['ISIN'] if isin_map.get(isin)]
+            if _info_isins:
+                _info_prog = st.progress(0, f"Analyst-Daten: 0/{len(_info_isins)} (max 4s/Ticker)…")
+                for _ii, (_tkr_i, _isin_i) in enumerate(_info_isins, 1):
+                    _alloc_infos[_isin_i] = _get_ticker_info_cached(_tkr_i)
+                    _info_prog.progress(_ii / len(_info_isins),
+                                        f"Analyst-Daten: {_ii}/{len(_info_isins)}…")
+                _info_prog.empty()
 
         # Sparklines (Bulk-Download, 1 API-Call für alle Positionen)
         _sparklines: dict = {}
