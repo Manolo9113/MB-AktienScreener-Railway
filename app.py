@@ -5402,15 +5402,29 @@ if st.session_state.get("show_portfolio"):
         pnl_eur = current_total - stocks_etf['cost_basis'].sum() if current_total else None
         pnl_pct = (pnl_eur / stocks_etf['cost_basis'].sum() * 100) if (pnl_eur and stocks_etf['cost_basis'].sum() > 0) else None
 
-        sc1, sc2, sc3, sc4 = st.columns(4)
-        sc1.metric("Positionen gesamt", len(df_port))
-        sc2.metric("Investiert (Basis)", f"€ {total_invested:,.0f}")
-        if current_total:
-            pnl_str = f"{'+' if pnl_eur >= 0 else ''}{pnl_eur:,.0f} ({pnl_pct:+.1f}%)" if pnl_eur is not None else "—"
-            sc3.metric("Aktueller Wert", f"€ {current_total:,.0f}")
-            sc4.metric("Unrealisiertes P&L", pnl_str,
-                       delta=f"{pnl_pct:+.1f}%" if pnl_pct else None)
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        _pnl_str  = f"{'+' if (pnl_eur or 0) >= 0 else ''}{pnl_eur:,.0f} ({pnl_pct:+.1f}%)" if pnl_eur is not None else "—"
+        _pnl_col  = "#00e676" if (pnl_eur or 0) >= 0 else "#ff5252"
+        _cur_str  = f"€ {current_total:,.0f}" if current_total else "—"
+        st.markdown(f"""
+        <div style='display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;'>
+          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;'>
+            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Positionen</div>
+            <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>{len(df_port)}</div>
+          </div>
+          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;'>
+            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Investiert</div>
+            <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>€ {total_invested:,.0f}</div>
+          </div>
+          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;'>
+            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Aktueller Wert</div>
+            <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>{_cur_str}</div>
+          </div>
+          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;'>
+            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>P&L</div>
+            <div style='color:{_pnl_col};font-size:1.05rem;font-weight:700;margin-top:2px;'>{_pnl_str}</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
 
         tab_pos, tab_alloc, tab_perf = st.tabs(["📊 Positionen", "🥧 Aufteilung", "📈 Performance"])
 
@@ -5565,6 +5579,7 @@ if st.session_state.get("show_portfolio"):
                             st.markdown("<hr style='border-color:#1a2740;margin:5px 0;'>", unsafe_allow_html=True)
 
         with tab_alloc:
+          try:
             if stocks_etf.empty and crypto.empty:
                 st.info("Keine Positionsdaten vorhanden.")
             else:
@@ -5676,6 +5691,8 @@ if st.session_state.get("show_portfolio"):
                         f"<div style='color:#eceff1;font-size:0.8rem;font-weight:600;min-width:40px;text-align:right;'>"
                         f"{_ps:.1f}%</div></div>",
                         unsafe_allow_html=True)
+          except Exception as _e_alloc:
+              st.error(f"Fehler im Aufteilung-Tab: {_e_alloc}")
 
         with tab_perf:
             _csv_bytes = st.session_state.get("portfolio_csv_bytes")
