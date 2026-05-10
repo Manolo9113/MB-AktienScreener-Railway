@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-StocksMB Trading API  v1.0
+StocksMB Trading API  v1.1
 FastAPI — als zweiter Railway-Service deployen.
 Start: uvicorn api:app --host 0.0.0.0 --port $PORT
 
@@ -9,6 +9,7 @@ Endpoints:
   GET /screener/quality      Top-Quality-Picks (Score ≥ 65, unter Fair Value)
   GET /screener/value        Value-Picks (niedrige Bewertung, Dividende, FCF)
   GET /screener/tradeable    Gut handelbare Aktien (Liquidität, Volumen, Beta)
+  GET /screener/daytrading   Day-Trading-Picks (ATR%, Volumen, Volatilität, Float)
   GET /score/{ticker}        Alle Scores für einen Ticker
   GET /signals               Kombiniertes Signal für Trading-Bot (Regime + Picks)
 """
@@ -22,8 +23,9 @@ from typing import Optional
 import requests
 import yfinance as yf
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Security
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security.api_key import APIKeyHeader
 
 # ── Shared logic aus screener.py ──────────────────────────────────────────────
 from screener import calc_score, calc_fair_value, WATCHLIST, send_telegram
@@ -31,7 +33,7 @@ from screener import calc_score, calc_fair_value, WATCHLIST, send_telegram
 app = FastAPI(
     title="StocksMB API",
     description="REST-API für StocksMB Screener & Trading Bot",
-    version="1.0.0",
+    version="1.1.0",
 )
 
 app.add_middleware(
@@ -41,7 +43,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-API_KEY = os.environ.get("STOCKSMB_API_KEY", "")  # optional: einfacher Schlüsselschutz
+API_KEY = os.environ.get("STOCKSMB_API_KEY", "")  # leer = kein Schutz (Dev-Modus)
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def _require_key(key: str = Security(_api_key_header)):
+    """Dependency: prüft X-API-Key Header wenn STOCKSMB_API_KEY gesetzt ist."""
+    if API_KEY and key != API_KEY:
+        raise HTTPException(status_code=401, detail="Ungültiger oder fehlender API-Key")
 
 # ── Value-Watchlist (~60 klassische Value-Titel) ──────────────────────────────
 VALUE_WATCHLIST = [
@@ -81,6 +90,36 @@ TRADEABLE_WATCHLIST = [
     "PLTR", "COIN", "SOFI", "HOOD", "RIVN", "NIO",
     # ETFs (höchste Liquidität)
     "SPY", "QQQ", "IWM", "XLF", "XLE", "XLK", "GLD",
+]
+
+# ── Day-Trading-Watchlist (hohe Volatilität + Volumen) ───────────────────────
+DAYTRADING_WATCHLIST = [
+    # Leveraged ETFs — tägliche Bewegung 3–5%+ (nur für erfahrene Trader)
+    "TQQQ", "SQQQ",   # 3× Nasdaq long/short
+    "SPXL", "SPXU",   # 3× S&P 500 long/short
+    "UPRO",            # 3× S&P 500 long
+    "TNA",  "TZA",    # 3× Russell 2000 long/short
+    "LABU", "LABD",   # 3× Biotech long/short
+    "UVXY",            # VIX-Volatilitäts-ETP
+    # Markt-Proxies mit höchster Liquidität
+    "SPY", "QQQ", "IWM",
+    # Volatile Mega-Caps (tägl. Volumen >20M, Beta >1.2)
+    "TSLA", "NVDA", "AMD", "META", "AMZN", "AAPL", "MSFT",
+    "MSTR",            # Bitcoin-Proxy, extrem volatil
+    "COIN",            # Krypto-Exposure, hohes Beta
+    # Volatile Einzel-Wachstums-Aktien
+    "PLTR", "SOFI", "HOOD", "RIVN", "NIO", "LCID",
+    "SMCI", "ARM", "AVGO",
+    # Volatile Sektor-ETFs
+    "ARKK",            # Disruptive Innovation, hohes Beta
+    "XBI",             # Biotech, sehr volatil
+    "GDX",             # Gold-Miner, reagiert auf Goldpreis
+    "KWEB",            # China-Tech, hohes Risiko/Chance
+    "IBIT",            # Bitcoin-ETF (BlackRock)
+    # Financials (bei Zins-Events sehr aktiv)
+    "BAC", "C", "WFC", "GS",
+    # Energie (bei Ölpreis-Moves)
+    "XOM", "OXY", "SLB",
 ]
 
 # ── Einfacher TTL-Cache (thread-safe) ────────────────────────────────────────
@@ -200,6 +239,92 @@ def calc_tradeable_score(info: dict) -> int:
     return min(score, 100)
 
 
+# ── ATR (Average True Range) berechnen ───────────────────────────────────────
+def _compute_atr(hist: pd.DataFrame, period: int = 14) -> float:
+    """
+    ATR über die letzten N Tage.
+    Misst die durchschnittliche tägliche Handelsspanne — zentraler Day-Trading-Parameter.
+    Höherer ATR = mehr Bewegung = mehr Chancen (und Risiko) pro Tag.
+    """
+    if hist is None or len(hist) < period + 1:
+        return 0.0
+    h = hist["High"].values
+    lo = hist["Low"].values
+    c = hist["Close"].values
+    tr = [max(h[i] - lo[i], abs(h[i] - c[i-1]), abs(lo[i] - c[i-1]))
+          for i in range(1, len(h))]
+    return float(sum(tr[-period:]) / period) if tr else 0.0
+
+
+# ── Day-Trading-Score (0–100) ─────────────────────────────────────────────────
+def calc_daytrading_score(info: dict, hist: pd.DataFrame = None) -> tuple[int, dict]:
+    """
+    Bewertet eine Aktie nach Day-Trading-Tauglichkeit.
+    Gibt (score, detail_dict) zurück.
+
+    Kriterien (empirisch für US-Markt):
+      - Volumen:  >10M/Tag essentiell für enge Spreads und schnelle Fills
+      - ATR%:     >2% tägliche Schwankung nötig für profitables Intraday-Trading
+      - Beta:     >1.2 für ausreichend Marktreaktion
+      - Float:    Moderate Float = mehr Volatilität bei News
+      - Preis:    $5–$500 optimal (Liquidität + handelbare Lots)
+    """
+    score = 0
+    detail: dict = {}
+
+    # 1. Durchschnittliches Tagesvolumen — wichtigster Parameter
+    vol = info.get("averageVolume") or 0
+    if vol > 50e6:    score += 30; vol_lbl = "Extrem hoch (>50M)"
+    elif vol > 20e6:  score += 25; vol_lbl = "Sehr hoch (>20M)"
+    elif vol > 10e6:  score += 18; vol_lbl = "Hoch (>10M)"
+    elif vol > 5e6:   score += 10; vol_lbl = "Mittel (>5M)"
+    elif vol > 2e6:   score += 4;  vol_lbl = "Niedrig (<5M)"
+    else:             vol_lbl = "Zu niedrig"
+    detail["volumen"] = {"wert": round(vol / 1e6, 1), "einheit": "M/Tag", "label": vol_lbl}
+
+    # 2. ATR% (Average True Range als % des Kurses) — Intraday-Bewegungspotenzial
+    atr_pct = 0.0
+    if hist is not None and len(hist) >= 15:
+        price = info.get("currentPrice") or info.get("regularMarketPrice") or 1
+        atr = _compute_atr(hist, 14)
+        atr_pct = round(atr / price * 100, 2) if price else 0
+        if atr_pct > 5:    score += 25; atr_lbl = "Sehr hoch (>5%)"
+        elif atr_pct > 3:  score += 20; atr_lbl = "Hoch (>3%)"
+        elif atr_pct > 2:  score += 13; atr_lbl = "Gut (>2%)"
+        elif atr_pct > 1:  score += 6;  atr_lbl = "Moderat (>1%)"
+        else:              atr_lbl = "Zu gering (<1%)"
+        detail["atr_pct"] = {"wert": atr_pct, "einheit": "%", "label": atr_lbl}
+
+    # 3. Beta — Marktreaktion und Richtungskorrelation
+    beta = abs(info.get("beta") or 1.0)
+    if beta > 2.5:    score += 20; beta_lbl = "Sehr hoch (>2.5)"
+    elif beta > 1.8:  score += 17; beta_lbl = "Hoch (>1.8)"
+    elif beta > 1.2:  score += 12; beta_lbl = "Gut (>1.2)"
+    elif beta > 0.8:  score += 6;  beta_lbl = "Mittel"
+    else:             beta_lbl = "Niedrig (<0.8)"
+    detail["beta"] = {"wert": round(beta, 2), "label": beta_lbl}
+
+    # 4. Kurs — optimaler Bereich für Lots und Margin
+    price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+    if 20 <= price <= 300:   score += 15; price_lbl = "Optimal ($20–300)"
+    elif 10 <= price < 20:   score += 10; price_lbl = "Akzeptabel ($10–20)"
+    elif 300 < price <= 600: score += 8;  price_lbl = "Hoch ($300–600)"
+    elif 5 <= price < 10:    score += 4;  price_lbl = "Niedrig ($5–10)"
+    else:                    price_lbl = "Außerhalb Range"
+    detail["kurs"] = {"wert": round(price, 2), "einheit": "USD", "label": price_lbl}
+
+    # 5. Marktkapitalisierung — Liquiditätspuffer gegen Manipulation
+    mkt = info.get("marketCap") or 0
+    if mkt > 200e9:    score += 10; cap_lbl = "Mega Cap"
+    elif mkt > 50e9:   score += 8;  cap_lbl = "Large Cap"
+    elif mkt > 10e9:   score += 5;  cap_lbl = "Mid-Large Cap"
+    elif mkt > 2e9:    score += 3;  cap_lbl = "Mid Cap"
+    else:              cap_lbl = "Small Cap"
+    detail["marktkapitalisierung"] = {"wert": round(mkt / 1e9, 1), "einheit": "Mrd $", "label": cap_lbl}
+
+    return min(score, 100), detail
+
+
 # ── Hilfsfunktion: Ticker-Daten laden ────────────────────────────────────────
 def _fetch_ticker(tkr: str) -> dict:
     cached = _cache_get(f"ticker_{tkr}")
@@ -273,6 +398,7 @@ def health():
 def screener_quality(
     top_n: int = Query(5, ge=1, le=20),
     min_score: int = Query(65, ge=0, le=100),
+    _auth=Security(_require_key),
 ):
     """Top-Qualitätsaktien unter ihrem Fair Value (bestehende Screener-Logik)."""
     cached = _cache_get(f"quality_{top_n}_{min_score}")
@@ -295,6 +421,7 @@ def screener_quality(
 def screener_value(
     top_n: int = Query(10, ge=1, le=30),
     min_score: int = Query(55, ge=0, le=100),
+    _auth=Security(_require_key),
 ):
     """Value-Aktien: niedrige Bewertung (P/E, P/B, EV/EBITDA), FCF, Dividende."""
     cached = _cache_get(f"value_{top_n}_{min_score}")
@@ -329,7 +456,10 @@ def screener_value(
 
 
 @app.get("/screener/tradeable")
-def screener_tradeable(top_n: int = Query(15, ge=1, le=30)):
+def screener_tradeable(
+    top_n: int = Query(15, ge=1, le=30),
+    _auth=Security(_require_key),
+):
     """Gut handelbare Aktien: hohes Volumen, gute Liquidität, nützliche Volatilität."""
     cached = _cache_get(f"tradeable_{top_n}")
     if cached:
@@ -367,15 +497,119 @@ def screener_tradeable(top_n: int = Query(15, ge=1, le=30)):
     return out
 
 
+@app.get("/screener/daytrading")
+def screener_daytrading(
+    top_n: int = Query(15, ge=1, le=40),
+    min_score: int = Query(50, ge=0, le=100),
+    min_atr_pct: float = Query(1.5, ge=0.0, le=20.0),
+    min_volume_m: float = Query(5.0, ge=0.0),
+    _auth=Security(_require_key),
+):
+    """
+    Day-Trading-Picks: Aktien mit hohem Volumen, ATR% und Beta.
+    Ideal für Intraday-Strategien (Momentum, Breakout, Mean-Reversion).
+
+    Parameter:
+      top_n        Anzahl Ergebnisse (Standard: 15)
+      min_score    Mindest-Score (Standard: 50)
+      min_atr_pct  Mindest-ATR% (Standard: 1.5% tägliche Bewegung)
+      min_volume_m Mindest-Volumen in Millionen/Tag (Standard: 5M)
+    """
+    cache_key = f"daytrading_{top_n}_{min_score}_{min_atr_pct}_{min_volume_m}"
+    cached = _cache_get(cache_key)
+    if cached:
+        return cached
+
+    results = []
+    _start = (pd.Timestamp.now() - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
+
+    for tkr in DAYTRADING_WATCHLIST:
+        try:
+            info = _fetch_ticker(tkr)
+            price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+            if not price:
+                continue
+
+            vol_m = (info.get("averageVolume") or 0) / 1e6
+            if vol_m < min_volume_m:
+                continue
+
+            # Kursverlauf für ATR-Berechnung holen (30 Tage reichen)
+            hist = None
+            try:
+                hist = yf.Ticker(tkr).history(start=_start)
+            except Exception:
+                pass
+
+            sc, detail = calc_daytrading_score(info, hist)
+            if sc < min_score:
+                continue
+
+            atr_pct = detail.get("atr_pct", {}).get("wert", 0)
+            if atr_pct and atr_pct < min_atr_pct:
+                continue
+
+            # Relatives Volumen: heutiges Volumen vs. Durchschnitt
+            rel_vol = None
+            if hist is not None and not hist.empty and info.get("averageVolume"):
+                today_vol = int(hist["Volume"].iloc[-1]) if len(hist) else 0
+                rel_vol = round(today_vol / info["averageVolume"], 2) if today_vol else None
+
+            results.append({
+                "ticker":      tkr,
+                "name":        (info.get("shortName") or tkr)[:30],
+                "price":       round(price, 2),
+                "score":       sc,
+                "atr_pct":     atr_pct,
+                "volume_m":    round(vol_m, 1),
+                "rel_volume":  rel_vol,
+                "beta":        round(info.get("beta") or 1, 2),
+                "mktcap_b":    round((info.get("marketCap") or 0) / 1e9, 1),
+                "currency":    info.get("currency", "USD"),
+                "sector":      info.get("sector", ""),
+                "typ":         "ETF (Leveraged)" if tkr in ("TQQQ","SQQQ","SPXL","SPXU","UPRO","TNA","TZA","LABU","LABD","UVXY")
+                               else "ETF" if tkr in ("SPY","QQQ","IWM","ARKK","XBI","GDX","KWEB","GLD","XLF","XLE","XLK","IBIT")
+                               else "Aktie",
+                "detail":      detail,
+            })
+            time.sleep(0.3)
+        except Exception:
+            continue
+
+    # Sortierung: primär ATR%, sekundär Volumen
+    results.sort(key=lambda x: (x.get("atr_pct") or 0) * 0.6 + x["score"] * 0.4, reverse=True)
+    results = results[:top_n]
+
+    out = {
+        "type":     "daytrading",
+        "date":     date.today().isoformat(),
+        "count":    len(results),
+        "picks":    results,
+        "filter": {
+            "min_score":    min_score,
+            "min_atr_pct":  min_atr_pct,
+            "min_volume_m": min_volume_m,
+        },
+        "hinweis": (
+            "Leveraged ETFs (TQQQ, SQQQ etc.) sind nur für erfahrene Trader geeignet. "
+            "ATR% = durchschnittliche Tagesspanne in % — höher = mehr Intraday-Potential. "
+            "Rel. Volumen > 1.5 deutet auf erhöhte Handelsaktivität hin."
+        ),
+    }
+    _cache_set(cache_key, out)
+    return out
+
+
 @app.get("/score/{ticker}")
-def get_score(ticker: str):
-    """Alle Scores (Quality, Value, Tradeable) + Fair Value für einen Ticker."""
+def get_score(ticker: str, _auth=Security(_require_key)):
+    """Alle Scores (Quality, Value, Tradeable, Daytrading) + Fair Value für einen Ticker."""
     tkr = ticker.upper()
     cached = _cache_get(f"score_{tkr}")
     if cached:
         return cached
     try:
-        info  = yf.Ticker(tkr).info
+        stock = yf.Ticker(tkr)
+        info  = stock.info
         price = info.get("currentPrice") or info.get("regularMarketPrice")
         if not price:
             raise HTTPException(status_code=404, detail=f"Kein Kurs für {tkr} gefunden")
@@ -387,6 +621,13 @@ def get_score(ticker: str):
         fcf   = info.get("freeCashflow") or 0
         mkt   = info.get("marketCap") or 1
 
+        # Daytrading score needs price history for ATR
+        try:
+            hist = stock.history(period="30d")
+            dt_sc, dt_detail = calc_daytrading_score(info, hist)
+        except Exception:
+            dt_sc, dt_detail = 0, {}
+
         out = {
             "ticker":        tkr,
             "name":          info.get("shortName", tkr),
@@ -395,11 +636,13 @@ def get_score(ticker: str):
             "sector":        info.get("sector", ""),
             "mktcap_b":      round(mkt / 1e9, 1),
             "scores": {
-                "quality":   q_sc,
-                "value":     v_sc,
-                "tradeable": t_sc,
-                "composite": round((q_sc * 0.4 + v_sc * 0.35 + t_sc * 0.25), 1),
+                "quality":    q_sc,
+                "value":      v_sc,
+                "tradeable":  t_sc,
+                "daytrading": dt_sc,
+                "composite":  round((q_sc * 0.4 + v_sc * 0.35 + t_sc * 0.25), 1),
             },
+            "daytrading_detail": dt_detail,
             "fair_value":    fv,
             "discount_pct":  round((fv - price) / fv * 100, 1) if fv else None,
             "metrics": {
@@ -427,7 +670,10 @@ def get_score(ticker: str):
 
 
 @app.get("/signals")
-def get_signals(top_n: int = Query(5, ge=1, le=10)):
+def get_signals(
+    top_n: int = Query(5, ge=1, le=10),
+    _auth=Security(_require_key),
+):
     """
     Kombiniertes Trading-Signal für den Bot.
     Gibt Macro-Regime + Top-Picks beider Screener zurück.
