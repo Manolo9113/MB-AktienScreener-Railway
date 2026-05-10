@@ -554,6 +554,44 @@ def sb_remove_ticker(access_token: str, ticker: str):
     except Exception:
         pass
 
+def _sb_save_portfolio(csv_bytes: bytes) -> bool:
+    """Portfolio-CSV in Supabase speichern (Tabelle: portfolio_data, Spalten: slot TEXT PK, csv_b64 TEXT, saved_at TIMESTAMPTZ)."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return False
+    try:
+        import base64 as _b64
+        csv_enc = _b64.b64encode(csv_bytes).decode()
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/portfolio_data",
+            headers={**_sb_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+            json={"slot": "default", "csv_b64": csv_enc},
+            timeout=10,
+        )
+        return r.status_code in (200, 201)
+    except Exception:
+        return False
+
+def _sb_load_portfolio() -> tuple:
+    """Portfolio-CSV aus Supabase laden. Gibt (bytes, saved_at_str) oder (None, None) zurück."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None, None
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/portfolio_data",
+            headers=_sb_headers(),
+            params={"slot": "eq.default", "select": "csv_b64,saved_at"},
+            timeout=10,
+        )
+        if r.ok and r.json():
+            import base64 as _b64
+            row = r.json()[0]
+            raw = _b64.b64decode(row["csv_b64"])
+            ts = row.get("saved_at", "")[:10]
+            return raw, ts
+    except Exception:
+        pass
+    return None, None
+
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
 def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
@@ -3539,6 +3577,10 @@ if "portfolio_isin_map" not in st.session_state:
     st.session_state["portfolio_isin_map"] = {}
 if "portfolio_csv_bytes" not in st.session_state:
     st.session_state["portfolio_csv_bytes"] = None
+if "portfolio_sb_checked" not in st.session_state:
+    st.session_state["portfolio_sb_checked"] = False
+if "portfolio_sb_date" not in st.session_state:
+    st.session_state["portfolio_sb_date"] = None
 
 def _go_to_ticker(t):
     st.session_state["ticker"] = t
@@ -4054,6 +4096,61 @@ def _detect_savings_plans(csv_bytes: bytes) -> list:
                       'start': dates[0].strftime('%b %Y'), 'last': dates[-1].strftime('%b %Y'),
                       'freq': freq})
     return sorted(plans, key=lambda x: x['total'], reverse=True)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _calc_realized_pnl(csv_bytes: bytes) -> dict:
+    """Realisierte Gewinne/Verluste (Durchschnittskostenmethode, wie deutsches Broker-Standard).
+    Gibt zurück: {'total_pnl': float, 'total_sell_value': float, 'positions': list[dict]}"""
+    df = None
+    for enc in ['utf-8-sig', 'utf-8', 'latin-1']:
+        try:
+            df = pd.read_csv(io.BytesIO(csv_bytes), sep=';', decimal=',', encoding=enc, dtype=str)
+            break
+        except Exception:
+            continue
+    if df is None or df.empty:
+        return {}
+    df.columns = df.columns.str.strip()
+    needed = {'Richtung', 'ISIN', 'Name', 'Anzahl ausgeführt', 'Wert'}
+    if not needed.issubset(df.columns):
+        return {}
+    if 'Status' in df.columns:
+        df = df[df['Status'] == 'ausgeführt'].copy()
+    for col in ['Anzahl ausgeführt', 'Wert']:
+        df[col] = pd.to_numeric(
+            df[col].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
+            errors='coerce').fillna(0.0)
+    buys  = df[df['Richtung'] == 'Kauf'].copy()
+    sells = df[df['Richtung'] == 'Verkauf'].copy()
+    if buys.empty or sells.empty:
+        return {'total_pnl': 0.0, 'total_sell_value': 0.0, 'positions': []}
+    buy_agg = (buys.groupby('ISIN')
+               .agg(name=('Name', 'first'),
+                    total_bought=('Anzahl ausgeführt', 'sum'),
+                    total_cost=('Wert', lambda x: x.abs().sum()))
+               .reset_index())
+    buy_agg['avg_cost'] = buy_agg['total_cost'] / buy_agg['total_bought'].replace(0, float('nan'))
+    sell_agg = (sells.groupby('ISIN')
+                .agg(name=('Name', 'first'),
+                     total_sold=('Anzahl ausgeführt', 'sum'),
+                     sell_value=('Wert', lambda x: x.abs().sum()))
+                .reset_index())
+    merged = sell_agg.merge(buy_agg[['ISIN','avg_cost']], on='ISIN', how='left')
+    merged['cost_of_sold'] = merged['avg_cost'] * merged['total_sold']
+    merged['pnl'] = merged['sell_value'] - merged['cost_of_sold']
+    positions = []
+    for _, row in merged.iterrows():
+        if pd.notna(row['pnl']):
+            positions.append({
+                'isin': row['ISIN'], 'name': str(row['name'])[:35],
+                'shares_sold': row['total_sold'], 'sell_value': row['sell_value'],
+                'cost_of_sold': row['cost_of_sold'], 'pnl': row['pnl'],
+            })
+    positions.sort(key=lambda x: abs(x['pnl']), reverse=True)
+    total_pnl = merged['pnl'].sum()
+    total_sell = merged['sell_value'].sum()
+    return {'total_pnl': total_pnl, 'total_sell_value': total_sell, 'positions': positions}
 
 
 # ==================== SIDEBAR ====================
@@ -5386,26 +5483,75 @@ if st.session_state.get("show_portfolio"):
     </div>
     """, unsafe_allow_html=True)
 
-    uploaded = st.file_uploader(
-        "Orderhistorie CSV hochladen (Finanzen.net Zero → Aktivitäten → Exportieren)",
-        type=["csv"], key="portfolio_upload"
-    )
+    # ── Supabase auto-load (einmal pro Session) ─────────────────────────────
+    if not st.session_state.get("portfolio_sb_checked"):
+        st.session_state["portfolio_sb_checked"] = True
+        if st.session_state.get("portfolio_csv_bytes") is None:
+            _sb_raw, _sb_date = _sb_load_portfolio()
+            if _sb_raw:
+                st.session_state["portfolio_csv_bytes"] = _sb_raw
+                st.session_state["portfolio_sb_date"] = _sb_date
+                with st.spinner("Gespeichertes Portfolio wird geladen…"):
+                    _auto_df = _parse_portfolio_csv(_sb_raw)
+                if not _auto_df.empty:
+                    st.session_state["portfolio_df"] = _auto_df.copy()
+                    _auto_tradeable = _auto_df[
+                        ~_auto_df['is_crypto'] & ~_auto_df['is_warrant']
+                    ]['ISIN'].tolist()
+                    if _auto_tradeable:
+                        with st.spinner(f"Ticker für {len(_auto_tradeable)} Positionen werden ermittelt…"):
+                            st.session_state["portfolio_isin_map"] = _openfigi_batch(tuple(_auto_tradeable))
 
-    if uploaded:
-        raw = uploaded.read()
-        st.session_state["portfolio_csv_bytes"] = raw
-        with st.spinner("Positionen werden berechnet…"):
-            df_port = _parse_portfolio_csv(raw)
-        if df_port.empty:
-            st.error("CSV konnte nicht gelesen werden. Bitte prüfe das Format (Finanzen.net Zero Orderhistorie).")
-        else:
-            st.session_state["portfolio_df"] = df_port.copy()
-            # ISIN → Ticker Mapping für handelbare Assets
-            tradeable = df_port[~df_port['is_crypto'] & ~df_port['is_warrant']]['ISIN'].tolist()
-            if tradeable:
-                with st.spinner(f"Ticker für {len(tradeable)} Positionen werden ermittelt…"):
-                    isin_map = _openfigi_batch(tuple(tradeable))
-                st.session_state["portfolio_isin_map"] = isin_map
+    # ── Status-Badge + Aktualisieren-Button ─────────────────────────────────
+    _sb_date_disp = st.session_state.get("portfolio_sb_date")
+    _has_portfolio = bool(st.session_state.get("portfolio_csv_bytes"))
+    _col_hdr, _col_refresh = st.columns([5, 1])
+    with _col_hdr:
+        if _sb_date_disp:
+            st.markdown(
+                f"<div style='background:#0d1f35;border:1px solid #1a3a55;border-radius:6px;"
+                f"padding:6px 14px;font-size:0.82rem;color:#64b5f6;margin-bottom:8px;display:inline-block;'>"
+                f"✓ Gespeichertes Portfolio geladen (Stand: {_sb_date_disp})</div>",
+                unsafe_allow_html=True)
+    with _col_refresh:
+        if _has_portfolio and st.button("🔄 Aktualisieren", key="portfolio_reset",
+                                        help="Neue CSV hochladen und gespeichertes Portfolio ersetzen"):
+            for _k in ["portfolio_csv_bytes", "portfolio_df", "portfolio_isin_map",
+                       "portfolio_sb_checked", "portfolio_sb_date"]:
+                st.session_state.pop(_k, None)
+            st.rerun()
+
+    # ── CSV-Upload ───────────────────────────────────────────────────────────
+    _show_uploader = not _has_portfolio
+    if _show_uploader or st.session_state.get("portfolio_show_uploader"):
+        uploaded = st.file_uploader(
+            "Orderhistorie CSV hochladen (Finanzen.net Zero → Aktivitäten → Exportieren)",
+            type=["csv"], key="portfolio_upload"
+        )
+
+        if uploaded:
+            raw = uploaded.read()
+            st.session_state["portfolio_csv_bytes"] = raw
+            with st.spinner("Positionen werden berechnet…"):
+                df_port = _parse_portfolio_csv(raw)
+            if df_port.empty:
+                st.error("CSV konnte nicht gelesen werden. Bitte prüfe das Format (Finanzen.net Zero Orderhistorie).")
+            else:
+                st.session_state["portfolio_df"] = df_port.copy()
+                tradeable = df_port[~df_port['is_crypto'] & ~df_port['is_warrant']]['ISIN'].tolist()
+                if tradeable:
+                    with st.spinner(f"Ticker für {len(tradeable)} Positionen werden ermittelt…"):
+                        isin_map = _openfigi_batch(tuple(tradeable))
+                    st.session_state["portfolio_isin_map"] = isin_map
+                # In Supabase speichern
+                with st.spinner("Portfolio wird in der Cloud gespeichert…"):
+                    _saved_ok = _sb_save_portfolio(raw)
+                if _saved_ok:
+                    import datetime as _dt_pf
+                    st.session_state["portfolio_sb_date"] = _dt_pf.date.today().strftime("%d.%m.%Y")
+                    st.success("✓ Portfolio gespeichert – wird beim nächsten Öffnen automatisch geladen.")
+                else:
+                    st.info("ℹ️ Portfolio lokal geladen. Cloud-Speicherung nicht verfügbar (Supabase nicht konfiguriert).")
 
     df_port = st.session_state.get("portfolio_df")
 
@@ -5502,9 +5648,9 @@ if st.session_state.get("show_portfolio"):
             <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>Aktien · ETFs · Krypto</div>
           </div>
           <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
-            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Investiert</div>
+            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Einstandswert</div>
             <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>€ {total_invested:,.0f}</div>
-            <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>Ø-Kaufkurs × Anteile</div>
+            <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>Buchwert offener Positionen</div>
           </div>
           <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
             <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Aktueller Wert</div>
@@ -5872,6 +6018,54 @@ if st.session_state.get("show_portfolio"):
                 st.caption("⚠️ Schätzung: Aktiengewinne 26,375% (25% KESt + 5,5% Soli). "
                            "ETF-Teilfreistellung (30%) nicht berücksichtigt. Verlustverrechnung nicht einbezogen.")
                 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+                # ── Realisierte Gewinne / Verluste ────────────────────────
+                _rpnl = _calc_realized_pnl(_csv_bytes)
+                if _rpnl and _rpnl.get('positions'):
+                    st.markdown("<div class='section-header'>💰 Realisierte Gewinne & Verluste</div>",
+                                unsafe_allow_html=True)
+                    _rp_total = _rpnl.get('total_pnl', 0.0)
+                    _rp_sell  = _rpnl.get('total_sell_value', 0.0)
+                    _rp_clr   = "#00e676" if _rp_total >= 0 else "#ff5252"
+                    _rp1, _rp2 = st.columns(2)
+                    with _rp1:
+                        st.markdown(_kpi("Realisierter P&L",
+                                         f"€ {_rp_total:+,.0f}", _rp_clr,
+                                         "Durchschnittskostenmethode"),
+                                    unsafe_allow_html=True)
+                    with _rp2:
+                        st.markdown(_kpi("Verkaufsvolumen",
+                                         f"€ {_rp_sell:,.0f}", "#eceff1",
+                                         "Bruttoerlös aller Verkäufe"),
+                                    unsafe_allow_html=True)
+                    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                    _rp_rows = _rpnl.get('positions', [])
+                    if _rp_rows:
+                        _rp_html = ("<table style='width:100%;border-collapse:collapse;"
+                                    "font-size:0.82rem;'>"
+                                    "<tr style='color:#546e7a;text-transform:uppercase;"
+                                    "font-size:0.68rem;letter-spacing:.06em;'>"
+                                    "<th style='text-align:left;padding:4px 8px;'>Position</th>"
+                                    "<th style='text-align:right;padding:4px 8px;'>Anteile verkauft</th>"
+                                    "<th style='text-align:right;padding:4px 8px;'>Erlös</th>"
+                                    "<th style='text-align:right;padding:4px 8px;'>P&amp;L</th></tr>")
+                        for _rpr in _rp_rows[:10]:
+                            _pc = "#00e676" if _rpr['pnl'] >= 0 else "#ff5252"
+                            _sg = "+" if _rpr['pnl'] >= 0 else "−"
+                            _rp_html += (f"<tr style='border-top:1px solid #1a2740;'>"
+                                         f"<td style='padding:5px 8px;color:#eceff1;'>{_rpr['name']}</td>"
+                                         f"<td style='text-align:right;padding:5px 8px;color:#90a4ae;'>"
+                                         f"{_rpr['shares_sold']:.2f}</td>"
+                                         f"<td style='text-align:right;padding:5px 8px;color:#90a4ae;'>"
+                                         f"€ {_rpr['sell_value']:,.0f}</td>"
+                                         f"<td style='text-align:right;padding:5px 8px;color:{_pc};"
+                                         f"font-weight:700;'>{_sg}€ {abs(_rpr['pnl']):,.0f}</td>"
+                                         f"</tr>")
+                        _rp_html += "</table>"
+                        st.markdown(_rp_html, unsafe_allow_html=True)
+                    st.caption("⚠️ Durchschnittskostenmethode (kein FIFO). Nur Trades aus der CSV. "
+                               "Ohne Dividenden, Ordergebühren und Steuern.")
+                    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
                 # ── Top / Flop ────────────────────────────────────────────
                 if not stocks_etf.empty and prices:
