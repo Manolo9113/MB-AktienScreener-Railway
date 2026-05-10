@@ -6032,32 +6032,24 @@ if st.session_state.get("show_etf_analyzer"):
         # Sonst: raw als Yahoo-Ticker
         return q
 
-    @st.cache_data(ttl=3600, show_spinner=False)
-    def _etf_perf_hist(ticker: str) -> dict:
-        import datetime as _dtt
-        try:
-            raw = yf.download(ticker, period='6y', interval='1mo',
-                              progress=False, auto_adjust=True)
-            if raw.empty: return {}
-            cl = raw['Close']
-            if isinstance(cl, pd.DataFrame): cl = cl.iloc[:, 0]
-            cl = cl.dropna()
-            if cl.empty: return {}
-            now_ts  = cl.index[-1]
-            last_px = float(cl.iloc[-1])
-            tz = getattr(now_ts, 'tzinfo', None)
-            def _ts(dt): return pd.Timestamp(dt, tz=tz) if tz else pd.Timestamp(dt)
-            ytd_cl = cl[cl.index >= _ts(_dtt.date(now_ts.year, 1, 1))]
-            ytd    = (last_px / float(ytd_cl.iloc[0]) - 1) if len(ytd_cl) > 0 else None
-            cl_1y  = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=370))]
-            r1y    = (last_px / float(cl_1y.iloc[0]) - 1) if len(cl_1y) > 6 else None
-            cl_3y  = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=3*365+10))]
-            r3y    = ((last_px / float(cl_3y.iloc[0])) ** (1/3) - 1) if len(cl_3y) > 18 else None
-            cl_5y  = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=5*365+15))]
-            r5y    = ((last_px / float(cl_5y.iloc[0])) ** (1/5) - 1) if len(cl_5y) > 36 else None
-            return {'ytd': ytd, 'ret_1y': r1y, 'ret_3y': r3y, 'ret_5y': r5y}
-        except Exception:
-            return {}
+    # ── Statische TER-Datenbank (amtliche KIID-Werte, ändert sich kaum) ──────
+    _ETF_STATIC_TER = {
+        'SXR8.DE':0.0020,'VWCE.DE':0.0022,'SXR2.DE':0.0007,'IS3N.DE':0.0020,
+        'IS3R.DE':0.0018,'XDWD.DE':0.0020,'EQQQ.DE':0.0030,'EXS1.DE':0.0016,
+        'LCUW.DE':0.0012,'FWRA.DE':0.0015,'IQQH.DE':0.0065,'XMME.DE':0.0025,
+        'IMEA.DE':0.0018,'SPY5.DE':0.0003,'VWRL.L':0.0022,'IWDA.AS':0.0020,
+        'CNDX.L':0.0033,'XDWD.L':0.0020,'VUSA.L':0.0007,'EUNL.DE':0.0020,
+        'DBXD.DE':0.0009,'IS3S.DE':0.0025,'XMEA.DE':0.0025,'QDVE.DE':0.0020,
+    }
+
+    # ── US-Datenticker (für yFinance funds_data + FMP — XETRA hat kaum Daten) ─
+    _ETF_DATA_TKR = {
+        'SXR8.DE':'URTH','VWCE.DE':'VT','SXR2.DE':'IVV','IS3N.DE':'IEMG',
+        'IS3R.DE':'IEMG','XDWD.DE':'URTH','EQQQ.DE':'QQQ','EXS1.DE':'EWG',
+        'LCUW.DE':'IVV','FWRA.DE':'VT','IQQH.DE':'ICLN','XMME.DE':'EEM',
+        'IMEA.DE':'IEMG','SPY5.DE':'SPY','VWRL.L':'VT','IWDA.AS':'URTH',
+        'CNDX.L':'QQQ','DBXD.DE':'EWG','VUSA.L':'IVV','EUNL.DE':'URTH',
+    }
 
     @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_perf_hist(ticker: str) -> dict:
@@ -6110,12 +6102,51 @@ if st.session_state.get("show_etf_analyzer"):
             _dom = {'XETRA':'Irland','GER':'DE','FRA':'DE','LSE':'Irland',
                     'L':'Irland','ARCA':'USA','NYSE':'USA','BATS':'USA',
                     'SIX':'Luxemburg','PA':'Irland/LU'}
+
+            # TER: yfinance → statische DB → FMP (US data ticker)
+            ter = (inf.get('annualReportExpenseRatio')
+                   or inf.get('totalExpenseRatio') or inf.get('expenseRatio'))
+            if not ter:
+                ter = _ETF_STATIC_TER.get(ticker)
+            if not ter and FMP_API_KEY:
+                _dt = _ETF_DATA_TKR.get(ticker, ticker)
+                try:
+                    _fr = requests.get(
+                        f"https://financialmodelingprep.com/api/v3/profile/{_dt}",
+                        params={'apikey': FMP_API_KEY}, timeout=5)
+                    if _fr.ok and _fr.json():
+                        _fd = _fr.json()[0]
+                        ter = _fd.get('annualReportExpenseRatio') or _fd.get('expenseRatio')
+                except Exception:
+                    pass
+
+            # AUM: yfinance → FMP (US data ticker)
+            aum = inf.get('totalAssets') or inf.get('fundTotalAssets')
+            if not aum and FMP_API_KEY:
+                _dt = _ETF_DATA_TKR.get(ticker, ticker)
+                try:
+                    _fr = requests.get(
+                        "https://financialmodelingprep.com/api/v3/etf/info",
+                        params={'symbol': _dt, 'apikey': FMP_API_KEY}, timeout=5)
+                    if _fr.ok and _fr.json():
+                        aum = _fr.json()[0].get('totalAssets')
+                except Exception:
+                    pass
+                if not aum:
+                    try:
+                        _fr2 = requests.get(
+                            f"https://financialmodelingprep.com/api/v3/profile/{_dt}",
+                            params={'apikey': FMP_API_KEY}, timeout=5)
+                        if _fr2.ok and _fr2.json():
+                            aum = _fr2.json()[0].get('mktCap')
+                    except Exception:
+                        pass
+
             return {
                 'name':        inf.get('longName') or inf.get('shortName') or ticker,
                 'currency':    inf.get('currency','EUR'),
-                'aum':         inf.get('totalAssets') or inf.get('fundTotalAssets'),
-                'ter':         (inf.get('annualReportExpenseRatio')
-                               or inf.get('totalExpenseRatio') or inf.get('expenseRatio')),
+                'aum':         aum,
+                'ter':         ter,
                 'nav':         inf.get('navPrice') or inf.get('previousClose'),
                 'category':    inf.get('category') or '',
                 'fund_family': inf.get('fundFamily') or '',
@@ -6131,20 +6162,61 @@ if st.session_state.get("show_etf_analyzer"):
 
     @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_holdings(ticker: str) -> tuple:
-        try:
-            fd  = yf.Ticker(ticker).funds_data
-            sw  = getattr(fd, 'sector_weightings', None) or {}
-            th  = getattr(fd, 'top_holdings', None)
+        def _parse_fd(fd):
+            sw = getattr(fd, 'sector_weightings', None) or {}
+            th = getattr(fd, 'top_holdings', None)
             if th is None or (hasattr(th,'empty') and th.empty): th = pd.DataFrame()
-            eq  = getattr(fd, 'equity_holdings', None)
-            cw  = {}
+            cw = {}
+            eq = getattr(fd, 'equity_holdings', None)
             if eq is not None:
                 try:
                     eq_d = eq if isinstance(eq, dict) else eq.to_dict()
-                    cw   = eq_d.get('countryWeights', {})
+                    cw = eq_d.get('countryWeights', {})
                 except Exception: pass
-            ac  = getattr(fd, 'asset_classes', None) or {}
+            ac = getattr(fd, 'asset_classes', None) or {}
             if hasattr(ac,'to_dict'): ac = ac.to_dict()
+            return sw, th, cw, ac
+
+        try:
+            sw, th, cw, ac = _parse_fd(yf.Ticker(ticker).funds_data)
+
+            # Fallback 1: US-Datenticker via yFinance (XETRA ETFs haben meist keine funds_data)
+            _data_tkr = _ETF_DATA_TKR.get(ticker)
+            if _data_tkr and (not sw or th.empty):
+                try:
+                    sw2, th2, cw2, ac2 = _parse_fd(yf.Ticker(_data_tkr).funds_data)
+                    if not sw and sw2: sw = sw2
+                    if th.empty and not th2.empty: th = th2
+                    if not cw and cw2: cw = cw2
+                except Exception: pass
+
+            # Fallback 2: FMP API (Sektor-Gewichte + Top-Holdings)
+            _fmp_tkr = _ETF_DATA_TKR.get(ticker, ticker)
+            if not sw and FMP_API_KEY:
+                try:
+                    _fr = requests.get(
+                        f"https://financialmodelingprep.com/api/v3/etf-sector-weightings/{_fmp_tkr}",
+                        params={'apikey': FMP_API_KEY}, timeout=5)
+                    if _fr.ok and _fr.json():
+                        sw = {s['sector']: float(s['weightPercentage'])/100
+                              for s in _fr.json() if 'sector' in s and s.get('weightPercentage')}
+                except Exception: pass
+
+            if th.empty and FMP_API_KEY:
+                try:
+                    _fr = requests.get(
+                        f"https://financialmodelingprep.com/api/v3/etf-holder/{_fmp_tkr}",
+                        params={'apikey': FMP_API_KEY}, timeout=5)
+                    if _fr.ok and _fr.json():
+                        _hdata = _fr.json()[:20]
+                        th = pd.DataFrame(_hdata)
+                        if 'asset' in th.columns:
+                            th = th.rename(columns={
+                                'asset': 'holdingName',
+                                'weightPercentage': 'holdingPercent',
+                                'symbol': 'symbol'})
+                except Exception: pass
+
             return sw, th, cw, ac
         except Exception:
             return {}, pd.DataFrame(), {}, {}
