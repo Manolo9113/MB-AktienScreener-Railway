@@ -5977,6 +5977,44 @@ if st.session_state.get("show_etf_analyzer"):
             return {}
 
     @st.cache_data(ttl=3600, show_spinner=False)
+    def _etf_perf_hist(ticker: str) -> dict:
+        """Berechnet YTD / 3J / 5J aus Kurshistorie (zuverlässig für XETRA-ETFs)."""
+        import datetime as _dtt
+        try:
+            raw = yf.download(ticker, period='6y', interval='1mo',
+                              progress=False, auto_adjust=True)
+            if raw.empty:
+                return {}
+            cl = raw['Close']
+            if isinstance(cl, pd.DataFrame):
+                cl = cl.iloc[:, 0]
+            cl = cl.dropna()
+            if cl.empty:
+                return {}
+            now_ts  = cl.index[-1]
+            last_px = float(cl.iloc[-1])
+            # Timezone-aware index handling
+            tz = getattr(now_ts, 'tzinfo', None)
+            def _ts(dt):
+                return pd.Timestamp(dt, tz=tz) if tz else pd.Timestamp(dt)
+            # YTD
+            ytd_start = _ts(_dtt.date(now_ts.year, 1, 1))
+            ytd_cl    = cl[cl.index >= ytd_start]
+            ytd = (last_px / float(ytd_cl.iloc[0]) - 1) if len(ytd_cl) > 0 else None
+            # 1Y simple
+            cl_1y = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=370))]
+            r1y   = (last_px / float(cl_1y.iloc[0]) - 1) if len(cl_1y) > 6 else None
+            # 3Y annualized
+            cl_3y = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=3*365+10))]
+            r3y   = ((last_px / float(cl_3y.iloc[0])) ** (1/3) - 1) if len(cl_3y) > 18 else None
+            # 5Y annualized
+            cl_5y = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=5*365+15))]
+            r5y   = ((last_px / float(cl_5y.iloc[0])) ** (1/5) - 1) if len(cl_5y) > 36 else None
+            return {'ytd': ytd, 'ret_1y': r1y, 'ret_3y': r3y, 'ret_5y': r5y}
+        except Exception:
+            return {}
+
+    @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_info(ticker: str) -> dict:
         try:
             inf = yf.Ticker(ticker).info or {}
