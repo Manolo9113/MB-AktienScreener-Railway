@@ -5901,40 +5901,77 @@ if st.session_state.get("show_portfolio"):
 # ==================== ETF ANALYZER PAGE ====================
 if st.session_state.get("show_etf_analyzer"):
 
+    # ── ETF-Suchindex (ISIN / WKN / Name → Ticker) ───────────────────────
+    _ETF_DB = {
+        # ISIN → ticker
+        'IE00B4L5Y983':'SXR8.DE','IE00B3RBWM25':'VWCE.DE','IE0031442068':'SXR2.DE',
+        'IE00B4L5YC18':'IS3N.DE','IE00BJ0KDQ92':'XDWD.DE','IE0032895942':'EQQQ.DE',
+        'DE0005933931':'EXS1.DE','LU1781541179':'LCUW.DE','IE00B0M62Q58':'IWRD.L',
+        'IE00B52MJY50':'IMEA.DE','IE00B6R52259':'IQQH.DE','LU0274208692':'XDWT.DE',
+        'IE00BKM4GZ66':'IS3R.DE','LU1437016972':'XMME.DE','IE00BD45KH83':'FWRA.DE',
+        # WKN → ticker
+        'A0RPWH':'SXR8.DE','A1JX52':'VWCE.DE','622391':'SXR2.DE','A0HGWC':'IS3N.DE',
+        'DBX1MW':'XDWD.DE','A0YEDL':'EQQQ.DE','593393':'EXS1.DE','ETF127':'LCUW.DE',
+        'A2PKXG':'FWRA.DE','A0MZBE':'XMME.DE','A111EG':'IS3R.DE',
+        # Kurzname → ticker
+        'msci world':'SXR8.DE','msci em':'IS3N.DE','msci emerging':'IS3N.DE',
+        'all world':'VWCE.DE','ftse all world':'VWCE.DE','sp500':'SXR2.DE',
+        's&p 500':'SXR2.DE','nasdaq':'EQQQ.DE','nasdaq100':'EQQQ.DE','dax':'EXS1.DE',
+        'amundi world':'LCUW.DE','xtrackers world':'XDWD.DE',
+    }
+
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def _resolve_etf_input(raw: str) -> str:
+        """ISIN / WKN / Name → Yahoo-Ticker. Fallback: raw als Ticker."""
+        q = raw.strip().upper()
+        ql = raw.strip().lower()
+        # Direkt in DB
+        if q in _ETF_DB:   return _ETF_DB[q]
+        if ql in _ETF_DB:  return _ETF_DB[ql]
+        # ISIN-Format (12 Zeichen, beginnt mit 2 Buchstaben)
+        if len(q) == 12 and q[:2].isalpha() and q[2:].isalnum():
+            try:
+                resp = requests.post(
+                    'https://api.openfigi.com/v3/mapping',
+                    json=[{'idType': 'ID_ISIN', 'idValue': q, 'exchCode': 'GS'}],
+                    timeout=5)
+                if resp.ok:
+                    d = resp.json()
+                    if d and d[0].get('data'):
+                        tkr = d[0]['data'][0].get('ticker', '')
+                        if tkr:
+                            return tkr + '.DE'
+            except Exception:
+                pass
+        # WKN-Format (6 Zeichen alphanumerisch)
+        if len(q) == 6 and q.isalnum() and q in _ETF_DB:
+            return _ETF_DB[q]
+        # Sonst: raw als Yahoo-Ticker
+        return q
+
     @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_perf_hist(ticker: str) -> dict:
-        """Berechnet YTD / 3J / 5J aus Kurshistorie (zuverlässig für XETRA-ETFs)."""
         import datetime as _dtt
         try:
             raw = yf.download(ticker, period='6y', interval='1mo',
                               progress=False, auto_adjust=True)
-            if raw.empty:
-                return {}
+            if raw.empty: return {}
             cl = raw['Close']
-            if isinstance(cl, pd.DataFrame):
-                cl = cl.iloc[:, 0]
+            if isinstance(cl, pd.DataFrame): cl = cl.iloc[:, 0]
             cl = cl.dropna()
-            if cl.empty:
-                return {}
+            if cl.empty: return {}
             now_ts  = cl.index[-1]
             last_px = float(cl.iloc[-1])
-            # Timezone-aware index handling
             tz = getattr(now_ts, 'tzinfo', None)
-            def _ts(dt):
-                return pd.Timestamp(dt, tz=tz) if tz else pd.Timestamp(dt)
-            # YTD
-            ytd_start = _ts(_dtt.date(now_ts.year, 1, 1))
-            ytd_cl    = cl[cl.index >= ytd_start]
-            ytd = (last_px / float(ytd_cl.iloc[0]) - 1) if len(ytd_cl) > 0 else None
-            # 1Y simple
-            cl_1y = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=370))]
-            r1y   = (last_px / float(cl_1y.iloc[0]) - 1) if len(cl_1y) > 6 else None
-            # 3Y annualized
-            cl_3y = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=3*365+10))]
-            r3y   = ((last_px / float(cl_3y.iloc[0])) ** (1/3) - 1) if len(cl_3y) > 18 else None
-            # 5Y annualized
-            cl_5y = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=5*365+15))]
-            r5y   = ((last_px / float(cl_5y.iloc[0])) ** (1/5) - 1) if len(cl_5y) > 36 else None
+            def _ts(dt): return pd.Timestamp(dt, tz=tz) if tz else pd.Timestamp(dt)
+            ytd_cl = cl[cl.index >= _ts(_dtt.date(now_ts.year, 1, 1))]
+            ytd    = (last_px / float(ytd_cl.iloc[0]) - 1) if len(ytd_cl) > 0 else None
+            cl_1y  = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=370))]
+            r1y    = (last_px / float(cl_1y.iloc[0]) - 1) if len(cl_1y) > 6 else None
+            cl_3y  = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=3*365+10))]
+            r3y    = ((last_px / float(cl_3y.iloc[0])) ** (1/3) - 1) if len(cl_3y) > 18 else None
+            cl_5y  = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=5*365+15))]
+            r5y    = ((last_px / float(cl_5y.iloc[0])) ** (1/5) - 1) if len(cl_5y) > 36 else None
             return {'ytd': ytd, 'ret_1y': r1y, 'ret_3y': r3y, 'ret_5y': r5y}
         except Exception:
             return {}
@@ -5942,65 +5979,51 @@ if st.session_state.get("show_etf_analyzer"):
     @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_info(ticker: str) -> dict:
         try:
-            t   = yf.Ticker(ticker)
-            inf = t.info or {}
+            inf = yf.Ticker(ticker).info or {}
             name_l = (inf.get('longName') or '').lower()
-            if 'acc' in name_l or 'accumul' in name_l or 'thesaurierend' in name_l:
-                distrib = 'Thesaurierend (Acc)'
-            elif 'dist' in name_l or 'distribut' in name_l or 'ausschütt' in name_l:
-                distrib = 'Ausschüttend (Dist)'
-            elif (inf.get('dividendYield') or 0) > 0.001:
-                distrib = 'Ausschüttend (Dist)'
-            else:
-                distrib = '—'
+            if   'acc' in name_l or 'accumul' in name_l: distrib = 'Thesaurierend (Acc)'
+            elif 'dist' in name_l or 'distribut' in name_l: distrib = 'Ausschüttend (Dist)'
+            elif (inf.get('dividendYield') or 0) > 0.001: distrib = 'Ausschüttend (Dist)'
+            else: distrib = '—'
             exch = (inf.get('exchange') or '').upper()
-            _dom = {'XETRA': 'Irland/DE', 'GER': 'DE', 'FRA': 'DE',
-                    'LSE': 'Irland', 'L': 'Irland', 'ARCA': 'USA', 'NYSE': 'USA',
-                    'BATS': 'USA', 'SIX': 'Luxemburg', 'PA': 'Irland/LU'}
-            domicile = _dom.get(exch, inf.get('country') or '—')
-            # TER: yfinance Feldnamen variieren je nach ETF-Anbieter
-            ter = (inf.get('annualReportExpenseRatio')
-                   or inf.get('totalExpenseRatio')
-                   or inf.get('expenseRatio'))
-            aum = (inf.get('totalAssets')
-                   or inf.get('fundTotalAssets'))
+            _dom = {'XETRA':'Irland','GER':'DE','FRA':'DE','LSE':'Irland',
+                    'L':'Irland','ARCA':'USA','NYSE':'USA','BATS':'USA',
+                    'SIX':'Luxemburg','PA':'Irland/LU'}
             return {
                 'name':        inf.get('longName') or inf.get('shortName') or ticker,
-                'currency':    inf.get('currency', 'EUR'),
-                'aum':         aum,
-                'ter':         ter,
+                'currency':    inf.get('currency','EUR'),
+                'aum':         inf.get('totalAssets') or inf.get('fundTotalAssets'),
+                'ter':         (inf.get('annualReportExpenseRatio')
+                               or inf.get('totalExpenseRatio') or inf.get('expenseRatio')),
                 'nav':         inf.get('navPrice') or inf.get('previousClose'),
                 'category':    inf.get('category') or '',
                 'fund_family': inf.get('fundFamily') or '',
                 'inception':   inf.get('fundInceptionDate'),
                 'distribution':distrib,
-                'domicile':    domicile,
+                'domicile':    _dom.get(exch, inf.get('country') or '—'),
                 'exchange':    exch or '—',
                 'div_yield':   inf.get('dividendYield'),
-                'quote_type':  inf.get('quoteType', 'ETF'),
+                'quote_type':  inf.get('quoteType','ETF'),
             }
         except Exception:
             return {}
 
     @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_holdings(ticker: str) -> tuple:
-        """Returns (sector_weights, top_holdings_df, country_weights, asset_classes)."""
         try:
-            fd = yf.Ticker(ticker).funds_data
-            sw = getattr(fd, 'sector_weightings', None) or {}
-            th = getattr(fd, 'top_holdings', None)
-            if th is None or (hasattr(th, 'empty') and th.empty):
-                th = pd.DataFrame()
-            # Länder/Regionen
-            eq = getattr(fd, 'equity_holdings', None)
-            cw = {}
-            if eq is not None and hasattr(eq, 'to_dict'):
-                eq_d = eq.to_dict() if not hasattr(eq, 'empty') else {}
-                cw = eq_d.get('countryWeights', {})
-            # Asset-Klassen
-            ac = getattr(fd, 'asset_classes', None) or {}
-            if hasattr(ac, 'to_dict'):
-                ac = ac.to_dict()
+            fd  = yf.Ticker(ticker).funds_data
+            sw  = getattr(fd, 'sector_weightings', None) or {}
+            th  = getattr(fd, 'top_holdings', None)
+            if th is None or (hasattr(th,'empty') and th.empty): th = pd.DataFrame()
+            eq  = getattr(fd, 'equity_holdings', None)
+            cw  = {}
+            if eq is not None:
+                try:
+                    eq_d = eq if isinstance(eq, dict) else eq.to_dict()
+                    cw   = eq_d.get('countryWeights', {})
+                except Exception: pass
+            ac  = getattr(fd, 'asset_classes', None) or {}
+            if hasattr(ac,'to_dict'): ac = ac.to_dict()
             return sw, th, cw, ac
         except Exception:
             return {}, pd.DataFrame(), {}, {}
@@ -6010,11 +6033,9 @@ if st.session_state.get("show_etf_analyzer"):
         try:
             raw = yf.download([etf, bm], period=period, interval='1wk',
                               progress=False, auto_adjust=True)
-            if raw.empty:
-                return pd.DataFrame()
+            if raw.empty: return pd.DataFrame()
             cl = raw['Close']
-            if isinstance(cl, pd.Series):
-                cl = cl.to_frame()
+            if isinstance(cl, pd.Series): cl = cl.to_frame()
             cl = cl.dropna(how='all')
             for col in cl.columns:
                 first = cl[col].dropna().iloc[0] if not cl[col].dropna().empty else 1
@@ -6023,425 +6044,389 @@ if st.session_state.get("show_etf_analyzer"):
         except Exception:
             return pd.DataFrame()
 
+    # ── Issuer-Meta (Logo-URL + Farbe + Kurzname) ─────────────────────────
+    _ISSUER_META = {
+        'iShares':    {'logo':'https://www.blackrock.com/favicon.ico',   'color':'#00b347','abbr':'iS','bg':'#003d14'},
+        'Vanguard':   {'logo':'https://www.vanguard.com/favicon.ico',    'color':'#cc0000','abbr':'VG','bg':'#3d0000'},
+        'Xtrackers':  {'logo':'https://www.xtrackers.com/favicon.ico',   'color':'#1a6aff','abbr':'Xt','bg':'#001040'},
+        'Amundi':     {'logo':'https://www.amundi.com/favicon.ico',      'color':'#ff6600','abbr':'AM','bg':'#3d1900'},
+        'SPDR':       {'logo':'https://www.ssga.com/favicon.ico',        'color':'#ffd700','abbr':'SP','bg':'#2d2600'},
+        'Invesco':    {'logo':'https://www.invesco.com/favicon.ico',      'color':'#0066cc','abbr':'IN','bg':'#001a33'},
+        'WisdomTree': {'logo':'https://www.wisdomtree.eu/favicon.ico',   'color':'#009933','abbr':'WT','bg':'#001a0a'},
+        'Lyxor':      {'logo':'https://www.amundi.com/favicon.ico',      'color':'#00a86b','abbr':'LY','bg':'#001a10'},
+        'Franklin':   {'logo':'https://www.franklintempleton.de/favicon.ico','color':'#003087','abbr':'FT','bg':'#000d1f'},
+        'HSBC':       {'logo':'https://www.hsbc.de/favicon.ico',         'color':'#db0011','abbr':'HB','bg':'#2d0003'},
+        'BlackRock':  {'logo':'https://www.blackrock.com/favicon.ico',   'color':'#00b347','abbr':'BR','bg':'#003d14'},
+    }
+
+    # ── Ähnliche ETFs (nach Ticker) ───────────────────────────────────────
+    _SIMILAR_ETF_MAP = {
+        'SXR8.DE': [('VWCE.DE','Vanguard All-World'),('XDWD.DE','Xtrackers World'),('LCUW.DE','Amundi World')],
+        'VWCE.DE': [('SXR8.DE','iShares MSCI World'),('XDWD.DE','Xtrackers World'),('FWRA.DE','Invesco All-World')],
+        'SXR2.DE': [('XSPX.DE','Xtrackers S&P 500'),('VUSD.L','Vanguard S&P 500'),('CSPX.L','iShares S&P 500 USD')],
+        'EQQQ.DE': [('XNAS.DE','Xtrackers NASDAQ-100'),('SXRV.DE','iShares NASDAQ EUR'),('CSNDX.L','iShares NASDAQ USD')],
+        'EXS1.DE': [('DBXD.DE','Xtrackers DAX'),('DAXE.DE','Amundi DAX'),('XDDX.DE','Xtrackers DAX ESG')],
+        'IS3N.DE': [('XMME.DE','Xtrackers MSCI EM'),('VFEM.L','Vanguard FTSE EM'),('PAEM.PA','SPDR MSCI EM')],
+        'LCUW.DE': [('SXR8.DE','iShares MSCI World'),('VWCE.DE','Vanguard All-World'),('XDWD.DE','Xtrackers World')],
+        'XDWD.DE': [('SXR8.DE','iShares MSCI World'),('VWCE.DE','Vanguard All-World'),('LCUW.DE','Amundi World')],
+    }
+
+    # ── Beliebte ETFs mit ISIN und WKN ───────────────────────────────────
+    _POPULAR_ETFS = [
+        ('SXR8.DE', 'iShares MSCI World',  'IE00B4L5Y983', 'A0RPWH',  '#00b347', 'iS'),
+        ('VWCE.DE', 'Vanguard All-World',   'IE00B3RBWM25', 'A1JX52',  '#cc0000', 'VG'),
+        ('SXR2.DE', 'iShares S&P 500',      'IE0031442068', '622391',  '#00b347', 'iS'),
+        ('IS3N.DE', 'iShares MSCI EM',      'IE00B4L5YC18', 'A0HGWC',  '#00b347', 'iS'),
+        ('XDWD.DE', 'Xtrackers World',      'IE00BJ0KDQ92', 'DBX1MW',  '#1a6aff', 'Xt'),
+        ('EQQQ.DE', 'iShares NASDAQ-100',   'IE0032895942', 'A0YEDL',  '#00b347', 'iS'),
+        ('EXS1.DE', 'iShares DAX',          'DE0005933931', '593393',  '#00b347', 'iS'),
+        ('LCUW.DE', 'Amundi MSCI World',    'LU1781541179', 'ETF127',  '#ff6600', 'AM'),
+    ]
+
     # ── Header ───────────────────────────────────────────────────────────
     st.markdown("""
-    <div style="text-align:center; padding:28px 0 18px 0;">
-      <div style="font-size:2.2rem; font-weight:800; color:#fff;">🔎 ETF-Analyzer</div>
-      <div style="color:#64b5f6; font-size:0.95rem; margin-top:6px;">
-        Sektoraufteilung · Top-Positionen · Benchmark-Vergleich
+    <div style="text-align:center;padding:24px 0 14px 0;">
+      <div style="font-size:2rem;font-weight:800;color:#fff;">🔎 ETF-Analyzer</div>
+      <div style="color:#64b5f6;font-size:0.88rem;margin-top:4px;">
+        Ticker · ISIN · WKN · Name — Sektoren · Positionen · Benchmark
       </div>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
 
-    # ── Ticker-Eingabe ───────────────────────────────────────────────────
-    _ec1, _ec2 = st.columns([3, 1])
-    _etf_raw = _ec1.text_input("ETF-Ticker eingeben",
-                                value=st.session_state["etf_ticker_input"],
-                                placeholder="z.B. SXR8.DE · VWCE.DE · EXS1.DE · EQQQ.DE",
-                                label_visibility="collapsed")
-    _etf_go  = _ec2.button("Analysieren", use_container_width=True, type="primary")
-
-    _POPULAR_ETFS = {
-        "iShares Core MSCI World (SXR8.DE)": "SXR8.DE",
-        "Vanguard FTSE All-World (VWCE.DE)": "VWCE.DE",
-        "iShares Core S&P 500 (SXR2.DE)": "SXR2.DE",
-        "iShares Core MSCI EM (IS3N.DE)": "IS3N.DE",
-        "Xtrackers MSCI World (XDWD.DE)": "XDWD.DE",
-        "iShares NASDAQ-100 (EQQQ.DE)": "EQQQ.DE",
-        "iShares DAX (EXS1.DE)": "EXS1.DE",
-        "Amundi MSCI World (LCUW.DE)": "LCUW.DE",
-    }
-    _pop_cols = st.columns(4)
-    for _pi, (_plbl, _ptkr) in enumerate(_POPULAR_ETFS.items()):
-        if _pop_cols[_pi % 4].button(_plbl.split("(")[0].strip(),
-                                      key=f"_etf_pop_{_ptkr}", use_container_width=True):
-            st.session_state["etf_ticker_input"] = _ptkr
-            st.rerun()
-
+    # ── Suchfeld ─────────────────────────────────────────────────────────
+    _src1, _src2 = st.columns([4, 1])
+    _etf_raw = _src1.text_input("ETF suchen", value=st.session_state["etf_ticker_input"],
+                                 placeholder="Ticker (SXR8.DE) · ISIN (IE00B4L5Y983) · WKN (A0RPWH) · Name",
+                                 label_visibility="collapsed")
+    _etf_go  = _src2.button("Analysieren", use_container_width=True, type="primary")
     if _etf_go and _etf_raw.strip():
-        st.session_state["etf_ticker_input"] = _etf_raw.strip().upper()
+        st.session_state["etf_ticker_input"] = _etf_raw.strip()
         st.rerun()
 
-    _etf_tkr = st.session_state["etf_ticker_input"].strip().upper()
+    # ── Beliebte ETFs als Cards ───────────────────────────────────────────
+    st.markdown("<div style='color:#78909c;font-size:0.72rem;text-transform:uppercase;"
+                "letter-spacing:.06em;margin:10px 0 6px 0;'>Beliebte ETFs</div>",
+                unsafe_allow_html=True)
+    _pc = st.columns(4)
+    for _pi, (_ptkr, _pnm, _pisin, _pwkn, _pclr, _pabb) in enumerate(_POPULAR_ETFS):
+        with _pc[_pi % 4]:
+            _active = st.session_state["etf_ticker_input"].strip().upper() == _ptkr
+            _border = f"2px solid {_pclr}" if _active else "1px solid #1a2740"
+            st.markdown(
+                f"<div style='background:#0d1f35;border:{_border};border-radius:8px;"
+                f"padding:8px 10px;margin-bottom:4px;'>"
+                f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:4px;'>"
+                f"<span style='background:{_pclr}22;color:{_pclr};border:1px solid {_pclr}55;"
+                f"border-radius:4px;padding:1px 6px;font-size:0.68rem;font-weight:700;'>{_pabb}</span>"
+                f"<span style='color:#eceff1;font-size:0.8rem;font-weight:600;'>{_ptkr}</span>"
+                f"</div>"
+                f"<div style='color:#90a4ae;font-size:0.72rem;white-space:nowrap;overflow:hidden;"
+                f"text-overflow:ellipsis;'>{_pnm}</div>"
+                f"<div style='color:#546e7a;font-size:0.65rem;margin-top:2px;'>ISIN {_pisin} · WKN {_pwkn}</div>"
+                f"</div>", unsafe_allow_html=True)
+            if st.button("▶", key=f"_pop_{_ptkr}", use_container_width=True,
+                         type="primary" if _active else "secondary"):
+                st.session_state["etf_ticker_input"] = _ptkr
+                st.rerun()
 
-    if _etf_tkr:
-        with st.spinner(f"ETF-Daten für {_etf_tkr} werden geladen…"):
-            _ei   = _etf_info(_etf_tkr)
-            _perf = _etf_perf_hist(_etf_tkr)
-            _sw, _th, _cw, _ac = _etf_holdings(_etf_tkr)
-        # Performance aus Kurshistorie ergänzen (zuverlässiger als yfinance info-Felder)
-        _ei['ytd']    = _ei.get('ytd')    or _perf.get('ytd')
-        _ei['ret_3y'] = _ei.get('ret_3y') or _perf.get('ret_3y')
-        _ei['ret_5y'] = _ei.get('ret_5y') or _perf.get('ret_5y')
-        _ei['ret_1y'] = _perf.get('ret_1y')
+    _etf_raw_resolved = st.session_state["etf_ticker_input"].strip()
+    if not _etf_raw_resolved:
+        st.stop()
 
-        # Issuer-Logo-Mapping
-        _ISSUER_META = {
-            'iShares':    {'logo': 'https://logo.clearbit.com/ishares.com',    'color': '#00b347'},
-            'Vanguard':   {'logo': 'https://logo.clearbit.com/vanguard.com',   'color': '#cc0000'},
-            'Xtrackers':  {'logo': 'https://logo.clearbit.com/dws.com',        'color': '#1a6aff'},
-            'Amundi':     {'logo': 'https://logo.clearbit.com/amundi.com',     'color': '#ff6600'},
-            'SPDR':       {'logo': 'https://logo.clearbit.com/ssga.com',       'color': '#ffd700'},
-            'Invesco':    {'logo': 'https://logo.clearbit.com/invesco.com',    'color': '#0066cc'},
-            'WisdomTree': {'logo': 'https://logo.clearbit.com/wisdomtree.com', 'color': '#009933'},
-            'Lyxor':      {'logo': 'https://logo.clearbit.com/amundi.com',     'color': '#00a86b'},
-            'Franklin':   {'logo': 'https://logo.clearbit.com/franklintempleton.com', 'color': '#003087'},
-            'HSBC':       {'logo': 'https://logo.clearbit.com/hsbc.com',       'color': '#db0011'},
-            'L&G':        {'logo': 'https://logo.clearbit.com/lgim.com',       'color': '#6600cc'},
-            'BNP':        {'logo': 'https://logo.clearbit.com/bnpparibas.com', 'color': '#00965e'},
-        }
-        _SIMILAR_ETF_MAP = {
-            'SXR8.DE':  [('VWCE.DE','Vanguard FTSE All-World'),('XDWD.DE','Xtrackers MSCI World'),('LCUW.DE','Amundi MSCI World')],
-            'VWCE.DE':  [('SXR8.DE','iShares MSCI World'),('XDWD.DE','Xtrackers MSCI World'),('FWRA.DE','Invesco FTSE All-World')],
-            'SXR2.DE':  [('CSPX.L','iShares S&P 500 USD'),('VUSD.L','Vanguard S&P 500'),('XSPX.DE','Xtrackers S&P 500')],
-            'EQQQ.DE':  [('XNAS.DE','Xtrackers NASDAQ-100'),('CSNDX.L','iShares NASDAQ-100'),('SXRV.DE','iShares NASDAQ-100 EUR')],
-            'EXS1.DE':  [('DBXD.DE','Xtrackers DAX'),('DAXE.DE','Amundi DAX'),('XDDX.DE','Xtrackers DAX ESG')],
-            'IS3N.DE':  [('XMME.DE','Xtrackers MSCI EM'),('VFEM.L','Vanguard FTSE EM'),('PAEM.PA','SPDR MSCI EM')],
-            'LCUW.DE':  [('SXR8.DE','iShares MSCI World'),('VWCE.DE','Vanguard All-World'),('XDWD.DE','Xtrackers MSCI World')],
-            'XDWD.DE':  [('SXR8.DE','iShares MSCI World'),('VWCE.DE','Vanguard All-World'),('LCUW.DE','Amundi MSCI World')],
-        }
+    # ── Ticker auflösen ───────────────────────────────────────────────────
+    with st.spinner("Ticker wird aufgelöst…"):
+        _etf_tkr = _resolve_etf_input(_etf_raw_resolved)
 
-        # Issuer-Logo-Mapping
-        _ISSUER_META = {
-            'iShares':    {'logo': 'https://logo.clearbit.com/ishares.com',    'color': '#00b347'},
-            'Vanguard':   {'logo': 'https://logo.clearbit.com/vanguard.com',   'color': '#cc0000'},
-            'Xtrackers':  {'logo': 'https://logo.clearbit.com/dws.com',        'color': '#1a6aff'},
-            'Amundi':     {'logo': 'https://logo.clearbit.com/amundi.com',     'color': '#ff6600'},
-            'SPDR':       {'logo': 'https://logo.clearbit.com/ssga.com',       'color': '#ffd700'},
-            'Invesco':    {'logo': 'https://logo.clearbit.com/invesco.com',    'color': '#0066cc'},
-            'WisdomTree': {'logo': 'https://logo.clearbit.com/wisdomtree.com', 'color': '#009933'},
-            'Lyxor':      {'logo': 'https://logo.clearbit.com/amundi.com',     'color': '#00a86b'},
-            'Franklin':   {'logo': 'https://logo.clearbit.com/franklintempleton.com', 'color': '#003087'},
-            'HSBC':       {'logo': 'https://logo.clearbit.com/hsbc.com',       'color': '#db0011'},
-            'L&G':        {'logo': 'https://logo.clearbit.com/lgim.com',       'color': '#6600cc'},
-            'BNP':        {'logo': 'https://logo.clearbit.com/bnpparibas.com', 'color': '#00965e'},
-        }
-        _SIMILAR_ETF_MAP = {
-            'SXR8.DE':  [('VWCE.DE','Vanguard FTSE All-World'),('XDWD.DE','Xtrackers MSCI World'),('LCUW.DE','Amundi MSCI World')],
-            'VWCE.DE':  [('SXR8.DE','iShares MSCI World'),('XDWD.DE','Xtrackers MSCI World'),('FWRA.DE','Invesco FTSE All-World')],
-            'SXR2.DE':  [('CSPX.L','iShares S&P 500 USD'),('VUSD.L','Vanguard S&P 500'),('XSPX.DE','Xtrackers S&P 500')],
-            'EQQQ.DE':  [('XNAS.DE','Xtrackers NASDAQ-100'),('CSNDX.L','iShares NASDAQ-100'),('SXRV.DE','iShares NASDAQ-100 EUR')],
-            'EXS1.DE':  [('DBXD.DE','Xtrackers DAX'),('DAXE.DE','Amundi DAX'),('XDDX.DE','Xtrackers DAX ESG')],
-            'IS3N.DE':  [('XMME.DE','Xtrackers MSCI EM'),('VFEM.L','Vanguard FTSE EM'),('PAEM.PA','SPDR MSCI EM')],
-            'LCUW.DE':  [('SXR8.DE','iShares MSCI World'),('VWCE.DE','Vanguard All-World'),('XDWD.DE','Xtrackers MSCI World')],
-            'XDWD.DE':  [('SXR8.DE','iShares MSCI World'),('VWCE.DE','Vanguard All-World'),('LCUW.DE','Amundi MSCI World')],
-        }
+    # ── Daten laden ───────────────────────────────────────────────────────
+    with st.spinner(f"ETF-Daten für {_etf_tkr} werden geladen…"):
+        _ei            = _etf_info(_etf_tkr)
+        _perf          = _etf_perf_hist(_etf_tkr)
+        _sw, _th, _cw, _ac = _etf_holdings(_etf_tkr)
 
-        if not _ei:
-            st.error(f"Keine Daten für '{_etf_tkr}' gefunden. Bitte Ticker prüfen.")
+    _ei['ytd']    = _perf.get('ytd')    or _ei.get('ytd')
+    _ei['ret_1y'] = _perf.get('ret_1y') or _ei.get('ret_1y')
+    _ei['ret_3y'] = _perf.get('ret_3y') or _ei.get('ret_3y')
+    _ei['ret_5y'] = _perf.get('ret_5y') or _ei.get('ret_5y')
+
+    if not _ei or not _ei.get('name'):
+        st.error(f"Keine Daten für '{_etf_tkr}' gefunden.\n\n"
+                 "Bitte Ticker (z.B. SXR8.DE), ISIN (z.B. IE00B4L5Y983) oder WKN (z.B. A0RPWH) eingeben.")
+        st.stop()
+
+    # ── Issuer ermitteln + Logo/Badge ─────────────────────────────────────
+    _ff = _ei.get('fund_family', '')
+    _im = next(((_k, _v) for _k, _v in _ISSUER_META.items()
+                if _k.lower() in _ff.lower()), None)
+    _im_key, _im_val = (_im if _im else (None, None))
+
+    def _issuer_badge(key, meta):
+        if not key or not meta:
+            return ""
+        _logo = meta['logo']
+        _clr  = meta['color']
+        _abbr = meta['abbr']
+        _bg   = meta.get('bg','#001a0a')
+        return (
+            f"<span style='display:inline-flex;align-items:center;gap:5px;"
+            f"background:{_bg};border:1px solid {_clr}44;border-radius:6px;"
+            f"padding:3px 8px;margin-right:8px;'>"
+            f"<img src='{_logo}' style='height:16px;width:16px;border-radius:2px;' "
+            f"onerror=\"this.outerHTML='<span style=\\'font-size:0.65rem;font-weight:700;"
+            f"color:{_clr};padding:0 2px;\\'>{_abbr}</span>'\">"
+            f"<span style='color:{_clr};font-size:0.72rem;font-weight:700;'>{key}</span></span>")
+
+    # ── Headerbereich ─────────────────────────────────────────────────────
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+    _h1, _h2 = st.columns([5, 1])
+    with _h1:
+        _badge_html  = _issuer_badge(_im_key, _im_val)
+        _name_html   = (f"<div style='font-size:1.3rem;font-weight:800;color:#eceff1;"
+                        f"line-height:1.3;margin-bottom:6px;'>{_ei.get('name','')}</div>")
+        def _pill(txt, clr, bg):
+            return (f"<span style='background:{bg};color:{clr};border:1px solid {clr}44;"
+                    f"border-radius:10px;padding:2px 9px;font-size:0.7rem;font-weight:600;"
+                    f"margin-right:5px;white-space:nowrap;'>{txt}</span>")
+        _pills = ""
+        _pills += _pill(f"💱 {_ei.get('currency','EUR')}", '#64b5f6', '#0d2035')
+        if _ei.get('distribution') and _ei['distribution'] != '—':
+            _dc = '#00e676' if 'Acc' in _ei['distribution'] else '#ffd600'
+            _pills += _pill(_ei['distribution'], _dc, '#0d1a2e')
+        if _ei.get('domicile') and _ei['domicile'] != '—':
+            _pills += _pill(f"🏛 {_ei['domicile']}", '#90a4ae', '#1a2740')
+        if _ei.get('category'):
+            _pills += _pill(_ei['category'][:28], '#b0bec5', '#161f30')
+        st.markdown(f"{_badge_html}{_name_html}"
+                    f"<div style='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;'>"
+                    f"{_pills}</div>", unsafe_allow_html=True)
+    with _h2:
+        if st.button("🔄 Ähnliche ETFs", use_container_width=True, key="btn_similar"):
+            st.session_state["etf_show_similar"] = not st.session_state.get("etf_show_similar", False)
+
+    # Ähnliche ETFs
+    if st.session_state.get("etf_show_similar"):
+        _sim = _SIMILAR_ETF_MAP.get(_etf_tkr, [])
+        if not _sim:
+            st.info("Keine Alternativen für diesen ETF hinterlegt.")
         else:
-            # ── Header mit Issuer-Logo ─────────────────────────────────────
-            _ff = _ei.get('fund_family', '')
-            _im = next((v for k, v in _ISSUER_META.items() if k.lower() in _ff.lower()), None)
-            _hd_left, _hd_right = st.columns([4, 1])
-            with _hd_left:
-                _logo_url  = _im['logo'] if _im else ''
-                if _im and _logo_url:
-                    _logo_html = (
-                        "<img src=\"" + _logo_url +
-                        "\" style=\"height:26px;border-radius:4px;"
-                        "margin-right:10px;vertical-align:middle;"
-                        "background:#fff;padding:2px;\" "
-                        "onerror=\"this.style.display=none\">")
-                else:
-                    _logo_html = ""
+            st.markdown("<div class='section-header'>🔄 Ähnliche ETFs</div>", unsafe_allow_html=True)
+            _sc = st.columns(len(_sim))
+            for _si, (_stkr, _snm) in enumerate(_sim):
+                with _sc[_si]:
+                    st.markdown(
+                        f"<div style='background:#0d1f35;border:1px solid #1a2740;"
+                        f"border-radius:8px;padding:10px;text-align:center;'>"
+                        f"<div style='color:#64b5f6;font-size:0.88rem;font-weight:700;'>{_stkr}</div>"
+                        f"<div style='color:#90a4ae;font-size:0.7rem;margin-top:3px;'>{_snm}</div>"
+                        f"</div>", unsafe_allow_html=True)
+                    if st.button("Analysieren", key=f"sim_{_stkr}", use_container_width=True):
+                        st.session_state["etf_ticker_input"] = _stkr
+                        st.session_state["etf_show_similar"] = False
+                        st.rerun()
 
+    # ── Kennzahlen (CSS-Grid, 2×4) ────────────────────────────────────────
+    st.markdown("<div class='section-header'>📊 Kennzahlen</div>", unsafe_allow_html=True)
+    def _kc(lbl, val, sub="", color="#eceff1"):
+        _s = f"<div style='color:#546e7a;font-size:0.6rem;margin-top:2px;'>{sub}</div>" if sub else ""
+        return (f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
+                f"padding:10px 8px;text-align:center;'>"
+                f"<div style='color:#78909c;font-size:0.62rem;text-transform:uppercase;"
+                f"letter-spacing:.05em;margin-bottom:4px;'>{lbl}</div>"
+                f"<div style='color:{color};font-size:1rem;font-weight:700;'>{val}</div>"
+                f"{_s}</div>")
+    _g = "display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px;"
+    _rc = lambda v: "#00e676" if (v or 0) >= 0 else "#ff5252"
+    _aum = (f"€ {_ei['aum']/1e9:.1f} Mrd" if (_ei.get('aum') or 0) > 1e9
+            else f"€ {_ei['aum']/1e6:.0f} Mio" if _ei.get('aum') else "—")
+    _ter = f"{_ei['ter']*100:.2f}%" if _ei.get('ter') else "—"
+    _nav = f"{_ei.get('nav'):.2f} {_ei.get('currency','')}" if _ei.get('nav') else "—"
+    _ytd = f"{_ei['ytd']*100:+.1f}%" if _ei.get('ytd') else "—"
+    _r1y = f"{_ei.get('ret_1y',0)*100:+.1f}%" if _ei.get('ret_1y') else "—"
+    _r3y = f"{_ei['ret_3y']*100:+.1f}% p.a." if _ei.get('ret_3y') else "—"
+    _r5y = f"{_ei['ret_5y']*100:+.1f}% p.a." if _ei.get('ret_5y') else "—"
+    _div = f"{_ei['div_yield']*100:.2f}%" if _ei.get('div_yield') else "—"
+    _inc = "—"
+    if _ei.get('inception'):
+        try:
+            import datetime as _dt2
+            _inc = _dt2.datetime.fromtimestamp(_ei['inception']).strftime('%d.%m.%Y')
+        except Exception: pass
+    st.markdown(
+        f"<div style='{_g}'>"
+        + _kc("Fondsvolumen", _aum, "AUM")
+        + _kc("TER Kosten p.a.", _ter, "Gesamtkostenquote")
+        + _kc("Kurs / NAV", _nav)
+        + _kc("Auflagedatum", _inc, "Fondsstart")
+        + "</div>"
+        + f"<div style='{_g}'>"
+        + _kc("YTD", _ytd, "laufendes Jahr", _rc(_ei.get('ytd',0)))
+        + _kc("1J-Rendite", _r1y, "letzte 12 Monate", _rc(_ei.get('ret_1y',0)))
+        + _kc("3J p.a.", _r3y, "annualisiert 3 Jahre", _rc(_ei.get('ret_3y',0)))
+        + _kc("5J p.a.", _r5y, "annualisiert 5 Jahre", _rc(_ei.get('ret_5y',0)))
+        + "</div>",
+        unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    # ── Sektoren + Top-Positionen ──────────────────────────────────────────
+    _col_a, _col_b = st.columns([1, 1.1])
+
+    with _col_a:
+        st.markdown("<div class='section-header'>🥧 Sektoraufteilung</div>", unsafe_allow_html=True)
+        _SM = {'technology':'IT & Tech','financial_services':'Finanzen',
+               'healthcare':'Gesundheit','consumer_cyclical':'Zyklischer Konsum',
+               'industrials':'Industrie','communication_services':'Telekommunikation',
+               'consumer_defensive':'Basis-Konsum','energy':'Energie',
+               'basic_materials':'Rohstoffe','real_estate':'Immobilien','utilities':'Versorger'}
+        _SC = {'IT & Tech':'#1565c0','Finanzen':'#00acc1','Gesundheit':'#43a047',
+               'Zyklischer Konsum':'#f9a825','Industrie':'#6d4c41',
+               'Telekommunikation':'#7b1fa2','Basis-Konsum':'#2e7d32','Energie':'#e65100',
+               'Rohstoffe':'#546e7a','Immobilien':'#00838f','Versorger':'#558b2f'}
+        if _sw:
+            _sw2 = {_SM.get(k,k): round(v*100,2) for k,v in _sw.items() if v and v > 0}
+            _sw2 = dict(sorted(_sw2.items(), key=lambda x: x[1], reverse=True))
+            _sf  = go.Figure(go.Pie(
+                labels=list(_sw2.keys()), values=list(_sw2.values()), hole=0.62,
+                marker=dict(colors=[_SC.get(l,'#546e7a') for l in _sw2],
+                            line=dict(color='#0a1628',width=2)),
+                textinfo='none',
+                hovertemplate='<b>%{label}</b><br>%{value:.1f}%<extra></extra>'))
+            _sf.update_layout(template='plotly_dark',paper_bgcolor='#0a1628',
+                              plot_bgcolor='#0a1628',showlegend=False,height=240,
+                              margin=dict(l=5,r=5,t=5,b=5))
+            st.plotly_chart(_sf, use_container_width=True)
+            for _sl, _sv in list(_sw2.items())[:10]:
+                _sc2 = _SC.get(_sl,'#546e7a')
                 st.markdown(
-                    f"<div style='display:flex;align-items:center;margin-bottom:6px;'>"
-                    f"{_logo_html}"
-                    f"<span style='font-size:1.35rem;font-weight:800;color:#eceff1;'>"
-                    f"{_ei.get('name','')}</span></div>",
+                    f"<div style='display:flex;justify-content:space-between;align-items:center;"
+                    f"padding:3px 2px;border-bottom:1px solid #1a2740;'>"
+                    f"<span style='color:#eceff1;font-size:0.78rem;'><span style='color:{_sc2};'>●</span>"
+                    f" {_sl}</span>"
+                    f"<span style='color:#90a4ae;font-size:0.78rem;font-weight:600;'>{_sv:.1f}%</span>"
+                    f"</div>", unsafe_allow_html=True)
+        else:
+            st.info("Keine Sektor-Daten verfügbar.")
+
+    with _col_b:
+        st.markdown("<div class='section-header'>🏆 Top-Positionen</div>", unsafe_allow_html=True)
+        if not _th.empty:
+            _th20 = _th.head(20).copy()
+            # Spaltennamen ermitteln
+            _name_col = next((c for c in ['holdingName','name','Symbol','symbol'] if c in _th20.columns), None)
+            _wgt_col  = next((c for c in ['holdingPercent','Holding Percent','weight','Weight'] if c in _th20.columns), None)
+            _names   = list(_th20[_name_col]) if _name_col else list(_th20.index)
+            _weights = list(_th20[_wgt_col])  if _wgt_col  else [None]*len(_th20)
+            for _hi, (_hn, _hw) in enumerate(zip(_names, _weights), 1):
+                _hwp = (_hw*100) if isinstance(_hw,float) and _hw <= 1 else (_hw if isinstance(_hw,(int,float)) else 0)
+                _bw  = min(int(_hwp*5), 100)
+                _bc  = "#1565c0" if _hwp < 5 else "#ffd600" if _hwp < 10 else "#ff5252"
+                _lbl = str(_hn)[:26]
+                st.markdown(
+                    f"<div style='display:flex;align-items:center;gap:7px;margin-bottom:5px;'>"
+                    f"<div style='color:#546e7a;font-size:0.68rem;min-width:18px;text-align:right;'>{_hi}.</div>"
+                    f"<div style='color:#eceff1;font-size:0.78rem;flex:1;white-space:nowrap;"
+                    f"overflow:hidden;text-overflow:ellipsis;'>{_lbl}</div>"
+                    f"<div style='background:#1a2740;border-radius:3px;width:70px;height:6px;flex-shrink:0;'>"
+                    f"<div style='background:{_bc};width:{_bw}%;height:6px;border-radius:3px;'></div></div>"
+                    f"<div style='color:#eceff1;font-size:0.75rem;font-weight:600;min-width:36px;"
+                    f"text-align:right;'>{_hwp:.2f}%</div></div>",
                     unsafe_allow_html=True)
-                _badge = lambda txt, clr, bg: (
-                    f"<span style='background:{bg};color:{clr};border:1px solid {clr}55;"
-                    f"border-radius:12px;padding:2px 10px;font-size:0.72rem;font-weight:600;"
-                    f"margin-right:6px;white-space:nowrap;'>{txt}</span>")
-                _badges_html = ""
-                if _ei.get('domicile') and _ei['domicile'] != '—':
-                    _badges_html += _badge(f"🏛 {_ei['domicile']}", '#90a4ae', '#1a2740')
-                _badges_html += _badge(f"💱 {_ei.get('currency','EUR')}", '#64b5f6', '#0d2035')
-                if _ei.get('distribution') and _ei['distribution'] != '—':
-                    _dc = '#00e676' if _ei['distribution'] == 'Thesaurierend' else '#ffd600'
-                    _badges_html += _badge(_ei['distribution'], _dc, '#0d2035')
-                if _ei.get('category'):
-                    _badges_html += _badge(_ei['category'][:28], '#b0bec5', '#1a2030')
-                st.markdown(f"<div style='flex-wrap:wrap;display:flex;gap:4px;margin-bottom:10px;'>"
-                            f"{_badges_html}</div>", unsafe_allow_html=True)
-            with _hd_right:
-                if st.button("🔄 Ähnliche ETFs", use_container_width=True, key="btn_similar"):
-                    st.session_state["etf_show_similar"] = not st.session_state.get("etf_show_similar", False)
+        else:
+            st.info("Keine Holdings-Daten verfügbar.")
 
-            # Ähnliche ETFs Panel
-            if st.session_state.get("etf_show_similar"):
-                _sim_list = _SIMILAR_ETF_MAP.get(_etf_tkr, [])
-                if not _sim_list:
-                    st.info("Keine Alternativen für diesen ETF hinterlegt. Ähnliche ETFs manuell eingeben.")
-                else:
-                    st.markdown("<div class='section-header'>🔄 Ähnliche ETFs</div>", unsafe_allow_html=True)
-                    _sim_cols = st.columns(len(_sim_list))
-                    for _si, (_stkr, _snm) in enumerate(_sim_list):
-                        with _sim_cols[_si]:
-                            st.markdown(
-                                f"<div style='background:#0d1f35;border:1px solid #1a2740;"
-                                f"border-radius:8px;padding:10px;text-align:center;'>"
-                                f"<div style='color:#64b5f6;font-size:0.9rem;font-weight:700;'>{_stkr}</div>"
-                                f"<div style='color:#90a4ae;font-size:0.72rem;margin-top:2px;'>{_snm}</div>"
-                                f"</div>", unsafe_allow_html=True)
-                            if st.button("Analysieren", key=f"sim_{_stkr}", use_container_width=True):
-                                st.session_state["etf_ticker_input"] = _stkr
-                                st.session_state["etf_show_similar"] = False
-                                st.rerun()
+    # ── Regionale Aufteilung ──────────────────────────────────────────────
+    if _cw:
+        st.markdown("<div class='section-header'>🌍 Regionale Aufteilung</div>", unsafe_allow_html=True)
+        _RC = {'United States':'#1565c0','Germany':'#43a047','Japan':'#e64a19',
+               'United Kingdom':'#7b1fa2','France':'#0097a7','Switzerland':'#c62828',
+               'Canada':'#f57f17','Australia':'#00695c','China':'#d32f2f',
+               'India':'#f9a825','South Korea':'#1b5e20','Taiwan':'#880e4f',
+               'Netherlands':'#e65100','Sweden':'#37474f','Denmark':'#006064',
+               'Other':'#546e7a'}
+        _cw2 = dict(sorted(_cw.items(), key=lambda x: x[1], reverse=True)[:12])
+        _ra, _rb = st.columns([1,1])
+        with _ra:
+            _rf = go.Figure(go.Pie(
+                labels=list(_cw2.keys()),
+                values=[round(v*100,2) if v <= 1 else round(v,2) for v in _cw2.values()],
+                hole=0.6,
+                marker=dict(colors=[_RC.get(k,'#546e7a') for k in _cw2],
+                            line=dict(color='#0a1628',width=2)),
+                textinfo='none',
+                hovertemplate='<b>%{label}</b><br>%{value:.1f}%<extra></extra>'))
+            _rf.update_layout(template='plotly_dark',paper_bgcolor='#0a1628',
+                              plot_bgcolor='#0a1628',showlegend=False,height=220,
+                              margin=dict(l=5,r=5,t=5,b=5))
+            st.plotly_chart(_rf, use_container_width=True)
+        with _rb:
+            for _rk, _rv in list(_cw2.items()):
+                _rpct = _rv*100 if _rv <= 1 else _rv
+                _rc2  = _RC.get(_rk,'#546e7a')
+                _rbar = min(int(_rpct*3), 100)
+                st.markdown(
+                    f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
+                    f"<span style='color:{_rc2};font-size:0.72rem;'>●</span>"
+                    f"<span style='color:#eceff1;font-size:0.76rem;flex:1;'>{_rk[:18]}</span>"
+                    f"<div style='background:#1a2740;border-radius:3px;width:55px;height:6px;'>"
+                    f"<div style='background:{_rc2};width:{_rbar}%;height:6px;border-radius:3px;'></div></div>"
+                    f"<span style='color:#90a4ae;font-size:0.75rem;min-width:34px;text-align:right;'>"
+                    f"{_rpct:.1f}%</span></div>", unsafe_allow_html=True)
 
-            # ── Kennzahlen (CSS-Grid, 4 Spalten — auch auf Mobile) ──────
-            st.markdown("<div class='section-header'>📊 Kennzahlen</div>", unsafe_allow_html=True)
-            def _kcard(lbl, val, sub=""):
-                _sv = f"<div style='color:#546e7a;font-size:0.6rem;margin-top:2px;'>{sub}</div>" if sub else ""
-                return (f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
-                        f"padding:10px 8px;text-align:center;'>"
-                        f"<div style='color:#78909c;font-size:0.62rem;text-transform:uppercase;"
-                        f"letter-spacing:.05em;'>{lbl}</div>"
-                        f"<div style='color:#eceff1;font-size:1rem;font-weight:700;margin-top:4px;'>{val}</div>"
-                        f"{_sv}</div>")
+    # ── Benchmark-Vergleich ───────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📈 Benchmark-Vergleich</div>", unsafe_allow_html=True)
+    _BM_ALL = {
+        "MSCI World (SXR8.DE)":"SXR8.DE","FTSE All-World (VWCE.DE)":"VWCE.DE",
+        "S&P 500 (SXR2.DE)":"SXR2.DE","NASDAQ-100 (EQQQ.DE)":"EQQQ.DE",
+        "DAX (EXS1.DE)":"EXS1.DE","MSCI EM (IS3N.DE)":"IS3N.DE",
+    }
+    _bm_opts = [k for k,v in _BM_ALL.items() if v != _etf_tkr]
+    _bmc1, _bmc2 = st.columns([3,1])
+    _bm_sel  = _bmc1.selectbox("Benchmark", _bm_opts, key="etf_bm_sel",
+                                label_visibility="collapsed")
+    _per_sel = _bmc2.selectbox("Zeitraum", ["1y","3y","5y","10y"], index=1,
+                                key="etf_per_sel", label_visibility="collapsed")
+    _bm_tkr  = _BM_ALL[_bm_sel]
 
-            _aum_s = (f"€ {_ei['aum']/1e9:.1f} Mrd" if (_ei.get('aum') or 0) > 1e9
-                      else f"€ {_ei['aum']/1e6:.0f} Mio" if _ei.get('aum') else "—")
-            _ter_s = f"{_ei['ter']*100:.2f}%" if _ei.get('ter') else "—"
-            _nav_s = f"{_ei.get('nav'):.2f} {_ei.get('currency','')}" if _ei.get('nav') else "—"
-            _ytd_s = f"{_ei['ytd']*100:+.1f}%" if _ei.get('ytd') else "—"
-            _r1y_s = f"{_ei.get('ret_1y',0)*100:+.1f}%" if _ei.get('ret_1y') else "—"
-            _r3y_s = f"{_ei['ret_3y']*100:+.1f}% p.a." if _ei.get('ret_3y') else "—"
-            _r5y_s = f"{_ei['ret_5y']*100:+.1f}% p.a." if _ei.get('ret_5y') else "—"
-            _div_s = f"{_ei['div_yield']*100:.2f}%" if _ei.get('div_yield') else "—"
-            _inc_s = "—"
-            if _ei.get('inception'):
-                try:
-                    import datetime as _dt
-                    _inc_s = _dt.datetime.fromtimestamp(_ei['inception']).strftime('%d.%m.%Y')
-                except Exception:
-                    pass
+    with st.spinner("Performance-Daten werden geladen…"):
+        _cdf = _etf_vs_bm(_etf_tkr, _bm_tkr, _per_sel)
 
-            # Rendite-Farben
-            def _rcol(v): return "#00e676" if (v or 0) >= 0 else "#ff5252"
-            _ytd_c = _rcol(_ei.get('ytd', 0))
-            _r1y_c = _rcol(_ei.get('ret_1y', 0))
-            _r3y_c = _rcol(_ei.get('ret_3y', 0))
-            _r5y_c = _rcol(_ei.get('ret_5y', 0))
-
-            def _kcard_col(lbl, val, sub="", color="#eceff1"):
-                _sv = f"<div style='color:#546e7a;font-size:0.6rem;margin-top:2px;'>{sub}</div>" if sub else ""
-                return (f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
-                        f"padding:10px 8px;text-align:center;'>"
-                        f"<div style='color:#78909c;font-size:0.62rem;text-transform:uppercase;"
-                        f"letter-spacing:.05em;'>{lbl}</div>"
-                        f"<div style='color:{color};font-size:1rem;font-weight:700;margin-top:4px;'>{val}</div>"
-                        f"{_sv}</div>")
-
-            _grid4 = "display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px;"
-            st.markdown(
-                f"<div style='{_grid4}'>"
-                + _kcard("Fondsvolumen", _aum_s, "AUM")
-                + _kcard("TER Kosten p.a.", _ter_s, "Gesamtkostenquote")
-                + _kcard("NAV / Kurs", _nav_s, "Nettoinventarwert")
-                + _kcard("Währung", _ei.get('currency','—'), "Handelswährung")
-                + "</div>", unsafe_allow_html=True)
-            st.markdown(
-                f"<div style='{_grid4}'>"
-                + _kcard_col("YTD", _ytd_s, "laufendes Jahr", _ytd_c)
-                + _kcard_col("1J-Rendite", _r1y_s, "letzte 12 Monate", _r1y_c)
-                + _kcard_col("3J p.a.", _r3y_s, "Ø jährlich (3J)", _r3y_c)
-                + _kcard_col("5J p.a.", _r5y_s, "Ø jährlich (5J)", _r5y_c)
-                + "</div>", unsafe_allow_html=True)
-            st.markdown(
-                f"<div style='{_grid4}'>"
-                + _kcard("Fondsdomiziil", _ei.get('domicile','—'), "Registrierungsland")
-                + _kcard("Ausschüttung", _ei.get('distribution','—'), "Acc / Dist")
-                + _kcard("Aussch.-Rendite", _div_s, "Dividendenrendite")
-                + _kcard("Auflagedatum", _inc_s, "Fondsstart")
-                + "</div>", unsafe_allow_html=True)
-
-            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-
-            # ── Sektoraufteilung + Top Holdings ──────────────────────────
-            _ha, _hb = st.columns([1, 1.2])
-
-            with _ha:
-                st.markdown("<div class='section-header'>🥧 Sektoraufteilung</div>",
-                            unsafe_allow_html=True)
-                _SECTOR_MAP_ETF = {
-                    'technology': 'IT & Technologie', 'financial_services': 'Finanzen',
-                    'healthcare': 'Gesundheit', 'consumer_cyclical': 'Zyklischer Konsum',
-                    'industrials': 'Industrie', 'communication_services': 'Telekommunikation',
-                    'consumer_defensive': 'Basis-Konsum', 'energy': 'Energie',
-                    'basic_materials': 'Rohstoffe', 'real_estate': 'Immobilien',
-                    'utilities': 'Versorger',
-                }
-                _SEC_CLR_ETF = {
-                    'IT & Technologie': '#1565c0', 'Finanzen': '#00acc1',
-                    'Gesundheit': '#43a047', 'Zyklischer Konsum': '#f9a825',
-                    'Industrie': '#6d4c41', 'Telekommunikation': '#7b1fa2',
-                    'Basis-Konsum': '#2e7d32', 'Energie': '#e65100',
-                    'Rohstoffe': '#546e7a', 'Immobilien': '#00838f', 'Versorger': '#558b2f',
-                }
-                if _sw:
-                    _sw_clean = {_SECTOR_MAP_ETF.get(k, k): round(v * 100, 2)
-                                 for k, v in _sw.items() if v and v > 0}
-                    _sw_sorted = dict(sorted(_sw_clean.items(), key=lambda x: x[1], reverse=True))
-                    _sec_fig = go.Figure(go.Pie(
-                        labels=list(_sw_sorted.keys()),
-                        values=list(_sw_sorted.values()),
-                        hole=0.6,
-                        marker=dict(
-                            colors=[_SEC_CLR_ETF.get(l, '#546e7a') for l in _sw_sorted],
-                            line=dict(color='#0a1628', width=2)),
-                        textinfo='none',
-                        hovertemplate='<b>%{label}</b><br>%{value:.1f}%<extra></extra>',
-                    ))
-                    _sec_fig.update_layout(
-                        template='plotly_dark', paper_bgcolor='#0a1628', plot_bgcolor='#0a1628',
-                        showlegend=False, height=260, margin=dict(l=5, r=5, t=5, b=5))
-                    st.plotly_chart(_sec_fig, use_container_width=True)
-                    for _sl, _sv in list(_sw_sorted.items())[:10]:
-                        _sc = _SEC_CLR_ETF.get(_sl, '#546e7a')
-                        st.markdown(
-                            f"<div style='display:flex;justify-content:space-between;"
-                            f"align-items:center;padding:3px 2px;border-bottom:1px solid #1a2740;'>"
-                            f"<span style='color:#eceff1;font-size:0.8rem;'>"
-                            f"<span style='color:{_sc};'>●</span> {_sl}</span>"
-                            f"<span style='color:#90a4ae;font-size:0.8rem;font-weight:600;'>"
-                            f"{_sv:.1f}%</span></div>", unsafe_allow_html=True)
-                else:
-                    st.info("Keine Sektor-Daten verfügbar.")
-
-            with _hb:
-                st.markdown("<div class='section-header'>🏆 Top-Positionen</div>",
-                            unsafe_allow_html=True)
-                if not _th.empty:
-                    _th_show = _th.head(20).copy()
-                    _holding_names = list(_th_show.get('Symbol', _th_show.index) if 'Symbol' in _th_show.columns else _th_show.index)
-                    _holding_weights = list(_th_show.get('Holding Percent', _th_show.get('holdingPercent', pd.Series([None]*len(_th_show)))))
-
-                    for _hi, (_hn, _hw) in enumerate(zip(_holding_names, _holding_weights), 1):
-                        _hw_pct = (_hw * 100) if isinstance(_hw, float) and _hw <= 1 else (_hw if isinstance(_hw, (int, float)) else 0)
-                        _bar_w  = min(int(_hw_pct * 5), 100)
-                        _bar_c  = "#1565c0" if _hw_pct < 5 else "#ffd600" if _hw_pct < 10 else "#ff5252"
-                        st.markdown(
-                            f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:5px;'>"
-                            f"<div style='color:#78909c;font-size:0.72rem;min-width:18px;'>{_hi}.</div>"
-                            f"<div style='color:#eceff1;font-size:0.8rem;min-width:120px;'>{str(_hn)[:22]}</div>"
-                            f"<div style='background:#1a2740;border-radius:3px;flex:1;height:7px;'>"
-                            f"<div style='background:{_bar_c};width:{_bar_w}%;height:7px;border-radius:3px;'>"
-                            f"</div></div>"
-                            f"<div style='color:#eceff1;font-size:0.78rem;font-weight:600;min-width:38px;text-align:right;'>"
-                            f"{_hw_pct:.2f}%</div></div>",
-                            unsafe_allow_html=True)
-                else:
-                    st.info("Keine Holdings-Daten verfügbar.")
-
-            # ── Regionale Aufteilung ─────────────────────────────────────
-            if _cw:
-                st.markdown("<div class='section-header'>🌍 Regionale Aufteilung</div>",
-                            unsafe_allow_html=True)
-                _REG_CLR = {
-                    'United States':'#1565c0','Germany':'#43a047','Japan':'#e64a19',
-                    'United Kingdom':'#7b1fa2','France':'#0097a7','Switzerland':'#c62828',
-                    'Canada':'#f57f17','Australia':'#00695c','China':'#d32f2f',
-                    'India':'#f9a825','South Korea':'#1b5e20','Taiwan':'#880e4f',
-                    'Netherlands':'#e65100','Sweden':'#37474f','Denmark':'#006064',
-                }
-                _cw_sorted = dict(sorted(_cw.items(), key=lambda x: x[1], reverse=True)[:12])
-                _cw_tot    = sum(_cw_sorted.values()) or 1
-                _reg_ra, _reg_rb = st.columns([1, 1])
-                with _reg_ra:
-                    _rf = go.Figure(go.Pie(
-                        labels=list(_cw_sorted.keys()),
-                        values=[round(v*100,2) for v in _cw_sorted.values()],
-                        hole=0.6,
-                        marker=dict(colors=[_REG_CLR.get(k,'#546e7a') for k in _cw_sorted],
-                                    line=dict(color='#0a1628',width=2)),
-                        textinfo='none',
-                        hovertemplate='<b>%{label}</b><br>%{value:.1f}%<extra></extra>'))
-                    _rf.update_layout(template='plotly_dark',paper_bgcolor='#0a1628',
-                                      plot_bgcolor='#0a1628',showlegend=False,height=230,
-                                      margin=dict(l=5,r=5,t=5,b=5))
-                    st.plotly_chart(_rf, use_container_width=True)
-                with _reg_rb:
-                    for _rk, _rv in list(_cw_sorted.items())[:10]:
-                        _rpct = _rv * 100
-                        _rc   = _REG_CLR.get(_rk, '#546e7a')
-                        _rbar = min(int(_rpct * 3), 100)
-                        st.markdown(
-                            f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
-                            f"<span style='color:{_rc};font-size:0.72rem;'>●</span>"
-                            f"<span style='color:#eceff1;font-size:0.78rem;flex:1;'>{_rk[:20]}</span>"
-                            f"<div style='background:#1a2740;border-radius:3px;width:60px;height:6px;'>"
-                            f"<div style='background:{_rc};width:{_rbar}%;height:6px;border-radius:3px;'></div></div>"
-                            f"<span style='color:#90a4ae;font-size:0.78rem;min-width:36px;text-align:right;'>"
-                            f"{_rpct:.1f}%</span></div>", unsafe_allow_html=True)
-
-            # ── Benchmark-Vergleich ──────────────────────────────────────
-            st.markdown("<div class='section-header'>📈 Benchmark-Vergleich</div>",
-                        unsafe_allow_html=True)
-            _BM_OPTIONS = {
-                "MSCI World (SXR8.DE)": "SXR8.DE",
-                "FTSE All-World (VWCE.DE)": "VWCE.DE",
-                "S&P 500 (SXR2.DE)": "SXR2.DE",
-                "NASDAQ-100 (EQQQ.DE)": "EQQQ.DE",
-                "DAX (EXS1.DE)": "EXS1.DE",
-                "MSCI EM (IS3N.DE)": "IS3N.DE",
-            }
-            # Smart Default: erstes Benchmark das nicht der ETF selbst ist
-            _bm_defaults = [k for k, v in _BM_OPTIONS.items() if v != _etf_tkr]
-            _bm_c1, _bm_c2 = st.columns([2, 1])
-            _bm_sel  = _bm_c1.selectbox("Vergleich mit", _bm_defaults,
-                                          key="etf_bm_sel", label_visibility="collapsed")
-            _per_sel = _bm_c2.selectbox("Zeitraum", ["1y", "3y", "5y", "10y"],
-                                         index=1, key="etf_per_sel", label_visibility="collapsed")
-            _bm_tkr  = _BM_OPTIONS[_bm_sel]
-
-            if True:
-                with st.spinner("Performance-Daten werden geladen…"):
-                    _cmp_df = _etf_vs_bm(_etf_tkr, _bm_tkr, _per_sel)
-
-                if _cmp_df.empty:
-                    st.warning("Keine Vergleichsdaten verfügbar.")
-                else:
-                    _fig_cmp = go.Figure()
-                    _cols_avail = [c for c in [_etf_tkr, _bm_tkr] if c in _cmp_df.columns]
-                    _clrs_cmp = ["#42a5f5", "#ffd600"]
-                    for _ci, _col in enumerate(_cols_avail):
-                        _lbl = (_ei.get('name', _etf_tkr)[:30] if _col == _etf_tkr else _bm_sel.split("(")[0].strip())
-                        _fig_cmp.add_trace(go.Scatter(
-                            x=_cmp_df.index, y=_cmp_df[_col].round(2),
-                            name=_lbl, mode='lines',
-                            line=dict(color=_clrs_cmp[_ci % 2], width=2),
-                            hovertemplate=f'<b>{_lbl}</b><br>%{{x|%d.%m.%Y}}<br>%{{y:.1f}} (=100)<extra></extra>',
-                        ))
-                    _fig_cmp.update_layout(
-                        template='plotly_dark', paper_bgcolor='#0a1628', plot_bgcolor='#0a1628',
-                        height=360, margin=dict(l=10, r=10, t=10, b=10),
-                        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-                        xaxis=dict(showgrid=False, color='#546e7a'),
-                        yaxis=dict(showgrid=True, gridcolor='#1a2740', color='#546e7a',
-                                   title='Indexiert (Start = 100)'),
-                        hovermode='x unified',
-                    )
-                    st.plotly_chart(_fig_cmp, use_container_width=True)
-
-                    # Rendite-Zusammenfassung
-                    _smr_cols = st.columns(len(_cols_avail))
-                    for _sci, _scol in enumerate(_cols_avail):
-                        _scl_name = (_ei.get('name', _etf_tkr)[:25] if _scol == _etf_tkr else _bm_sel.split("(")[0].strip())
-                        _first = _cmp_df[_scol].dropna().iloc[0]  if not _cmp_df[_scol].dropna().empty else 100
-                        _last  = _cmp_df[_scol].dropna().iloc[-1] if not _cmp_df[_scol].dropna().empty else 100
-                        _tot_ret = (_last / _first - 1) * 100
-                        _clr_r = "#00e676" if _tot_ret >= 0 else "#ff5252"
-                        _smr_cols[_sci].markdown(
-                            f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
-                            f"padding:12px;text-align:center;'>"
-                            f"<div style='color:#78909c;font-size:0.7rem;'>{_scl_name}</div>"
-                            f"<div style='color:{_clr_r};font-size:1.3rem;font-weight:700;'>{_tot_ret:+.1f}%</div>"
-                            f"<div style='color:#546e7a;font-size:0.68rem;'>Gesamtrendite ({_per_sel})</div>"
-                            f"</div>", unsafe_allow_html=True)
+    if _cdf.empty:
+        st.warning("Keine Vergleichsdaten verfügbar.")
+    else:
+        _fig = go.Figure()
+        _clrs_bm = {"#42a5f5":"ETF","#ffd600":"Benchmark"}
+        _cols_av = [c for c in [_etf_tkr, _bm_tkr] if c in _cdf.columns]
+        _lclrs   = ["#42a5f5","#ffd600"]
+        for _ci, _col in enumerate(_cols_av):
+            _lbl = (_ei.get('name','')[:28] if _col == _etf_tkr
+                    else _bm_sel.split("(")[0].strip())
+            _fig.add_trace(go.Scatter(
+                x=_cdf.index, y=_cdf[_col].round(2),
+                name=_lbl, mode='lines',
+                line=dict(color=_lclrs[_ci%2], width=2),
+                hovertemplate=f'<b>{_lbl}</b><br>%{{x|%d.%m.%Y}}<br>%{{y:.1f}}<extra></extra>'))
+        _fig.update_layout(
+            template='plotly_dark', paper_bgcolor='#0a1628', plot_bgcolor='#0a1628',
+            height=340, margin=dict(l=10,r=10,t=10,b=10),
+            legend=dict(orientation='h',yanchor='bottom',y=1.01,xanchor='right',x=1),
+            xaxis=dict(showgrid=False,color='#546e7a'),
+            yaxis=dict(showgrid=True,gridcolor='#1a2740',color='#546e7a',
+                       title='Indexiert (Start=100)'),
+            hovermode='x unified')
+        st.plotly_chart(_fig, use_container_width=True)
+        # Rendite-Karten
+        _rc_cols = st.columns(len(_cols_av))
+        for _ci, _col in enumerate(_cols_av):
+            _lbl2 = (_ei.get('name','')[:22] if _col == _etf_tkr
+                     else _bm_sel.split("(")[0].strip())
+            _first = _cdf[_col].dropna().iloc[0] if not _cdf[_col].dropna().empty else 100
+            _last  = _cdf[_col].dropna().iloc[-1] if not _cdf[_col].dropna().empty else 100
+            _tot   = (_last/_first - 1)*100
+            _clr2  = "#00e676" if _tot >= 0 else "#ff5252"
+            _rc_cols[_ci].markdown(
+                f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
+                f"padding:12px;text-align:center;'>"
+                f"<div style='color:#78909c;font-size:0.68rem;'>{_lbl2}</div>"
+                f"<div style='color:{_clr2};font-size:1.3rem;font-weight:700;'>{_tot:+.1f}%</div>"
+                f"<div style='color:#546e7a;font-size:0.66rem;'>Gesamtrendite ({_per_sel})</div>"
+                f"</div>", unsafe_allow_html=True)
 
     st.stop()
 
