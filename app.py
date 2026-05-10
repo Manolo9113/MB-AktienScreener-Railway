@@ -554,40 +554,36 @@ def sb_remove_ticker(access_token: str, ticker: str):
     except Exception:
         pass
 
+def _portfolio_file_path() -> str:
+    """Gibt den Pfad zur gespeicherten Portfolio-CSV zurück.
+    Railway Volume: /data (persistent). Fallback: /tmp (nur für lokale Entwicklung)."""
+    import os
+    data_dir = "/data" if os.path.isdir("/data") else "/tmp"
+    return os.path.join(data_dir, "portfolio_default.csv")
+
 def _sb_save_portfolio(csv_bytes: bytes) -> bool:
-    """Portfolio-CSV in Supabase speichern (Tabelle: portfolio_data, Spalten: slot TEXT PK, csv_b64 TEXT, saved_at TIMESTAMPTZ)."""
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return False
+    """Portfolio-CSV auf Railway Volume (/data) oder /tmp speichern."""
     try:
-        import base64 as _b64
-        csv_enc = _b64.b64encode(csv_bytes).decode()
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/portfolio_data",
-            headers={**_sb_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
-            json={"slot": "default", "csv_b64": csv_enc},
-            timeout=10,
-        )
-        return r.status_code in (200, 201)
+        import os
+        path = _portfolio_file_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(csv_bytes)
+        return True
     except Exception:
         return False
 
 def _sb_load_portfolio() -> tuple:
-    """Portfolio-CSV aus Supabase laden. Gibt (bytes, saved_at_str) oder (None, None) zurück."""
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return None, None
+    """Portfolio-CSV vom Railway Volume laden. Gibt (bytes, Datum-str) oder (None, None) zurück."""
     try:
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/portfolio_data",
-            headers=_sb_headers(),
-            params={"slot": "eq.default", "select": "csv_b64,saved_at"},
-            timeout=10,
-        )
-        if r.ok and r.json():
-            import base64 as _b64
-            row = r.json()[0]
-            raw = _b64.b64decode(row["csv_b64"])
-            ts = row.get("saved_at", "")[:10]
-            return raw, ts
+        import os, datetime as _dt
+        path = _portfolio_file_path()
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                raw = f.read()
+            mtime = os.path.getmtime(path)
+            date_str = _dt.datetime.fromtimestamp(mtime).strftime("%d.%m.%Y")
+            return raw, date_str
     except Exception:
         pass
     return None, None
