@@ -554,6 +554,40 @@ def sb_remove_ticker(access_token: str, ticker: str):
     except Exception:
         pass
 
+def _portfolio_file_path() -> str:
+    """Gibt den Pfad zur gespeicherten Portfolio-CSV zurück.
+    Railway Volume: /data (persistent). Fallback: /tmp (nur für lokale Entwicklung)."""
+    import os
+    data_dir = "/data" if os.path.isdir("/data") else "/tmp"
+    return os.path.join(data_dir, "portfolio_default.csv")
+
+def _sb_save_portfolio(csv_bytes: bytes) -> bool:
+    """Portfolio-CSV auf Railway Volume (/data) oder /tmp speichern."""
+    try:
+        import os
+        path = _portfolio_file_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(csv_bytes)
+        return True
+    except Exception:
+        return False
+
+def _sb_load_portfolio() -> tuple:
+    """Portfolio-CSV vom Railway Volume laden. Gibt (bytes, Datum-str) oder (None, None) zurück."""
+    try:
+        import os, datetime as _dt
+        path = _portfolio_file_path()
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                raw = f.read()
+            mtime = os.path.getmtime(path)
+            date_str = _dt.datetime.fromtimestamp(mtime).strftime("%d.%m.%Y")
+            return raw, date_str
+    except Exception:
+        pass
+    return None, None
+
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
 def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
@@ -3539,6 +3573,10 @@ if "portfolio_isin_map" not in st.session_state:
     st.session_state["portfolio_isin_map"] = {}
 if "portfolio_csv_bytes" not in st.session_state:
     st.session_state["portfolio_csv_bytes"] = None
+if "portfolio_sb_checked" not in st.session_state:
+    st.session_state["portfolio_sb_checked"] = False
+if "portfolio_sb_date" not in st.session_state:
+    st.session_state["portfolio_sb_date"] = None
 
 def _go_to_ticker(t):
     st.session_state["ticker"] = t
@@ -4054,6 +4092,61 @@ def _detect_savings_plans(csv_bytes: bytes) -> list:
                       'start': dates[0].strftime('%b %Y'), 'last': dates[-1].strftime('%b %Y'),
                       'freq': freq})
     return sorted(plans, key=lambda x: x['total'], reverse=True)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _calc_realized_pnl(csv_bytes: bytes) -> dict:
+    """Realisierte Gewinne/Verluste (Durchschnittskostenmethode, wie deutsches Broker-Standard).
+    Gibt zurück: {'total_pnl': float, 'total_sell_value': float, 'positions': list[dict]}"""
+    df = None
+    for enc in ['utf-8-sig', 'utf-8', 'latin-1']:
+        try:
+            df = pd.read_csv(io.BytesIO(csv_bytes), sep=';', decimal=',', encoding=enc, dtype=str)
+            break
+        except Exception:
+            continue
+    if df is None or df.empty:
+        return {}
+    df.columns = df.columns.str.strip()
+    needed = {'Richtung', 'ISIN', 'Name', 'Anzahl ausgeführt', 'Wert'}
+    if not needed.issubset(df.columns):
+        return {}
+    if 'Status' in df.columns:
+        df = df[df['Status'] == 'ausgeführt'].copy()
+    for col in ['Anzahl ausgeführt', 'Wert']:
+        df[col] = pd.to_numeric(
+            df[col].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
+            errors='coerce').fillna(0.0)
+    buys  = df[df['Richtung'] == 'Kauf'].copy()
+    sells = df[df['Richtung'] == 'Verkauf'].copy()
+    if buys.empty or sells.empty:
+        return {'total_pnl': 0.0, 'total_sell_value': 0.0, 'positions': []}
+    buy_agg = (buys.groupby('ISIN')
+               .agg(name=('Name', 'first'),
+                    total_bought=('Anzahl ausgeführt', 'sum'),
+                    total_cost=('Wert', lambda x: x.abs().sum()))
+               .reset_index())
+    buy_agg['avg_cost'] = buy_agg['total_cost'] / buy_agg['total_bought'].replace(0, float('nan'))
+    sell_agg = (sells.groupby('ISIN')
+                .agg(name=('Name', 'first'),
+                     total_sold=('Anzahl ausgeführt', 'sum'),
+                     sell_value=('Wert', lambda x: x.abs().sum()))
+                .reset_index())
+    merged = sell_agg.merge(buy_agg[['ISIN','avg_cost']], on='ISIN', how='left')
+    merged['cost_of_sold'] = merged['avg_cost'] * merged['total_sold']
+    merged['pnl'] = merged['sell_value'] - merged['cost_of_sold']
+    positions = []
+    for _, row in merged.iterrows():
+        if pd.notna(row['pnl']):
+            positions.append({
+                'isin': row['ISIN'], 'name': str(row['name'])[:35],
+                'shares_sold': row['total_sold'], 'sell_value': row['sell_value'],
+                'cost_of_sold': row['cost_of_sold'], 'pnl': row['pnl'],
+            })
+    positions.sort(key=lambda x: abs(x['pnl']), reverse=True)
+    total_pnl = merged['pnl'].sum()
+    total_sell = merged['sell_value'].sum()
+    return {'total_pnl': total_pnl, 'total_sell_value': total_sell, 'positions': positions}
 
 
 # ==================== SIDEBAR ====================
@@ -5386,26 +5479,70 @@ if st.session_state.get("show_portfolio"):
     </div>
     """, unsafe_allow_html=True)
 
-    uploaded = st.file_uploader(
-        "Orderhistorie CSV hochladen (Finanzen.net Zero → Aktivitäten → Exportieren)",
-        type=["csv"], key="portfolio_upload"
-    )
+    # ── Supabase auto-load (einmal pro Session) ─────────────────────────────
+    if not st.session_state.get("portfolio_sb_checked"):
+        st.session_state["portfolio_sb_checked"] = True
+        if st.session_state.get("portfolio_csv_bytes") is None:
+            _sb_raw, _sb_date = _sb_load_portfolio()
+            if _sb_raw:
+                st.session_state["portfolio_csv_bytes"] = _sb_raw
+                st.session_state["portfolio_sb_date"] = _sb_date
+                with st.spinner("Gespeichertes Portfolio wird geladen…"):
+                    _auto_df = _parse_portfolio_csv(_sb_raw)
+                if not _auto_df.empty:
+                    st.session_state["portfolio_df"] = _auto_df.copy()
+                    _auto_tradeable = _auto_df[
+                        ~_auto_df['is_crypto'] & ~_auto_df['is_warrant']
+                    ]['ISIN'].tolist()
+                    if _auto_tradeable:
+                        with st.spinner(f"Ticker für {len(_auto_tradeable)} Positionen werden ermittelt…"):
+                            st.session_state["portfolio_isin_map"] = _openfigi_batch(tuple(_auto_tradeable))
+
+    # ── Status-Badge ────────────────────────────────────────────────────────
+    _sb_date_disp = st.session_state.get("portfolio_sb_date")
+    if _sb_date_disp:
+        st.markdown(
+            f"<div style='background:#0d1f35;border:1px solid #1a3a55;border-radius:6px;"
+            f"padding:6px 14px;font-size:0.82rem;color:#64b5f6;margin-bottom:8px;display:inline-block;'>"
+            f"✓ Gespeichertes Portfolio (Stand: {_sb_date_disp})</div>",
+            unsafe_allow_html=True)
+
+    # ── CSV-Upload ───────────────────────────────────────────────────────────
+    # Immer anzeigen — versteckt hinter Expander wenn Portfolio bereits geladen.
+    _has_portfolio = bool(st.session_state.get("portfolio_csv_bytes"))
+    if _has_portfolio:
+        with st.expander("📂 Neue CSV hochladen (Portfolio aktualisieren)"):
+            uploaded = st.file_uploader(
+                "Neue Orderhistorie hochladen (überschreibt gespeichertes Portfolio)",
+                type=["csv"], key="portfolio_upload"
+            )
+    else:
+        uploaded = st.file_uploader(
+            "Orderhistorie CSV hochladen (Finanzen.net Zero → Aktivitäten → Exportieren)",
+            type=["csv"], key="portfolio_upload"
+        )
 
     if uploaded:
         raw = uploaded.read()
         st.session_state["portfolio_csv_bytes"] = raw
         with st.spinner("Positionen werden berechnet…"):
-            df_port = _parse_portfolio_csv(raw)
-        if df_port.empty:
+            df_port_new = _parse_portfolio_csv(raw)
+        if df_port_new.empty:
             st.error("CSV konnte nicht gelesen werden. Bitte prüfe das Format (Finanzen.net Zero Orderhistorie).")
         else:
-            st.session_state["portfolio_df"] = df_port.copy()
-            # ISIN → Ticker Mapping für handelbare Assets
-            tradeable = df_port[~df_port['is_crypto'] & ~df_port['is_warrant']]['ISIN'].tolist()
+            st.session_state["portfolio_df"] = df_port_new.copy()
+            tradeable = df_port_new[~df_port_new['is_crypto'] & ~df_port_new['is_warrant']]['ISIN'].tolist()
             if tradeable:
                 with st.spinner(f"Ticker für {len(tradeable)} Positionen werden ermittelt…"):
-                    isin_map = _openfigi_batch(tuple(tradeable))
-                st.session_state["portfolio_isin_map"] = isin_map
+                    isin_map_new = _openfigi_batch(tuple(tradeable))
+                st.session_state["portfolio_isin_map"] = isin_map_new
+            with st.spinner("Portfolio wird gespeichert…"):
+                _saved_ok = _sb_save_portfolio(raw)
+            if _saved_ok:
+                import datetime as _dt_pf
+                st.session_state["portfolio_sb_date"] = _dt_pf.date.today().strftime("%d.%m.%Y")
+                st.success("✓ Portfolio gespeichert – wird beim nächsten Öffnen automatisch geladen.")
+            st.rerun()
 
     df_port = st.session_state.get("portfolio_df")
 
@@ -5502,9 +5639,9 @@ if st.session_state.get("show_portfolio"):
             <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>Aktien · ETFs · Krypto</div>
           </div>
           <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
-            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Investiert</div>
+            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Einstandswert</div>
             <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>€ {total_invested:,.0f}</div>
-            <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>Ø-Kaufkurs × Anteile</div>
+            <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>Buchwert offener Positionen</div>
           </div>
           <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
             <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Aktueller Wert</div>
@@ -5873,6 +6010,54 @@ if st.session_state.get("show_portfolio"):
                            "ETF-Teilfreistellung (30%) nicht berücksichtigt. Verlustverrechnung nicht einbezogen.")
                 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
+                # ── Realisierte Gewinne / Verluste ────────────────────────
+                _rpnl = _calc_realized_pnl(_csv_bytes)
+                if _rpnl and _rpnl.get('positions'):
+                    st.markdown("<div class='section-header'>💰 Realisierte Gewinne & Verluste</div>",
+                                unsafe_allow_html=True)
+                    _rp_total = _rpnl.get('total_pnl', 0.0)
+                    _rp_sell  = _rpnl.get('total_sell_value', 0.0)
+                    _rp_clr   = "#00e676" if _rp_total >= 0 else "#ff5252"
+                    _rp1, _rp2 = st.columns(2)
+                    with _rp1:
+                        st.markdown(_kpi("Realisierter P&L",
+                                         f"€ {_rp_total:+,.0f}", _rp_clr,
+                                         "Durchschnittskostenmethode"),
+                                    unsafe_allow_html=True)
+                    with _rp2:
+                        st.markdown(_kpi("Verkaufsvolumen",
+                                         f"€ {_rp_sell:,.0f}", "#eceff1",
+                                         "Bruttoerlös aller Verkäufe"),
+                                    unsafe_allow_html=True)
+                    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                    _rp_rows = _rpnl.get('positions', [])
+                    if _rp_rows:
+                        _rp_html = ("<table style='width:100%;border-collapse:collapse;"
+                                    "font-size:0.82rem;'>"
+                                    "<tr style='color:#546e7a;text-transform:uppercase;"
+                                    "font-size:0.68rem;letter-spacing:.06em;'>"
+                                    "<th style='text-align:left;padding:4px 8px;'>Position</th>"
+                                    "<th style='text-align:right;padding:4px 8px;'>Anteile verkauft</th>"
+                                    "<th style='text-align:right;padding:4px 8px;'>Erlös</th>"
+                                    "<th style='text-align:right;padding:4px 8px;'>P&amp;L</th></tr>")
+                        for _rpr in _rp_rows[:10]:
+                            _pc = "#00e676" if _rpr['pnl'] >= 0 else "#ff5252"
+                            _sg = "+" if _rpr['pnl'] >= 0 else "−"
+                            _rp_html += (f"<tr style='border-top:1px solid #1a2740;'>"
+                                         f"<td style='padding:5px 8px;color:#eceff1;'>{_rpr['name']}</td>"
+                                         f"<td style='text-align:right;padding:5px 8px;color:#90a4ae;'>"
+                                         f"{_rpr['shares_sold']:.2f}</td>"
+                                         f"<td style='text-align:right;padding:5px 8px;color:#90a4ae;'>"
+                                         f"€ {_rpr['sell_value']:,.0f}</td>"
+                                         f"<td style='text-align:right;padding:5px 8px;color:{_pc};"
+                                         f"font-weight:700;'>{_sg}€ {abs(_rpr['pnl']):,.0f}</td>"
+                                         f"</tr>")
+                        _rp_html += "</table>"
+                        st.markdown(_rp_html, unsafe_allow_html=True)
+                    st.caption("⚠️ Durchschnittskostenmethode (kein FIFO). Nur Trades aus der CSV. "
+                               "Ohne Dividenden, Ordergebühren und Steuern.")
+                    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
                 # ── Top / Flop ────────────────────────────────────────────
                 if not stocks_etf.empty and prices:
                     _tf_rows = []
@@ -6096,6 +6281,93 @@ if st.session_state.get("show_etf_analyzer"):
         'ISPA.DE':'SCHD','QDIV.DE':'VYM','XDIV.DE':'VYM','IDVY.L':'VYM',
     }
 
+    # ── Statische Länder-Gewichtungen (Quelle: Fondsanbieter, Stand 2024) ────
+    _ETF_STATIC_CW = {
+        # MSCI All-World / Developed World
+        'VWCE.DE': {'USA':62.5,'Japan':5.7,'UK':3.8,'Frankreich':3.1,'Kanada':2.9,
+                    'Schweiz':2.6,'Deutschland':2.5,'Australien':2.1,'Indien':1.8,
+                    'Taiwan':1.8,'Südkorea':1.6,'Niederlande':1.2,'Sonstige':7.4},
+        'FWRA.DE': {'USA':62.5,'Japan':5.7,'UK':3.8,'Frankreich':3.1,'Kanada':2.9,
+                    'Schweiz':2.6,'Deutschland':2.5,'Australien':2.1,'Indien':1.8,
+                    'Taiwan':1.8,'Südkorea':1.6,'Niederlande':1.2,'Sonstige':7.4},
+        'VWRL.L':  {'USA':62.5,'Japan':5.7,'UK':3.8,'Frankreich':3.1,'Kanada':2.9,
+                    'Schweiz':2.6,'Deutschland':2.5,'Australien':2.1,'Indien':1.8,
+                    'Taiwan':1.8,'Südkorea':1.6,'Niederlande':1.2,'Sonstige':7.4},
+        'SXR8.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                    'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+        'XDWD.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                    'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+        'EUNL.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                    'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+        'XMWO.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                    'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+        # S&P 500 / USA
+        'SXR2.DE': {'USA':100.0},
+        'IUSE.DE': {'USA':100.0},
+        'LCUW.DE': {'USA':100.0},
+        'VUSA.L':  {'USA':100.0},
+        'SPY5.DE': {'USA':100.0},
+        'CSPX.L':  {'USA':100.0},
+        # NASDAQ-100
+        'EQQQ.DE': {'USA':97.0,'Sonstige':3.0},
+        'CNDX.L':  {'USA':97.0,'Sonstige':3.0},
+        # EuroStoxx 50
+        'EXW1.DE': {'Deutschland':17.2,'Frankreich':16.8,'Niederlande':14.2,'Spanien':9.5,
+                    'Italien':8.5,'Belgien':4.8,'Finnland':4.2,'Irland':3.5,'Sonstige':21.3},
+        'MEUD.DE': {'Deutschland':17.2,'Frankreich':16.8,'Niederlande':14.2,'Spanien':9.5,
+                    'Italien':8.5,'Belgien':4.8,'Finnland':4.2,'Irland':3.5,'Sonstige':21.3},
+        'LYPS.DE': {'Deutschland':17.2,'Frankreich':16.8,'Niederlande':14.2,'Spanien':9.5,
+                    'Italien':8.5,'Belgien':4.8,'Finnland':4.2,'Irland':3.5,'Sonstige':21.3},
+        # MSCI Europe
+        'IQQY.DE': {'UK':23.8,'Frankreich':17.0,'Schweiz':13.5,'Deutschland':12.8,
+                    'Niederlande':8.2,'Schweden':5.3,'Dänemark':4.1,'Spanien':3.5,
+                    'Italien':3.0,'Sonstige':8.8},
+        'IEUA.DE': {'UK':23.8,'Frankreich':17.0,'Schweiz':13.5,'Deutschland':12.8,
+                    'Niederlande':8.2,'Schweden':5.3,'Dänemark':4.1,'Spanien':3.5,
+                    'Italien':3.0,'Sonstige':8.8},
+        # DAX
+        'EXS1.DE': {'Deutschland':100.0},
+        'DBXD.DE': {'Deutschland':100.0},
+        # Japan
+        'EXV5.DE': {'Japan':100.0},
+        'XDJP.DE': {'Japan':100.0},
+        # China
+        'IQQC.DE': {'China':100.0},
+        # MSCI EM
+        'IS3N.DE': {'China':26.8,'Indien':14.2,'Taiwan':17.1,'Südkorea':12.3,
+                    'Brasilien':5.1,'Saudi-Arabien':4.0,'Südafrika':3.5,
+                    'Mexiko':2.5,'Indonesien':1.6,'Sonstige':12.9},
+        'IS3R.DE': {'China':26.8,'Indien':14.2,'Taiwan':17.1,'Südkorea':12.3,
+                    'Brasilien':5.1,'Saudi-Arabien':4.0,'Südafrika':3.5,
+                    'Mexiko':2.5,'Indonesien':1.6,'Sonstige':12.9},
+        'XMME.DE': {'China':26.8,'Indien':14.2,'Taiwan':17.1,'Südkorea':12.3,
+                    'Brasilien':5.1,'Saudi-Arabien':4.0,'Südafrika':3.5,
+                    'Mexiko':2.5,'Indonesien':1.6,'Sonstige':12.9},
+        # Dividend
+        'VHYL.L':  {'USA':60.2,'UK':7.1,'Japan':6.0,'Schweiz':4.2,'Frankreich':3.5,
+                    'Deutschland':3.0,'Australien':2.8,'Sonstige':13.2},
+        'ISPA.DE': {'USA':54.0,'Kanada':8.0,'UK':6.0,'Japan':5.5,'Schweiz':4.0,
+                    'Frankreich':3.5,'Deutschland':3.0,'Australien':2.5,'Sonstige':13.5},
+    }
+
+    # ── Kontinent-Zuordnung ────────────────────────────────────────────────
+    _CONTINENT = {
+        'USA':'Nordamerika','Kanada':'Nordamerika','Mexiko':'Nordamerika',
+        'UK':'Europa','Deutschland':'Europa','Frankreich':'Europa','Schweiz':'Europa',
+        'Niederlande':'Europa','Schweden':'Europa','Dänemark':'Europa','Spanien':'Europa',
+        'Italien':'Europa','Belgien':'Europa','Norwegen':'Europa','Finnland':'Europa',
+        'Irland':'Europa','Österreich':'Europa','Polen':'Europa','Portugal':'Europa',
+        'Japan':'Asien/Pazifik','China':'Asien/Pazifik','Südkorea':'Asien/Pazifik',
+        'Taiwan':'Asien/Pazifik','Australien':'Asien/Pazifik','Indien':'Asien/Pazifik',
+        'Hongkong':'Asien/Pazifik','Singapur':'Asien/Pazifik','Indonesien':'Asien/Pazifik',
+        'Malaysia':'Asien/Pazifik','Thailand':'Asien/Pazifik','Philippinen':'Asien/Pazifik',
+        'Brasilien':'Lateinamerika','Chile':'Lateinamerika','Kolumbien':'Lateinamerika',
+        'Peru':'Lateinamerika','Argentinien':'Lateinamerika',
+        'Saudi-Arabien':'Mittlerer Osten','Israel':'Mittlerer Osten','VAE':'Mittlerer Osten',
+        'Katar':'Mittlerer Osten','Kuwait':'Mittlerer Osten',
+        'Südafrika':'Afrika','Ägypten':'Afrika','Nigeria':'Afrika',
+    }
+
     # ── Suchdatenbank für Live-Vorschläge (Ticker, Name, ISIN, WKN, TER-Text) ─
     _ETF_SEARCH_DB = [
         # Global
@@ -6276,7 +6548,7 @@ if st.session_state.get("show_etf_analyzer"):
                     if not cw and cw2: cw = cw2
                 except Exception: pass
 
-            # Fallback 2: FMP API (Sektor-Gewichte + Top-Holdings)
+            # Fallback 2: FMP API (Sektor-Gewichte + Top-Holdings + Länder)
             _fmp_tkr = _ETF_DATA_TKR.get(ticker, ticker)
             if not sw and FMP_API_KEY:
                 try:
@@ -6302,6 +6574,20 @@ if st.session_state.get("show_etf_analyzer"):
                                 'weightPercentage': 'holdingPercent',
                                 'symbol': 'symbol'})
                 except Exception: pass
+
+            if not cw and FMP_API_KEY:
+                try:
+                    _fr = requests.get(
+                        f"https://financialmodelingprep.com/api/v3/etf-country-weightings/{_fmp_tkr}",
+                        params={'apikey': FMP_API_KEY}, timeout=5)
+                    if _fr.ok and _fr.json():
+                        cw = {row['country']: float(str(row.get('weightPercentage','0')).replace('%',''))
+                              for row in _fr.json() if row.get('country') and row.get('weightPercentage')}
+                except Exception: pass
+
+            # Fallback 3: Statische Länderdaten (Fondsanbieter-Angaben)
+            if not cw:
+                cw = dict(_ETF_STATIC_CW.get(ticker, {}))
 
             return sw, th, cw, ac
         except Exception:
@@ -6635,41 +6921,108 @@ if st.session_state.get("show_etf_analyzer"):
 
     # ── Regionale Aufteilung ──────────────────────────────────────────────
     if _cw:
-        st.markdown("<div class='section-header'>🌍 Regionale Aufteilung</div>", unsafe_allow_html=True)
-        _RC = {'United States':'#1565c0','Germany':'#43a047','Japan':'#e64a19',
-               'United Kingdom':'#7b1fa2','France':'#0097a7','Switzerland':'#c62828',
-               'Canada':'#f57f17','Australia':'#00695c','China':'#d32f2f',
-               'India':'#f9a825','South Korea':'#1b5e20','Taiwan':'#880e4f',
-               'Netherlands':'#e65100','Sweden':'#37474f','Denmark':'#006064',
-               'Other':'#546e7a'}
-        _cw2 = dict(sorted(_cw.items(), key=lambda x: x[1], reverse=True)[:12])
-        _ra, _rb = st.columns([1,1])
+        st.markdown("<div class='section-header'>🌍 Regionale Aufteilung</div>",
+                    unsafe_allow_html=True)
+        # Farben pro Land
+        _RC = {
+            'USA':'#1565c0','United States':'#1565c0',
+            'Deutschland':'#43a047','Germany':'#43a047',
+            'Japan':'#e64a19',
+            'UK':'#7b1fa2','United Kingdom':'#7b1fa2',
+            'Frankreich':'#0097a7','France':'#0097a7',
+            'Schweiz':'#c62828','Switzerland':'#c62828',
+            'Kanada':'#f57f17','Canada':'#f57f17',
+            'Australien':'#00695c','Australia':'#00695c',
+            'China':'#d32f2f',
+            'Indien':'#f9a825','India':'#f9a825',
+            'Südkorea':'#1b5e20','South Korea':'#1b5e20',
+            'Taiwan':'#880e4f',
+            'Niederlande':'#e65100','Netherlands':'#e65100',
+            'Schweden':'#37474f','Sweden':'#37474f',
+            'Dänemark':'#006064','Denmark':'#006064',
+            'Brasilien':'#bf360c','Brazil':'#bf360c',
+            'Saudi-Arabien':'#5d4037','Saudi Arabia':'#5d4037',
+            'Sonstige':'#455a64','Other':'#455a64',
+        }
+        # Werte normalisieren (0–100 %)
+        _cw_norm = {}
+        for _k, _v in _cw.items():
+            try:
+                _cw_norm[_k] = float(str(_v).replace('%','').replace(',','.'))
+                if _cw_norm[_k] <= 1.5:          # Dezimalbruch → Prozent
+                    _cw_norm[_k] *= 100
+            except Exception:
+                pass
+        _cw2 = dict(sorted(_cw_norm.items(), key=lambda x: x[1], reverse=True)[:15])
+
+        # Kontinent-Aggregation
+        _cont_totals: dict = {}
+        for _ck, _cv in _cw2.items():
+            _cont = _CONTINENT.get(_ck, 'Sonstige')
+            _cont_totals[_cont] = _cont_totals.get(_cont, 0) + _cv
+        _cont_totals = dict(sorted(_cont_totals.items(), key=lambda x: x[1], reverse=True))
+        _CONT_CLR = {
+            'Nordamerika':'#1565c0','Europa':'#00695c','Asien/Pazifik':'#e64a19',
+            'Lateinamerika':'#f57f17','Mittlerer Osten':'#5d4037',
+            'Afrika':'#6d4c41','Sonstige':'#455a64',
+        }
+
+        # Layout: Länderliste links | Kontinent-Donut rechts
+        _ra, _rb = st.columns([1.1, 1])
         with _ra:
-            _rf = go.Figure(go.Pie(
-                labels=list(_cw2.keys()),
-                values=[round(v*100,2) if v <= 1 else round(v,2) for v in _cw2.values()],
-                hole=0.6,
-                marker=dict(colors=[_RC.get(k,'#546e7a') for k in _cw2],
-                            line=dict(color='#0a1628',width=2)),
-                textinfo='none',
-                hovertemplate='<b>%{label}</b><br>%{value:.1f}%<extra></extra>'))
-            _rf.update_layout(template='plotly_dark',paper_bgcolor='#0a1628',
-                              plot_bgcolor='#0a1628',showlegend=False,height=220,
-                              margin=dict(l=5,r=5,t=5,b=5))
-            st.plotly_chart(_rf, use_container_width=True)
-        with _rb:
+            st.markdown("<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+                        "letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;'>"
+                        "Länder</div>", unsafe_allow_html=True)
             for _rk, _rv in list(_cw2.items()):
-                _rpct = _rv*100 if _rv <= 1 else _rv
-                _rc2  = _RC.get(_rk,'#546e7a')
-                _rbar = min(int(_rpct*3), 100)
+                _rc2  = _RC.get(_rk, '#546e7a')
+                _rbar = min(int(_rv * 2), 100)
                 st.markdown(
                     f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
                     f"<span style='color:{_rc2};font-size:0.72rem;'>●</span>"
-                    f"<span style='color:#eceff1;font-size:0.76rem;flex:1;'>{_rk[:18]}</span>"
-                    f"<div style='background:#1a2740;border-radius:3px;width:55px;height:6px;'>"
+                    f"<span style='color:#eceff1;font-size:0.76rem;flex:1;'>{_rk[:20]}</span>"
+                    f"<div style='background:#1a2740;border-radius:3px;width:60px;height:6px;'>"
                     f"<div style='background:{_rc2};width:{_rbar}%;height:6px;border-radius:3px;'></div></div>"
-                    f"<span style='color:#90a4ae;font-size:0.75rem;min-width:34px;text-align:right;'>"
-                    f"{_rpct:.1f}%</span></div>", unsafe_allow_html=True)
+                    f"<span style='color:#90a4ae;font-size:0.75rem;min-width:38px;text-align:right;'>"
+                    f"{_rv:.1f}%</span></div>", unsafe_allow_html=True)
+        with _rb:
+            if len(_cont_totals) > 1:
+                st.markdown("<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+                            "letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px;'>"
+                            "Kontinente</div>", unsafe_allow_html=True)
+                _rf2 = go.Figure(go.Pie(
+                    labels=list(_cont_totals.keys()),
+                    values=[round(v, 1) for v in _cont_totals.values()],
+                    hole=0.58,
+                    marker=dict(colors=[_CONT_CLR.get(k,'#546e7a') for k in _cont_totals],
+                                line=dict(color='#0a1628', width=2)),
+                    textinfo='none',
+                    hovertemplate='<b>%{label}</b><br>%{value:.1f}%<extra></extra>'))
+                _rf2.update_layout(template='plotly_dark', paper_bgcolor='#0a1628',
+                                   plot_bgcolor='#0a1628', showlegend=False, height=210,
+                                   margin=dict(l=5, r=5, t=5, b=5))
+                st.plotly_chart(_rf2, use_container_width=True)
+                for _ck2, _cv2 in list(_cont_totals.items())[:6]:
+                    _cclr = _CONT_CLR.get(_ck2, '#546e7a')
+                    st.markdown(
+                        f"<div style='display:flex;justify-content:space-between;"
+                        f"padding:2px 0;border-bottom:1px solid #1a2740;'>"
+                        f"<span style='color:{_cclr};font-size:0.74rem;'>● {_ck2}</span>"
+                        f"<span style='color:#90a4ae;font-size:0.74rem;font-weight:600;'>"
+                        f"{_cv2:.1f}%</span></div>", unsafe_allow_html=True)
+            else:
+                # Einzelner Kontinent / einzelnes Land → einfache Karte
+                _rfm = go.Figure(go.Pie(
+                    labels=list(_cw2.keys()),
+                    values=[round(v, 1) for v in _cw2.values()],
+                    hole=0.58,
+                    marker=dict(colors=[_RC.get(k,'#546e7a') for k in _cw2],
+                                line=dict(color='#0a1628', width=2)),
+                    textinfo='none',
+                    hovertemplate='<b>%{label}</b><br>%{value:.1f}%<extra></extra>'))
+                _rfm.update_layout(template='plotly_dark', paper_bgcolor='#0a1628',
+                                   plot_bgcolor='#0a1628', showlegend=False, height=210,
+                                   margin=dict(l=5, r=5, t=5, b=5))
+                st.plotly_chart(_rfm, use_container_width=True)
 
     # ── Benchmark-Vergleich ───────────────────────────────────────────────
     st.markdown("<div class='section-header'>📈 Benchmark-Vergleich</div>", unsafe_allow_html=True)
