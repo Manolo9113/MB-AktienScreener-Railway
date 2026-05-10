@@ -5416,22 +5416,26 @@ if st.session_state.get("show_portfolio"):
         crypto     = df_port[df_port['is_crypto']].copy()
         warrants   = df_port[df_port['is_warrant']].copy()
 
-        # Krypto-Kurse via yFinance (XRP-EUR, BTC-EUR, etc.)
+        # Krypto-Kurse via yFinance (XRP-EUR, BTC-EUR, etc.) — 3s Timeout pro Ticker
         _crypto_prices: dict = {}
         if not crypto.empty:
             import re as _re
+            import concurrent.futures as _cf_c
             for _, _crow in crypto.iterrows():
                 _nm = str(_crow.get('name', ''))
                 _m = _re.search(r'\(([A-Z]{2,10})\)', _nm)
                 _sym = _m.group(1) if _m else (_nm.strip().upper() if _nm.strip().upper().isalpha() and len(_nm.strip()) <= 8 else None)
                 if _sym:
-                    try:
-                        _fi = yf.Ticker(f"{_sym}-EUR").fast_info
-                        _cp = getattr(_fi, 'last_price', None)
-                        if _cp and float(_cp) > 0:
-                            _crypto_prices[_crow['ISIN']] = float(_cp)
-                    except Exception:
-                        pass
+                    _yf_tkr = f"{_sym}-EUR"
+                    with _cf_c.ThreadPoolExecutor(max_workers=1) as _exe_c:
+                        _fut_c = _exe_c.submit(lambda t=_yf_tkr: yf.Ticker(t).fast_info)
+                        try:
+                            _fi_c = _fut_c.result(timeout=3.0)
+                            _cp_c = getattr(_fi_c, 'last_price', None)
+                            if _cp_c and float(_cp_c) > 0:
+                                _crypto_prices[_crow['ISIN']] = float(_cp_c)
+                        except Exception:
+                            pass
 
         # Kurse laden
         prices: dict = {}
@@ -5448,8 +5452,10 @@ if st.session_state.get("show_portfolio"):
         # Analyst- & Sektordaten vorladen (24h gecacht, max 4s/Ticker)
         _alloc_infos: dict = {}
         if not stocks_etf.empty:
+            # Nur Top-25 nach Einstandswert laden (max 25×4s = 100s statt 272s)
+            _top25 = stocks_etf.nlargest(25, 'cost_basis')['ISIN'].tolist()
             _info_isins = [(isin_map.get(isin), isin)
-                          for isin in stocks_etf['ISIN'] if isin_map.get(isin)]
+                          for isin in _top25 if isin_map.get(isin)]
             if _info_isins:
                 _info_prog = st.progress(0, f"Analyst-Daten: 0/{len(_info_isins)} (max 4s/Ticker)…")
                 for _ii, (_tkr_i, _isin_i) in enumerate(_info_isins, 1):
@@ -5473,40 +5479,40 @@ if st.session_state.get("show_portfolio"):
             p = prices.get(row['ISIN'])
             if p:
                 current_vals.append(p * row['shares'])
-        _crypto_val = sum(_crypto_prices.get(r['ISIN'], 0) * r['shares'] for _, r in crypto.iterrows())
+        _crypto_val        = sum(_crypto_prices.get(r['ISIN'], 0) * r['shares'] for _, r in crypto.iterrows())
         _priced_stocks_val = sum(current_vals)
-        current_total = (_priced_stocks_val + _crypto_val) if (current_vals or _crypto_val) else None
-        _priced_cost  = stocks_etf.loc[stocks_etf['ISIN'].isin([r['ISIN'] for r in [dict(row) for _, row in stocks_etf.iterrows() if prices.get(row['ISIN'])]]),'cost_basis'].sum()
-        _crypto_cost  = crypto.loc[crypto['ISIN'].isin(_crypto_prices),'cost_basis'].sum() if not crypto.empty else 0.0
-        pnl_eur = (_priced_stocks_val + _crypto_val) - (_priced_cost + _crypto_cost) if current_total else None
-        _pnl_base = _priced_cost + _crypto_cost
-        pnl_pct = (pnl_eur / _pnl_base * 100) if (pnl_eur is not None and _pnl_base > 0) else None
-        _unpriced = len(stocks_etf) - len([i for i in stocks_etf['ISIN'] if prices.get(i)])
-        _unpriced += len(crypto) - len(_crypto_prices)
+        current_total      = (_priced_stocks_val + _crypto_val) if (current_vals or _crypto_val) else None
+        _priced_isins      = {isin for isin in stocks_etf['ISIN'] if prices.get(isin)}
+        _priced_cost       = stocks_etf[stocks_etf['ISIN'].isin(_priced_isins)]['cost_basis'].sum() if not stocks_etf.empty else 0.0
+        _crypto_cost       = crypto[crypto['ISIN'].isin(_crypto_prices)]['cost_basis'].sum() if not crypto.empty else 0.0
+        _pnl_base          = _priced_cost + _crypto_cost
+        pnl_eur  = (_priced_stocks_val + _crypto_val) - _pnl_base if (current_total and _pnl_base > 0) else None
+        pnl_pct  = (pnl_eur / _pnl_base * 100) if (pnl_eur is not None and _pnl_base > 0) else None
+        _unpriced = (len(stocks_etf) - len(_priced_isins)) + (len(crypto) - len(_crypto_prices))
 
         _pnl_str  = f"{pnl_eur:+,.0f} ({pnl_pct:+.1f}%)" if pnl_eur is not None else "—"
         _pnl_col  = "#00e676" if (pnl_eur or 0) >= 0 else "#ff5252"
         _cur_str  = f"€ {current_total:,.0f}" if current_total else "—"
         _unpriced_note = f"<div style='color:#78909c;font-size:0.62rem;margin-top:2px;'>{_unpriced} ohne Kurs</div>" if _unpriced > 0 else ""
         st.markdown(f"""
-        <div style='display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:6px;'>
-          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;'>
+        <div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:6px;'>
+          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
             <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Positionen</div>
             <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>{len(df_port)}</div>
             <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>Aktien · ETFs · Krypto</div>
           </div>
-          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;'>
+          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
             <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Investiert</div>
             <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>€ {total_invested:,.0f}</div>
             <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>Ø-Kaufkurs × Anteile</div>
           </div>
-          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;'>
+          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
             <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Aktueller Wert</div>
             <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>{_cur_str}</div>
             {_unpriced_note}
           </div>
-          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;'>
-            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>P&L (unrealisiert)</div>
+          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
+            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>P&L unreal.</div>
             <div style='color:{_pnl_col};font-size:1.05rem;font-weight:700;margin-top:2px;'>{_pnl_str}</div>
             <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>offene Positionen</div>
           </div>
