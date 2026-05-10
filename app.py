@@ -5906,20 +5906,42 @@ if st.session_state.get("show_etf_analyzer"):
         try:
             t   = yf.Ticker(ticker)
             inf = t.info or {}
+            # Ausschüttungsart aus Name ableiten
+            name_l = (inf.get('longName') or '').lower()
+            if 'acc' in name_l or 'thesaurierend' in name_l or 'accumul' in name_l:
+                distrib = 'Thesaurierend'
+            elif 'dist' in name_l or 'ausschütt' in name_l or 'distribut' in name_l:
+                distrib = 'Ausschüttend'
+            elif (inf.get('dividendYield') or 0) > 0.001:
+                distrib = 'Ausschüttend'
+            else:
+                distrib = '—'
+            # Domizil aus Exchange/ISIN schätzen
+            exch = (inf.get('exchange') or '').upper()
+            _domicile_map = {
+                'XETRA': 'Deutschland', 'GER': 'Deutschland', 'FRA': 'Deutschland',
+                'LSE': 'Irland', 'L': 'Irland', 'ARCA': 'USA', 'NYSE': 'USA',
+                'BATS': 'USA', 'SIX': 'Luxemburg', 'EURONEXT': 'Luxemburg',
+            }
+            domicile = _domicile_map.get(exch, inf.get('country') or '—')
             return {
-                'name':           inf.get('longName') or inf.get('shortName') or ticker,
-                'currency':       inf.get('currency', 'EUR'),
-                'aum':            inf.get('totalAssets'),
-                'ter':            inf.get('annualReportExpenseRatio'),
-                'nav':            inf.get('navPrice') or inf.get('previousClose'),
-                'ytd':            inf.get('ytdReturn'),
-                'ret_1y':         inf.get('threeYearAverageReturn'),   # 1Y not always available
-                'ret_3y':         inf.get('threeYearAverageReturn'),
-                'ret_5y':         inf.get('fiveYearAverageReturn'),
-                'category':       inf.get('category') or '',
-                'fund_family':    inf.get('fundFamily') or '',
-                'inception':      inf.get('fundInceptionDate'),
-                'beta':           inf.get('beta3Year'),
+                'name':        inf.get('longName') or inf.get('shortName') or ticker,
+                'currency':    inf.get('currency', 'EUR'),
+                'aum':         inf.get('totalAssets'),
+                'ter':         inf.get('annualReportExpenseRatio'),
+                'nav':         inf.get('navPrice') or inf.get('previousClose'),
+                'ytd':         inf.get('ytdReturn'),
+                'ret_3y':      inf.get('threeYearAverageReturn'),
+                'ret_5y':      inf.get('fiveYearAverageReturn'),
+                'category':    inf.get('category') or '',
+                'fund_family': inf.get('fundFamily') or '',
+                'inception':   inf.get('fundInceptionDate'),
+                'beta':        inf.get('beta3Year'),
+                'distribution':distrib,
+                'domicile':    domicile,
+                'exchange':    exch or '—',
+                'div_yield':   inf.get('dividendYield'),
+                'quote_type':  inf.get('quoteType', 'ETF'),
             }
         except Exception:
             return {}
@@ -5998,40 +6020,145 @@ if st.session_state.get("show_etf_analyzer"):
             _ei = _etf_info(_etf_tkr)
             _sw, _th = _etf_holdings(_etf_tkr)
 
+        # Issuer-Logo-Mapping
+        _ISSUER_META = {
+            'iShares':    {'logo': 'https://logo.clearbit.com/ishares.com',    'color': '#00b347'},
+            'Vanguard':   {'logo': 'https://logo.clearbit.com/vanguard.com',   'color': '#cc0000'},
+            'Xtrackers':  {'logo': 'https://logo.clearbit.com/dws.com',        'color': '#1a6aff'},
+            'Amundi':     {'logo': 'https://logo.clearbit.com/amundi.com',     'color': '#ff6600'},
+            'SPDR':       {'logo': 'https://logo.clearbit.com/ssga.com',       'color': '#ffd700'},
+            'Invesco':    {'logo': 'https://logo.clearbit.com/invesco.com',    'color': '#0066cc'},
+            'WisdomTree': {'logo': 'https://logo.clearbit.com/wisdomtree.com', 'color': '#009933'},
+            'Lyxor':      {'logo': 'https://logo.clearbit.com/amundi.com',     'color': '#00a86b'},
+            'Franklin':   {'logo': 'https://logo.clearbit.com/franklintempleton.com', 'color': '#003087'},
+            'HSBC':       {'logo': 'https://logo.clearbit.com/hsbc.com',       'color': '#db0011'},
+            'L&G':        {'logo': 'https://logo.clearbit.com/lgim.com',       'color': '#6600cc'},
+            'BNP':        {'logo': 'https://logo.clearbit.com/bnpparibas.com', 'color': '#00965e'},
+        }
+        _SIMILAR_ETF_MAP = {
+            'SXR8.DE':  [('VWCE.DE','Vanguard FTSE All-World'),('XDWD.DE','Xtrackers MSCI World'),('LCUW.DE','Amundi MSCI World')],
+            'VWCE.DE':  [('SXR8.DE','iShares MSCI World'),('XDWD.DE','Xtrackers MSCI World'),('FWRA.DE','Invesco FTSE All-World')],
+            'SXR2.DE':  [('CSPX.L','iShares S&P 500 USD'),('VUSD.L','Vanguard S&P 500'),('XSPX.DE','Xtrackers S&P 500')],
+            'EQQQ.DE':  [('XNAS.DE','Xtrackers NASDAQ-100'),('CSNDX.L','iShares NASDAQ-100'),('SXRV.DE','iShares NASDAQ-100 EUR')],
+            'EXS1.DE':  [('DBXD.DE','Xtrackers DAX'),('DAXE.DE','Amundi DAX'),('XDDX.DE','Xtrackers DAX ESG')],
+            'IS3N.DE':  [('XMME.DE','Xtrackers MSCI EM'),('VFEM.L','Vanguard FTSE EM'),('PAEM.PA','SPDR MSCI EM')],
+            'LCUW.DE':  [('SXR8.DE','iShares MSCI World'),('VWCE.DE','Vanguard All-World'),('XDWD.DE','Xtrackers MSCI World')],
+            'XDWD.DE':  [('SXR8.DE','iShares MSCI World'),('VWCE.DE','Vanguard All-World'),('LCUW.DE','Amundi MSCI World')],
+        }
+
         if not _ei:
             st.error(f"Keine Daten für '{_etf_tkr}' gefunden. Bitte Ticker prüfen.")
         else:
-            st.markdown(f"<div style='font-size:1.3rem;font-weight:700;color:#64b5f6;"
-                        f"margin:8px 0 2px 0;'>{_ei.get('name','')}</div>",
-                        unsafe_allow_html=True)
-            if _ei.get('fund_family') or _ei.get('category'):
-                st.caption(f"{_ei.get('fund_family','')}  ·  {_ei.get('category','')}")
+            # ── Header mit Issuer-Logo ─────────────────────────────────────
+            _ff = _ei.get('fund_family', '')
+            _im = next((v for k, v in _ISSUER_META.items() if k.lower() in _ff.lower()), None)
+            _hd_left, _hd_right = st.columns([4, 1])
+            with _hd_left:
+                _logo_url  = _im['logo'] if _im else ''
+                if _im and _logo_url:
+                    _logo_html = (
+                        "<img src=\"" + _logo_url +
+                        "\" style=\"height:26px;border-radius:4px;"
+                        "margin-right:10px;vertical-align:middle;"
+                        "background:#fff;padding:2px;\" "
+                        "onerror=\"this.style.display=none\">")
+                else:
+                    _logo_html = ""
 
-            # ── Kernzahlen ────────────────────────────────────────────────
+                st.markdown(
+                    f"<div style='display:flex;align-items:center;margin-bottom:6px;'>"
+                    f"{_logo_html}"
+                    f"<span style='font-size:1.35rem;font-weight:800;color:#eceff1;'>"
+                    f"{_ei.get('name','')}</span></div>",
+                    unsafe_allow_html=True)
+                _badge = lambda txt, clr, bg: (
+                    f"<span style='background:{bg};color:{clr};border:1px solid {clr}55;"
+                    f"border-radius:12px;padding:2px 10px;font-size:0.72rem;font-weight:600;"
+                    f"margin-right:6px;white-space:nowrap;'>{txt}</span>")
+                _badges_html = ""
+                if _ei.get('domicile') and _ei['domicile'] != '—':
+                    _badges_html += _badge(f"🏛 {_ei['domicile']}", '#90a4ae', '#1a2740')
+                _badges_html += _badge(f"💱 {_ei.get('currency','EUR')}", '#64b5f6', '#0d2035')
+                if _ei.get('distribution') and _ei['distribution'] != '—':
+                    _dc = '#00e676' if _ei['distribution'] == 'Thesaurierend' else '#ffd600'
+                    _badges_html += _badge(_ei['distribution'], _dc, '#0d2035')
+                if _ei.get('category'):
+                    _badges_html += _badge(_ei['category'][:28], '#b0bec5', '#1a2030')
+                st.markdown(f"<div style='flex-wrap:wrap;display:flex;gap:4px;margin-bottom:10px;'>"
+                            f"{_badges_html}</div>", unsafe_allow_html=True)
+            with _hd_right:
+                if st.button("🔄 Ähnliche ETFs", use_container_width=True, key="btn_similar"):
+                    st.session_state["etf_show_similar"] = not st.session_state.get("etf_show_similar", False)
+
+            # Ähnliche ETFs Panel
+            if st.session_state.get("etf_show_similar"):
+                _sim_list = _SIMILAR_ETF_MAP.get(_etf_tkr, [])
+                if not _sim_list:
+                    st.info("Keine Alternativen für diesen ETF hinterlegt. Ähnliche ETFs manuell eingeben.")
+                else:
+                    st.markdown("<div class='section-header'>🔄 Ähnliche ETFs</div>", unsafe_allow_html=True)
+                    _sim_cols = st.columns(len(_sim_list))
+                    for _si, (_stkr, _snm) in enumerate(_sim_list):
+                        with _sim_cols[_si]:
+                            st.markdown(
+                                f"<div style='background:#0d1f35;border:1px solid #1a2740;"
+                                f"border-radius:8px;padding:10px;text-align:center;'>"
+                                f"<div style='color:#64b5f6;font-size:0.9rem;font-weight:700;'>{_stkr}</div>"
+                                f"<div style='color:#90a4ae;font-size:0.72rem;margin-top:2px;'>{_snm}</div>"
+                                f"</div>", unsafe_allow_html=True)
+                            if st.button("Analysieren", key=f"sim_{_stkr}", use_container_width=True):
+                                st.session_state["etf_ticker_input"] = _stkr
+                                st.session_state["etf_show_similar"] = False
+                                st.rerun()
+
+            # ── Kennzahlen (3 Reihen à 4) ────────────────────────────────
             st.markdown("<div class='section-header'>📊 Kennzahlen</div>", unsafe_allow_html=True)
-            _km_cols = st.columns(6)
-            def _kmc(col, lbl, val, fmt=""):
+            def _kmc(col, lbl, val, sub=None):
+                _sh = f"<div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>{sub}</div>" if sub else ""
                 col.markdown(
                     f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
-                    f"padding:10px;text-align:center;'>"
-                    f"<div style='color:#78909c;font-size:0.68rem;text-transform:uppercase;"
+                    f"padding:10px;text-align:center;min-height:72px;display:flex;flex-direction:column;"
+                    f"justify-content:center;'>"
+                    f"<div style='color:#78909c;font-size:0.63rem;text-transform:uppercase;"
                     f"letter-spacing:.06em;'>{lbl}</div>"
-                    f"<div style='color:#eceff1;font-size:1.1rem;font-weight:700;margin-top:4px;'>{val}</div>"
-                    f"</div>", unsafe_allow_html=True)
+                    f"<div style='color:#eceff1;font-size:1.05rem;font-weight:700;margin-top:3px;'>{val}</div>"
+                    f"{_sh}</div>", unsafe_allow_html=True)
 
-            _aum_str  = (f"€ {_ei['aum']/1e9:.1f} Mrd" if (_ei.get('aum') or 0) > 1e9
-                         else f"€ {_ei['aum']/1e6:.0f} Mio" if _ei.get('aum') else "—")
-            _ter_str  = f"{_ei['ter']*100:.2f}%" if _ei.get('ter') else "—"
-            _nav_str  = f"{_ei.get('nav'):.2f} {_ei.get('currency','')}" if _ei.get('nav') else "—"
-            _ytd_str  = f"{_ei['ytd']*100:+.1f}%" if _ei.get('ytd') else "—"
-            _r3y_str  = f"{_ei['ret_3y']*100:+.1f}% p.a." if _ei.get('ret_3y') else "—"
-            _r5y_str  = f"{_ei['ret_5y']*100:+.1f}% p.a." if _ei.get('ret_5y') else "—"
-            _kmc(_km_cols[0], "AUM", _aum_str)
-            _kmc(_km_cols[1], "TER (Kosten)", _ter_str)
-            _kmc(_km_cols[2], "NAV", _nav_str)
-            _kmc(_km_cols[3], "YTD", _ytd_str)
-            _kmc(_km_cols[4], "3J p.a.", _r3y_str)
-            _kmc(_km_cols[5], "5J p.a.", _r5y_str)
+            _aum_str = (f"€ {_ei['aum']/1e9:.1f} Mrd" if (_ei.get('aum') or 0) > 1e9
+                        else f"€ {_ei['aum']/1e6:.0f} Mio" if _ei.get('aum') else "—")
+            _ter_str = f"{_ei['ter']*100:.2f}%" if _ei.get('ter') else "—"
+            _nav_str = f"{_ei.get('nav'):.2f} {_ei.get('currency','')}" if _ei.get('nav') else "—"
+            _ytd_str = f"{_ei['ytd']*100:+.1f}%" if _ei.get('ytd') else "—"
+            _r3y_str = f"{_ei['ret_3y']*100:+.1f}% p.a." if _ei.get('ret_3y') else "—"
+            _r5y_str = f"{_ei['ret_5y']*100:+.1f}% p.a." if _ei.get('ret_5y') else "—"
+            _div_str = f"{_ei['div_yield']*100:.2f}%" if _ei.get('div_yield') else "—"
+            _inc_str = "—"
+            if _ei.get('inception'):
+                try:
+                    import datetime as _dt
+                    _inc_str = _dt.datetime.fromtimestamp(_ei['inception']).strftime('%d.%m.%Y')
+                except Exception:
+                    pass
+
+            _row1 = st.columns(4)
+            _kmc(_row1[0], "Fondsvolumen (AUM)", _aum_str, "verwaltetes Vermögen")
+            _kmc(_row1[1], "TER / Kosten p.a.", _ter_str, "Gesamtkostenquote")
+            _kmc(_row1[2], "NAV (letzter Kurs)", _nav_str, "Nettoinventarwert")
+            _kmc(_row1[3], "Handelswährung", _ei.get('currency', '—'), "Börsenwährung")
+
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+            _row2 = st.columns(4)
+            _kmc(_row2[0], "YTD-Rendite", _ytd_str, "laufendes Jahr")
+            _kmc(_row2[1], "3J-Rendite p.a.", _r3y_str, "Ø jährlich (3 Jahre)")
+            _kmc(_row2[2], "5J-Rendite p.a.", _r5y_str, "Ø jährlich (5 Jahre)")
+            _kmc(_row2[3], "Ausschüttungsrendite", _div_str, _ei.get('distribution', '—'))
+
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+            _row3 = st.columns(4)
+            _kmc(_row3[0], "Fondsdomiziil", _ei.get('domicile', '—'), "Registrierungsland")
+            _kmc(_row3[1], "Ausschüttungsart", _ei.get('distribution', '—'), "Acc / Dist")
+            _kmc(_row3[2], "Handelsbörse", _ei.get('exchange', '—'), "Listing")
+            _kmc(_row3[3], "Auflagedatum", _inc_str, "Fondsstart")
 
             st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
