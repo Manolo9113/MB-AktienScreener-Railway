@@ -5919,19 +5919,49 @@ if st.session_state.get("show_portfolio"):
                                         _exch = _res.get('exchangeShortName', '')
                                         if not _sym:
                                             continue
-                                        # Für KRX-Symbole sicherstellen dass .KS Suffix vorhanden
+                                        # Exchange-aware Suffix-Korrektur
                                         if _exch in ('KSE', 'KOSDAQ') and '.' not in _sym:
                                             _sym = f"{_sym}.KS"
                                         elif _exch in ('SHH', 'SHA') and '.' not in _sym:
                                             _sym = f"{_sym}.SS"
                                         elif _exch in ('SHZ', 'SZE') and '.' not in _sym:
                                             _sym = f"{_sym}.SZ"
-                                        _q2 = _portfolio_quote_ext(_sym)
-                                        if _q2.get('price_eur'):
-                                            prices[_fmisin]     = _q2['price_eur']
+                                        elif _exch in ('LSE', 'LON') and '.' not in _sym:
+                                            _sym = f"{_sym}.L"
+                                        elif _exch in ('HKSE', 'HKEX', 'HKG') and _sym.isdigit() and len(_sym) < 4:
+                                            _sym = f"{_sym.zfill(4)}.HK"
+                                        # FMP direkt abfragen (umgeht _portfolio_quote_ext-Cache)
+                                        try:
+                                            _fq = requests.get(
+                                                f"https://financialmodelingprep.com/api/v3/quote/{_sym}",
+                                                params={'apikey': FMP_API_KEY}, timeout=5)
+                                            if not (_fq.ok and _fq.json()):
+                                                continue
+                                            _fd = _fq.json()[0]
+                                            _pr = float(_fd.get('price') or 0)
+                                            if not _pr:
+                                                continue
+                                            _cur = str(_fd.get('currency') or 'EUR').strip()
+                                            if _cur == 'GBp':
+                                                _pr /= 100.0; _cur = 'GBP'
+                                            _fx2 = _get_eur_fx_rate(_cur) if _cur != 'EUR' else 1.0
+                                            _peur = _pr * _fx2
+                                            if not (0 < _peur < 1_000_000):
+                                                continue
+                                            _chg2 = _fd.get('changesPercentage')
+                                            _q2 = {
+                                                'price_eur':     _peur,
+                                                'year_high_eur': float(_fd['yearHigh']) * _fx2 if _fd.get('yearHigh') else None,
+                                                'year_low_eur':  float(_fd['yearLow'])  * _fx2 if _fd.get('yearLow')  else None,
+                                                'day_chg_pct':   float(_chg2) if _chg2 is not None else None,
+                                                'fx':            _fx2,
+                                            }
+                                            prices[_fmisin]     = _peur
                                             quotes_ext[_fmisin] = _q2
                                             isin_map[_fmisin]   = _sym
                                             break
+                                        except Exception:
+                                            continue
                             except Exception:
                                 pass
                             _fp2.progress(_fmi / len(_still_missing),
