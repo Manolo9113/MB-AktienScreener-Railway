@@ -3729,16 +3729,40 @@ def _parse_portfolio_csv(file_bytes: bytes) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def _openfigi_batch(isins: tuple) -> dict:
-    """Batch-Lookup ISIN → yfinance-Ticker via OpenFIGI (24h gecacht)."""
-    _suffix = {'GY': '.DE', 'NA': '.AS', 'FP': '.PA', 'LN': '.L',
+def _openfigi_batch(isins: tuple, wkn_by_isin: dict = None) -> dict:
+    """Batch-Lookup ISIN → yfinance-Ticker via OpenFIGI. Fallback: WKN-Lookup für nicht gemappte ISINs."""
+    # Xetra=GY, Frankfurt=GF, Munich=GM, Hamburg=GH, Stuttgart=GS, Berlin=GB
+    _suffix = {'GY': '.DE', 'GF': '.F', 'GM': '.MU', 'GH': '.HM', 'GS': '.SG', 'GB': '.BE',
+               'NA': '.AS', 'FP': '.PA', 'LN': '.L',
                'SW': '.SW', 'SS': '.ST', 'DC': '.CO', 'JT': '.T', 'HK': '.HK'}
     _prefer = {
         'US': ['UW', 'UN', 'US', 'UA', 'UT'], 'KY': ['UW', 'UN', 'US'],
         'CA': ['CN', 'CT'], 'DE': ['GY'], 'NL': ['NA'], 'FR': ['FP'],
-        'GB': ['LN'], 'CH': ['SW'], 'SE': ['SS'], 'DK': ['DC'], 'JP': ['JT'],
+        'CH': ['SW'], 'SE': ['SS'], 'DK': ['DC'], 'JP': ['JT'],
         'IE': ['LN', 'GY'], 'CN': ['HK'],
+        # GBp-Pence-Bug: deutsches EUR-Listing vermeidet /100-Konvertierungsfehler
+        'GB': ['GY', 'GF', 'LN'],
+        # Nicht-EUR-Märkte → bevorzuge deutsches Listing (direkt in EUR, kein FX-Fehler)
+        'KR': ['GY', 'GF'],  # Südkorea
+        'TW': ['GY', 'GF'],  # Taiwan
+        'IN': ['GY', 'GF'],  # Indien
+        'BR': ['GY', 'GF'],  # Brasilien
+        'AU': ['GY', 'GF'],  # Australien
+        'SG': ['GY', 'GF'],  # Singapur
+        'IL': ['GY', 'GF'],  # Israel
+        'ZA': ['GY', 'GF'],  # Südafrika
     }
+
+    def _pick_ticker(items, country_prefix):
+        pref = _prefer.get(country_prefix, [])
+        for exch in pref:
+            for fi in items:
+                if fi.get('exchCode') == exch and fi.get('ticker'):
+                    return fi['ticker'] + _suffix.get(exch, '')
+        fi = items[0]
+        t, e = fi.get('ticker', ''), fi.get('exchCode', '')
+        return (t + _suffix.get(e, '')) if t else None
+
     result: dict = {}
     valids = [i for i in isins if not i.startswith('XC') and i != '------' and len(i) == 12]
     for start in range(0, len(valids), 10):
@@ -3754,25 +3778,35 @@ def _openfigi_batch(isins: tuple) -> dict:
                 items = item.get('data') or []
                 if not items:
                     continue
-                pref = _prefer.get(isin[:2], [])
-                ticker = None
-                for exch in pref:
-                    for fi in items:
-                        if fi.get('exchCode') == exch and fi.get('ticker'):
-                            ticker = fi['ticker'] + _suffix.get(exch, '')
-                            break
-                    if ticker:
-                        break
-                if not ticker:
-                    fi = items[0]
-                    t, e = fi.get('ticker', ''), fi.get('exchCode', '')
-                    if t:
-                        ticker = t + _suffix.get(e, '')
-                if ticker:
-                    result[isin] = ticker
+                tkr = _pick_ticker(items, isin[:2])
+                if tkr:
+                    result[isin] = tkr
         except Exception:
             pass
         time.sleep(0.3)
+
+    # WKN-Fallback für ISINs die OpenFIGI nicht per ISIN gefunden hat
+    if wkn_by_isin:
+        failed = [i for i in valids if i not in result]
+        for isin in failed:
+            wkn = wkn_by_isin.get(isin, '')
+            if not wkn or len(wkn) < 4:
+                continue
+            try:
+                r = requests.post('https://api.openfigi.com/v3/mapping',
+                                  json=[{'idType': 'ID_WERTPAPIER', 'idValue': wkn}],
+                                  headers={'Content-Type': 'application/json'}, timeout=8)
+                if r.status_code == 200:
+                    data = r.json()
+                    items = (data[0].get('data') or []) if data else []
+                    if items:
+                        tkr = _pick_ticker(items, isin[:2])
+                        if tkr:
+                            result[isin] = tkr
+            except Exception:
+                pass
+            time.sleep(0.2)
+
     return result
 
 
@@ -3791,31 +3825,56 @@ def _get_eur_fx_rate(from_currency: str) -> float:
 
 @st.cache_data(ttl=300, show_spinner=False)
 def _portfolio_quote_ext(ticker: str) -> dict:
-    """Kursdaten in EUR: Preis, 52W-Range, Tagesveränderung, FX-Rate (gecacht 5 Min)."""
+    """Kursdaten in EUR: Preis, 52W-Range, Tagesveränderung, FX-Rate. Probiert alternative Suffixe als Fallback."""
     _empty = {'price_eur': None, 'year_high_eur': None, 'year_low_eur': None,
               'day_chg_pct': None, 'fx': 1.0}
-    try:
-        fi = yf.Ticker(ticker).fast_info
-        price = float(getattr(fi, 'last_price', None) or getattr(fi, 'regular_market_price', None) or 0)
-        if not price:
-            return _empty
-        currency = str(getattr(fi, 'currency', 'EUR') or 'EUR').strip()
-        if currency == 'GBp':
-            price /= 100.0
-            currency = 'GBP'
-        fx = _get_eur_fx_rate(currency) if currency != 'EUR' else 1.0
-        y_high  = getattr(fi, 'year_high', None)
-        y_low   = getattr(fi, 'year_low', None)
-        day_chg = getattr(fi, 'regular_market_change_percent', None)
-        return {
-            'price_eur':     price * fx,
-            'year_high_eur': float(y_high) * fx if y_high else None,
-            'year_low_eur':  float(y_low)  * fx if y_low  else None,
-            'day_chg_pct':   float(day_chg) if day_chg is not None else None,
-            'fx':            fx,
-        }
-    except Exception:
-        return _empty
+
+    def _fetch(t):
+        try:
+            fi = yf.Ticker(t).fast_info
+            price = float(getattr(fi, 'last_price', None) or getattr(fi, 'regular_market_price', None) or 0)
+            if not price:
+                return None
+            currency = str(getattr(fi, 'currency', 'EUR') or 'EUR').strip()
+            if currency == 'GBp' or (currency == 'GBP' and t.endswith('.L') and price > 500):
+                price /= 100.0
+                currency = 'GBP'
+            fx = _get_eur_fx_rate(currency) if currency != 'EUR' else 1.0
+            y_high  = getattr(fi, 'year_high', None)
+            y_low   = getattr(fi, 'year_low', None)
+            day_chg = getattr(fi, 'regular_market_change_percent', None)
+            return {
+                'price_eur':     price * fx,
+                'year_high_eur': float(y_high) * fx if y_high else None,
+                'year_low_eur':  float(y_low)  * fx if y_low  else None,
+                'day_chg_pct':   float(day_chg) if day_chg is not None else None,
+                'fx':            fx,
+            }
+        except Exception:
+            return None
+
+    result = _fetch(ticker)
+    if result:
+        return result
+
+    # Alternative Börsen-Suffixe ausprobieren
+    _alts = []
+    if ticker.endswith('.DE'):
+        base = ticker[:-3]
+        _alts = [base + '.F', base + '.MU', base + '.HM', base]
+    elif ticker.endswith('.F'):
+        base = ticker[:-2]
+        _alts = [base + '.DE', base + '.MU', base]
+    elif ticker.endswith('.L'):
+        _alts = [ticker[:-2]]
+    elif '.' not in ticker:
+        _alts = [ticker + '.DE', ticker + '.F']
+    for alt in _alts:
+        result = _fetch(alt)
+        if result:
+            return result
+
+    return _empty
 
 
 def _portfolio_price(ticker: str):
@@ -5600,8 +5659,10 @@ if st.session_state.get("show_portfolio"):
                         ~_auto_df['is_crypto'] & ~_auto_df['is_warrant']
                     ]['ISIN'].tolist()
                     if _auto_tradeable:
+                        _auto_wkn_map = dict(zip(_auto_df['ISIN'], _auto_df['wkn'].fillna('')))
                         with st.spinner(f"Ticker für {len(_auto_tradeable)} Positionen werden ermittelt…"):
-                            st.session_state["portfolio_isin_map"] = _openfigi_batch(tuple(_auto_tradeable))
+                            st.session_state["portfolio_isin_map"] = _openfigi_batch(
+                                tuple(_auto_tradeable), wkn_by_isin=_auto_wkn_map)
 
     # ── Status-Badge ────────────────────────────────────────────────────────
     _sb_date_disp = st.session_state.get("portfolio_sb_date")
@@ -5638,8 +5699,9 @@ if st.session_state.get("show_portfolio"):
             st.session_state["portfolio_df"] = df_port_new.copy()
             tradeable = df_port_new[~df_port_new['is_crypto'] & ~df_port_new['is_warrant']]['ISIN'].tolist()
             if tradeable:
+                _wkn_map = dict(zip(df_port_new['ISIN'], df_port_new['wkn'].fillna('')))
                 with st.spinner(f"Ticker für {len(tradeable)} Positionen werden ermittelt…"):
-                    isin_map_new = _openfigi_batch(tuple(tradeable))
+                    isin_map_new = _openfigi_batch(tuple(tradeable), wkn_by_isin=_wkn_map)
                 st.session_state["portfolio_isin_map"] = isin_map_new
             with st.spinner("Portfolio wird gespeichert…"):
                 _saved_ok = _sb_save_portfolio(raw)
@@ -5658,7 +5720,6 @@ if st.session_state.get("show_portfolio"):
         crypto     = df_port[df_port['is_crypto']].copy()
         warrants   = df_port[df_port['is_warrant']].copy()
 
-        # Alle Kursdaten lazy im Positionen-Tab geladen (session_state-Cache → kein Block)
         _alloc_cache_key   = f"alloc_{hash(frozenset(isin_map.items()))}"
         _prices_cache_key  = f"prices_{_alloc_cache_key}"
         _qext_cache_key    = f"qext_{_alloc_cache_key}"
@@ -5669,6 +5730,45 @@ if st.session_state.get("show_portfolio"):
         _crypto_prices: dict = st.session_state.get(_crypto_cache_key, {})
         _alloc_infos: dict  = st.session_state.get(_alloc_cache_key, {})
         _sparklines: dict   = st.session_state.get(f"spark_{_alloc_cache_key}", {})
+
+        # ── Kurse automatisch laden (einmalig pro Session, dann gecacht) ─────
+        _prices_loaded = bool(prices)
+        if not prices and not stocks_etf.empty:
+            _tickers_to_load = [(isin_map.get(i), i) for i in stocks_etf['ISIN'] if isin_map.get(i)]
+            if _tickers_to_load:
+                _pprog = st.progress(0, f"Kurse werden geladen: 0 / {len(_tickers_to_load)}…")
+                for _pi, (_pt, _pi_isin) in enumerate(_tickers_to_load, 1):
+                    _q = _portfolio_quote_ext(_pt)
+                    prices[_pi_isin] = _q.get('price_eur')
+                    quotes_ext[_pi_isin] = _q
+                    _pprog.progress(_pi / len(_tickers_to_load),
+                                    f"Kurse: {_pi} / {len(_tickers_to_load)}…")
+                _pprog.empty()
+                st.session_state[_prices_cache_key] = prices
+                st.session_state[_qext_cache_key]   = quotes_ext
+        if not _crypto_prices and not crypto.empty:
+            import re as _re
+            import concurrent.futures as _cf_c
+            for _, _crow in crypto.iterrows():
+                _nm  = str(_crow.get('name', ''))
+                _m   = _re.search(r'\(([A-Z]{2,10})\)', _nm)
+                _sym = _m.group(1) if _m else (
+                    _nm.strip().upper()
+                    if _nm.strip().upper().isalpha() and len(_nm.strip()) <= 8 else None)
+                if _sym:
+                    _yf_tkr = f"{_sym}-EUR"
+                    with _cf_c.ThreadPoolExecutor(max_workers=1) as _exe_c:
+                        _fut_c = _exe_c.submit(lambda t=_yf_tkr: yf.Ticker(t).fast_info)
+                        try:
+                            _fi_c  = _fut_c.result(timeout=3.0)
+                            _cp_c  = getattr(_fi_c, 'last_price', None)
+                            if _cp_c and float(_cp_c) > 0:
+                                _crypto_prices[_crow['ISIN']] = float(_cp_c)
+                        except Exception:
+                            pass
+            st.session_state[_crypto_cache_key] = _crypto_prices
+        if not _prices_loaded and (prices or _crypto_prices):
+            st.rerun()
 
         # ── Zusammenfassung ──────────────────────────────────────────
         total_invested = df_port['cost_basis'].sum()
@@ -5686,12 +5786,22 @@ if st.session_state.get("show_portfolio"):
         _pnl_base          = _priced_cost + _crypto_cost
         pnl_eur  = (_priced_stocks_val + _crypto_val) - _pnl_base if (current_total and _pnl_base > 0) else None
         pnl_pct  = (pnl_eur / _pnl_base * 100) if (pnl_eur is not None and _pnl_base > 0) else None
-        _unpriced = (len(stocks_etf) - len(_priced_isins)) + (len(crypto) - len(_crypto_prices))
+        _unpriced_isins = [r['ISIN'] for _, r in stocks_etf.iterrows() if not prices.get(r['ISIN'])]
+        _unpriced_isins += [r['ISIN'] for _, r in crypto.iterrows() if not _crypto_prices.get(r['ISIN'])]
+        _unpriced = len(_unpriced_isins)
+        _isin_to_name = {r['ISIN']: r['name'] for _, r in df_port.iterrows()}
 
         _pnl_str  = f"{pnl_eur:+,.0f} ({pnl_pct:+.1f}%)" if pnl_eur is not None else "—"
         _pnl_col  = "#00e676" if (pnl_eur or 0) >= 0 else "#ff5252"
         _cur_str  = f"€ {current_total:,.0f}" if current_total else "—"
-        _unpriced_note = f"<div style='color:#78909c;font-size:0.62rem;margin-top:2px;'>{_unpriced} ohne Kurs</div>" if _unpriced > 0 else ""
+        if _unpriced > 0:
+            _unpriced_names = ', '.join(_isin_to_name.get(i, i)[:22] for i in _unpriced_isins[:4])
+            if _unpriced > 4:
+                _unpriced_names += f' +{_unpriced - 4}'
+            _unpriced_note = (f"<div style='color:#ff8a65;font-size:0.62rem;margin-top:2px;"
+                              f"cursor:help;' title='{_unpriced_names}'>{_unpriced} ohne Kurs ⚠️</div>")
+        else:
+            _unpriced_note = ""
         st.markdown(f"""
         <div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:6px;'>
           <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
@@ -5716,53 +5826,27 @@ if st.session_state.get("show_portfolio"):
           </div>
         </div>
         """, unsafe_allow_html=True)
-        st.caption("ℹ️ Aktueller Wert enthält nur bewertete Positionen (kein Verrechnungskonto, keine Dividenden). "
-                   "Realisierte Gewinne & Gesamtrendite → Performance-Tab.")
+        _caption_cols = st.columns([4, 1])
+        with _caption_cols[0]:
+            st.caption("ℹ️ Aktueller Wert enthält nur bewertete Positionen (kein Verrechnungskonto, keine Dividenden). "
+                       "Realisierte Gewinne & Gesamtrendite → Performance-Tab.")
+        with _caption_cols[1]:
+            if _unpriced > 0 and st.button("🔄 Ticker neu laden", key="pf_reload_tickers",
+                                            use_container_width=True, help="WKN-Fallback für Positionen ohne Kurs versuchen"):
+                for _ck in [_prices_cache_key, _qext_cache_key, _crypto_cache_key, _alloc_cache_key,
+                             f"spark_{_alloc_cache_key}"]:
+                    st.session_state.pop(_ck, None)
+                st.session_state.pop("portfolio_isin_map", None)
+                _wkn_map_reload = dict(zip(stocks_etf['ISIN'], stocks_etf['wkn'].fillna('')))
+                with st.spinner("Ticker werden neu ermittelt (inkl. WKN-Fallback)…"):
+                    st.session_state["portfolio_isin_map"] = _openfigi_batch(
+                        tuple(stocks_etf['ISIN'].tolist()), wkn_by_isin=_wkn_map_reload)
+                st.rerun()
 
         tab_pos, tab_alloc, tab_perf = st.tabs(["📊 Positionen", "🥧 Aufteilung", "📈 Performance"])
 
         with tab_pos:
           try:
-            # ── Kurse lazy laden (einmalig pro Session, dann gecacht) ────
-            _prices_loaded = bool(prices)
-            if not prices and not stocks_etf.empty:
-                _tickers_to_load = [(isin_map.get(i), i) for i in stocks_etf['ISIN'] if isin_map.get(i)]
-                if _tickers_to_load:
-                    _pprog = st.progress(0, f"Kurse werden geladen: 0 / {len(_tickers_to_load)}…")
-                    for _pi, (_pt, _pi_isin) in enumerate(_tickers_to_load, 1):
-                        _q = _portfolio_quote_ext(_pt)
-                        prices[_pi_isin] = _q.get('price_eur')
-                        quotes_ext[_pi_isin] = _q
-                        _pprog.progress(_pi / len(_tickers_to_load),
-                                        f"Kurse: {_pi} / {len(_tickers_to_load)}…")
-                    _pprog.empty()
-                    st.session_state[_prices_cache_key] = prices
-                    st.session_state[_qext_cache_key]   = quotes_ext
-            if not _crypto_prices and not crypto.empty:
-                import re as _re
-                import concurrent.futures as _cf_c
-                for _, _crow in crypto.iterrows():
-                    _nm  = str(_crow.get('name', ''))
-                    _m   = _re.search(r'\(([A-Z]{2,10})\)', _nm)
-                    _sym = _m.group(1) if _m else (
-                        _nm.strip().upper()
-                        if _nm.strip().upper().isalpha() and len(_nm.strip()) <= 8 else None)
-                    if _sym:
-                        _yf_tkr = f"{_sym}-EUR"
-                        with _cf_c.ThreadPoolExecutor(max_workers=1) as _exe_c:
-                            _fut_c = _exe_c.submit(lambda t=_yf_tkr: yf.Ticker(t).fast_info)
-                            try:
-                                _fi_c  = _fut_c.result(timeout=3.0)
-                                _cp_c  = getattr(_fi_c, 'last_price', None)
-                                if _cp_c and float(_cp_c) > 0:
-                                    _crypto_prices[_crow['ISIN']] = float(_cp_c)
-                            except Exception:
-                                pass
-                st.session_state[_crypto_cache_key] = _crypto_prices
-            # Rerun once after first load so summary cards update with real prices
-            if not _prices_loaded and (prices or _crypto_prices):
-                st.rerun()
-
             # ── Analyst-Daten lazy laden (Top-10, einmalig pro Session) ──
             if not _alloc_infos and not stocks_etf.empty:
                 _ai_isins = [(isin_map.get(i), i)
