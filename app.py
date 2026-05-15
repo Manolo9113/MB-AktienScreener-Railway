@@ -3923,8 +3923,14 @@ def _portfolio_quote_ext(ticker: str) -> dict:
     elif ticker.endswith('.L'):
         _alts = [ticker[:-2]]
     elif ticker.endswith('.KS'):
-        # KRX: auch KS11 alternative oder US-OTC versuchen
         _alts = []
+    elif ticker.endswith('.HK'):
+        # HK-Ticker: yFinance braucht 4-stellige Nummern mit Leading Zero (300.HK → 0300.HK)
+        _hk_base = ticker[:-3]
+        if _hk_base.isdigit() and len(_hk_base) < 4:
+            _alts = [_hk_base.zfill(4) + '.HK']
+        else:
+            _alts = []
     elif '.' not in ticker:
         _alts = [ticker + '.DE', ticker + '.F', ticker + '.L', ticker + '.AS', ticker + '.PA']
     for alt in _alts:
@@ -3975,8 +3981,11 @@ def _portfolio_quote_ext(ticker: str) -> dict:
             _fmp_candidates = [_base + '.KS', _base, ticker]
         elif ticker.endswith('.T') or (len(_base) == 4 and _base.isdigit()):
             _fmp_candidates = [_base + '.T', _base, ticker]
+        elif ticker.endswith('.HK') and _base.isdigit() and len(_base) < 4:
+            # HK-Ticker zero-padden: 300.HK → 0300.HK
+            _fmp_candidates = [_base.zfill(4) + '.HK', ticker, _base]
         elif '.' not in ticker and ticker.isalpha():
-            # GDR/LSE-Ticker wie HXSCL, SMSN, SMSD — auch .L Suffix bei FMP probieren
+            # GDR/OTC/LSE-Ticker (HXSCL, SSNGY, SMSN) — auch .L probieren
             _fmp_candidates = [ticker, ticker + '.L', _base]
         for _fmp_sym in _fmp_candidates:
             _r = _fmp_quote(_fmp_sym)
