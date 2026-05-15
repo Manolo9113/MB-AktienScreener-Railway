@@ -6833,6 +6833,10 @@ if st.session_state.get("show_etf_analyzer"):
         'CNDX.L':0.0033,'XDWD.L':0.0020,'VUSA.L':0.0007,'EUNL.DE':0.0020,
         'DBXD.DE':0.0009,'IS3S.DE':0.0025,'XMEA.DE':0.0025,'IUSN.DE':0.0035,
         'IUSE.DE':0.0015,'VHYL.L':0.0022,'XMWO.DE':0.0020,
+        # Amundi Prime (sehr günstige ETF-Reihe, TER 0.05–0.07%)
+        'PRAW.DE':0.0005,'PRWA.DE':0.0005,'LCUP.DE':0.0005,'PRIW.DE':0.0007,
+        'LCUQ.DE':0.0005,'LCU.DE':0.0005,'LCUA.DE':0.0005,'PRWG.DE':0.0005,
+        'DAXE.DE':0.0005,'OBAM.DE':0.0008,'C500.DE':0.0005,'SP5C.DE':0.0005,
         # Europa
         'MEUD.DE':0.0015,'EXW1.DE':0.0010,'LYPS.DE':0.0007,'IQQY.DE':0.0012,
         'XESC.DE':0.0020,'SPYY.DE':0.0012,'IEUA.DE':0.0012,'XEUR.DE':0.0020,
@@ -6861,6 +6865,11 @@ if st.session_state.get("show_etf_analyzer"):
         'IMEA.DE':'IEMG','SPY5.DE':'SPY','VWRL.L':'VT','IWDA.AS':'URTH',
         'CNDX.L':'QQQ','DBXD.DE':'EWG','VUSA.L':'IVV','EUNL.DE':'URTH',
         'IUSN.DE':'SCHA','IUSE.DE':'IVV','VHYL.L':'VYM','XMWO.DE':'URTH',
+        # Europa
+        # Amundi Prime (MSCI World / All Country äquivalent)
+        'PRAW.DE':'URTH','PRWA.DE':'URTH','LCUP.DE':'URTH','PRIW.DE':'VT',
+        'LCUQ.DE':'URTH','LCU.DE':'URTH','LCUA.DE':'URTH','PRWG.DE':'URTH',
+        'C500.DE':'IVV','SP5C.DE':'IVV','DAXE.DE':'EWG',
         # Europa
         'MEUD.DE':'FEZ','EXW1.DE':'FEZ','LYPS.DE':'FEZ','IQQY.DE':'VGK',
         'XESC.DE':'FEZ','SPYY.DE':'VGK','IEUA.DE':'VGK','XEUR.DE':'VGK',
@@ -7127,7 +7136,7 @@ if st.session_state.get("show_etf_analyzer"):
                     'L':'Irland','ARCA':'USA','NYSE':'USA','BATS':'USA',
                     'SIX':'Luxemburg','PA':'Irland/LU'}
 
-            # TER: yfinance → statische DB → FMP (US data ticker)
+            # TER: yfinance → statische DB → FMP (US data ticker) → Name-Heuristik
             ter = (inf.get('annualReportExpenseRatio')
                    or inf.get('totalExpenseRatio') or inf.get('expenseRatio'))
             if not ter:
@@ -7143,6 +7152,17 @@ if st.session_state.get("show_etf_analyzer"):
                         ter = _fd.get('annualReportExpenseRatio') or _fd.get('expenseRatio')
                 except Exception:
                     pass
+            # Letzter Fallback: TER aus ETF-Name ableiten (KIID-Werte)
+            if not ter:
+                _nl = name_l  # bereits lowercase
+                if 'prime global' in _nl or 'prime all country' in _nl or 'prime all-country' in _nl:
+                    ter = 0.0005  # Amundi Prime: 0.05%
+                elif 'prime' in _nl and ('amundi' in _nl or 'world' in _nl or 'global' in _nl):
+                    ter = 0.0007
+                elif 'prime usa' in _nl or 'prime us' in _nl or 'prime s&p' in _nl:
+                    ter = 0.0005
+                elif 'core msci world' in _nl or 'core world' in _nl:
+                    ter = 0.0020
 
             # AUM: yfinance → FMP (US data ticker)
             aum = inf.get('totalAssets') or inf.get('fundTotalAssets')
