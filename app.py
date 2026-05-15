@@ -5586,28 +5586,11 @@ if st.session_state.get("show_portfolio"):
                         prices[isin] = _q.get('price_eur')
                         quotes_ext[isin] = _q
 
-        # Analyst- & Sektordaten vorladen (24h gecacht, max 4s/Ticker)
-        _alloc_infos: dict = {}
-        if not stocks_etf.empty:
-            # Nur Top-25 nach Einstandswert laden (max 25×4s = 100s statt 272s)
-            _top25 = stocks_etf.nlargest(25, 'cost_basis')['ISIN'].tolist()
-            _info_isins = [(isin_map.get(isin), isin)
-                          for isin in _top25 if isin_map.get(isin)]
-            if _info_isins:
-                _info_prog = st.progress(0, f"Analyst-Daten: 0/{len(_info_isins)} (max 4s/Ticker)…")
-                for _ii, (_tkr_i, _isin_i) in enumerate(_info_isins, 1):
-                    _alloc_infos[_isin_i] = _get_ticker_info_cached(_tkr_i)
-                    _info_prog.progress(_ii / len(_info_isins),
-                                        f"Analyst-Daten: {_ii}/{len(_info_isins)}…")
-                _info_prog.empty()
-
-        # Sparklines (Bulk-Download, 1 API-Call für alle Positionen)
-        _sparklines: dict = {}
-        if not stocks_etf.empty:
-            _spark_tickers = tuple(t for t in [isin_map.get(i) for i in stocks_etf['ISIN']] if t)
-            if _spark_tickers:
-                with st.spinner("Sparklines werden geladen…"):
-                    _sparklines = _sparklines_bulk(_spark_tickers)
+        # Analyst-Daten + Sparklines werden lazy im Positionen-Tab geladen
+        # (session_state-Cache → kein Block beim initialen Seitenaufruf)
+        _alloc_cache_key = f"alloc_{hash(frozenset(isin_map.items()))}"
+        _alloc_infos: dict = st.session_state.get(_alloc_cache_key, {})
+        _sparklines: dict  = st.session_state.get(f"spark_{_alloc_cache_key}", {})
 
         # ── Zusammenfassung ──────────────────────────────────────────
         total_invested = df_port['cost_basis'].sum()
@@ -5661,6 +5644,27 @@ if st.session_state.get("show_portfolio"):
         tab_pos, tab_alloc, tab_perf = st.tabs(["📊 Positionen", "🥧 Aufteilung", "📈 Performance"])
 
         with tab_pos:
+            # ── Analyst-Daten lazy laden (Top-10, einmalig pro Session) ──
+            if not _alloc_infos and not stocks_etf.empty:
+                _ai_isins = [(isin_map.get(i), i)
+                             for i in stocks_etf.nlargest(10, 'cost_basis')['ISIN']
+                             if isin_map.get(i)]
+                if _ai_isins:
+                    _aprog = st.progress(0, f"Analyst-Daten: 0 / {len(_ai_isins)}…")
+                    for _aii, (_at, _ai) in enumerate(_ai_isins, 1):
+                        _alloc_infos[_ai] = _get_ticker_info_cached(_at)
+                        _aprog.progress(_aii / len(_ai_isins),
+                                        f"Analyst-Daten: {_aii} / {len(_ai_isins)}…")
+                    _aprog.empty()
+                    st.session_state[_alloc_cache_key] = _alloc_infos
+            if not _sparklines and not stocks_etf.empty:
+                _sp_tkrs = tuple(t for t in
+                                 [isin_map.get(i) for i in stocks_etf['ISIN']] if t)
+                if _sp_tkrs:
+                    with st.spinner("Kursverläufe werden geladen…"):
+                        _sparklines = _sparklines_bulk(_sp_tkrs)
+                    st.session_state[f"spark_{_alloc_cache_key}"] = _sparklines
+
             # ── Aktien & ETFs ────────────────────────────────────────────
             if not stocks_etf.empty:
                 st.markdown("<div class='section-header'>📈 Aktien & ETFs</div>", unsafe_allow_html=True)
