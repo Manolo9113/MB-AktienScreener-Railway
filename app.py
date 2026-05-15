@@ -3713,8 +3713,11 @@ def _parse_portfolio_csv(file_bytes: bytes) -> pd.DataFrame:
         port = buy_agg.copy()
         port['total_sold'] = 0.0
     port['total_sold'] = port['total_sold'].fillna(0.0)
-    port['shares'] = (port['total_bought'] - port['total_sold']).round(8)
-    port = port[port['shares'] > 1e-6].copy()
+    port['shares'] = (port['total_bought'] - port['total_sold']).round(6)
+    # Position gilt als geschlossen wenn Stückzahl < 0.001 ODER Restwert < € 0.50
+    port['_residual_val'] = port['shares'] * port['avg_cost'].fillna(0)
+    port = port[(port['shares'] > 0.001) | (port['_residual_val'] > 0.50)].copy()
+    port = port[port['shares'] > 0].drop(columns=['_residual_val'])
     port['cost_basis'] = port['avg_cost'] * port['shares']
     port['is_crypto'] = port['ISIN'].str.startswith('XC')
     warrant_wkn_prefix = ('GJ', 'UJ', 'MJ', 'MA', 'GX', 'HC', 'XS', 'GA', 'SB', 'TB')
