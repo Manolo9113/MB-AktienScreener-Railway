@@ -797,7 +797,7 @@ def load_quarterly_financials(ticker: str):
 
 @st.cache_data(ttl=86400)
 def load_annual_financials(ticker: str):
-    """Jahresabschluss: Umsatz, Nettogewinn, EPS, FCF, EBITDA, CapEx, Goodwill (5 Jahre)."""
+    """Jahresabschluss: Umsatz, Nettogewinn, EPS, FCF, EBITDA, CapEx, Goodwill, Debt, Cash (5 Jahre)."""
     stock = yf.Ticker(ticker)
     rev = pd.Series(dtype=float)
     net = pd.Series(dtype=float)
@@ -807,6 +807,8 @@ def load_annual_financials(ticker: str):
     shares_ann = pd.Series(dtype=float)
     capex_s = pd.Series(dtype=float)
     goodwill_s = pd.Series(dtype=float)
+    debt_s = pd.Series(dtype=float)
+    cash_s = pd.Series(dtype=float)
     try:
         inc = stock.income_stmt
         if inc is not None and not inc.empty:
@@ -834,11 +836,10 @@ def load_annual_financials(ticker: str):
                 fcf = cf.loc["Free Cash Flow"].dropna().sort_index()
             elif "Operating Cash Flow" in cf.index and "Capital Expenditure" in cf.index:
                 fcf = (cf.loc["Operating Cash Flow"] + cf.loc["Capital Expenditure"]).dropna().sort_index()
-            # CapEx (absolut, als positive Zahl für die Darstellung)
             for row in ["Capital Expenditure", "Purchase Of Property Plant And Equipment"]:
                 if row in cf.index:
                     raw = cf.loc[row].dropna().sort_index()
-                    capex_s = raw.abs()   # CapEx ist in yfinance negativ
+                    capex_s = raw.abs()
                     break
     except Exception:
         pass
@@ -848,9 +849,18 @@ def load_annual_financials(ticker: str):
             for row in ["Goodwill", "Goodwill And Other Intangible Assets"]:
                 if row in bs.index:
                     goodwill_s = bs.loc[row].dropna().sort_index(); break
+            for row in ["Total Debt", "Long Term Debt And Capital Lease Obligation",
+                        "Long Term Debt", "Net Debt"]:
+                if row in bs.index:
+                    debt_s = bs.loc[row].dropna().sort_index().abs(); break
+            for row in ["Cash And Cash Equivalents",
+                        "Cash Cash Equivalents And Short Term Investments",
+                        "Cash And Short Term Investments"]:
+                if row in bs.index:
+                    cash_s = bs.loc[row].dropna().sort_index(); break
     except Exception:
         pass
-    return rev, net, eps, fcf, shares_ann, ebitda_s, capex_s, goodwill_s
+    return rev, net, eps, fcf, shares_ann, ebitda_s, capex_s, goodwill_s, debt_s, cash_s
 
 @st.cache_data(ttl=86400)
 def _sec_cik(ticker: str):
@@ -7747,7 +7757,7 @@ with st.spinner(f"Lade Daten für {ticker}..."):
     q_rev, q_net, q_eps = load_quarterly_financials(ticker)
     earnings_surprises   = load_earnings_surprises(ticker)
     analyst_estimates    = load_analyst_estimates(ticker)
-    a_rev, a_net, a_eps, a_fcf, a_shares, a_ebitda, a_capex, a_goodwill = load_annual_financials(ticker)
+    a_rev, a_net, a_eps, a_fcf, a_shares, a_ebitda, a_capex, a_goodwill, a_debt, a_cash = load_annual_financials(ticker)
     # Segmentdaten: sec-api.io bevorzugt, FMP als Fallback
     _secapi_seg = load_secapi_segments(ticker) if SEC_API_KEY else {"product": [], "geo": []}
     _fmp_seg    = load_segment_data(ticker)
@@ -9821,6 +9831,118 @@ elif _at == 3:
                     '<div style="font-size:0.68rem;color:#546e7a;margin-top:-8px;">'
                     'Benchmark: Hyperscaler (AWS/Azure/GCP) >10% · Industrie 5–10% · '
                     'Software/Asset-light &lt;3%</div>',
+                    unsafe_allow_html=True)
+
+    # ── Verschuldung & Cash-Position ──────────────────────────────────────
+    st.markdown("<div class='section-header'>🏦 Verschuldung & Cash-Position</div>", unsafe_allow_html=True)
+
+    _has_debt = not a_debt.empty and len(a_debt) >= 2
+    _has_cash = not a_cash.empty and len(a_cash) >= 2
+
+    if _has_debt or _has_cash:
+        _dc1, _dc2 = st.columns(2)
+
+        # ── Linke Spalte: Schulden vs. Cash (gruppierter Balken) ──
+        with _dc1:
+            if _has_debt or _has_cash:
+                _idx = sorted(set(
+                    (a_debt.index.tolist() if _has_debt else []) +
+                    (a_cash.index.tolist() if _has_cash else [])
+                ))
+                _idx = _idx[-6:]
+                _labels_dc = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in _idx]
+                _fig_dc = go.Figure()
+                if _has_debt:
+                    _dv = [a_debt.get(d, None) for d in _idx]
+                    _fig_dc.add_trace(go.Bar(
+                        name="Gesamtschulden", x=_labels_dc, y=_dv,
+                        marker_color="#ef5350",
+                        text=[fmt_large(v) if v else "" for v in _dv],
+                        textposition="outside", textfont=dict(size=9, color="#90a4ae"),
+                    ))
+                if _has_cash:
+                    _cv = [a_cash.get(d, None) for d in _idx]
+                    _fig_dc.add_trace(go.Bar(
+                        name="Cash & Äquivalente", x=_labels_dc, y=_cv,
+                        marker_color="#00e676",
+                        text=[fmt_large(v) if v else "" for v in _cv],
+                        textposition="outside", textfont=dict(size=9, color="#90a4ae"),
+                    ))
+                _fig_dc.update_layout(
+                    template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(13,21,38,0.8)", height=280,
+                    margin=dict(l=0, r=0, t=30, b=0),
+                    barmode="group",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                                xanchor="left", x=0, font=dict(size=10)),
+                    yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False),
+                    xaxis=dict(showgrid=False),
+                    title=dict(text="Schulden vs. Cash (absolut)",
+                               font=dict(color="#64b5f6", size=13)),
+                )
+                st.plotly_chart(_fig_dc, use_container_width=True)
+                st.markdown(
+                    '<div style="font-size:0.68rem;color:#546e7a;margin-top:-8px;">'
+                    '🔴 Hohe Schulden bei niedrigem Cash = Refinanzierungsrisiko · '
+                    '🟢 Cash > Schulden = Nettocash-Position</div>',
+                    unsafe_allow_html=True)
+
+        # ── Rechte Spalte: Nettoverschuldung + Debt/EBITDA ──
+        with _dc2:
+            if _has_debt and _has_cash:
+                _common = sorted(a_debt.index.intersection(a_cash.index))[-6:]
+                if len(_common) >= 2:
+                    _net_debt = (a_debt[_common] - a_cash[_common])
+                    _labels_nd = [str(d.year) if hasattr(d, "year") else str(d)[:4]
+                                  for d in _common]
+                    _colors_nd = ["#00e676" if v < 0 else "#ef5350" for v in _net_debt.values]
+                    _fig_nd = go.Figure(go.Bar(
+                        x=_labels_nd, y=_net_debt.values,
+                        marker_color=_colors_nd,
+                        text=[fmt_large(v) for v in _net_debt.values],
+                        textposition="outside", textfont=dict(size=9, color="#90a4ae"),
+                    ))
+                    _fig_nd.add_hline(y=0, line_color="#546e7a", line_width=1)
+                    _fig_nd.update_layout(
+                        template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(13,21,38,0.8)", height=280,
+                        margin=dict(l=0, r=0, t=30, b=0), showlegend=False,
+                        yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False),
+                        xaxis=dict(showgrid=False),
+                        title=dict(text="Nettoverschuldung (Schulden − Cash)",
+                                   font=dict(color="#64b5f6", size=13)),
+                    )
+                    st.plotly_chart(_fig_nd, use_container_width=True)
+                    _last_nd = _net_debt.iloc[-1]
+                    _nd_hint = ("🟢 Nettocash-Position" if _last_nd < 0
+                                else "🔴 Nettoverschuldet" if _last_nd > 0 else "")
+                    st.markdown(
+                        f'<div style="font-size:0.68rem;color:#546e7a;margin-top:-8px;">'
+                        f'Negativ = mehr Cash als Schulden (gut) · {_nd_hint}</div>',
+                        unsafe_allow_html=True)
+            elif _has_debt:
+                _fig_donly = _simple_bar(a_debt, "Gesamtschulden", "#ef5350", fmt_fn=fmt_large)
+                if _fig_donly:
+                    st.plotly_chart(_fig_donly, use_container_width=True)
+
+        # ── Debt/EBITDA Tabelle ──
+        _common_de = sorted(a_debt.index.intersection(a_ebitda.index))[-6:] if (_has_debt and not a_ebitda.empty) else []
+        if len(_common_de) >= 2:
+            _de_ratios = (a_debt[_common_de] / a_ebitda[_common_de].abs()).replace([float('inf'), float('-inf')], None).dropna()
+            if not _de_ratios.empty:
+                st.markdown("**Debt / EBITDA** (Faustregel: &lt;2× konservativ · 2–4× moderat · &gt;4× riskant)")
+                _de_cols = st.columns(len(_de_ratios))
+                for _di, ((_dk, _dv), _dcol) in enumerate(zip(_de_ratios.items(), _de_cols)):
+                    _yr = str(_dk.year) if hasattr(_dk, "year") else str(_dk)[:4]
+                    _col_de = "#00e676" if _dv < 2 else "#ffd600" if _dv < 4 else "#ef5350"
+                    _dcol.markdown(
+                        f"<div style='text-align:center;padding:6px 4px;background:#0d1f35;"
+                        f"border-radius:6px;border:1px solid #1a2740;'>"
+                        f"<div style='color:#78909c;font-size:0.65rem;'>{_yr}</div>"
+                        f"<div style='color:{_col_de};font-size:1rem;font-weight:700;'>{_dv:.1f}×</div>"
+                        f"</div>", unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="insight-box" style="color:#546e7a;">Keine Bilanzdaten für Verschuldung verfügbar</div>',
                     unsafe_allow_html=True)
 
 elif _at == 4:
