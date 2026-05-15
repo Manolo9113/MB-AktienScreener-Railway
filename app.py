@@ -5891,7 +5891,9 @@ if st.session_state.get("show_portfolio"):
 
         # ── Kurse automatisch laden (nur wenn noch Positionen ohne Kurs) ─────
         _all_isins = stocks_etf['ISIN'].tolist() if not stocks_etf.empty else []
-        _missing_isins = [i for i in _all_isins if not prices.get(i)]
+        # Nur ISINs die wirklich noch nie versucht wurden (is None = kein Eintrag)
+        # Wert 0.0 = versucht, kein Kurs gefunden (Sentinel, kein Retry)
+        _missing_isins = [i for i in _all_isins if prices.get(i) is None]
         _prices_loaded = len(_missing_isins) == 0
         if _missing_isins and not stocks_etf.empty:
             _tickers_to_load = [(isin_map.get(i), i) for i in _missing_isins if isin_map.get(i)]
@@ -5909,7 +5911,7 @@ if st.session_state.get("show_portfolio"):
                 if FMP_API_KEY:
                     _still_missing = [(_pi_isin2, isin_map.get(_pi_isin2, ''))
                                       for _pi_isin2 in _missing_isins
-                                      if not prices.get(_pi_isin2)]
+                                      if prices.get(_pi_isin2) is None]
                     if _still_missing:
                         _fp2 = st.progress(0, f"ISIN-Fallback: 0 / {len(_still_missing)}…")
                         for _fmi, (_fmisin, _fmtkr_old) in enumerate(_still_missing, 1):
@@ -5973,6 +5975,12 @@ if st.session_state.get("show_portfolio"):
                                           f"ISIN-Fallback: {_fmi} / {len(_still_missing)}…")
                         _fp2.empty()
                         st.session_state["portfolio_isin_map"] = isin_map
+
+                # Sentinel: alle noch nicht gefundenen Preise auf 0.0 setzen
+                # damit sie beim nächsten Laden NICHT erneut versucht werden
+                for _si in _missing_isins:
+                    if prices.get(_si) is None:
+                        prices[_si] = 0.0
 
                 st.session_state[_prices_cache_key] = prices
                 st.session_state[_qext_cache_key]   = quotes_ext
