@@ -6395,6 +6395,14 @@ if st.session_state.get("show_etf_analyzer"):
         'IQQC.DE':0.0074,'IQQD.DE':0.0061,'IQQP.DE':0.0060,
         # Dividend
         'ISPA.DE':0.0040,'QDIV.DE':0.0025,'XDIV.DE':0.0025,'IDVY.L':0.0040,
+        # Sektor-ETFs
+        'XDWT.DE':0.0025,'XDWH.DE':0.0025,'XDWF.DE':0.0025,'XDWU.DE':0.0025,
+        'QDVE.DE':0.0015,'QDVG.DE':0.0015,'QDVD.DE':0.0015,'SXRV.DE':0.0015,
+        'IUIT.DE':0.0040,'HEAL.DE':0.0035,
+        # Small/Mid Cap
+        'ZPRV.DE':0.0030,'ZPRX.DE':0.0030,'EXI5.DE':0.0020,
+        # EM Spezifisch
+        'IS3W.DE':0.0020,'XMKR.DE':0.0002,'XMIN.DE':0.0040,
     }
 
     # ── US-Datenticker (für yFinance funds_data + FMP — XETRA hat kaum Daten) ─
@@ -6415,6 +6423,43 @@ if st.session_state.get("show_etf_analyzer"):
         'IQQC.DE':'MCHI','IQQD.DE':'EEM','IQQP.DE':'EPP',
         # Dividend
         'ISPA.DE':'SCHD','QDIV.DE':'VYM','XDIV.DE':'VYM','IDVY.L':'VYM',
+        # Sektor-ETFs
+        'XDWT.DE':'IXN',   # Xtrackers MSCI World Information Technology → iShares Global Tech
+        'XDWH.DE':'IXV',   # Xtrackers MSCI World Health Care
+        'XDWF.DE':'IXG',   # Xtrackers MSCI World Financials
+        'XDWU.DE':'XLU',   # Xtrackers MSCI World Utilities
+        'QDVE.DE':'XLK',   # iShares S&P 500 Information Technology
+        'QDVG.DE':'XLV',   # iShares S&P 500 Health Care
+        'QDVD.DE':'XLF',   # iShares S&P 500 Financials
+        'SXRV.DE':'XLC',   # iShares S&P 500 Communication
+        'IUIT.DE':'IXN',   # iShares MSCI World IT
+        'HEAL.DE':'IXV',   # iShares MSCI World Health
+        # Small/Mid Cap
+        'ZPRV.DE':'IWM',   # SPDR MSCI USA Small Cap
+        'EXI5.DE':'IJH',   # iShares S&P 500 Mid Cap
+        # EM Spezifisch
+        'IS3W.DE':'EWT',   # iShares MSCI Taiwan
+        'XMKR.DE':'EWY',   # Xtrackers MSCI Korea
+        'XMIN.DE':'INDA',  # Xtrackers MSCI India
+    }
+
+    # ── Statische AUM-Werte (Näherung EUR, Stand 2025) ──────────────────────
+    _ETF_STATIC_AUM = {
+        'SXR8.DE': 90_000_000_000,   # iShares Core S&P 500: ~90 Mrd
+        'VWCE.DE': 20_000_000_000,   # Vanguard FTSE All-World: ~20 Mrd
+        'EUNL.DE': 70_000_000_000,   # iShares Core MSCI World: ~70 Mrd
+        'XDWD.DE': 10_000_000_000,   # Xtrackers MSCI World: ~10 Mrd
+        'EQQQ.DE': 22_000_000_000,   # iShares Nasdaq-100: ~22 Mrd
+        'IS3N.DE': 12_000_000_000,   # iShares Core MSCI EM: ~12 Mrd
+        'XDWT.DE':  6_000_000_000,   # Xtrackers MSCI World IT: ~6 Mrd
+        'EXW1.DE':  3_500_000_000,   # iShares Core MSCI Europe: ~3.5 Mrd
+        'IUSN.DE':  2_000_000_000,   # iShares MSCI World Small Cap: ~2 Mrd
+        'FWRA.DE':  3_000_000_000,   # Amundi Prime All Country World: ~3 Mrd
+        'LCUW.DE':  5_000_000_000,   # Amundi S&P 500: ~5 Mrd
+        'SPY5.DE': 40_000_000_000,   # SPDR S&P 500 (EUR): ~40 Mrd
+        'ISPA.DE':  8_000_000_000,   # iShares Core S&P 500 Dividend: ~8 Mrd
+        'VWRL.L':  18_000_000_000,   # Vanguard FTSE All-World (GBP): ~18 Mrd
+        'IWDA.AS': 65_000_000_000,   # iShares Core MSCI World (Amsterdam): ~65 Mrd
     }
 
     # ── Statische Länder-Gewichtungen (Quelle: Fondsanbieter, Stand 2024) ────
@@ -6635,6 +6680,8 @@ if st.session_state.get("show_etf_analyzer"):
                             aum = _fr2.json()[0].get('mktCap')
                     except Exception:
                         pass
+            if not aum:
+                aum = _ETF_STATIC_AUM.get(ticker)
 
             return {
                 'name':        inf.get('longName') or inf.get('shortName') or ticker,
@@ -6661,27 +6708,34 @@ if st.session_state.get("show_etf_analyzer"):
             th = getattr(fd, 'top_holdings', None)
             if th is None or (hasattr(th,'empty') and th.empty): th = pd.DataFrame()
             cw = {}
+            eq_vals = {}
             eq = getattr(fd, 'equity_holdings', None)
             if eq is not None:
                 try:
                     eq_d = eq if isinstance(eq, dict) else eq.to_dict()
                     cw = eq_d.get('countryWeights', {})
+                    for _fld in ['priceToEarnings','priceToBook','priceToSales',
+                                 'priceToCashflow','medianMarketCap','threeYearEarningsGrowth']:
+                        _fv = eq_d.get(_fld)
+                        if _fv is not None:
+                            eq_vals[_fld] = _fv
                 except Exception: pass
             ac = getattr(fd, 'asset_classes', None) or {}
             if hasattr(ac,'to_dict'): ac = ac.to_dict()
-            return sw, th, cw, ac
+            return sw, th, cw, ac, eq_vals
 
         try:
-            sw, th, cw, ac = _parse_fd(yf.Ticker(ticker).funds_data)
+            sw, th, cw, ac, eq_vals = _parse_fd(yf.Ticker(ticker).funds_data)
 
             # Fallback 1: US-Datenticker via yFinance (XETRA ETFs haben meist keine funds_data)
             _data_tkr = _ETF_DATA_TKR.get(ticker)
-            if _data_tkr and (not sw or th.empty):
+            if _data_tkr and (not sw or th.empty or not eq_vals):
                 try:
-                    sw2, th2, cw2, ac2 = _parse_fd(yf.Ticker(_data_tkr).funds_data)
+                    sw2, th2, cw2, ac2, eq2 = _parse_fd(yf.Ticker(_data_tkr).funds_data)
                     if not sw and sw2: sw = sw2
                     if th.empty and not th2.empty: th = th2
                     if not cw and cw2: cw = cw2
+                    if not eq_vals and eq2: eq_vals = eq2
                 except Exception: pass
 
             # Fallback 2: FMP API (Sektor-Gewichte + Top-Holdings + Länder)
@@ -6725,9 +6779,9 @@ if st.session_state.get("show_etf_analyzer"):
             if not cw:
                 cw = dict(_ETF_STATIC_CW.get(ticker, {}))
 
-            return sw, th, cw, ac
+            return sw, th, cw, ac, eq_vals
         except Exception:
-            return {}, pd.DataFrame(), {}, {}
+            return {}, pd.DataFrame(), {}, {}, {}
 
     @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_vs_bm(etf: str, bm: str, period: str) -> pd.DataFrame:
@@ -6864,7 +6918,7 @@ if st.session_state.get("show_etf_analyzer"):
     with st.spinner(f"ETF-Daten für {_etf_tkr} werden geladen…"):
         _ei            = _etf_info(_etf_tkr)
         _perf          = _etf_perf_hist(_etf_tkr)
-        _sw, _th, _cw, _ac = _etf_holdings(_etf_tkr)
+        _sw, _th, _cw, _ac, _eq_vals = _etf_holdings(_etf_tkr)
 
     _ei['ytd']    = _perf.get('ytd')    or _ei.get('ytd')
     _ei['ret_1y'] = _perf.get('ret_1y') or _ei.get('ret_1y')
