@@ -3874,6 +3874,35 @@ def _portfolio_quote_ext(ticker: str) -> dict:
         if result:
             return result
 
+    # FMP-Fallback wenn yFinance (inkl. Alternativen) keinen Kurs liefert
+    if FMP_API_KEY:
+        _base = ticker.split('.')[0]
+        for _fmp_sym in [ticker, _base]:
+            try:
+                _fr = requests.get(
+                    f"https://financialmodelingprep.com/api/v3/quote/{_fmp_sym}",
+                    params={'apikey': FMP_API_KEY}, timeout=5)
+                if _fr.ok and _fr.json():
+                    _fd = _fr.json()[0]
+                    _price = float(_fd.get('price') or 0)
+                    if not _price:
+                        continue
+                    _currency = str(_fd.get('currency') or 'EUR').strip()
+                    if _currency == 'GBp':
+                        _price /= 100.0
+                        _currency = 'GBP'
+                    _fx = _get_eur_fx_rate(_currency) if _currency != 'EUR' else 1.0
+                    _chg = _fd.get('changesPercentage')
+                    return {
+                        'price_eur':     _price * _fx,
+                        'year_high_eur': float(_fd['yearHigh']) * _fx if _fd.get('yearHigh') else None,
+                        'year_low_eur':  float(_fd['yearLow'])  * _fx if _fd.get('yearLow')  else None,
+                        'day_chg_pct':   float(_chg) if _chg is not None else None,
+                        'fx':            _fx,
+                    }
+            except Exception:
+                pass
+
     return _empty
 
 
