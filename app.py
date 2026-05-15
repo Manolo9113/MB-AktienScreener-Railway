@@ -6998,10 +6998,12 @@ if st.session_state.get("show_etf_analyzer"):
         for _k, _v in _cw.items():
             try:
                 _cw_norm[_k] = float(str(_v).replace('%','').replace(',','.'))
-                if _cw_norm[_k] <= 1.5:          # Dezimalbruch → Prozent
-                    _cw_norm[_k] *= 100
             except Exception:
                 pass
+        # Entscheidung Dezimal vs. Prozent anhand der Gesamtsumme (nicht pro Wert)
+        _cw_sum = sum(_cw_norm.values())
+        if _cw_sum < 5:          # Summe ≈ 1 → alle Werte sind Dezimalbrüche
+            _cw_norm = {k: v * 100 for k, v in _cw_norm.items()}
         _cw2 = dict(sorted(_cw_norm.items(), key=lambda x: x[1], reverse=True)[:15])
 
         # Kontinent-Aggregation
