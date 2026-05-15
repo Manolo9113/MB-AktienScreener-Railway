@@ -3590,6 +3590,84 @@ def _go_to_ticker(t):
     st.session_state["suggestions"] = []
     st.session_state["_open_sidebar"] = True
 
+# ==================== ETF LOOK-THROUGH DATA (module level — used by Portfolio + ETF Analyzer) ==
+_ETF_CW = {
+    # MSCI All-World / Developed World
+    'VWCE.DE': {'USA':62.5,'Japan':5.7,'UK':3.8,'Frankreich':3.1,'Kanada':2.9,
+                'Schweiz':2.6,'Deutschland':2.5,'Australien':2.1,'Indien':1.8,
+                'Taiwan':1.8,'Südkorea':1.6,'Niederlande':1.2,'Sonstige':7.4},
+    'FWRA.DE': {'USA':62.5,'Japan':5.7,'UK':3.8,'Frankreich':3.1,'Kanada':2.9,
+                'Schweiz':2.6,'Deutschland':2.5,'Australien':2.1,'Indien':1.8,
+                'Taiwan':1.8,'Südkorea':1.6,'Niederlande':1.2,'Sonstige':7.4},
+    'VWRL.L':  {'USA':62.5,'Japan':5.7,'UK':3.8,'Frankreich':3.1,'Kanada':2.9,
+                'Schweiz':2.6,'Deutschland':2.5,'Australien':2.1,'Indien':1.8,
+                'Taiwan':1.8,'Südkorea':1.6,'Niederlande':1.2,'Sonstige':7.4},
+    'SXR8.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+    'XDWD.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+    'EUNL.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+    'XMWO.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+    # S&P 500 / USA
+    'SXR2.DE': {'USA':100.0}, 'IUSE.DE': {'USA':100.0}, 'LCUW.DE': {'USA':100.0},
+    'VUSA.L':  {'USA':100.0}, 'SPY5.DE': {'USA':100.0}, 'CSPX.L':  {'USA':100.0},
+    # NASDAQ-100
+    'EQQQ.DE': {'USA':97.0,'Sonstige':3.0}, 'CNDX.L': {'USA':97.0,'Sonstige':3.0},
+    # EuroStoxx 50
+    'EXW1.DE': {'Deutschland':17.2,'Frankreich':16.8,'Niederlande':14.2,'Spanien':9.5,
+                'Italien':8.5,'Belgien':4.8,'Finnland':4.2,'Irland':3.5,'Sonstige':21.3},
+    'MEUD.DE': {'Deutschland':17.2,'Frankreich':16.8,'Niederlande':14.2,'Spanien':9.5,
+                'Italien':8.5,'Belgien':4.8,'Finnland':4.2,'Irland':3.5,'Sonstige':21.3},
+    'LYPS.DE': {'Deutschland':17.2,'Frankreich':16.8,'Niederlande':14.2,'Spanien':9.5,
+                'Italien':8.5,'Belgien':4.8,'Finnland':4.2,'Irland':3.5,'Sonstige':21.3},
+    # MSCI Europe
+    'IQQY.DE': {'UK':23.8,'Frankreich':17.0,'Schweiz':13.5,'Deutschland':12.8,
+                'Niederlande':8.2,'Schweden':5.3,'Dänemark':4.1,'Spanien':3.5,
+                'Italien':3.0,'Sonstige':8.8},
+    'IEUA.DE': {'UK':23.8,'Frankreich':17.0,'Schweiz':13.5,'Deutschland':12.8,
+                'Niederlande':8.2,'Schweden':5.3,'Dänemark':4.1,'Spanien':3.5,
+                'Italien':3.0,'Sonstige':8.8},
+    # DAX / Deutschland
+    'EXS1.DE': {'Deutschland':100.0}, 'DBXD.DE': {'Deutschland':100.0},
+    # Japan / Asien
+    'EXV5.DE': {'Japan':100.0}, 'XDJP.DE': {'Japan':100.0},
+    'IQQC.DE': {'China':100.0},
+    # MSCI EM
+    'IS3N.DE': {'China':26.8,'Indien':14.2,'Taiwan':17.1,'Südkorea':12.3,
+                'Brasilien':5.1,'Saudi-Arabien':4.0,'Südafrika':3.5,
+                'Mexiko':2.5,'Indonesien':1.6,'Sonstige':12.9},
+    'IS3R.DE': {'China':26.8,'Indien':14.2,'Taiwan':17.1,'Südkorea':12.3,
+                'Brasilien':5.1,'Saudi-Arabien':4.0,'Südafrika':3.5,
+                'Mexiko':2.5,'Indonesien':1.6,'Sonstige':12.9},
+    'XMME.DE': {'China':26.8,'Indien':14.2,'Taiwan':17.1,'Südkorea':12.3,
+                'Brasilien':5.1,'Saudi-Arabien':4.0,'Südafrika':3.5,
+                'Mexiko':2.5,'Indonesien':1.6,'Sonstige':12.9},
+    # Dividend
+    'VHYL.L':  {'USA':60.2,'UK':7.1,'Japan':6.0,'Schweiz':4.2,'Frankreich':3.5,
+                'Deutschland':3.0,'Australien':2.8,'Sonstige':13.2},
+    'ISPA.DE': {'USA':54.0,'Kanada':8.0,'UK':6.0,'Japan':5.5,'Schweiz':4.0,
+                'Frankreich':3.5,'Deutschland':3.0,'Australien':2.5,'Sonstige':13.5},
+}
+_CONTINENT_MAP = {
+    'USA':'Nordamerika','Kanada':'Nordamerika','Mexiko':'Nordamerika',
+    'UK':'Europa','Deutschland':'Europa','Frankreich':'Europa','Schweiz':'Europa',
+    'Niederlande':'Europa','Schweden':'Europa','Dänemark':'Europa','Spanien':'Europa',
+    'Italien':'Europa','Belgien':'Europa','Norwegen':'Europa','Finnland':'Europa',
+    'Irland':'Europa','Österreich':'Europa','Polen':'Europa','Portugal':'Europa',
+    'Japan':'Asien/Pazifik','China':'Asien/Pazifik','Südkorea':'Asien/Pazifik',
+    'Taiwan':'Asien/Pazifik','Australien':'Asien/Pazifik','Indien':'Asien/Pazifik',
+    'Hongkong':'Asien/Pazifik','Singapur':'Asien/Pazifik','Indonesien':'Asien/Pazifik',
+    'Malaysia':'Asien/Pazifik','Thailand':'Asien/Pazifik','Philippinen':'Asien/Pazifik',
+    'Brasilien':'Lateinamerika','Chile':'Lateinamerika','Kolumbien':'Lateinamerika',
+    'Peru':'Lateinamerika','Argentinien':'Lateinamerika',
+    'Saudi-Arabien':'Mittlerer Osten','Israel':'Mittlerer Osten','VAE':'Mittlerer Osten',
+    'Katar':'Mittlerer Osten','Kuwait':'Mittlerer Osten',
+    'Südafrika':'Afrika','Ägypten':'Afrika','Nigeria':'Afrika',
+    'Sonstige':'Sonstige',
+}
+
 # ==================== PORTFOLIO HELPERS ====================
 
 def _parse_portfolio_csv(file_bytes: bytes) -> pd.DataFrame:
@@ -6062,8 +6140,118 @@ if st.session_state.get("show_portfolio"):
                                 unsafe_allow_html=True)
 
                 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-                st.caption("Sektoren via yFinance (leer = kein Sektor-Mapping verfügbar). "
-                           "Regionen basieren auf der Börsenlistung. ETFs nicht nach Inhalt aufgebrochen.")
+                st.caption("Sektoren via yFinance. Regionen basieren auf der Börsenlistung. "
+                           "ETF-Look-Through → echte Länderexposition weiter unten.")
+
+                # ── ETF Look-Through: echte Länder-/Kontinentexposition ───────
+                st.markdown("<div class='section-header'>🌍 Geographische Exposition (Look-Through)</div>",
+                            unsafe_allow_html=True)
+                _lt: dict = {}           # Länder → EUR-Wert
+                _lt_etfs_found = []      # ETFs mit bekannten CW
+                _lt_etfs_missing = []    # ETFs ohne CW-Daten
+                for _, _lrow in df_port.iterrows():
+                    _ltkr  = isin_map.get(_lrow['ISIN'], '')
+                    _lprc  = prices.get(_lrow['ISIN'])
+                    _lval  = (_lprc if _lprc else _lrow['avg_cost']) * _lrow['shares']
+                    _linf  = _alloc_infos.get(_lrow['ISIN'], {})
+                    _is_etf = _linf.get('quote_type') == 'ETF' or _lrow.get('is_etf', False)
+                    # ETFs: Look-Through via _ETF_CW
+                    if _is_etf and _ltkr:
+                        _lcw = _ETF_CW.get(_ltkr)
+                        if _lcw:
+                            _lcw_sum = sum(_lcw.values())
+                            for _lc, _lw in _lcw.items():
+                                _lt[_lc] = _lt.get(_lc, 0) + _lval * (_lw / _lcw_sum)
+                            _lt_etfs_found.append(_lrow['name'][:28])
+                        else:
+                            # Kein CW → als "Sonstige" einbuchen
+                            _lt['Sonstige'] = _lt.get('Sonstige', 0) + _lval
+                            _lt_etfs_missing.append(_lrow['name'][:28])
+                    elif _lrow.get('is_crypto'):
+                        _lt['Krypto'] = _lt.get('Krypto', 0) + _lval
+                    elif not _lrow.get('is_warrant'):
+                        # Einzelaktien: Land via Region
+                        _lreg = _ticker_to_region(_ltkr)
+                        _lt[_lreg] = _lt.get(_lreg, 0) + _lval
+
+                _lt_total = sum(_lt.values()) or 1
+                _lt_sorted = sorted(_lt.items(), key=lambda x: x[1], reverse=True)
+
+                # Länder-Farben (gleich wie im ETF-Analyzer)
+                _LT_CLR = {
+                    'USA':'#1565c0','Deutschland':'#00838f','UK':'#7b1fa2',
+                    'Japan':'#e65100','Frankreich':'#2e7d32','Kanada':'#f57f17',
+                    'Schweiz':'#4a148c','Australien':'#00695c','China':'#b71c1c',
+                    'Indien':'#ff6f00','Taiwan':'#880e4f','Südkorea':'#1b5e20',
+                    'Niederlande':'#006064','Schweden':'#01579b','Spanien':'#bf360c',
+                    'Brasilien':'#33691e','Sonstige':'#455a64','Krypto':'#f9a825',
+                    'Nordamerika':'#1565c0','Europa':'#00695c','Asien/Pazifik':'#e64a19',
+                    'Lateinamerika':'#f57f17','Mittlerer Osten':'#5d4037','Afrika':'#6d4c41',
+                }
+
+                # Kontinent-Aggregation
+                _cont: dict = {}
+                for _lc, _lv in _lt.items():
+                    _lco = _CONTINENT_MAP.get(_lc, 'Sonstige')
+                    _cont[_lco] = _cont.get(_lco, 0) + _lv
+                _cont = dict(sorted(_cont.items(), key=lambda x: x[1], reverse=True))
+
+                _lta, _ltb = st.columns([1.1, 1])
+                with _lta:
+                    st.markdown("<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+                                "letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;'>"
+                                "Länder</div>", unsafe_allow_html=True)
+                    for _lc, _lv in _lt_sorted[:15]:
+                        _lpct = _lv / _lt_total * 100
+                        _lclr = _LT_CLR.get(_lc, '#546e7a')
+                        _lbar = min(int(_lpct * 1.8), 100)
+                        st.markdown(
+                            f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
+                            f"<span style='color:{_lclr};font-size:0.72rem;'>●</span>"
+                            f"<span style='color:#eceff1;font-size:0.76rem;flex:1;'>{_lc[:20]}</span>"
+                            f"<div style='background:#1a2740;border-radius:3px;width:60px;height:6px;'>"
+                            f"<div style='background:{_lclr};width:{_lbar}%;height:6px;border-radius:3px;'>"
+                            f"</div></div>"
+                            f"<span style='color:#90a4ae;font-size:0.76rem;font-weight:600;"
+                            f"min-width:38px;text-align:right;'>{_lpct:.1f}%</span></div>",
+                            unsafe_allow_html=True)
+                with _ltb:
+                    st.markdown("<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+                                "letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;'>"
+                                "Kontinente</div>", unsafe_allow_html=True)
+                    if len(_cont) > 1:
+                        _cont_fig = go.Figure(go.Pie(
+                            labels=list(_cont.keys()),
+                            values=list(_cont.values()),
+                            hole=0.62,
+                            marker=dict(
+                                colors=[_LT_CLR.get(k,'#546e7a') for k in _cont],
+                                line=dict(color='#0a1628', width=2)),
+                            textinfo='none',
+                            hovertemplate='<b>%{label}</b><br>%{percent}<extra></extra>',
+                        ))
+                        _cont_fig.update_layout(
+                            template='plotly_dark', paper_bgcolor='#0a1628',
+                            plot_bgcolor='#0a1628', showlegend=False, height=200,
+                            margin=dict(l=5, r=5, t=5, b=5))
+                        st.plotly_chart(_cont_fig, use_container_width=True)
+                    for _co, _cv in _cont.items():
+                        _cpct = _cv / _lt_total * 100
+                        _cclr = _LT_CLR.get(_co, '#546e7a')
+                        st.markdown(
+                            f"<div style='display:flex;justify-content:space-between;"
+                            f"padding:3px 0;border-bottom:1px solid #1a2740;'>"
+                            f"<span style='color:{_cclr};font-size:0.78rem;'>● {_co}</span>"
+                            f"<span style='color:#90a4ae;font-size:0.78rem;font-weight:600;'>"
+                            f"{_cpct:.1f}%</span></div>", unsafe_allow_html=True)
+
+                _lt_note = ""
+                if _lt_etfs_found:
+                    _lt_note += f"✓ Look-Through: {', '.join(_lt_etfs_found[:4])}."
+                if _lt_etfs_missing:
+                    _lt_note += f" ⚠️ Keine CW-Daten: {', '.join(_lt_etfs_missing[:3])} → als Sonstige."
+                if _lt_note:
+                    st.caption(_lt_note)
 
                 # ── Konzentrations-Risiko ─────────────────────────────
                 st.markdown("<div class='section-header'>📊 Konzentrations-Risiko</div>",
@@ -7072,7 +7260,243 @@ if st.session_state.get("show_etf_analyzer"):
         unsafe_allow_html=True)
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # ── Sektoren + Top-Positionen ──────────────────────────────────────────
+    # ── Fundamentaler ETF-Score ────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🏆 Fundamentaler ETF-Score</div>", unsafe_allow_html=True)
+
+    # Statische Zusatzdaten: Replikation + Anzahl Positionen
+    _ETF_REPLICATION = {
+        # Physical full
+        'VWCE.DE':'Vollständig','FWRA.DE':'Vollständig','VWRL.L':'Vollständig',
+        'IS3N.DE':'Vollständig','IEMG':'Vollständig','VT':'Vollständig',
+        'SXR8.DE':'Vollständig','EUNL.DE':'Vollständig','EXS1.DE':'Vollständig',
+        'MEUD.DE':'Vollständig','EXW1.DE':'Vollständig','LYPS.DE':'Vollständig',
+        'IQQY.DE':'Vollständig','SPYY.DE':'Vollständig','IEUA.DE':'Vollständig',
+        'ISPA.DE':'Vollständig','QDIV.DE':'Vollständig','XDIV.DE':'Vollständig',
+        'IDVY.L':'Vollständig','VHYL.L':'Vollständig','IUSN.DE':'Sampling',
+        'IQQH.DE':'Vollständig','EQQQ.DE':'Vollständig','SPY5.DE':'Vollständig',
+        'IMEA.DE':'Vollständig','IS3R.DE':'Vollständig','LCUW.DE':'Sampling',
+        'EXV5.DE':'Vollständig','IQQC.DE':'Vollständig','IQQD.DE':'Sampling',
+        # Swap-basiert (Synthethisch)
+        'XDWD.DE':'Synthetisch','XMME.DE':'Synthetisch','XESC.DE':'Synthetisch',
+        'XEUR.DE':'Synthetisch','XDJP.DE':'Synthetisch','XMWO.DE':'Synthetisch',
+        'DBXD.DE':'Synthetisch','ZPRX.DE':'Synthetisch','IUSE.DE':'Sampling',
+        # US tickers
+        'SPY':'Vollständig','IVV':'Vollständig','QQQ':'Vollständig',
+        'URTH':'Vollständig','VYM':'Vollständig','SCHD':'Vollständig',
+        'FEZ':'Vollständig','EWG':'Vollständig','EWJ':'Vollständig',
+        'MCHI':'Vollständig','EEM':'Sampling','IEMG':'Vollständig',
+    }
+    _ETF_HOLDINGS_COUNT = {
+        'VWCE.DE':3700,'FWRA.DE':3700,'VWRL.L':3700,'SXR8.DE':1500,
+        'EUNL.DE':1500,'XDWD.DE':2150,'XMWO.DE':1500,'IS3N.DE':1400,
+        'IS3R.DE':1400,'IMEA.DE':1400,'XMME.DE':1400,'IQQD.DE':1400,
+        'EXS1.DE':90,'MEUD.DE':290,'EXW1.DE':290,'LYPS.DE':290,
+        'IQQY.DE':450,'SPYY.DE':450,'IEUA.DE':450,'XESC.DE':50,
+        'XEUR.DE':290,'IQQE.DE':450,'IEMC.DE':450,'ZPRX.DE':450,
+        'EXV5.DE':230,'XDJP.DE':230,'IQQJ.DE':230,'IQQC.DE':700,
+        'IQQP.DE':900,'EQQQ.DE':100,'SPY5.DE':500,'LCUW.DE':500,
+        'IUSN.DE':2000,'IUSE.DE':500,'VHYL.L':1800,'ISPA.DE':100,
+        'QDIV.DE':100,'XDIV.DE':100,'IDVY.L':100,'IQQH.DE':50,
+        'DBXD.DE':90,'SXR2.DE':500,'MEUD.DE':290,
+    }
+
+    # Scoring-Funktion
+    def _calc_etf_score(ei, tkr, th_df):
+        criteria = []
+
+        # 1. TER / Kosten (30 Punkte)
+        ter = ei.get('ter')
+        if ter is not None:
+            ter_pct = ter * 100 if ter < 1 else ter
+            if   ter_pct <= 0.10: pts, label = 30, f"{ter_pct:.2f}% — Sehr günstig"
+            elif ter_pct <= 0.20: pts, label = 24, f"{ter_pct:.2f}% — Günstig"
+            elif ter_pct <= 0.35: pts, label = 15, f"{ter_pct:.2f}% — Durchschnittlich"
+            elif ter_pct <= 0.50: pts, label = 8,  f"{ter_pct:.2f}% — Teuer"
+            else:                  pts, label = 0,  f"{ter_pct:.2f}% — Sehr teuer"
+        else:
+            pts, label = 15, "Keine Daten (Ø angenommen)"
+        criteria.append(('💰 TER / Kosten', pts, 30, label))
+
+        # 2. Fondsvolumen / AUM (25 Punkte)
+        aum = ei.get('aum') or 0
+        if   aum >= 10e9:  pts, label = 25, f"€ {aum/1e9:.1f} Mrd — Sehr groß"
+        elif aum >= 1e9:   pts, label = 20, f"€ {aum/1e9:.1f} Mrd — Groß"
+        elif aum >= 500e6: pts, label = 14, f"€ {aum/1e6:.0f} Mio — Mittel"
+        elif aum >= 100e6: pts, label = 8,  f"€ {aum/1e6:.0f} Mio — Klein"
+        elif aum > 0:      pts, label = 2,  f"€ {aum/1e6:.0f} Mio — Sehr klein"
+        else:              pts, label = 10, "Keine Daten (Ø angenommen)"
+        criteria.append(('📦 Fondsvolumen', pts, 25, label))
+
+        # 3. Fondsalter (20 Punkte)
+        import datetime as _dt_sc
+        inception = ei.get('inception')
+        age_years = None
+        if inception:
+            try:
+                age_years = (_dt_sc.date.today() - _dt_sc.datetime.fromtimestamp(inception).date()).days / 365.25
+            except Exception: pass
+        if age_years is None:
+            pts, label = 10, "Keine Daten (Ø angenommen)"
+        elif age_years >= 15: pts, label = 20, f"{age_years:.1f} Jahre — Sehr etabliert"
+        elif age_years >= 10: pts, label = 17, f"{age_years:.1f} Jahre — Etabliert"
+        elif age_years >= 5:  pts, label = 12, f"{age_years:.1f} Jahre — Solide"
+        elif age_years >= 2:  pts, label = 6,  f"{age_years:.1f} Jahre — Jung"
+        else:                  pts, label = 1,  f"{age_years:.1f} Jahre — Sehr jung"
+        criteria.append(('📅 Fondsalter', pts, 20, label))
+
+        # 4. Replikationsmethode (15 Punkte)
+        repl = _ETF_REPLICATION.get(tkr)
+        if not repl:
+            _name_l = (ei.get('name') or '').lower()
+            if 'swap' in _name_l or 'synthetic' in _name_l or 'synthetisch' in _name_l:
+                repl = 'Synthetisch'
+            elif 'sampling' in _name_l or 'optimiert' in _name_l:
+                repl = 'Sampling'
+            elif 'physical' in _name_l or 'physisch' in _name_l:
+                repl = 'Vollständig'
+        _REPL_PTS = {'Vollständig': (15, '— Vollständige Replikation (physisch)'),
+                     'Sampling':    (10, '— Optimiertes Sampling'),
+                     'Synthetisch': (4,  '— Swap-basiert (Kontrahentenrisiko)')}
+        if repl and repl in _REPL_PTS:
+            pts, sub = _REPL_PTS[repl]
+            label = f"{repl} {sub}"
+        else:
+            pts, label = 10, "Unbekannt (Ø angenommen)"
+        criteria.append(('🔬 Replikation', pts, 15, label))
+
+        # 5. Streuung / Anzahl Positionen (10 Punkte)
+        n_hold = _ETF_HOLDINGS_COUNT.get(tkr)
+        if n_hold is None and not th_df.empty:
+            n_hold = len(th_df) * 10  # grobe Schätzung aus Top-Holdings-Länge
+        if n_hold is None:           pts, label = 5,  "Keine Daten"
+        elif n_hold >= 1000:         pts, label = 10, f"{n_hold:,}+ Positionen — Sehr breit"
+        elif n_hold >= 300:          pts, label = 8,  f"{n_hold} Positionen — Breit"
+        elif n_hold >= 100:          pts, label = 5,  f"{n_hold} Positionen — Mittel"
+        elif n_hold >= 30:           pts, label = 2,  f"{n_hold} Positionen — Konzentriert"
+        else:                         pts, label = 0,  f"{n_hold} Positionen — Sehr konzentriert"
+        criteria.append(('🌐 Streuung', pts, 10, label))
+
+        total = sum(c[1] for c in criteria)
+        max_total = sum(c[2] for c in criteria)
+        return total, max_total, criteria
+
+    _score, _score_max, _score_criteria = _calc_etf_score(_ei, _etf_tkr, _th)
+    _score_pct = _score / _score_max * 100
+
+    # Score-Farbe + Note
+    if   _score_pct >= 85: _sc, _grade, _verdict = '#00e676', 'A+', 'Ausgezeichnet'
+    elif _score_pct >= 75: _sc, _grade, _verdict = '#00e676', 'A',  'Sehr gut'
+    elif _score_pct >= 65: _sc, _grade, _verdict = '#69f0ae', 'B+', 'Gut'
+    elif _score_pct >= 55: _sc, _grade, _verdict = '#ffd600', 'B',  'Solide'
+    elif _score_pct >= 45: _sc, _grade, _verdict = '#ffd600', 'C',  'Durchschnittlich'
+    elif _score_pct >= 30: _sc, _grade, _verdict = '#ff5252', 'D',  'Schwach'
+    else:                   _sc, _grade, _verdict = '#ff5252', 'F',  'Ungenügend'
+
+    _sa, _sb = st.columns([1, 2])
+    with _sa:
+        st.markdown(
+            f"<div style='background:#0d1f35;border:2px solid {_sc}44;border-radius:12px;"
+            f"padding:20px 16px;text-align:center;'>"
+            f"<div style='color:#78909c;font-size:0.68rem;text-transform:uppercase;"
+            f"letter-spacing:.08em;margin-bottom:6px;'>Fundamentaler Score</div>"
+            f"<div style='color:{_sc};font-size:3rem;font-weight:900;line-height:1;'>"
+            f"{_score}</div>"
+            f"<div style='color:#546e7a;font-size:0.8rem;margin:4px 0;'>von {_score_max} Punkten</div>"
+            f"<div style='background:{_sc}22;border:1px solid {_sc}55;border-radius:20px;"
+            f"display:inline-block;padding:3px 14px;margin-top:6px;'>"
+            f"<span style='color:{_sc};font-size:1.1rem;font-weight:800;'>{_grade}</span>"
+            f"<span style='color:{_sc};font-size:0.8rem;margin-left:6px;'>{_verdict}</span>"
+            f"</div></div>",
+            unsafe_allow_html=True)
+    with _sb:
+        for _cn, _cp, _cm, _cl in _score_criteria:
+            _bar_pct = int(_cp / _cm * 100)
+            _bar_clr = '#00e676' if _bar_pct >= 75 else '#ffd600' if _bar_pct >= 40 else '#ff5252'
+            st.markdown(
+                f"<div style='margin-bottom:8px;'>"
+                f"<div style='display:flex;justify-content:space-between;align-items:baseline;"
+                f"margin-bottom:3px;'>"
+                f"<span style='color:#eceff1;font-size:0.8rem;font-weight:600;'>{_cn}</span>"
+                f"<span style='color:{_bar_clr};font-size:0.78rem;font-weight:700;'>"
+                f"{_cp}/{_cm}</span></div>"
+                f"<div style='background:#1a2740;border-radius:4px;height:6px;'>"
+                f"<div style='background:{_bar_clr};width:{_bar_pct}%;height:6px;"
+                f"border-radius:4px;'></div></div>"
+                f"<div style='color:#546e7a;font-size:0.68rem;margin-top:2px;'>{_cl}</div>"
+                f"</div>",
+                unsafe_allow_html=True)
+    st.caption("Score basiert auf TER, Fondsvolumen, Fondsalter, Replikationsmethode und Streuung. "
+               "Keine Anlageberatung. Quelle: yFinance, statische Fondsdaten.")
+
+    # ── Bewertung der Positionen (KGV, P/B, Gewinnwachstum, Verklumpung) ──
+    st.markdown("<div class='section-header'>📐 Bewertung der Positionen</div>",
+                unsafe_allow_html=True)
+
+    # Verklumpung (Konzentrations-Risiko) aus Top-Holdings
+    _top10_pct = None
+    _wgt_col_bw = next((c for c in ['holdingPercent','weight','Weight','Holding Percent']
+                        if not _th.empty and c in _th.columns), None)
+    if _wgt_col_bw and not _th.empty:
+        _vals_bw = pd.to_numeric(_th[_wgt_col_bw], errors='coerce').dropna()
+        if not _vals_bw.empty:
+            _top10_sum = _vals_bw.head(10).sum()
+            _top10_pct = _top10_sum * 100 if _top10_sum <= 1 else _top10_sum
+
+    # KGV / Multiples aus equity_holdings
+    def _fmt_mult(v, suffix="x"):
+        if v is None: return "—"
+        try:
+            f = float(v)
+            return f"{f:.1f}{suffix}" if f < 1000 else "—"
+        except Exception: return "—"
+
+    _kgv   = _eq_vals.get('priceToEarnings')
+    _kbv   = _eq_vals.get('priceToBook')
+    _ksv   = _eq_vals.get('priceToSales')
+    _wachs = _eq_vals.get('threeYearEarningsGrowth')
+    _mktcp = _eq_vals.get('medianMarketCap')
+
+    # Verklumpungs-Farbe
+    def _vklump_clr(pct):
+        if pct is None: return '#78909c', '—'
+        if pct <= 20:   return '#00e676', f"{pct:.1f}% — Gut gestreut"
+        if pct <= 35:   return '#ffd600', f"{pct:.1f}% — Moderat"
+        return '#ff5252', f"{pct:.1f}% — Hoch konzentriert"
+    _vk_clr, _vk_lbl = _vklump_clr(_top10_pct)
+
+    # KGV-Einschätzung
+    def _kgv_clr(v):
+        if v is None: return '#78909c'
+        f = float(v)
+        if f <= 15:  return '#00e676'
+        if f <= 25:  return '#ffd600'
+        return '#ff5252'
+
+    _g4 = "display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;"
+    st.markdown(
+        f"<div style='{_g4}'>"
+        + _kc("KGV (P/E)", _fmt_mult(_kgv), "Kurs-Gewinn-Verhältnis", _kgv_clr(_kgv))
+        + _kc("P/B Ratio", _fmt_mult(_kbv), "Kurs-Buchwert")
+        + _kc("P/S Ratio", _fmt_mult(_ksv), "Kurs-Umsatz")
+        + _kc("3J Gewinnwachstum", _fmt_mult(_wachs, "%") if _wachs else "—",
+              "Earnings Growth p.a.",
+              '#00e676' if (_wachs or 0) > 0 else '#ff5252')
+        + "</div>"
+        + f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;'>"
+        + _kc("Verklumpung Top 10",
+              f"{_top10_pct:.1f}%" if _top10_pct else "—",
+              _vk_lbl if _top10_pct else "Anteil der 10 größten Positionen",
+              _vk_clr)
+        + _kc("Median Marktkapitalisierung",
+              (f"$ {_mktcp/1e9:.1f} Mrd" if (_mktcp or 0) > 1e9
+               else f"$ {_mktcp/1e6:.0f} Mio" if _mktcp else "—"),
+              "Typische Unternehmensgröße im ETF")
+        + "</div>",
+        unsafe_allow_html=True)
+    if not _eq_vals:
+        st.caption("⚠️ Valuation-Daten nicht verfügbar (yFinance liefert für XETRA-ETFs "
+                   "oft keine equity_holdings). US-Datenticker wird als Näherung verwendet.")
+
     _col_a, _col_b = st.columns([1, 1.1])
 
     with _col_a:
