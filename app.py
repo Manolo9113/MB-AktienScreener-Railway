@@ -3660,8 +3660,10 @@ def _openfigi_batch(isins: tuple, wkn_by_isin: dict = None) -> dict:
     _prefer = {
         'US': ['UW', 'UN', 'US', 'UA', 'UT'], 'KY': ['UW', 'UN', 'US'],
         'CA': ['CN', 'CT'], 'DE': ['GY'], 'NL': ['NA'], 'FR': ['FP'],
-        'GB': ['LN'], 'CH': ['SW'], 'SE': ['SS'], 'DK': ['DC'], 'JP': ['JT'],
+        'CH': ['SW'], 'SE': ['SS'], 'DK': ['DC'], 'JP': ['JT'],
         'IE': ['LN', 'GY'], 'CN': ['HK'],
+        # GBp-Pence-Bug: deutsches EUR-Listing vermeidet /100-Konvertierungsfehler
+        'GB': ['GY', 'GF', 'LN'],
         # Nicht-EUR-Märkte → bevorzuge deutsches Listing (direkt in EUR, kein FX-Fehler)
         'KR': ['GY', 'GF'],  # Südkorea
         'TW': ['GY', 'GF'],  # Taiwan
@@ -3756,7 +3758,7 @@ def _portfolio_quote_ext(ticker: str) -> dict:
             if not price:
                 return None
             currency = str(getattr(fi, 'currency', 'EUR') or 'EUR').strip()
-            if currency == 'GBp':
+            if currency == 'GBp' or (currency == 'GBP' and t.endswith('.L') and price > 500):
                 price /= 100.0
                 currency = 'GBP'
             fx = _get_eur_fx_rate(currency) if currency != 'EUR' else 1.0
