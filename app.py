@@ -3819,20 +3819,63 @@ def _openfigi_batch(isins: tuple, wkn_by_isin: dict = None) -> dict:
                 pass
             time.sleep(0.2)
 
+    # ISIN-Pattern-Fallback: direkte Ableitung wenn OpenFIGI blockiert ist (Railway 403)
+    # Koreanische ISINs: KR + Typ(1) + KRX-Code(6) + Check(3)  →  XXXXXX.KS
+    # Japanische ISINs:  JP + Präfix(1) + TSE-Code(4) + Check(5) →  XXXX.T
+    for isin in valids:
+        if isin in result:
+            continue
+        cc = isin[:2]
+        if cc == 'KR':
+            result[isin] = f"{isin[3:9]}.KS"
+        elif cc == 'JP':
+            result[isin] = f"{isin[3:7]}.T"
+
     return result
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _get_eur_fx_rate(from_currency: str) -> float:
-    """Wechselkurs: 1 from_currency = X EUR (gecacht 1h)."""
+    """Wechselkurs: 1 from_currency = X EUR (gecacht 1h). Mehrere Fallbacks."""
     if from_currency in ('EUR', ''):
         return 1.0
+    # Versuch 1: direkte yFinance FX-Rate XXXEUR=X
     try:
         fi = yf.Ticker(f"{from_currency}EUR=X").fast_info
         rate = getattr(fi, 'last_price', None)
-        return float(rate) if rate and float(rate) > 0 else 1.0
+        if rate and float(rate) > 0:
+            return float(rate)
     except Exception:
-        return 1.0
+        pass
+    # Versuch 2: Inverse via EURXXX=X (z.B. EURKRW=X → 1/rate)
+    try:
+        fi2 = yf.Ticker(f"EUR{from_currency}=X").fast_info
+        rate2 = getattr(fi2, 'last_price', None)
+        if rate2 and float(rate2) > 0:
+            return 1.0 / float(rate2)
+    except Exception:
+        pass
+    # Versuch 3: FMP FX-Rate
+    if FMP_API_KEY:
+        try:
+            _fr = requests.get(
+                f"https://financialmodelingprep.com/api/v3/fx/{from_currency}EUR",
+                params={'apikey': FMP_API_KEY}, timeout=5)
+            if _fr.ok and _fr.json():
+                _rate = _fr.json()[0].get('bid') or _fr.json()[0].get('ask')
+                if _rate and float(_rate) > 0:
+                    return float(_rate)
+        except Exception:
+            pass
+    # Fallback: Näherungswerte (werden täglich selten gebraucht, nur bei API-Ausfall)
+    _approx = {
+        'KRW': 0.000667, 'CNY': 0.130, 'JPY': 0.0063, 'GBP': 1.17,
+        'USD': 0.92,  'HKD': 0.118, 'CAD': 0.68,  'AUD': 0.59,
+        'CHF': 1.05,  'SEK': 0.087, 'NOK': 0.086, 'DKK': 0.134,
+        'TWD': 0.030, 'SGD': 0.69,  'INR': 0.011, 'BRL': 0.18,
+        'MXN': 0.048, 'ZAR': 0.050, 'TRY': 0.028, 'ILS': 0.25,
+    }
+    return _approx.get(from_currency, 1.0)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -3879,6 +3922,9 @@ def _portfolio_quote_ext(ticker: str) -> dict:
         _alts = [base + '.DE', base + '.MU', base]
     elif ticker.endswith('.L'):
         _alts = [ticker[:-2]]
+    elif ticker.endswith('.KS'):
+        # KRX: auch KS11 alternative oder US-OTC versuchen
+        _alts = []
     elif '.' not in ticker:
         _alts = [ticker + '.DE', ticker + '.F']
     for alt in _alts:
@@ -3886,9 +3932,65 @@ def _portfolio_quote_ext(ticker: str) -> dict:
         if result:
             return result
 
+    def _fmp_quote(sym):
+        """FMP Quote als direkter Kurs-Abruf — unterstützt KRX, CNY, JPY etc."""
+        if not FMP_API_KEY:
+            return None
+        try:
+            _fr = requests.get(
+                f"https://financialmodelingprep.com/api/v3/quote/{sym}",
+                params={'apikey': FMP_API_KEY}, timeout=5)
+            if not (_fr.ok and _fr.json()):
+                return None
+            _fd = _fr.json()[0]
+            _price = float(_fd.get('price') or 0)
+            if not _price:
+                return None
+            _currency = str(_fd.get('currency') or 'EUR').strip()
+            if _currency == 'GBp':
+                _price /= 100.0
+                _currency = 'GBP'
+            _fx = _get_eur_fx_rate(_currency) if _currency != 'EUR' else 1.0
+            # Sanity-Check: KRW-Kurs × 0.000667 ≈ EUR → Ergebnis darf nicht > 10× den Marktpreis sein
+            _price_eur = _price * _fx
+            if _price_eur <= 0 or _price_eur > 1_000_000:
+                return None
+            _chg = _fd.get('changesPercentage')
+            return {
+                'price_eur':     _price_eur,
+                'year_high_eur': float(_fd['yearHigh']) * _fx if _fd.get('yearHigh') else None,
+                'year_low_eur':  float(_fd['yearLow'])  * _fx if _fd.get('yearLow')  else None,
+                'day_chg_pct':   float(_chg) if _chg is not None else None,
+                'fx':            _fx,
+            }
+        except Exception:
+            return None
+
     # FMP-Fallback wenn yFinance (inkl. Alternativen) keinen Kurs liefert
     if FMP_API_KEY:
         _base = ticker.split('.')[0]
+        # Für KRX-Ticker auch mit Punkt-Suffix probieren
+        _fmp_candidates = [ticker, _base]
+        if ticker.endswith('.KS') or (len(_base) == 6 and _base.isdigit()):
+            _fmp_candidates = [_base + '.KS', _base, ticker]
+        elif ticker.endswith('.T') or (len(_base) == 4 and _base.isdigit()):
+            _fmp_candidates = [_base + '.T', _base, ticker]
+        for _fmp_sym in _fmp_candidates:
+            _r = _fmp_quote(_fmp_sym)
+            if _r:
+                return _r
+
+        # Letzter Versuch: ISIN-Suche über FMP
+        # (wird nur aufgerufen wenn wir einen sinnlosen Ticker haben)
+        _fmp_candidates_extra = []
+        if ticker.endswith('.SS') or ticker.endswith('.SZ'):
+            _fmp_candidates_extra = [ticker, _base]
+        for _fmp_sym in _fmp_candidates_extra:
+            _r = _fmp_quote(_fmp_sym)
+            if _r:
+                return _r
+
+        # Legacy: direkte FMP-Quote Schleife (für Rückwärtskompatibilität)
         for _fmp_sym in [ticker, _base]:
             try:
                 _fr = requests.get(
@@ -5802,8 +5904,16 @@ if st.session_state.get("show_portfolio"):
                                 if _fr.ok:
                                     for _res in _fr.json():
                                         _sym = _res.get('symbol', '')
+                                        _exch = _res.get('exchangeShortName', '')
                                         if not _sym:
                                             continue
+                                        # Für KRX-Symbole sicherstellen dass .KS Suffix vorhanden
+                                        if _exch in ('KSE', 'KOSDAQ') and '.' not in _sym:
+                                            _sym = f"{_sym}.KS"
+                                        elif _exch in ('SHH', 'SHA') and '.' not in _sym:
+                                            _sym = f"{_sym}.SS"
+                                        elif _exch in ('SHZ', 'SZE') and '.' not in _sym:
+                                            _sym = f"{_sym}.SZ"
                                         _q2 = _portfolio_quote_ext(_sym)
                                         if _q2.get('price_eur'):
                                             prices[_fmisin]     = _q2['price_eur']
