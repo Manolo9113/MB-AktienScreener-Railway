@@ -3819,6 +3819,18 @@ def _openfigi_batch(isins: tuple, wkn_by_isin: dict = None) -> dict:
                 pass
             time.sleep(0.2)
 
+    # Hardcodierte GDR/ADR → KRX-Fallback für bekannte ISINs ohne zuverlässige API-Daten
+    # GDRs haben US-ISIN, kein ISIN-Muster ableitbar → direkte KRX-Abbildung
+    _GDR_HARDCODED = {
+        'US78392B1070': '000660.KS',  # SK Hynix GDR (HXSCL.L) → KRX
+        'US7960502018': '005935.KS',  # Samsung Electronics GDR Pref (SSNGY) → KRX Vorzug
+        'US7960508882': '005930.KS',  # Samsung Electronics GDR (SSNNF) → KRX Stamm
+        'CNE100006M58': '0300.HK',    # Midea Group H-Aktien → HKEx
+    }
+    for isin in valids:
+        if isin not in result and isin in _GDR_HARDCODED:
+            result[isin] = _GDR_HARDCODED[isin]
+
     # ISIN-Pattern-Fallback: direkte Ableitung wenn OpenFIGI blockiert ist (Railway 403)
     # Koreanische ISINs: KR + Typ(1) + KRX-Code(6) + Check(3)  →  XXXXXX.KS
     # Japanische ISINs:  JP + Präfix(1) + TSE-Code(4) + Check(5) →  XXXX.T
@@ -5896,6 +5908,16 @@ if st.session_state.get("show_portfolio"):
         _missing_isins = [i for i in _all_isins if prices.get(i) is None]
         _prices_loaded = len(_missing_isins) == 0
         if _missing_isins and not stocks_etf.empty:
+            # Hardcoded GDR/HK-Mapping auf bekannte KRX/HKEx-Ticker (zuverlässige Preisquellen)
+            _GDR_FALLBACK = {
+                'US78392B1070': '000660.KS',
+                'US7960502018': '005935.KS',
+                'US7960508882': '005930.KS',
+                'CNE100006M58': '0300.HK',
+            }
+            for _gdr_isin, _gdr_tkr in _GDR_FALLBACK.items():
+                if _gdr_isin in _missing_isins and _gdr_isin not in isin_map:
+                    isin_map[_gdr_isin] = _gdr_tkr
             _tickers_to_load = [(isin_map.get(i), i) for i in _missing_isins if isin_map.get(i)]
             if _tickers_to_load:
                 _pprog = st.progress(0, f"Kurse werden geladen: 0 / {len(_tickers_to_load)}…")
