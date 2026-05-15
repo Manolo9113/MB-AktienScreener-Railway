@@ -3926,7 +3926,7 @@ def _portfolio_quote_ext(ticker: str) -> dict:
         # KRX: auch KS11 alternative oder US-OTC versuchen
         _alts = []
     elif '.' not in ticker:
-        _alts = [ticker + '.DE', ticker + '.F']
+        _alts = [ticker + '.DE', ticker + '.F', ticker + '.L', ticker + '.AS', ticker + '.PA']
     for alt in _alts:
         result = _fetch(alt)
         if result:
@@ -3975,6 +3975,9 @@ def _portfolio_quote_ext(ticker: str) -> dict:
             _fmp_candidates = [_base + '.KS', _base, ticker]
         elif ticker.endswith('.T') or (len(_base) == 4 and _base.isdigit()):
             _fmp_candidates = [_base + '.T', _base, ticker]
+        elif '.' not in ticker and ticker.isalpha():
+            # GDR/LSE-Ticker wie HXSCL, SMSN, SMSD — auch .L Suffix bei FMP probieren
+            _fmp_candidates = [ticker, ticker + '.L', _base]
         for _fmp_sym in _fmp_candidates:
             _r = _fmp_quote(_fmp_sym)
             if _r:
