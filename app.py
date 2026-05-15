@@ -1615,16 +1615,18 @@ def badge(v, good, ok, fmt=".1f", inverse=False):
 def safe_float(v, digits=2):
     return f"{v:.{digits}f}" if v is not None else "N/A"
 
-def fmt_large(value):
+def fmt_large(value, sym=""):
     if value is None:
         return "N/A"
-    if value >= 1e12:
-        return f"{value/1e12:.2f}T$"
-    elif value >= 1e9:
-        return f"{value/1e9:.1f}B$"
-    elif value >= 1e6:
-        return f"{value/1e6:.1f}M$"
-    return f"{value:,.0f}"
+    abs_v = abs(value)
+    sign  = "-" if value < 0 else ""
+    if abs_v >= 1e12:
+        return f"{sign}{sym}{abs_v/1e12:.2f}T"
+    elif abs_v >= 1e9:
+        return f"{sign}{sym}{abs_v/1e9:.1f}B"
+    elif abs_v >= 1e6:
+        return f"{sign}{sym}{abs_v/1e6:.1f}M"
+    return f"{sign}{sym}{abs_v:,.0f}"
 
 # ==================== SECTOR BENCHMARKS ====================
 # Typische Medianwerte je Sektor (S&P 500 historische Durchschnitte)
@@ -3578,16 +3580,40 @@ def _parse_portfolio_csv(file_bytes: bytes) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def _openfigi_batch(isins: tuple) -> dict:
-    """Batch-Lookup ISIN → yfinance-Ticker via OpenFIGI (24h gecacht)."""
-    _suffix = {'GY': '.DE', 'NA': '.AS', 'FP': '.PA', 'LN': '.L',
+def _openfigi_batch(isins: tuple, wkn_by_isin: dict = None) -> dict:
+    """Batch-Lookup ISIN → yfinance-Ticker via OpenFIGI. Fallback: WKN-Lookup für nicht gemappte ISINs."""
+    # Xetra=GY, Frankfurt=GF, Munich=GM, Hamburg=GH, Stuttgart=GS, Berlin=GB
+    _suffix = {'GY': '.DE', 'GF': '.F', 'GM': '.MU', 'GH': '.HM', 'GS': '.SG', 'GB': '.BE',
+               'NA': '.AS', 'FP': '.PA', 'LN': '.L',
                'SW': '.SW', 'SS': '.ST', 'DC': '.CO', 'JT': '.T', 'HK': '.HK'}
     _prefer = {
         'US': ['UW', 'UN', 'US', 'UA', 'UT'], 'KY': ['UW', 'UN', 'US'],
         'CA': ['CN', 'CT'], 'DE': ['GY'], 'NL': ['NA'], 'FR': ['FP'],
-        'GB': ['LN'], 'CH': ['SW'], 'SE': ['SS'], 'DK': ['DC'], 'JP': ['JT'],
+        'CH': ['SW'], 'SE': ['SS'], 'DK': ['DC'], 'JP': ['JT'],
         'IE': ['LN', 'GY'], 'CN': ['HK'],
+        # GBp-Pence-Bug: deutsches EUR-Listing vermeidet /100-Konvertierungsfehler
+        'GB': ['GY', 'GF', 'LN'],
+        # Nicht-EUR-Märkte → bevorzuge deutsches Listing (direkt in EUR, kein FX-Fehler)
+        'KR': ['GY', 'GF'],  # Südkorea
+        'TW': ['GY', 'GF'],  # Taiwan
+        'IN': ['GY', 'GF'],  # Indien
+        'BR': ['GY', 'GF'],  # Brasilien
+        'AU': ['GY', 'GF'],  # Australien
+        'SG': ['GY', 'GF'],  # Singapur
+        'IL': ['GY', 'GF'],  # Israel
+        'ZA': ['GY', 'GF'],  # Südafrika
     }
+
+    def _pick_ticker(items, country_prefix):
+        pref = _prefer.get(country_prefix, [])
+        for exch in pref:
+            for fi in items:
+                if fi.get('exchCode') == exch and fi.get('ticker'):
+                    return fi['ticker'] + _suffix.get(exch, '')
+        fi = items[0]
+        t, e = fi.get('ticker', ''), fi.get('exchCode', '')
+        return (t + _suffix.get(e, '')) if t else None
+
     result: dict = {}
     valids = [i for i in isins if not i.startswith('XC') and i != '------' and len(i) == 12]
     for start in range(0, len(valids), 10):
@@ -3603,25 +3629,35 @@ def _openfigi_batch(isins: tuple) -> dict:
                 items = item.get('data') or []
                 if not items:
                     continue
-                pref = _prefer.get(isin[:2], [])
-                ticker = None
-                for exch in pref:
-                    for fi in items:
-                        if fi.get('exchCode') == exch and fi.get('ticker'):
-                            ticker = fi['ticker'] + _suffix.get(exch, '')
-                            break
-                    if ticker:
-                        break
-                if not ticker:
-                    fi = items[0]
-                    t, e = fi.get('ticker', ''), fi.get('exchCode', '')
-                    if t:
-                        ticker = t + _suffix.get(e, '')
-                if ticker:
-                    result[isin] = ticker
+                tkr = _pick_ticker(items, isin[:2])
+                if tkr:
+                    result[isin] = tkr
         except Exception:
             pass
         time.sleep(0.3)
+
+    # WKN-Fallback für ISINs die OpenFIGI nicht per ISIN gefunden hat
+    if wkn_by_isin:
+        failed = [i for i in valids if i not in result]
+        for isin in failed:
+            wkn = wkn_by_isin.get(isin, '')
+            if not wkn or len(wkn) < 4:
+                continue
+            try:
+                r = requests.post('https://api.openfigi.com/v3/mapping',
+                                  json=[{'idType': 'ID_WERTPAPIER', 'idValue': wkn}],
+                                  headers={'Content-Type': 'application/json'}, timeout=8)
+                if r.status_code == 200:
+                    data = r.json()
+                    items = (data[0].get('data') or []) if data else []
+                    if items:
+                        tkr = _pick_ticker(items, isin[:2])
+                        if tkr:
+                            result[isin] = tkr
+            except Exception:
+                pass
+            time.sleep(0.2)
+
     return result
 
 
@@ -3643,28 +3679,82 @@ def _portfolio_quote_ext(ticker: str) -> dict:
     """Kursdaten in EUR: Preis, 52W-Range, Tagesveränderung, FX-Rate (gecacht 5 Min)."""
     _empty = {'price_eur': None, 'year_high_eur': None, 'year_low_eur': None,
               'day_chg_pct': None, 'fx': 1.0}
-    try:
-        fi = yf.Ticker(ticker).fast_info
-        price = float(getattr(fi, 'last_price', None) or getattr(fi, 'regular_market_price', None) or 0)
-        if not price:
-            return _empty
-        currency = str(getattr(fi, 'currency', 'EUR') or 'EUR').strip()
-        if currency == 'GBp':
-            price /= 100.0
-            currency = 'GBP'
-        fx = _get_eur_fx_rate(currency) if currency != 'EUR' else 1.0
-        y_high  = getattr(fi, 'year_high', None)
-        y_low   = getattr(fi, 'year_low', None)
-        day_chg = getattr(fi, 'regular_market_change_percent', None)
-        return {
-            'price_eur':     price * fx,
-            'year_high_eur': float(y_high) * fx if y_high else None,
-            'year_low_eur':  float(y_low)  * fx if y_low  else None,
-            'day_chg_pct':   float(day_chg) if day_chg is not None else None,
-            'fx':            fx,
-        }
-    except Exception:
-        return _empty
+
+    def _fetch(t):
+        try:
+            fi = yf.Ticker(t).fast_info
+            price = float(getattr(fi, 'last_price', None) or getattr(fi, 'regular_market_price', None) or 0)
+            if not price:
+                return None
+            currency = str(getattr(fi, 'currency', 'EUR') or 'EUR').strip()
+            if currency == 'GBp' or (currency == 'GBP' and t.endswith('.L') and price > 500):
+                price /= 100.0
+                currency = 'GBP'
+            fx = _get_eur_fx_rate(currency) if currency != 'EUR' else 1.0
+            y_high  = getattr(fi, 'year_high', None)
+            y_low   = getattr(fi, 'year_low', None)
+            day_chg = getattr(fi, 'regular_market_change_percent', None)
+            return {
+                'price_eur':     price * fx,
+                'year_high_eur': float(y_high) * fx if y_high else None,
+                'year_low_eur':  float(y_low)  * fx if y_low  else None,
+                'day_chg_pct':   float(day_chg) if day_chg is not None else None,
+                'fx':            fx,
+            }
+        except Exception:
+            return None
+
+    result = _fetch(ticker)
+    if result:
+        return result
+
+    # Alternative Börsen-Suffixe ausprobieren
+    _alts = []
+    if ticker.endswith('.DE'):
+        base = ticker[:-3]
+        _alts = [base + '.F', base + '.MU', base + '.HM', base]
+    elif ticker.endswith('.F'):
+        base = ticker[:-2]
+        _alts = [base + '.DE', base + '.MU', base]
+    elif ticker.endswith('.L'):
+        _alts = [ticker[:-2]]
+    elif '.' not in ticker:
+        _alts = [ticker + '.DE', ticker + '.F']
+    for alt in _alts:
+        result = _fetch(alt)
+        if result:
+            return result
+
+    # FMP-Fallback wenn yFinance (inkl. Alternativen) keinen Kurs liefert
+    if FMP_API_KEY:
+        _base = ticker.split('.')[0]
+        for _fmp_sym in [ticker, _base]:
+            try:
+                _fr = requests.get(
+                    f"https://financialmodelingprep.com/api/v3/quote/{_fmp_sym}",
+                    params={'apikey': FMP_API_KEY}, timeout=5)
+                if _fr.ok and _fr.json():
+                    _fd = _fr.json()[0]
+                    _price = float(_fd.get('price') or 0)
+                    if not _price:
+                        continue
+                    _currency = str(_fd.get('currency') or 'EUR').strip()
+                    if _currency == 'GBp':
+                        _price /= 100.0
+                        _currency = 'GBP'
+                    _fx = _get_eur_fx_rate(_currency) if _currency != 'EUR' else 1.0
+                    _chg = _fd.get('changesPercentage')
+                    return {
+                        'price_eur':     _price * _fx,
+                        'year_high_eur': float(_fd['yearHigh']) * _fx if _fd.get('yearHigh') else None,
+                        'year_low_eur':  float(_fd['yearLow'])  * _fx if _fd.get('yearLow')  else None,
+                        'day_chg_pct':   float(_chg) if _chg is not None else None,
+                        'fx':            _fx,
+                    }
+            except Exception:
+                pass
+
+    return _empty
 
 
 def _portfolio_price(ticker: str):
@@ -5369,11 +5459,13 @@ if st.session_state.get("show_portfolio"):
             st.error("CSV konnte nicht gelesen werden. Bitte prüfe das Format (Finanzen.net Zero Orderhistorie).")
         else:
             st.session_state["portfolio_df"] = df_port.copy()
-            # ISIN → Ticker Mapping für handelbare Assets
-            tradeable = df_port[~df_port['is_crypto'] & ~df_port['is_warrant']]['ISIN'].tolist()
+            # ISIN → Ticker Mapping für handelbare Assets (WKN als Fallback)
+            _port_tradeable = df_port[~df_port['is_crypto'] & ~df_port['is_warrant']]
+            tradeable = _port_tradeable['ISIN'].tolist()
             if tradeable:
+                _wkn_map = dict(zip(_port_tradeable['ISIN'], _port_tradeable['wkn'].fillna('')))
                 with st.spinner(f"Ticker für {len(tradeable)} Positionen werden ermittelt…"):
-                    isin_map = _openfigi_batch(tuple(tradeable))
+                    isin_map = _openfigi_batch(tuple(tradeable), wkn_by_isin=_wkn_map)
                 st.session_state["portfolio_isin_map"] = isin_map
 
     df_port = st.session_state.get("portfolio_df")
@@ -5396,6 +5488,35 @@ if st.session_state.get("show_portfolio"):
                         _q = _portfolio_quote_ext(tkr)
                         prices[isin] = _q.get('price_eur')
                         quotes_ext[isin] = _q
+
+        # FMP-ISIN-Fallback: für Positionen die noch keinen Preis haben
+        if FMP_API_KEY and not stocks_etf.empty:
+            _still_missing = [(isin, isin_map.get(isin, ''))
+                              for isin in stocks_etf['ISIN'] if not prices.get(isin)]
+            if _still_missing:
+                _fp2 = st.progress(0, f"ISIN-Fallback: 0 / {len(_still_missing)}…")
+                for _fmi, (_fmisin, _fmtkr_old) in enumerate(_still_missing, 1):
+                    try:
+                        _fr = requests.get(
+                            "https://financialmodelingprep.com/api/v3/search",
+                            params={'query': _fmisin, 'limit': 8, 'apikey': FMP_API_KEY},
+                            timeout=5)
+                        if _fr.ok:
+                            for _res in _fr.json():
+                                _sym = _res.get('symbol', '')
+                                if not _sym:
+                                    continue
+                                _q2 = _portfolio_quote_ext(_sym)
+                                if _q2.get('price_eur'):
+                                    prices[_fmisin]     = _q2['price_eur']
+                                    quotes_ext[_fmisin] = _q2
+                                    isin_map[_fmisin]   = _sym
+                                    break
+                    except Exception:
+                        pass
+                    _fp2.progress(_fmi / len(_still_missing),
+                                  f"ISIN-Fallback: {_fmi} / {len(_still_missing)}…")
+                _fp2.empty()
 
         # Analyst- & Sektordaten vorladen (24h gecacht, max 4s/Ticker)
         _alloc_infos: dict = {}
@@ -7451,7 +7572,7 @@ if _at == 0:
         st.markdown(mini_card("EBITDA Margin", ebitda_margin, 25, 12, ".1f", "%",
                               tooltip="EBITDA-Marge = EBITDA / Umsatz. Zeigt operative Profitabilität vor Zinsen, Steuern, Abschreibungen. >25% stark, >12% solide."), unsafe_allow_html=True)
     with c4:
-        _ebitda_str = fmt_large(ebitda) if ebitda else "N/A"
+        _ebitda_str = fmt_large(ebitda, _cur_sym) if ebitda else "N/A"
         st.markdown(
             f'<div class="metric-card">'
             f'<div class="metric-label">EBITDA</div>'
@@ -8067,7 +8188,7 @@ elif _at == 2:
         </table>
         </div>
         <div style="color:#37474f;font-size:0.71rem;">
-        E = Analystenschätzung. KGV/KUV basiert auf Kurs {_cur_sym}{price:.2f} / MarketCap {fmt_large(market_cap)}.
+        E = Analystenschätzung. KGV/KUV basiert auf Kurs {_cur_sym}{price:.2f} / MarketCap {fmt_large(market_cap, _cur_sym)}.
         </div>""", unsafe_allow_html=True)
     elif not _eps_est and not _rev_est:
         st.markdown(
@@ -8190,19 +8311,19 @@ elif _at == 3:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">Market Cap</div>
-            <div class="metric-value">{fmt_large(market_cap)}</div>
+            <div class="metric-value">{fmt_large(market_cap, _cur_sym)}</div>
         </div>""", unsafe_allow_html=True)
     with c2:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">Enterprise Value</div>
-            <div class="metric-value">{fmt_large(enterprise_value)}</div>
+            <div class="metric-value">{fmt_large(enterprise_value, _cur_sym)}</div>
         </div>""", unsafe_allow_html=True)
     with c3:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">Free Cash Flow</div>
-            <div class="metric-value">{fmt_large(fcf)}</div>
+            <div class="metric-value">{fmt_large(fcf, _cur_sym)}</div>
         </div>""", unsafe_allow_html=True)
     with c4:
         st.markdown(f"""
@@ -8628,7 +8749,7 @@ elif _at == 4:
                 <li>Die Berechnung steht und fällt mit den Annahmen (GIGO). Kleines Delta bei der Wachstumsrate = grosser Effekt auf den Endwert.</li>
             </ul>
             <span style="color:#546e7a; font-size:0.78rem;">
-                Akt. FCF: <strong>{fmt_large(fcf) if fcf else "N/A"}</strong> ·
+                Akt. FCF: <strong>{fmt_large(fcf, _cur_sym) if fcf else "N/A"}</strong> ·
                 Rev. Growth: <strong>{f"{rev_growth:.1f}%" if rev_growth is not None else "N/A"}</strong> ·
                 Alle Werte in {_currency} · Keine Anlageberatung.
             </span>
@@ -8766,7 +8887,7 @@ elif _at == 4:
                         {'▲' if margin > 0 else '▼'} {abs(margin):.1f}% {m_label}
                     </div>
                     <div style="color:#546e7a;font-size:0.78rem;margin-top:6px;">
-                        Kurs: ${price:.2f} | FCF: {fmt_large(fcf)}
+                        Kurs: {_cur_sym}{price:.2f} | FCF: {fmt_large(fcf, _cur_sym)}
                     </div>
                 </div>""", unsafe_allow_html=True)
             else:
@@ -9475,14 +9596,14 @@ elif _at == 6:
             <div class="metric-sub">Vollzeitstellen</div>
         </div>""", unsafe_allow_html=True)
     with oc3:
-        mc_str = fmt_large(market_cap) if market_cap else "N/A"
+        mc_str = fmt_large(market_cap, _cur_sym) if market_cap else "N/A"
         st.markdown(f"""<div class="metric-card">
             <div class="metric-label">Marktkapitalisierung</div>
             <div class="metric-value" style="font-size:1.1rem;">{mc_str}</div>
             <div class="metric-sub">Market Cap</div>
         </div>""", unsafe_allow_html=True)
     with oc4:
-        rev_str = fmt_large(yf_info.get("totalRevenue")) if yf_info.get("totalRevenue") else "N/A"
+        rev_str = fmt_large(yf_info.get("totalRevenue"), _cur_sym) if yf_info.get("totalRevenue") else "N/A"
         st.markdown(f"""<div class="metric-card">
             <div class="metric-label">Umsatz (TTM)</div>
             <div class="metric-value" style="font-size:1.1rem;">{rev_str}</div>
