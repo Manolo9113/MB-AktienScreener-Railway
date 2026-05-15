@@ -3590,6 +3590,84 @@ def _go_to_ticker(t):
     st.session_state["suggestions"] = []
     st.session_state["_open_sidebar"] = True
 
+# ==================== ETF LOOK-THROUGH DATA (module level — used by Portfolio + ETF Analyzer) ==
+_ETF_CW = {
+    # MSCI All-World / Developed World
+    'VWCE.DE': {'USA':62.5,'Japan':5.7,'UK':3.8,'Frankreich':3.1,'Kanada':2.9,
+                'Schweiz':2.6,'Deutschland':2.5,'Australien':2.1,'Indien':1.8,
+                'Taiwan':1.8,'Südkorea':1.6,'Niederlande':1.2,'Sonstige':7.4},
+    'FWRA.DE': {'USA':62.5,'Japan':5.7,'UK':3.8,'Frankreich':3.1,'Kanada':2.9,
+                'Schweiz':2.6,'Deutschland':2.5,'Australien':2.1,'Indien':1.8,
+                'Taiwan':1.8,'Südkorea':1.6,'Niederlande':1.2,'Sonstige':7.4},
+    'VWRL.L':  {'USA':62.5,'Japan':5.7,'UK':3.8,'Frankreich':3.1,'Kanada':2.9,
+                'Schweiz':2.6,'Deutschland':2.5,'Australien':2.1,'Indien':1.8,
+                'Taiwan':1.8,'Südkorea':1.6,'Niederlande':1.2,'Sonstige':7.4},
+    'SXR8.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+    'XDWD.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+    'EUNL.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+    'XMWO.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+    # S&P 500 / USA
+    'SXR2.DE': {'USA':100.0}, 'IUSE.DE': {'USA':100.0}, 'LCUW.DE': {'USA':100.0},
+    'VUSA.L':  {'USA':100.0}, 'SPY5.DE': {'USA':100.0}, 'CSPX.L':  {'USA':100.0},
+    # NASDAQ-100
+    'EQQQ.DE': {'USA':97.0,'Sonstige':3.0}, 'CNDX.L': {'USA':97.0,'Sonstige':3.0},
+    # EuroStoxx 50
+    'EXW1.DE': {'Deutschland':17.2,'Frankreich':16.8,'Niederlande':14.2,'Spanien':9.5,
+                'Italien':8.5,'Belgien':4.8,'Finnland':4.2,'Irland':3.5,'Sonstige':21.3},
+    'MEUD.DE': {'Deutschland':17.2,'Frankreich':16.8,'Niederlande':14.2,'Spanien':9.5,
+                'Italien':8.5,'Belgien':4.8,'Finnland':4.2,'Irland':3.5,'Sonstige':21.3},
+    'LYPS.DE': {'Deutschland':17.2,'Frankreich':16.8,'Niederlande':14.2,'Spanien':9.5,
+                'Italien':8.5,'Belgien':4.8,'Finnland':4.2,'Irland':3.5,'Sonstige':21.3},
+    # MSCI Europe
+    'IQQY.DE': {'UK':23.8,'Frankreich':17.0,'Schweiz':13.5,'Deutschland':12.8,
+                'Niederlande':8.2,'Schweden':5.3,'Dänemark':4.1,'Spanien':3.5,
+                'Italien':3.0,'Sonstige':8.8},
+    'IEUA.DE': {'UK':23.8,'Frankreich':17.0,'Schweiz':13.5,'Deutschland':12.8,
+                'Niederlande':8.2,'Schweden':5.3,'Dänemark':4.1,'Spanien':3.5,
+                'Italien':3.0,'Sonstige':8.8},
+    # DAX / Deutschland
+    'EXS1.DE': {'Deutschland':100.0}, 'DBXD.DE': {'Deutschland':100.0},
+    # Japan / Asien
+    'EXV5.DE': {'Japan':100.0}, 'XDJP.DE': {'Japan':100.0},
+    'IQQC.DE': {'China':100.0},
+    # MSCI EM
+    'IS3N.DE': {'China':26.8,'Indien':14.2,'Taiwan':17.1,'Südkorea':12.3,
+                'Brasilien':5.1,'Saudi-Arabien':4.0,'Südafrika':3.5,
+                'Mexiko':2.5,'Indonesien':1.6,'Sonstige':12.9},
+    'IS3R.DE': {'China':26.8,'Indien':14.2,'Taiwan':17.1,'Südkorea':12.3,
+                'Brasilien':5.1,'Saudi-Arabien':4.0,'Südafrika':3.5,
+                'Mexiko':2.5,'Indonesien':1.6,'Sonstige':12.9},
+    'XMME.DE': {'China':26.8,'Indien':14.2,'Taiwan':17.1,'Südkorea':12.3,
+                'Brasilien':5.1,'Saudi-Arabien':4.0,'Südafrika':3.5,
+                'Mexiko':2.5,'Indonesien':1.6,'Sonstige':12.9},
+    # Dividend
+    'VHYL.L':  {'USA':60.2,'UK':7.1,'Japan':6.0,'Schweiz':4.2,'Frankreich':3.5,
+                'Deutschland':3.0,'Australien':2.8,'Sonstige':13.2},
+    'ISPA.DE': {'USA':54.0,'Kanada':8.0,'UK':6.0,'Japan':5.5,'Schweiz':4.0,
+                'Frankreich':3.5,'Deutschland':3.0,'Australien':2.5,'Sonstige':13.5},
+}
+_CONTINENT_MAP = {
+    'USA':'Nordamerika','Kanada':'Nordamerika','Mexiko':'Nordamerika',
+    'UK':'Europa','Deutschland':'Europa','Frankreich':'Europa','Schweiz':'Europa',
+    'Niederlande':'Europa','Schweden':'Europa','Dänemark':'Europa','Spanien':'Europa',
+    'Italien':'Europa','Belgien':'Europa','Norwegen':'Europa','Finnland':'Europa',
+    'Irland':'Europa','Österreich':'Europa','Polen':'Europa','Portugal':'Europa',
+    'Japan':'Asien/Pazifik','China':'Asien/Pazifik','Südkorea':'Asien/Pazifik',
+    'Taiwan':'Asien/Pazifik','Australien':'Asien/Pazifik','Indien':'Asien/Pazifik',
+    'Hongkong':'Asien/Pazifik','Singapur':'Asien/Pazifik','Indonesien':'Asien/Pazifik',
+    'Malaysia':'Asien/Pazifik','Thailand':'Asien/Pazifik','Philippinen':'Asien/Pazifik',
+    'Brasilien':'Lateinamerika','Chile':'Lateinamerika','Kolumbien':'Lateinamerika',
+    'Peru':'Lateinamerika','Argentinien':'Lateinamerika',
+    'Saudi-Arabien':'Mittlerer Osten','Israel':'Mittlerer Osten','VAE':'Mittlerer Osten',
+    'Katar':'Mittlerer Osten','Kuwait':'Mittlerer Osten',
+    'Südafrika':'Afrika','Ägypten':'Afrika','Nigeria':'Afrika',
+    'Sonstige':'Sonstige',
+}
+
 # ==================== PORTFOLIO HELPERS ====================
 
 def _parse_portfolio_csv(file_bytes: bytes) -> pd.DataFrame:
@@ -5946,8 +6024,118 @@ if st.session_state.get("show_portfolio"):
                                 unsafe_allow_html=True)
 
                 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-                st.caption("Sektoren via yFinance (leer = kein Sektor-Mapping verfügbar). "
-                           "Regionen basieren auf der Börsenlistung. ETFs nicht nach Inhalt aufgebrochen.")
+                st.caption("Sektoren via yFinance. Regionen basieren auf der Börsenlistung. "
+                           "ETF-Look-Through → echte Länderexposition weiter unten.")
+
+                # ── ETF Look-Through: echte Länder-/Kontinentexposition ───────
+                st.markdown("<div class='section-header'>🌍 Geographische Exposition (Look-Through)</div>",
+                            unsafe_allow_html=True)
+                _lt: dict = {}           # Länder → EUR-Wert
+                _lt_etfs_found = []      # ETFs mit bekannten CW
+                _lt_etfs_missing = []    # ETFs ohne CW-Daten
+                for _, _lrow in df_port.iterrows():
+                    _ltkr  = isin_map.get(_lrow['ISIN'], '')
+                    _lprc  = prices.get(_lrow['ISIN'])
+                    _lval  = (_lprc if _lprc else _lrow['avg_cost']) * _lrow['shares']
+                    _linf  = _alloc_infos.get(_lrow['ISIN'], {})
+                    _is_etf = _linf.get('quote_type') == 'ETF' or _lrow.get('is_etf', False)
+                    # ETFs: Look-Through via _ETF_CW
+                    if _is_etf and _ltkr:
+                        _lcw = _ETF_CW.get(_ltkr)
+                        if _lcw:
+                            _lcw_sum = sum(_lcw.values())
+                            for _lc, _lw in _lcw.items():
+                                _lt[_lc] = _lt.get(_lc, 0) + _lval * (_lw / _lcw_sum)
+                            _lt_etfs_found.append(_lrow['name'][:28])
+                        else:
+                            # Kein CW → als "Sonstige" einbuchen
+                            _lt['Sonstige'] = _lt.get('Sonstige', 0) + _lval
+                            _lt_etfs_missing.append(_lrow['name'][:28])
+                    elif _lrow.get('is_crypto'):
+                        _lt['Krypto'] = _lt.get('Krypto', 0) + _lval
+                    elif not _lrow.get('is_warrant'):
+                        # Einzelaktien: Land via Region
+                        _lreg = _ticker_to_region(_ltkr)
+                        _lt[_lreg] = _lt.get(_lreg, 0) + _lval
+
+                _lt_total = sum(_lt.values()) or 1
+                _lt_sorted = sorted(_lt.items(), key=lambda x: x[1], reverse=True)
+
+                # Länder-Farben (gleich wie im ETF-Analyzer)
+                _LT_CLR = {
+                    'USA':'#1565c0','Deutschland':'#00838f','UK':'#7b1fa2',
+                    'Japan':'#e65100','Frankreich':'#2e7d32','Kanada':'#f57f17',
+                    'Schweiz':'#4a148c','Australien':'#00695c','China':'#b71c1c',
+                    'Indien':'#ff6f00','Taiwan':'#880e4f','Südkorea':'#1b5e20',
+                    'Niederlande':'#006064','Schweden':'#01579b','Spanien':'#bf360c',
+                    'Brasilien':'#33691e','Sonstige':'#455a64','Krypto':'#f9a825',
+                    'Nordamerika':'#1565c0','Europa':'#00695c','Asien/Pazifik':'#e64a19',
+                    'Lateinamerika':'#f57f17','Mittlerer Osten':'#5d4037','Afrika':'#6d4c41',
+                }
+
+                # Kontinent-Aggregation
+                _cont: dict = {}
+                for _lc, _lv in _lt.items():
+                    _lco = _CONTINENT_MAP.get(_lc, 'Sonstige')
+                    _cont[_lco] = _cont.get(_lco, 0) + _lv
+                _cont = dict(sorted(_cont.items(), key=lambda x: x[1], reverse=True))
+
+                _lta, _ltb = st.columns([1.1, 1])
+                with _lta:
+                    st.markdown("<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+                                "letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;'>"
+                                "Länder</div>", unsafe_allow_html=True)
+                    for _lc, _lv in _lt_sorted[:15]:
+                        _lpct = _lv / _lt_total * 100
+                        _lclr = _LT_CLR.get(_lc, '#546e7a')
+                        _lbar = min(int(_lpct * 1.8), 100)
+                        st.markdown(
+                            f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
+                            f"<span style='color:{_lclr};font-size:0.72rem;'>●</span>"
+                            f"<span style='color:#eceff1;font-size:0.76rem;flex:1;'>{_lc[:20]}</span>"
+                            f"<div style='background:#1a2740;border-radius:3px;width:60px;height:6px;'>"
+                            f"<div style='background:{_lclr};width:{_lbar}%;height:6px;border-radius:3px;'>"
+                            f"</div></div>"
+                            f"<span style='color:#90a4ae;font-size:0.76rem;font-weight:600;"
+                            f"min-width:38px;text-align:right;'>{_lpct:.1f}%</span></div>",
+                            unsafe_allow_html=True)
+                with _ltb:
+                    st.markdown("<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+                                "letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;'>"
+                                "Kontinente</div>", unsafe_allow_html=True)
+                    if len(_cont) > 1:
+                        _cont_fig = go.Figure(go.Pie(
+                            labels=list(_cont.keys()),
+                            values=list(_cont.values()),
+                            hole=0.62,
+                            marker=dict(
+                                colors=[_LT_CLR.get(k,'#546e7a') for k in _cont],
+                                line=dict(color='#0a1628', width=2)),
+                            textinfo='none',
+                            hovertemplate='<b>%{label}</b><br>%{percent}<extra></extra>',
+                        ))
+                        _cont_fig.update_layout(
+                            template='plotly_dark', paper_bgcolor='#0a1628',
+                            plot_bgcolor='#0a1628', showlegend=False, height=200,
+                            margin=dict(l=5, r=5, t=5, b=5))
+                        st.plotly_chart(_cont_fig, use_container_width=True)
+                    for _co, _cv in _cont.items():
+                        _cpct = _cv / _lt_total * 100
+                        _cclr = _LT_CLR.get(_co, '#546e7a')
+                        st.markdown(
+                            f"<div style='display:flex;justify-content:space-between;"
+                            f"padding:3px 0;border-bottom:1px solid #1a2740;'>"
+                            f"<span style='color:{_cclr};font-size:0.78rem;'>● {_co}</span>"
+                            f"<span style='color:#90a4ae;font-size:0.78rem;font-weight:600;'>"
+                            f"{_cpct:.1f}%</span></div>", unsafe_allow_html=True)
+
+                _lt_note = ""
+                if _lt_etfs_found:
+                    _lt_note += f"✓ Look-Through: {', '.join(_lt_etfs_found[:4])}."
+                if _lt_etfs_missing:
+                    _lt_note += f" ⚠️ Keine CW-Daten: {', '.join(_lt_etfs_missing[:3])} → als Sonstige."
+                if _lt_note:
+                    st.caption(_lt_note)
 
                 # ── Konzentrations-Risiko ─────────────────────────────
                 st.markdown("<div class='section-header'>📊 Konzentrations-Risiko</div>",
