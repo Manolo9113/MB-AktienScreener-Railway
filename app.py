@@ -1691,16 +1691,18 @@ def badge(v, good, ok, fmt=".1f", inverse=False):
 def safe_float(v, digits=2):
     return f"{v:.{digits}f}" if v is not None else "N/A"
 
-def fmt_large(value):
+def fmt_large(value, sym=""):
     if value is None:
         return "N/A"
-    if value >= 1e12:
-        return f"{value/1e12:.2f}T$"
-    elif value >= 1e9:
-        return f"{value/1e9:.1f}B$"
-    elif value >= 1e6:
-        return f"{value/1e6:.1f}M$"
-    return f"{value:,.0f}"
+    abs_v = abs(value)
+    sign  = "-" if value < 0 else ""
+    if abs_v >= 1e12:
+        return f"{sign}{sym}{abs_v/1e12:.2f}T"
+    elif abs_v >= 1e9:
+        return f"{sign}{sym}{abs_v/1e9:.1f}B"
+    elif abs_v >= 1e6:
+        return f"{sign}{sym}{abs_v/1e6:.1f}M"
+    return f"{sign}{sym}{abs_v:,.0f}"
 
 # ==================== SECTOR BENCHMARKS ====================
 # Typische Medianwerte je Sektor (S&P 500 historische Durchschnitte)
@@ -6888,6 +6890,44 @@ if st.session_state.get("show_etf_analyzer"):
             return {}
 
     @st.cache_data(ttl=3600, show_spinner=False)
+    def _etf_perf_hist(ticker: str) -> dict:
+        """Berechnet YTD / 3J / 5J aus Kurshistorie (zuverlässig für XETRA-ETFs)."""
+        import datetime as _dtt
+        try:
+            raw = yf.download(ticker, period='6y', interval='1mo',
+                              progress=False, auto_adjust=True)
+            if raw.empty:
+                return {}
+            cl = raw['Close']
+            if isinstance(cl, pd.DataFrame):
+                cl = cl.iloc[:, 0]
+            cl = cl.dropna()
+            if cl.empty:
+                return {}
+            now_ts  = cl.index[-1]
+            last_px = float(cl.iloc[-1])
+            # Timezone-aware index handling
+            tz = getattr(now_ts, 'tzinfo', None)
+            def _ts(dt):
+                return pd.Timestamp(dt, tz=tz) if tz else pd.Timestamp(dt)
+            # YTD
+            ytd_start = _ts(_dtt.date(now_ts.year, 1, 1))
+            ytd_cl    = cl[cl.index >= ytd_start]
+            ytd = (last_px / float(ytd_cl.iloc[0]) - 1) if len(ytd_cl) > 0 else None
+            # 1Y simple
+            cl_1y = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=370))]
+            r1y   = (last_px / float(cl_1y.iloc[0]) - 1) if len(cl_1y) > 6 else None
+            # 3Y annualized
+            cl_3y = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=3*365+10))]
+            r3y   = ((last_px / float(cl_3y.iloc[0])) ** (1/3) - 1) if len(cl_3y) > 18 else None
+            # 5Y annualized
+            cl_5y = cl[cl.index >= _ts(now_ts - _dtt.timedelta(days=5*365+15))]
+            r5y   = ((last_px / float(cl_5y.iloc[0])) ** (1/5) - 1) if len(cl_5y) > 36 else None
+            return {'ytd': ytd, 'ret_1y': r1y, 'ret_3y': r3y, 'ret_5y': r5y}
+        except Exception:
+            return {}
+
+    @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_info(ticker: str) -> dict:
         try:
             inf = yf.Ticker(ticker).info or {}
@@ -7876,17 +7916,26 @@ price_change_pct = (price_change / price_prev * 100) if price_prev != 0 else 0
 fcf = yf_info.get("freeCashflow")
 market_cap = yf_info.get("marketCap")
 revenue = yf_info.get("totalRevenue")
-fcf_yield = (fcf / market_cap * 100) if fcf and market_cap else 0
+fcf_yield = (fcf / market_cap * 100) if fcf and market_cap else None
+# Cap extreme FCF Yield: auto/financial conglomerates include finance subsidiaries
+# that distort FCF massively (e.g. Toyota Financial Services)
+if fcf_yield is not None and abs(fcf_yield) > 100:
+    fcf_yield = None
 # FCF Margin = FCF / Umsatz (operative Unternehmenskennzahl für Rule of 40)
 fcf_margin = (fcf / revenue * 100) if fcf and revenue else None
 
-rev_growth = (yf_info.get("revenueGrowth") or 0) * 100
-earnings_growth = (yf_info.get("earningsGrowth") or 0) * 100
-profit_margin = (yf_info.get("profitMargins") or 0) * 100
-gross_margin = (yf_info.get("grossMargins") or 0) * 100
-operating_margin = (yf_info.get("operatingMargins") or 0) * 100
+_rg_raw = yf_info.get("revenueGrowth")
+_eg_raw = yf_info.get("earningsGrowth")
+_pm_raw = yf_info.get("profitMargins")
+_gm_raw = yf_info.get("grossMargins")
+_om_raw = yf_info.get("operatingMargins")
+rev_growth      = (_rg_raw * 100) if _rg_raw is not None else None
+earnings_growth = (_eg_raw * 100) if _eg_raw is not None else None
+profit_margin   = (_pm_raw * 100) if _pm_raw is not None else None
+gross_margin    = (_gm_raw * 100) if _gm_raw is not None else None
+operating_margin = (_om_raw * 100) if _om_raw is not None else None
 # Rule of 40 = Rev Growth % + FCF Margin % (Branchenstandard für SaaS)
-rule_of_40 = (rev_growth + fcf_margin) if fcf_margin is not None else None
+rule_of_40 = (rev_growth + fcf_margin) if (fcf_margin is not None and rev_growth is not None) else None
 
 trailing_pe = yf_info.get("trailingPE")
 forward_pe = yf_info.get("forwardPE")
@@ -7963,7 +8012,7 @@ net_cash = (total_cash - total_debt) if total_cash is not None else None
 net_cash_per_share = (net_cash / shares_outstanding) if net_cash is not None and shares_outstanding else None
 price_to_fcf = (market_cap / fcf) if fcf and fcf > 0 and market_cap else None
 short_pct_float = yf_info.get("shortPercentOfFloat")
-total_shareholder_yield = (fcf_yield + dividend_yield) if (fcf and market_cap) else (dividend_yield if dividend_yield else None)
+total_shareholder_yield = (fcf_yield + dividend_yield) if (fcf_yield is not None) else (dividend_yield if dividend_yield else None)
 earnings_ts = yf_info.get("earningsTimestamp") or yf_info.get("earningsDate")
 earnings_date_str = ""
 earnings_days_until = None
@@ -8053,6 +8102,13 @@ change_class = "header-change-pos" if price_change >= 0 else "header-change-neg"
 change_arrow = "▲" if price_change >= 0 else "▼"
 company_name = yf_info.get("longName", ticker)
 
+# HTML-escape user-visible strings to prevent rendering raw HTML from yfinance data
+def _he(s):
+    return str(s).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;") if s else ""
+_company_name_h = _he(company_name)
+_sector_h       = _he(sector)
+_industry_h     = _he(industry)
+
 # Logo HTML — FMP Image-Endpoint direkt einbinden
 initials = "".join(w[0] for w in company_name.split()[:2]).upper() if company_name else ticker[:2]
 logo_html = f"""
@@ -8067,8 +8123,8 @@ st.markdown(f"""
     <div style="display:flex; align-items:center; flex:1; min-width:0;">
         {logo_html}
         <div style="min-width:0; flex:1;">
-            <div class="header-title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{company_name}</div>
-            <div class="header-sub">{ticker} · {sector} · {industry}</div>
+            <div class="header-title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{_company_name_h}</div>
+            <div class="header-sub">{ticker} · {_sector_h} · {_industry_h}</div>
             <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                 <span style="background:#1a2744; color:#64b5f6; border-radius:6px; padding:3px 10px; font-size:0.8rem; font-weight:600;">{recommendation}</span>
                 {_earnings_badge}
@@ -8554,7 +8610,7 @@ if len(hist_plot) >= 2:
 
     # DCF Fair Value für Chart (konservative Defaults)
     dcf_fair_val = dcf_valuation(fcf, shares_outstanding,
-                                  min(max(rev_growth, 3), 30), 2.5, 10, 10)
+                                  min(max(rev_growth or 3, 3), 30), 2.5, 10, 10)
 
     # Volume subplot
     fig = make_subplots(
@@ -8804,7 +8860,7 @@ if _at == 0:
         st.markdown(mini_card("EBITDA Margin", ebitda_margin, 25, 12, ".1f", "%",
                               tooltip="EBITDA-Marge = EBITDA / Umsatz. Zeigt operative Profitabilität vor Zinsen, Steuern, Abschreibungen. >25% stark, >12% solide."), unsafe_allow_html=True)
     with c4:
-        _ebitda_str = fmt_large(ebitda) if ebitda else "N/A"
+        _ebitda_str = fmt_large(ebitda, _cur_sym) if ebitda else "N/A"
         st.markdown(
             f'<div class="metric-card">'
             f'<div class="metric-label">EBITDA</div>'
@@ -9420,7 +9476,7 @@ elif _at == 2:
         </table>
         </div>
         <div style="color:#37474f;font-size:0.71rem;">
-        E = Analystenschätzung. KGV/KUV basiert auf Kurs {_cur_sym}{price:.2f} / MarketCap {fmt_large(market_cap)}.
+        E = Analystenschätzung. KGV/KUV basiert auf Kurs {_cur_sym}{price:.2f} / MarketCap {fmt_large(market_cap, _cur_sym)}.
         </div>""", unsafe_allow_html=True)
     elif not _eps_est and not _rev_est:
         st.markdown(
@@ -9543,19 +9599,19 @@ elif _at == 3:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">Market Cap</div>
-            <div class="metric-value">{fmt_large(market_cap)}</div>
+            <div class="metric-value">{fmt_large(market_cap, _cur_sym)}</div>
         </div>""", unsafe_allow_html=True)
     with c2:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">Enterprise Value</div>
-            <div class="metric-value">{fmt_large(enterprise_value)}</div>
+            <div class="metric-value">{fmt_large(enterprise_value, _cur_sym)}</div>
         </div>""", unsafe_allow_html=True)
     with c3:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">Free Cash Flow</div>
-            <div class="metric-value">{fmt_large(fcf)}</div>
+            <div class="metric-value">{fmt_large(fcf, _cur_sym)}</div>
         </div>""", unsafe_allow_html=True)
     with c4:
         st.markdown(f"""
@@ -10093,8 +10149,8 @@ elif _at == 4:
                 <li>Die Berechnung steht und fällt mit den Annahmen (GIGO). Kleines Delta bei der Wachstumsrate = grosser Effekt auf den Endwert.</li>
             </ul>
             <span style="color:#546e7a; font-size:0.78rem;">
-                Akt. FCF: <strong>{fmt_large(fcf) if fcf else "N/A"}</strong> ·
-                Rev. Growth: <strong>{rev_growth:.1f}%</strong> ·
+                Akt. FCF: <strong>{fmt_large(fcf, _cur_sym) if fcf else "N/A"}</strong> ·
+                Rev. Growth: <strong>{f"{rev_growth:.1f}%" if rev_growth is not None else "N/A"}</strong> ·
                 Alle Werte in {_currency} · Keine Anlageberatung.
             </span>
         </div>
@@ -10203,7 +10259,7 @@ elif _at == 4:
             <div class="insight-box" style="margin-bottom:12px;">
                 <strong>ℹ️ DCF Hinweis:</strong> Der Wert reagiert stark auf Eingaben.
                 Konservative Wachstumsrate (10–20%) und höherer Diskontsatz (10–12%)
-                vermeiden Euphorie-Prämien. Akt. Rev. Growth: <strong>{rev_growth:.1f}%</strong>.
+                vermeiden Euphorie-Prämien. Akt. Rev. Growth: <strong>{f"{rev_growth:.1f}%" if rev_growth is not None else "N/A"}</strong>.
             </div>""", unsafe_allow_html=True)
             default_growth = min(max(int(_rg), 5), 30)
             d1, d2, d3, d4 = st.columns(4)
@@ -10231,7 +10287,7 @@ elif _at == 4:
                         {'▲' if margin > 0 else '▼'} {abs(margin):.1f}% {m_label}
                     </div>
                     <div style="color:#546e7a;font-size:0.78rem;margin-top:6px;">
-                        Kurs: ${price:.2f} | FCF: {fmt_large(fcf)}
+                        Kurs: {_cur_sym}{price:.2f} | FCF: {fmt_large(fcf, _cur_sym)}
                     </div>
                 </div>""", unsafe_allow_html=True)
             else:
@@ -10940,14 +10996,14 @@ elif _at == 6:
             <div class="metric-sub">Vollzeitstellen</div>
         </div>""", unsafe_allow_html=True)
     with oc3:
-        mc_str = fmt_large(market_cap) if market_cap else "N/A"
+        mc_str = fmt_large(market_cap, _cur_sym) if market_cap else "N/A"
         st.markdown(f"""<div class="metric-card">
             <div class="metric-label">Marktkapitalisierung</div>
             <div class="metric-value" style="font-size:1.1rem;">{mc_str}</div>
             <div class="metric-sub">Market Cap</div>
         </div>""", unsafe_allow_html=True)
     with oc4:
-        rev_str = fmt_large(yf_info.get("totalRevenue")) if yf_info.get("totalRevenue") else "N/A"
+        rev_str = fmt_large(yf_info.get("totalRevenue"), _cur_sym) if yf_info.get("totalRevenue") else "N/A"
         st.markdown(f"""<div class="metric-card">
             <div class="metric-label">Umsatz (TTM)</div>
             <div class="metric-value" style="font-size:1.1rem;">{rev_str}</div>
