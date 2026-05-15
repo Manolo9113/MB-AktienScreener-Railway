@@ -5580,7 +5580,6 @@ if st.session_state.get("show_portfolio"):
         crypto     = df_port[df_port['is_crypto']].copy()
         warrants   = df_port[df_port['is_warrant']].copy()
 
-        # Alle Kursdaten lazy im Positionen-Tab geladen (session_state-Cache → kein Block)
         _alloc_cache_key   = f"alloc_{hash(frozenset(isin_map.items()))}"
         _prices_cache_key  = f"prices_{_alloc_cache_key}"
         _qext_cache_key    = f"qext_{_alloc_cache_key}"
@@ -5591,6 +5590,45 @@ if st.session_state.get("show_portfolio"):
         _crypto_prices: dict = st.session_state.get(_crypto_cache_key, {})
         _alloc_infos: dict  = st.session_state.get(_alloc_cache_key, {})
         _sparklines: dict   = st.session_state.get(f"spark_{_alloc_cache_key}", {})
+
+        # ── Kurse automatisch laden (einmalig pro Session, dann gecacht) ─────
+        _prices_loaded = bool(prices)
+        if not prices and not stocks_etf.empty:
+            _tickers_to_load = [(isin_map.get(i), i) for i in stocks_etf['ISIN'] if isin_map.get(i)]
+            if _tickers_to_load:
+                _pprog = st.progress(0, f"Kurse werden geladen: 0 / {len(_tickers_to_load)}…")
+                for _pi, (_pt, _pi_isin) in enumerate(_tickers_to_load, 1):
+                    _q = _portfolio_quote_ext(_pt)
+                    prices[_pi_isin] = _q.get('price_eur')
+                    quotes_ext[_pi_isin] = _q
+                    _pprog.progress(_pi / len(_tickers_to_load),
+                                    f"Kurse: {_pi} / {len(_tickers_to_load)}…")
+                _pprog.empty()
+                st.session_state[_prices_cache_key] = prices
+                st.session_state[_qext_cache_key]   = quotes_ext
+        if not _crypto_prices and not crypto.empty:
+            import re as _re
+            import concurrent.futures as _cf_c
+            for _, _crow in crypto.iterrows():
+                _nm  = str(_crow.get('name', ''))
+                _m   = _re.search(r'\(([A-Z]{2,10})\)', _nm)
+                _sym = _m.group(1) if _m else (
+                    _nm.strip().upper()
+                    if _nm.strip().upper().isalpha() and len(_nm.strip()) <= 8 else None)
+                if _sym:
+                    _yf_tkr = f"{_sym}-EUR"
+                    with _cf_c.ThreadPoolExecutor(max_workers=1) as _exe_c:
+                        _fut_c = _exe_c.submit(lambda t=_yf_tkr: yf.Ticker(t).fast_info)
+                        try:
+                            _fi_c  = _fut_c.result(timeout=3.0)
+                            _cp_c  = getattr(_fi_c, 'last_price', None)
+                            if _cp_c and float(_cp_c) > 0:
+                                _crypto_prices[_crow['ISIN']] = float(_cp_c)
+                        except Exception:
+                            pass
+            st.session_state[_crypto_cache_key] = _crypto_prices
+        if not _prices_loaded and (prices or _crypto_prices):
+            st.rerun()
 
         # ── Zusammenfassung ──────────────────────────────────────────
         total_invested = df_port['cost_basis'].sum()
@@ -5645,46 +5683,6 @@ if st.session_state.get("show_portfolio"):
 
         with tab_pos:
           try:
-            # ── Kurse lazy laden (einmalig pro Session, dann gecacht) ────
-            _prices_loaded = bool(prices)
-            if not prices and not stocks_etf.empty:
-                _tickers_to_load = [(isin_map.get(i), i) for i in stocks_etf['ISIN'] if isin_map.get(i)]
-                if _tickers_to_load:
-                    _pprog = st.progress(0, f"Kurse werden geladen: 0 / {len(_tickers_to_load)}…")
-                    for _pi, (_pt, _pi_isin) in enumerate(_tickers_to_load, 1):
-                        _q = _portfolio_quote_ext(_pt)
-                        prices[_pi_isin] = _q.get('price_eur')
-                        quotes_ext[_pi_isin] = _q
-                        _pprog.progress(_pi / len(_tickers_to_load),
-                                        f"Kurse: {_pi} / {len(_tickers_to_load)}…")
-                    _pprog.empty()
-                    st.session_state[_prices_cache_key] = prices
-                    st.session_state[_qext_cache_key]   = quotes_ext
-            if not _crypto_prices and not crypto.empty:
-                import re as _re
-                import concurrent.futures as _cf_c
-                for _, _crow in crypto.iterrows():
-                    _nm  = str(_crow.get('name', ''))
-                    _m   = _re.search(r'\(([A-Z]{2,10})\)', _nm)
-                    _sym = _m.group(1) if _m else (
-                        _nm.strip().upper()
-                        if _nm.strip().upper().isalpha() and len(_nm.strip()) <= 8 else None)
-                    if _sym:
-                        _yf_tkr = f"{_sym}-EUR"
-                        with _cf_c.ThreadPoolExecutor(max_workers=1) as _exe_c:
-                            _fut_c = _exe_c.submit(lambda t=_yf_tkr: yf.Ticker(t).fast_info)
-                            try:
-                                _fi_c  = _fut_c.result(timeout=3.0)
-                                _cp_c  = getattr(_fi_c, 'last_price', None)
-                                if _cp_c and float(_cp_c) > 0:
-                                    _crypto_prices[_crow['ISIN']] = float(_cp_c)
-                            except Exception:
-                                pass
-                st.session_state[_crypto_cache_key] = _crypto_prices
-            # Rerun once after first load so summary cards update with real prices
-            if not _prices_loaded and (prices or _crypto_prices):
-                st.rerun()
-
             # ── Analyst-Daten lazy laden (Top-10, einmalig pro Session) ──
             if not _alloc_infos and not stocks_etf.empty:
                 _ai_isins = [(isin_map.get(i), i)
