@@ -464,6 +464,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 SEC_API_KEY    = os.getenv("SEC_API_KEY", "")   # sec-api.io (Segment Revenue + XBRL)
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY", "")
+PORTFOLIO_PASSWORD = os.getenv("PORTFOLIO_PASSWORD", "")  # leer = kein Schutz
 
 # ── Supabase Auth & Watchlist helpers ─────────────────────────────────
 def _sb_headers(access_token: str = "") -> dict:
@@ -5470,6 +5471,29 @@ if st.session_state["show_landing"]:
 
 # ==================== PORTFOLIO PAGE ====================
 if st.session_state.get("show_portfolio"):
+    # ── Passwortschutz ────────────────────────────────────────────────────
+    if PORTFOLIO_PASSWORD and not st.session_state.get("portfolio_unlocked"):
+        st.markdown("""
+        <div style="text-align:center; padding:48px 0 24px 0;">
+            <div style="font-size:2rem; font-weight:800; color:#fff;">🔒 Portfolio</div>
+            <div style="color:#64b5f6; font-size:0.95rem; margin-top:8px;">
+                Bitte Passwort eingeben
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        _pw_col = st.columns([1, 2, 1])[1]
+        with _pw_col:
+            _pw_input = st.text_input("Passwort", type="password",
+                                      label_visibility="collapsed",
+                                      placeholder="Passwort eingeben…")
+            if st.button("Entsperren", use_container_width=True, type="primary"):
+                if _pw_input == PORTFOLIO_PASSWORD:
+                    st.session_state["portfolio_unlocked"] = True
+                    st.rerun()
+                else:
+                    st.error("Falsches Passwort.")
+        st.stop()
+
     st.markdown("""
     <div style="text-align:center; padding:32px 0 20px 0;">
         <div style="font-size:2.4rem; font-weight:800; color:#fff;">📁 Mein Portfolio</div>
