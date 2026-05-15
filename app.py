@@ -464,6 +464,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 SEC_API_KEY    = os.getenv("SEC_API_KEY", "")   # sec-api.io (Segment Revenue + XBRL)
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY", "")
+PORTFOLIO_PASSWORD = os.getenv("PORTFOLIO_PASSWORD", "")  # leer = kein Schutz
 
 # ── Supabase Auth & Watchlist helpers ─────────────────────────────────
 def _sb_headers(access_token: str = "") -> dict:
@@ -5470,6 +5471,29 @@ if st.session_state["show_landing"]:
 
 # ==================== PORTFOLIO PAGE ====================
 if st.session_state.get("show_portfolio"):
+    # ── Passwortschutz ────────────────────────────────────────────────────
+    if PORTFOLIO_PASSWORD and not st.session_state.get("portfolio_unlocked"):
+        st.markdown("""
+        <div style="text-align:center; padding:48px 0 24px 0;">
+            <div style="font-size:2rem; font-weight:800; color:#fff;">🔒 Portfolio</div>
+            <div style="color:#64b5f6; font-size:0.95rem; margin-top:8px;">
+                Bitte Passwort eingeben
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        _pw_col = st.columns([1, 2, 1])[1]
+        with _pw_col:
+            _pw_input = st.text_input("Passwort", type="password",
+                                      label_visibility="collapsed",
+                                      placeholder="Passwort eingeben…")
+            if st.button("Entsperren", use_container_width=True, type="primary"):
+                if _pw_input == PORTFOLIO_PASSWORD:
+                    st.session_state["portfolio_unlocked"] = True
+                    st.rerun()
+                else:
+                    st.error("Falsches Passwort.")
+        st.stop()
+
     st.markdown("""
     <div style="text-align:center; padding:32px 0 20px 0;">
         <div style="font-size:2.4rem; font-weight:800; color:#fff;">📁 Mein Portfolio</div>
@@ -5553,61 +5577,17 @@ if st.session_state.get("show_portfolio"):
         crypto     = df_port[df_port['is_crypto']].copy()
         warrants   = df_port[df_port['is_warrant']].copy()
 
-        # Krypto-Kurse via yFinance (XRP-EUR, BTC-EUR, etc.) — 3s Timeout pro Ticker
-        _crypto_prices: dict = {}
-        if not crypto.empty:
-            import re as _re
-            import concurrent.futures as _cf_c
-            for _, _crow in crypto.iterrows():
-                _nm = str(_crow.get('name', ''))
-                _m = _re.search(r'\(([A-Z]{2,10})\)', _nm)
-                _sym = _m.group(1) if _m else (_nm.strip().upper() if _nm.strip().upper().isalpha() and len(_nm.strip()) <= 8 else None)
-                if _sym:
-                    _yf_tkr = f"{_sym}-EUR"
-                    with _cf_c.ThreadPoolExecutor(max_workers=1) as _exe_c:
-                        _fut_c = _exe_c.submit(lambda t=_yf_tkr: yf.Ticker(t).fast_info)
-                        try:
-                            _fi_c = _fut_c.result(timeout=3.0)
-                            _cp_c = getattr(_fi_c, 'last_price', None)
-                            if _cp_c and float(_cp_c) > 0:
-                                _crypto_prices[_crow['ISIN']] = float(_cp_c)
-                        except Exception:
-                            pass
+        # Alle Kursdaten lazy im Positionen-Tab geladen (session_state-Cache → kein Block)
+        _alloc_cache_key   = f"alloc_{hash(frozenset(isin_map.items()))}"
+        _prices_cache_key  = f"prices_{_alloc_cache_key}"
+        _qext_cache_key    = f"qext_{_alloc_cache_key}"
+        _crypto_cache_key  = f"crypto_{_alloc_cache_key}"
 
-        # Kurse laden
-        prices: dict = {}
-        quotes_ext: dict = {}
-        if not stocks_etf.empty:
-            with st.spinner("Aktuelle Kurse werden geladen…"):
-                for isin in stocks_etf['ISIN']:
-                    tkr = isin_map.get(isin)
-                    if tkr:
-                        _q = _portfolio_quote_ext(tkr)
-                        prices[isin] = _q.get('price_eur')
-                        quotes_ext[isin] = _q
-
-        # Analyst- & Sektordaten vorladen (24h gecacht, max 4s/Ticker)
-        _alloc_infos: dict = {}
-        if not stocks_etf.empty:
-            # Nur Top-25 nach Einstandswert laden (max 25×4s = 100s statt 272s)
-            _top25 = stocks_etf.nlargest(25, 'cost_basis')['ISIN'].tolist()
-            _info_isins = [(isin_map.get(isin), isin)
-                          for isin in _top25 if isin_map.get(isin)]
-            if _info_isins:
-                _info_prog = st.progress(0, f"Analyst-Daten: 0/{len(_info_isins)} (max 4s/Ticker)…")
-                for _ii, (_tkr_i, _isin_i) in enumerate(_info_isins, 1):
-                    _alloc_infos[_isin_i] = _get_ticker_info_cached(_tkr_i)
-                    _info_prog.progress(_ii / len(_info_isins),
-                                        f"Analyst-Daten: {_ii}/{len(_info_isins)}…")
-                _info_prog.empty()
-
-        # Sparklines (Bulk-Download, 1 API-Call für alle Positionen)
-        _sparklines: dict = {}
-        if not stocks_etf.empty:
-            _spark_tickers = tuple(t for t in [isin_map.get(i) for i in stocks_etf['ISIN']] if t)
-            if _spark_tickers:
-                with st.spinner("Sparklines werden geladen…"):
-                    _sparklines = _sparklines_bulk(_spark_tickers)
+        prices: dict        = st.session_state.get(_prices_cache_key, {})
+        quotes_ext: dict    = st.session_state.get(_qext_cache_key, {})
+        _crypto_prices: dict = st.session_state.get(_crypto_cache_key, {})
+        _alloc_infos: dict  = st.session_state.get(_alloc_cache_key, {})
+        _sparklines: dict   = st.session_state.get(f"spark_{_alloc_cache_key}", {})
 
         # ── Zusammenfassung ──────────────────────────────────────────
         total_invested = df_port['cost_basis'].sum()
@@ -5661,6 +5641,68 @@ if st.session_state.get("show_portfolio"):
         tab_pos, tab_alloc, tab_perf = st.tabs(["📊 Positionen", "🥧 Aufteilung", "📈 Performance"])
 
         with tab_pos:
+          try:
+            # ── Kurse lazy laden (einmalig pro Session, dann gecacht) ────
+            _prices_loaded = bool(prices)
+            if not prices and not stocks_etf.empty:
+                _tickers_to_load = [(isin_map.get(i), i) for i in stocks_etf['ISIN'] if isin_map.get(i)]
+                if _tickers_to_load:
+                    _pprog = st.progress(0, f"Kurse werden geladen: 0 / {len(_tickers_to_load)}…")
+                    for _pi, (_pt, _pi_isin) in enumerate(_tickers_to_load, 1):
+                        _q = _portfolio_quote_ext(_pt)
+                        prices[_pi_isin] = _q.get('price_eur')
+                        quotes_ext[_pi_isin] = _q
+                        _pprog.progress(_pi / len(_tickers_to_load),
+                                        f"Kurse: {_pi} / {len(_tickers_to_load)}…")
+                    _pprog.empty()
+                    st.session_state[_prices_cache_key] = prices
+                    st.session_state[_qext_cache_key]   = quotes_ext
+            if not _crypto_prices and not crypto.empty:
+                import re as _re
+                import concurrent.futures as _cf_c
+                for _, _crow in crypto.iterrows():
+                    _nm  = str(_crow.get('name', ''))
+                    _m   = _re.search(r'\(([A-Z]{2,10})\)', _nm)
+                    _sym = _m.group(1) if _m else (
+                        _nm.strip().upper()
+                        if _nm.strip().upper().isalpha() and len(_nm.strip()) <= 8 else None)
+                    if _sym:
+                        _yf_tkr = f"{_sym}-EUR"
+                        with _cf_c.ThreadPoolExecutor(max_workers=1) as _exe_c:
+                            _fut_c = _exe_c.submit(lambda t=_yf_tkr: yf.Ticker(t).fast_info)
+                            try:
+                                _fi_c  = _fut_c.result(timeout=3.0)
+                                _cp_c  = getattr(_fi_c, 'last_price', None)
+                                if _cp_c and float(_cp_c) > 0:
+                                    _crypto_prices[_crow['ISIN']] = float(_cp_c)
+                            except Exception:
+                                pass
+                st.session_state[_crypto_cache_key] = _crypto_prices
+            # Rerun once after first load so summary cards update with real prices
+            if not _prices_loaded and (prices or _crypto_prices):
+                st.rerun()
+
+            # ── Analyst-Daten lazy laden (Top-10, einmalig pro Session) ──
+            if not _alloc_infos and not stocks_etf.empty:
+                _ai_isins = [(isin_map.get(i), i)
+                             for i in stocks_etf.nlargest(10, 'cost_basis')['ISIN']
+                             if isin_map.get(i)]
+                if _ai_isins:
+                    _aprog = st.progress(0, f"Analyst-Daten: 0 / {len(_ai_isins)}…")
+                    for _aii, (_at, _ai) in enumerate(_ai_isins, 1):
+                        _alloc_infos[_ai] = _get_ticker_info_cached(_at)
+                        _aprog.progress(_aii / len(_ai_isins),
+                                        f"Analyst-Daten: {_aii} / {len(_ai_isins)}…")
+                    _aprog.empty()
+                    st.session_state[_alloc_cache_key] = _alloc_infos
+            if not _sparklines and not stocks_etf.empty:
+                _sp_tkrs = tuple(t for t in
+                                 [isin_map.get(i) for i in stocks_etf['ISIN']] if t)
+                if _sp_tkrs:
+                    with st.spinner("Kursverläufe werden geladen…"):
+                        _sparklines = _sparklines_bulk(_sp_tkrs)
+                    st.session_state[f"spark_{_alloc_cache_key}"] = _sparklines
+
             # ── Aktien & ETFs ────────────────────────────────────────────
             if not stocks_etf.empty:
                 st.markdown("<div class='section-header'>📈 Aktien & ETFs</div>", unsafe_allow_html=True)
@@ -5825,6 +5867,9 @@ if st.session_state.get("show_portfolio"):
                                     unsafe_allow_html=True)
                             st.markdown("<hr style='border-color:#1a2740;margin:5px 0;'>", unsafe_allow_html=True)
 
+          except Exception as _e_pos:
+              st.error(f"Fehler im Positionen-Tab: {_e_pos}")
+
         with tab_alloc:
           try:
             if stocks_etf.empty and crypto.empty:
@@ -5942,6 +5987,7 @@ if st.session_state.get("show_portfolio"):
               st.error(f"Fehler im Aufteilung-Tab: {_e_alloc}")
 
         with tab_perf:
+          try:
             _csv_bytes = st.session_state.get("portfolio_csv_bytes")
             if not _csv_bytes:
                 st.info("📂 Lade zuerst deine Orderhistorie-CSV hoch, um die Performance zu berechnen.")
@@ -6159,6 +6205,9 @@ if st.session_state.get("show_portfolio"):
                                     delta_color="normal" if _bm_gain_eur >= 0 else "inverse")
                     st.caption("Methodik: Jeder Kauf simuliert einen gleichwertigen Kauf des Benchmarks. "
                                "Verkäufe reduzieren die Benchmark-Position anteilig. Kosten nicht berücksichtigt.")
+
+          except Exception as _e_perf:
+              st.error(f"Fehler im Performance-Tab: {_e_perf}")
 
     elif df_port is None:
         st.info("📂 Bitte lade deine Orderhistorie-CSV hoch.\n\n"
