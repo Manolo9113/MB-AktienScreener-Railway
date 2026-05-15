@@ -6057,15 +6057,13 @@ if st.session_state.get("show_portfolio"):
                        "Realisierte Gewinne & Gesamtrendite → Performance-Tab.")
         with _caption_cols[1]:
             if _unpriced > 0 and st.button("🔄 Ticker neu laden", key="pf_reload_tickers",
-                                            use_container_width=True, help="WKN-Fallback für Positionen ohne Kurs versuchen"):
+                                            use_container_width=True, help="Kurs-Cache leeren und erneut laden"):
                 for _ck in [_prices_cache_key, _qext_cache_key, _crypto_cache_key, _alloc_cache_key,
                              f"spark_{_alloc_cache_key}"]:
                     st.session_state.pop(_ck, None)
                 st.session_state.pop("portfolio_isin_map", None)
-                _wkn_map_reload = dict(zip(stocks_etf['ISIN'], stocks_etf['wkn'].fillna('')))
-                with st.spinner("Ticker werden neu ermittelt (inkl. WKN-Fallback)…"):
-                    st.session_state["portfolio_isin_map"] = _openfigi_batch(
-                        tuple(stocks_etf['ISIN'].tolist()), wkn_by_isin=_wkn_map_reload)
+                # Cache der Kurs-Funktion leeren damit frische API-Abfragen gemacht werden
+                _portfolio_quote_ext.clear()
                 st.rerun()
 
         tab_pos, tab_alloc, tab_perf = st.tabs(["📊 Positionen", "🥧 Aufteilung", "📈 Performance"])
@@ -6669,6 +6667,7 @@ if st.session_state.get("show_portfolio"):
                     st.warning("Benchmark-Berechnung nicht möglich — CSV benötigt eine Datums-Spalte.")
                 else:
                     _dates_p, _invested_p, _bm_p = _perf
+                    _pf_val_now = current_total or 0.0
                     import plotly.graph_objects as _go
                     _fig = _go.Figure()
                     _fig.add_trace(_go.Scatter(
@@ -6683,6 +6682,17 @@ if st.session_state.get("show_portfolio"):
                         line=dict(color="#42a5f5", width=2.5),
                         fill="tozeroy", fillcolor="rgba(66,165,245,0.09)"
                     ))
+                    # Aktueller Portfolio-Wert als Datenpunkt (heute)
+                    if _pf_val_now > 0 and _dates_p:
+                        _today_ts = pd.Timestamp.today().normalize()
+                        _fig.add_trace(_go.Scatter(
+                            x=[_dates_p[-1], _today_ts],
+                            y=[_pf_val_now, _pf_val_now],
+                            name="Mein Portfolio (aktuell)",
+                            line=dict(color="#00e676", width=2.5),
+                            mode="lines+markers",
+                            marker=dict(size=[0, 10], color="#00e676"),
+                        ))
                     _fig.update_layout(
                         template="plotly_dark", height=380,
                         paper_bgcolor="#0a1628", plot_bgcolor="#0a1628",
@@ -6695,14 +6705,33 @@ if st.session_state.get("show_portfolio"):
                     )
                     st.plotly_chart(_fig, use_container_width=True)
                     if _bm_p and _invested_p[-1] > 0:
-                        _bm_gain_eur = _bm_p[-1] - _invested_p[-1]
-                        _bm_gain_pct = (_bm_p[-1] / _invested_p[-1] - 1) * 100
-                        _sc1, _sc2, _sc3 = st.columns(3)
-                        _sc1.metric("Investiert gesamt", f"€ {_invested_p[-1]:,.0f}")
-                        _sc2.metric(f"{bm_label} heute", f"€ {_bm_p[-1]:,.0f}")
-                        _sc3.metric("Benchmark-Rendite", f"{_bm_gain_pct:+.1f}%",
-                                    delta=f"{_bm_gain_eur:+,.0f} €",
+                        _invested_last = _invested_p[-1]
+                        _bm_gain_eur = _bm_p[-1] - _invested_last
+                        _bm_gain_pct = (_bm_p[-1] / _invested_last - 1) * 100
+                        _pf_gain_eur = _pf_val_now - _invested_last
+                        _pf_gain_pct = (_pf_val_now / _invested_last - 1) * 100 if _invested_last > 0 else 0
+                        _alpha = _pf_gain_pct - _bm_gain_pct
+                        _sc1, _sc2, _sc3, _sc4 = st.columns(4)
+                        _sc1.metric("Investiert gesamt", f"€ {_invested_last:,.0f}")
+                        _sc2.metric("Mein Portfolio", f"€ {_pf_val_now:,.0f}",
+                                    delta=f"{_pf_gain_pct:+.1f}% ({_pf_gain_eur:+,.0f} €)",
+                                    delta_color="normal" if _pf_gain_eur >= 0 else "inverse")
+                        _sc3.metric(f"Benchmark", f"€ {_bm_p[-1]:,.0f}",
+                                    delta=f"{_bm_gain_pct:+.1f}% ({_bm_gain_eur:+,.0f} €)",
                                     delta_color="normal" if _bm_gain_eur >= 0 else "inverse")
+                        _alpha_color = "#00e676" if _alpha >= 0 else "#ff5252"
+                        _alpha_sign  = "+" if _alpha >= 0 else ""
+                        st.markdown(
+                            f"<div style='background:#0d1a2e;border:1px solid #1e2d45;border-radius:10px;"
+                            f"padding:12px 16px;text-align:center;margin-top:8px;'>"
+                            f"<span style='color:#64b5f6;font-size:0.75rem;font-weight:600;"
+                            f"text-transform:uppercase;letter-spacing:.06em;'>Portfolio vs. Benchmark (Alpha)</span>"
+                            f"<div style='color:{_alpha_color};font-size:1.5rem;font-weight:800;"
+                            f"margin-top:4px;'>{_alpha_sign}{_alpha:.1f} Prozentpunkte</div>"
+                            f"<div style='color:#546e7a;font-size:0.72rem;margin-top:2px;'>"
+                            f"{'Outperformance' if _alpha >= 0 else 'Underperformance'} gegenüber {bm_label}</div>"
+                            f"</div>",
+                            unsafe_allow_html=True)
                     st.caption("Methodik: Jeder Kauf simuliert einen gleichwertigen Kauf des Benchmarks. "
                                "Verkäufe reduzieren die Benchmark-Position anteilig. Kosten nicht berücksichtigt.")
 
