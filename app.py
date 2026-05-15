@@ -6574,27 +6574,34 @@ if st.session_state.get("show_etf_analyzer"):
             th = getattr(fd, 'top_holdings', None)
             if th is None or (hasattr(th,'empty') and th.empty): th = pd.DataFrame()
             cw = {}
+            eq_vals = {}
             eq = getattr(fd, 'equity_holdings', None)
             if eq is not None:
                 try:
                     eq_d = eq if isinstance(eq, dict) else eq.to_dict()
                     cw = eq_d.get('countryWeights', {})
+                    for _fld in ['priceToEarnings','priceToBook','priceToSales',
+                                 'priceToCashflow','medianMarketCap','threeYearEarningsGrowth']:
+                        _fv = eq_d.get(_fld)
+                        if _fv is not None:
+                            eq_vals[_fld] = _fv
                 except Exception: pass
             ac = getattr(fd, 'asset_classes', None) or {}
             if hasattr(ac,'to_dict'): ac = ac.to_dict()
-            return sw, th, cw, ac
+            return sw, th, cw, ac, eq_vals
 
         try:
-            sw, th, cw, ac = _parse_fd(yf.Ticker(ticker).funds_data)
+            sw, th, cw, ac, eq_vals = _parse_fd(yf.Ticker(ticker).funds_data)
 
             # Fallback 1: US-Datenticker via yFinance (XETRA ETFs haben meist keine funds_data)
             _data_tkr = _ETF_DATA_TKR.get(ticker)
             if _data_tkr and (not sw or th.empty):
                 try:
-                    sw2, th2, cw2, ac2 = _parse_fd(yf.Ticker(_data_tkr).funds_data)
+                    sw2, th2, cw2, ac2, eq2 = _parse_fd(yf.Ticker(_data_tkr).funds_data)
                     if not sw and sw2: sw = sw2
                     if th.empty and not th2.empty: th = th2
                     if not cw and cw2: cw = cw2
+                    if not eq_vals and eq2: eq_vals = eq2
                 except Exception: pass
 
             # Fallback 2: FMP API (Sektor-Gewichte + Top-Holdings + Länder)
@@ -6638,9 +6645,9 @@ if st.session_state.get("show_etf_analyzer"):
             if not cw:
                 cw = dict(_ETF_STATIC_CW.get(ticker, {}))
 
-            return sw, th, cw, ac
+            return sw, th, cw, ac, eq_vals
         except Exception:
-            return {}, pd.DataFrame(), {}, {}
+            return {}, pd.DataFrame(), {}, {}, {}
 
     @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_vs_bm(etf: str, bm: str, period: str) -> pd.DataFrame:
@@ -6777,7 +6784,7 @@ if st.session_state.get("show_etf_analyzer"):
     with st.spinner(f"ETF-Daten für {_etf_tkr} werden geladen…"):
         _ei            = _etf_info(_etf_tkr)
         _perf          = _etf_perf_hist(_etf_tkr)
-        _sw, _th, _cw, _ac = _etf_holdings(_etf_tkr)
+        _sw, _th, _cw, _ac, _eq_vals = _etf_holdings(_etf_tkr)
 
     _ei['ytd']    = _perf.get('ytd')    or _ei.get('ytd')
     _ei['ret_1y'] = _perf.get('ret_1y') or _ei.get('ret_1y')
@@ -7069,6 +7076,76 @@ if st.session_state.get("show_etf_analyzer"):
                 unsafe_allow_html=True)
     st.caption("Score basiert auf TER, Fondsvolumen, Fondsalter, Replikationsmethode und Streuung. "
                "Keine Anlageberatung. Quelle: yFinance, statische Fondsdaten.")
+
+    # ── Bewertung der Positionen (KGV, P/B, Gewinnwachstum, Verklumpung) ──
+    st.markdown("<div class='section-header'>📐 Bewertung der Positionen</div>",
+                unsafe_allow_html=True)
+
+    # Verklumpung (Konzentrations-Risiko) aus Top-Holdings
+    _top10_pct = None
+    _wgt_col_bw = next((c for c in ['holdingPercent','weight','Weight','Holding Percent']
+                        if not _th.empty and c in _th.columns), None)
+    if _wgt_col_bw and not _th.empty:
+        _vals_bw = pd.to_numeric(_th[_wgt_col_bw], errors='coerce').dropna()
+        if not _vals_bw.empty:
+            _top10_sum = _vals_bw.head(10).sum()
+            _top10_pct = _top10_sum * 100 if _top10_sum <= 1 else _top10_sum
+
+    # KGV / Multiples aus equity_holdings
+    def _fmt_mult(v, suffix="x"):
+        if v is None: return "—"
+        try:
+            f = float(v)
+            return f"{f:.1f}{suffix}" if f < 1000 else "—"
+        except Exception: return "—"
+
+    _kgv   = _eq_vals.get('priceToEarnings')
+    _kbv   = _eq_vals.get('priceToBook')
+    _ksv   = _eq_vals.get('priceToSales')
+    _wachs = _eq_vals.get('threeYearEarningsGrowth')
+    _mktcp = _eq_vals.get('medianMarketCap')
+
+    # Verklumpungs-Farbe
+    def _vklump_clr(pct):
+        if pct is None: return '#78909c', '—'
+        if pct <= 20:   return '#00e676', f"{pct:.1f}% — Gut gestreut"
+        if pct <= 35:   return '#ffd600', f"{pct:.1f}% — Moderat"
+        return '#ff5252', f"{pct:.1f}% — Hoch konzentriert"
+    _vk_clr, _vk_lbl = _vklump_clr(_top10_pct)
+
+    # KGV-Einschätzung
+    def _kgv_clr(v):
+        if v is None: return '#78909c'
+        f = float(v)
+        if f <= 15:  return '#00e676'
+        if f <= 25:  return '#ffd600'
+        return '#ff5252'
+
+    _g4 = "display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;"
+    st.markdown(
+        f"<div style='{_g4}'>"
+        + _kc("KGV (P/E)", _fmt_mult(_kgv), "Kurs-Gewinn-Verhältnis", _kgv_clr(_kgv))
+        + _kc("P/B Ratio", _fmt_mult(_kbv), "Kurs-Buchwert")
+        + _kc("P/S Ratio", _fmt_mult(_ksv), "Kurs-Umsatz")
+        + _kc("3J Gewinnwachstum", _fmt_mult(_wachs, "%") if _wachs else "—",
+              "Earnings Growth p.a.",
+              '#00e676' if (_wachs or 0) > 0 else '#ff5252')
+        + "</div>"
+        + f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;'>"
+        + _kc("Verklumpung Top 10",
+              f"{_top10_pct:.1f}%" if _top10_pct else "—",
+              _vk_lbl if _top10_pct else "Anteil der 10 größten Positionen",
+              _vk_clr)
+        + _kc("Median Marktkapitalisierung",
+              (f"$ {_mktcp/1e9:.1f} Mrd" if (_mktcp or 0) > 1e9
+               else f"$ {_mktcp/1e6:.0f} Mio" if _mktcp else "—"),
+              "Typische Unternehmensgröße im ETF")
+        + "</div>",
+        unsafe_allow_html=True)
+    if not _eq_vals:
+        st.caption("⚠️ Valuation-Daten nicht verfügbar (yFinance liefert für XETRA-ETFs "
+                   "oft keine equity_holdings). US-Datenticker wird als Näherung verwendet.")
+
     _col_a, _col_b = st.columns([1, 1.1])
 
     with _col_a:
