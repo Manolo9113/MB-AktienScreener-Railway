@@ -5783,6 +5783,38 @@ if st.session_state.get("show_portfolio"):
                     _pprog.progress(_pi / len(_tickers_to_load),
                                     f"Kurse: {_pi} / {len(_tickers_to_load)}…")
                 _pprog.empty()
+
+                # FMP-ISIN-Fallback: für Positionen die noch keinen Preis haben
+                if FMP_API_KEY:
+                    _still_missing = [(_pi_isin2, isin_map.get(_pi_isin2, ''))
+                                      for _pi_isin2 in stocks_etf['ISIN']
+                                      if not prices.get(_pi_isin2)]
+                    if _still_missing:
+                        _fp2 = st.progress(0, f"ISIN-Fallback: 0 / {len(_still_missing)}…")
+                        for _fmi, (_fmisin, _fmtkr_old) in enumerate(_still_missing, 1):
+                            try:
+                                _fr = requests.get(
+                                    "https://financialmodelingprep.com/api/v3/search",
+                                    params={'query': _fmisin, 'limit': 8,
+                                            'apikey': FMP_API_KEY}, timeout=6)
+                                if _fr.ok:
+                                    for _res in _fr.json():
+                                        _sym = _res.get('symbol', '')
+                                        if not _sym:
+                                            continue
+                                        _q2 = _portfolio_quote_ext(_sym)
+                                        if _q2.get('price_eur'):
+                                            prices[_fmisin]     = _q2['price_eur']
+                                            quotes_ext[_fmisin] = _q2
+                                            isin_map[_fmisin]   = _sym
+                                            break
+                            except Exception:
+                                pass
+                            _fp2.progress(_fmi / len(_still_missing),
+                                          f"ISIN-Fallback: {_fmi} / {len(_still_missing)}…")
+                        _fp2.empty()
+                        st.session_state["portfolio_isin_map"] = isin_map
+
                 st.session_state[_prices_cache_key] = prices
                 st.session_state[_qext_cache_key]   = quotes_ext
         if not _crypto_prices and not crypto.empty:
