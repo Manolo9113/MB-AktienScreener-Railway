@@ -7006,6 +7006,48 @@ if st.session_state.get("show_etf_analyzer"):
             if not cw:
                 cw = dict(_ETF_STATIC_CW.get(ticker, {}))
 
+            # Fallback 4: eq_vals via yFinance .info (trailingPE, priceToBook etc.)
+            if not eq_vals:
+                _info_tkr = _data_tkr or ticker
+                try:
+                    _inf2 = yf.Ticker(_info_tkr).info
+                    _field_map = {
+                        'trailingPE':                    'priceToEarnings',
+                        'priceToBook':                   'priceToBook',
+                        'priceToSalesTrailing12Months':  'priceToSales',
+                        'earningsGrowth':                'threeYearEarningsGrowth',
+                        'enterpriseToEbitda':            'priceToCashflow',
+                    }
+                    for _yf_k, _eq_k in _field_map.items():
+                        _v = _inf2.get(_yf_k)
+                        if _v is not None:
+                            eq_vals[_eq_k] = float(_v) * (100 if _yf_k == 'earningsGrowth' else 1)
+                except Exception:
+                    pass
+
+            # Fallback 5: eq_vals via FMP key-metrics
+            if not eq_vals and FMP_API_KEY:
+                _fmp_val_tkr = _data_tkr or _fmp_tkr
+                try:
+                    _fr = requests.get(
+                        f"https://financialmodelingprep.com/api/v3/key-metrics-ttm/{_fmp_val_tkr}",
+                        params={'apikey': FMP_API_KEY}, timeout=5)
+                    if _fr.ok and _fr.json():
+                        _km = _fr.json()[0]
+                        _fmap = {
+                            'peRatioTTM':     'priceToEarnings',
+                            'pbRatioTTM':     'priceToBook',
+                            'priceToSalesRatioTTM': 'priceToSales',
+                            'revenueGrowthTTM':     'threeYearEarningsGrowth',
+                            'marketCapTTM':         'medianMarketCap',
+                        }
+                        for _fk, _ek in _fmap.items():
+                            _v = _km.get(_fk)
+                            if _v is not None:
+                                eq_vals[_ek] = float(_v)
+                except Exception:
+                    pass
+
             return sw, th, cw, ac, eq_vals
         except Exception:
             return {}, pd.DataFrame(), {}, {}, {}
