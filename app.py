@@ -3653,13 +3653,24 @@ def _parse_portfolio_csv(file_bytes: bytes) -> pd.DataFrame:
 @st.cache_data(ttl=86400, show_spinner=False)
 def _openfigi_batch(isins: tuple, wkn_by_isin: dict = None) -> dict:
     """Batch-Lookup ISIN → yfinance-Ticker via OpenFIGI. Fallback: WKN-Lookup für nicht gemappte ISINs."""
-    _suffix = {'GY': '.DE', 'NA': '.AS', 'FP': '.PA', 'LN': '.L',
+    # Xetra=GY, Frankfurt=GF, Munich=GM, Hamburg=GH, Stuttgart=GS, Berlin=GB
+    _suffix = {'GY': '.DE', 'GF': '.F', 'GM': '.MU', 'GH': '.HM', 'GS': '.SG', 'GB': '.BE',
+               'NA': '.AS', 'FP': '.PA', 'LN': '.L',
                'SW': '.SW', 'SS': '.ST', 'DC': '.CO', 'JT': '.T', 'HK': '.HK'}
     _prefer = {
         'US': ['UW', 'UN', 'US', 'UA', 'UT'], 'KY': ['UW', 'UN', 'US'],
         'CA': ['CN', 'CT'], 'DE': ['GY'], 'NL': ['NA'], 'FR': ['FP'],
         'GB': ['LN'], 'CH': ['SW'], 'SE': ['SS'], 'DK': ['DC'], 'JP': ['JT'],
         'IE': ['LN', 'GY'], 'CN': ['HK'],
+        # Nicht-EUR-Märkte → bevorzuge deutsches Listing (direkt in EUR, kein FX-Fehler)
+        'KR': ['GY', 'GF'],  # Südkorea
+        'TW': ['GY', 'GF'],  # Taiwan
+        'IN': ['GY', 'GF'],  # Indien
+        'BR': ['GY', 'GF'],  # Brasilien
+        'AU': ['GY', 'GF'],  # Australien
+        'SG': ['GY', 'GF'],  # Singapur
+        'IL': ['GY', 'GF'],  # Israel
+        'ZA': ['GY', 'GF'],  # Südafrika
     }
 
     def _pick_ticker(items, country_prefix):
