@@ -6507,17 +6507,26 @@ price_change_pct = (price_change / price_prev * 100) if price_prev != 0 else 0
 fcf = yf_info.get("freeCashflow")
 market_cap = yf_info.get("marketCap")
 revenue = yf_info.get("totalRevenue")
-fcf_yield = (fcf / market_cap * 100) if fcf and market_cap else 0
+fcf_yield = (fcf / market_cap * 100) if fcf and market_cap else None
+# Cap extreme FCF Yield: auto/financial conglomerates include finance subsidiaries
+# that distort FCF massively (e.g. Toyota Financial Services)
+if fcf_yield is not None and abs(fcf_yield) > 100:
+    fcf_yield = None
 # FCF Margin = FCF / Umsatz (operative Unternehmenskennzahl für Rule of 40)
 fcf_margin = (fcf / revenue * 100) if fcf and revenue else None
 
-rev_growth = (yf_info.get("revenueGrowth") or 0) * 100
-earnings_growth = (yf_info.get("earningsGrowth") or 0) * 100
-profit_margin = (yf_info.get("profitMargins") or 0) * 100
-gross_margin = (yf_info.get("grossMargins") or 0) * 100
-operating_margin = (yf_info.get("operatingMargins") or 0) * 100
+_rg_raw = yf_info.get("revenueGrowth")
+_eg_raw = yf_info.get("earningsGrowth")
+_pm_raw = yf_info.get("profitMargins")
+_gm_raw = yf_info.get("grossMargins")
+_om_raw = yf_info.get("operatingMargins")
+rev_growth      = (_rg_raw * 100) if _rg_raw is not None else None
+earnings_growth = (_eg_raw * 100) if _eg_raw is not None else None
+profit_margin   = (_pm_raw * 100) if _pm_raw is not None else None
+gross_margin    = (_gm_raw * 100) if _gm_raw is not None else None
+operating_margin = (_om_raw * 100) if _om_raw is not None else None
 # Rule of 40 = Rev Growth % + FCF Margin % (Branchenstandard für SaaS)
-rule_of_40 = (rev_growth + fcf_margin) if fcf_margin is not None else None
+rule_of_40 = (rev_growth + fcf_margin) if (fcf_margin is not None and rev_growth is not None) else None
 
 trailing_pe = yf_info.get("trailingPE")
 forward_pe = yf_info.get("forwardPE")
@@ -6594,7 +6603,7 @@ net_cash = (total_cash - total_debt) if total_cash is not None else None
 net_cash_per_share = (net_cash / shares_outstanding) if net_cash is not None and shares_outstanding else None
 price_to_fcf = (market_cap / fcf) if fcf and fcf > 0 and market_cap else None
 short_pct_float = yf_info.get("shortPercentOfFloat")
-total_shareholder_yield = (fcf_yield + dividend_yield) if (fcf and market_cap) else (dividend_yield if dividend_yield else None)
+total_shareholder_yield = (fcf_yield + dividend_yield) if (fcf_yield is not None) else (dividend_yield if dividend_yield else None)
 earnings_ts = yf_info.get("earningsTimestamp") or yf_info.get("earningsDate")
 earnings_date_str = ""
 earnings_days_until = None
@@ -6684,6 +6693,13 @@ change_class = "header-change-pos" if price_change >= 0 else "header-change-neg"
 change_arrow = "▲" if price_change >= 0 else "▼"
 company_name = yf_info.get("longName", ticker)
 
+# HTML-escape user-visible strings to prevent rendering raw HTML from yfinance data
+def _he(s):
+    return str(s).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;") if s else ""
+_company_name_h = _he(company_name)
+_sector_h       = _he(sector)
+_industry_h     = _he(industry)
+
 # Logo HTML — FMP Image-Endpoint direkt einbinden
 initials = "".join(w[0] for w in company_name.split()[:2]).upper() if company_name else ticker[:2]
 logo_html = f"""
@@ -6698,8 +6714,8 @@ st.markdown(f"""
     <div style="display:flex; align-items:center; flex:1; min-width:0;">
         {logo_html}
         <div style="min-width:0; flex:1;">
-            <div class="header-title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{company_name}</div>
-            <div class="header-sub">{ticker} · {sector} · {industry}</div>
+            <div class="header-title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{_company_name_h}</div>
+            <div class="header-sub">{ticker} · {_sector_h} · {_industry_h}</div>
             <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                 <span style="background:#1a2744; color:#64b5f6; border-radius:6px; padding:3px 10px; font-size:0.8rem; font-weight:600;">{recommendation}</span>
                 {_earnings_badge}
@@ -7185,7 +7201,7 @@ if len(hist_plot) >= 2:
 
     # DCF Fair Value für Chart (konservative Defaults)
     dcf_fair_val = dcf_valuation(fcf, shares_outstanding,
-                                  min(max(rev_growth, 3), 30), 2.5, 10, 10)
+                                  min(max(rev_growth or 3, 3), 30), 2.5, 10, 10)
 
     # Volume subplot
     fig = make_subplots(
@@ -8613,7 +8629,7 @@ elif _at == 4:
             </ul>
             <span style="color:#546e7a; font-size:0.78rem;">
                 Akt. FCF: <strong>{fmt_large(fcf) if fcf else "N/A"}</strong> ·
-                Rev. Growth: <strong>{rev_growth:.1f}%</strong> ·
+                Rev. Growth: <strong>{f"{rev_growth:.1f}%" if rev_growth is not None else "N/A"}</strong> ·
                 Alle Werte in {_currency} · Keine Anlageberatung.
             </span>
         </div>
@@ -8722,7 +8738,7 @@ elif _at == 4:
             <div class="insight-box" style="margin-bottom:12px;">
                 <strong>ℹ️ DCF Hinweis:</strong> Der Wert reagiert stark auf Eingaben.
                 Konservative Wachstumsrate (10–20%) und höherer Diskontsatz (10–12%)
-                vermeiden Euphorie-Prämien. Akt. Rev. Growth: <strong>{rev_growth:.1f}%</strong>.
+                vermeiden Euphorie-Prämien. Akt. Rev. Growth: <strong>{f"{rev_growth:.1f}%" if rev_growth is not None else "N/A"}</strong>.
             </div>""", unsafe_allow_html=True)
             default_growth = min(max(int(_rg), 5), 30)
             d1, d2, d3, d4 = st.columns(4)
