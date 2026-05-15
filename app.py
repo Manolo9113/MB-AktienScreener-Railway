@@ -6902,7 +6902,173 @@ if st.session_state.get("show_etf_analyzer"):
         unsafe_allow_html=True)
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # ── Sektoren + Top-Positionen ──────────────────────────────────────────
+    # ── Fundamentaler ETF-Score ────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🏆 Fundamentaler ETF-Score</div>", unsafe_allow_html=True)
+
+    # Statische Zusatzdaten: Replikation + Anzahl Positionen
+    _ETF_REPLICATION = {
+        # Physical full
+        'VWCE.DE':'Vollständig','FWRA.DE':'Vollständig','VWRL.L':'Vollständig',
+        'IS3N.DE':'Vollständig','IEMG':'Vollständig','VT':'Vollständig',
+        'SXR8.DE':'Vollständig','EUNL.DE':'Vollständig','EXS1.DE':'Vollständig',
+        'MEUD.DE':'Vollständig','EXW1.DE':'Vollständig','LYPS.DE':'Vollständig',
+        'IQQY.DE':'Vollständig','SPYY.DE':'Vollständig','IEUA.DE':'Vollständig',
+        'ISPA.DE':'Vollständig','QDIV.DE':'Vollständig','XDIV.DE':'Vollständig',
+        'IDVY.L':'Vollständig','VHYL.L':'Vollständig','IUSN.DE':'Sampling',
+        'IQQH.DE':'Vollständig','EQQQ.DE':'Vollständig','SPY5.DE':'Vollständig',
+        'IMEA.DE':'Vollständig','IS3R.DE':'Vollständig','LCUW.DE':'Sampling',
+        'EXV5.DE':'Vollständig','IQQC.DE':'Vollständig','IQQD.DE':'Sampling',
+        # Swap-basiert (Synthethisch)
+        'XDWD.DE':'Synthetisch','XMME.DE':'Synthetisch','XESC.DE':'Synthetisch',
+        'XEUR.DE':'Synthetisch','XDJP.DE':'Synthetisch','XMWO.DE':'Synthetisch',
+        'DBXD.DE':'Synthetisch','ZPRX.DE':'Synthetisch','IUSE.DE':'Sampling',
+        # US tickers
+        'SPY':'Vollständig','IVV':'Vollständig','QQQ':'Vollständig',
+        'URTH':'Vollständig','VYM':'Vollständig','SCHD':'Vollständig',
+        'FEZ':'Vollständig','EWG':'Vollständig','EWJ':'Vollständig',
+        'MCHI':'Vollständig','EEM':'Sampling','IEMG':'Vollständig',
+    }
+    _ETF_HOLDINGS_COUNT = {
+        'VWCE.DE':3700,'FWRA.DE':3700,'VWRL.L':3700,'SXR8.DE':1500,
+        'EUNL.DE':1500,'XDWD.DE':2150,'XMWO.DE':1500,'IS3N.DE':1400,
+        'IS3R.DE':1400,'IMEA.DE':1400,'XMME.DE':1400,'IQQD.DE':1400,
+        'EXS1.DE':90,'MEUD.DE':290,'EXW1.DE':290,'LYPS.DE':290,
+        'IQQY.DE':450,'SPYY.DE':450,'IEUA.DE':450,'XESC.DE':50,
+        'XEUR.DE':290,'IQQE.DE':450,'IEMC.DE':450,'ZPRX.DE':450,
+        'EXV5.DE':230,'XDJP.DE':230,'IQQJ.DE':230,'IQQC.DE':700,
+        'IQQP.DE':900,'EQQQ.DE':100,'SPY5.DE':500,'LCUW.DE':500,
+        'IUSN.DE':2000,'IUSE.DE':500,'VHYL.L':1800,'ISPA.DE':100,
+        'QDIV.DE':100,'XDIV.DE':100,'IDVY.L':100,'IQQH.DE':50,
+        'DBXD.DE':90,'SXR2.DE':500,'MEUD.DE':290,
+    }
+
+    # Scoring-Funktion
+    def _calc_etf_score(ei, tkr, th_df):
+        criteria = []
+
+        # 1. TER / Kosten (30 Punkte)
+        ter = ei.get('ter')
+        if ter is not None:
+            ter_pct = ter * 100 if ter < 1 else ter
+            if   ter_pct <= 0.10: pts, label = 30, f"{ter_pct:.2f}% — Sehr günstig"
+            elif ter_pct <= 0.20: pts, label = 24, f"{ter_pct:.2f}% — Günstig"
+            elif ter_pct <= 0.35: pts, label = 15, f"{ter_pct:.2f}% — Durchschnittlich"
+            elif ter_pct <= 0.50: pts, label = 8,  f"{ter_pct:.2f}% — Teuer"
+            else:                  pts, label = 0,  f"{ter_pct:.2f}% — Sehr teuer"
+        else:
+            pts, label = 15, "Keine Daten (Ø angenommen)"
+        criteria.append(('💰 TER / Kosten', pts, 30, label))
+
+        # 2. Fondsvolumen / AUM (25 Punkte)
+        aum = ei.get('aum') or 0
+        if   aum >= 10e9:  pts, label = 25, f"€ {aum/1e9:.1f} Mrd — Sehr groß"
+        elif aum >= 1e9:   pts, label = 20, f"€ {aum/1e9:.1f} Mrd — Groß"
+        elif aum >= 500e6: pts, label = 14, f"€ {aum/1e6:.0f} Mio — Mittel"
+        elif aum >= 100e6: pts, label = 8,  f"€ {aum/1e6:.0f} Mio — Klein"
+        elif aum > 0:      pts, label = 2,  f"€ {aum/1e6:.0f} Mio — Sehr klein"
+        else:              pts, label = 10, "Keine Daten (Ø angenommen)"
+        criteria.append(('📦 Fondsvolumen', pts, 25, label))
+
+        # 3. Fondsalter (20 Punkte)
+        import datetime as _dt_sc
+        inception = ei.get('inception')
+        age_years = None
+        if inception:
+            try:
+                age_years = (_dt_sc.date.today() - _dt_sc.datetime.fromtimestamp(inception).date()).days / 365.25
+            except Exception: pass
+        if age_years is None:
+            pts, label = 10, "Keine Daten (Ø angenommen)"
+        elif age_years >= 15: pts, label = 20, f"{age_years:.1f} Jahre — Sehr etabliert"
+        elif age_years >= 10: pts, label = 17, f"{age_years:.1f} Jahre — Etabliert"
+        elif age_years >= 5:  pts, label = 12, f"{age_years:.1f} Jahre — Solide"
+        elif age_years >= 2:  pts, label = 6,  f"{age_years:.1f} Jahre — Jung"
+        else:                  pts, label = 1,  f"{age_years:.1f} Jahre — Sehr jung"
+        criteria.append(('📅 Fondsalter', pts, 20, label))
+
+        # 4. Replikationsmethode (15 Punkte)
+        repl = _ETF_REPLICATION.get(tkr)
+        if not repl:
+            _name_l = (ei.get('name') or '').lower()
+            if 'swap' in _name_l or 'synthetic' in _name_l or 'synthetisch' in _name_l:
+                repl = 'Synthetisch'
+            elif 'sampling' in _name_l or 'optimiert' in _name_l:
+                repl = 'Sampling'
+            elif 'physical' in _name_l or 'physisch' in _name_l:
+                repl = 'Vollständig'
+        _REPL_PTS = {'Vollständig': (15, '— Vollständige Replikation (physisch)'),
+                     'Sampling':    (10, '— Optimiertes Sampling'),
+                     'Synthetisch': (4,  '— Swap-basiert (Kontrahentenrisiko)')}
+        if repl and repl in _REPL_PTS:
+            pts, sub = _REPL_PTS[repl]
+            label = f"{repl} {sub}"
+        else:
+            pts, label = 10, "Unbekannt (Ø angenommen)"
+        criteria.append(('🔬 Replikation', pts, 15, label))
+
+        # 5. Streuung / Anzahl Positionen (10 Punkte)
+        n_hold = _ETF_HOLDINGS_COUNT.get(tkr)
+        if n_hold is None and not th_df.empty:
+            n_hold = len(th_df) * 10  # grobe Schätzung aus Top-Holdings-Länge
+        if n_hold is None:           pts, label = 5,  "Keine Daten"
+        elif n_hold >= 1000:         pts, label = 10, f"{n_hold:,}+ Positionen — Sehr breit"
+        elif n_hold >= 300:          pts, label = 8,  f"{n_hold} Positionen — Breit"
+        elif n_hold >= 100:          pts, label = 5,  f"{n_hold} Positionen — Mittel"
+        elif n_hold >= 30:           pts, label = 2,  f"{n_hold} Positionen — Konzentriert"
+        else:                         pts, label = 0,  f"{n_hold} Positionen — Sehr konzentriert"
+        criteria.append(('🌐 Streuung', pts, 10, label))
+
+        total = sum(c[1] for c in criteria)
+        max_total = sum(c[2] for c in criteria)
+        return total, max_total, criteria
+
+    _score, _score_max, _score_criteria = _calc_etf_score(_ei, _etf_tkr, _th)
+    _score_pct = _score / _score_max * 100
+
+    # Score-Farbe + Note
+    if   _score_pct >= 85: _sc, _grade, _verdict = '#00e676', 'A+', 'Ausgezeichnet'
+    elif _score_pct >= 75: _sc, _grade, _verdict = '#00e676', 'A',  'Sehr gut'
+    elif _score_pct >= 65: _sc, _grade, _verdict = '#69f0ae', 'B+', 'Gut'
+    elif _score_pct >= 55: _sc, _grade, _verdict = '#ffd600', 'B',  'Solide'
+    elif _score_pct >= 45: _sc, _grade, _verdict = '#ffd600', 'C',  'Durchschnittlich'
+    elif _score_pct >= 30: _sc, _grade, _verdict = '#ff5252', 'D',  'Schwach'
+    else:                   _sc, _grade, _verdict = '#ff5252', 'F',  'Ungenügend'
+
+    _sa, _sb = st.columns([1, 2])
+    with _sa:
+        st.markdown(
+            f"<div style='background:#0d1f35;border:2px solid {_sc}44;border-radius:12px;"
+            f"padding:20px 16px;text-align:center;'>"
+            f"<div style='color:#78909c;font-size:0.68rem;text-transform:uppercase;"
+            f"letter-spacing:.08em;margin-bottom:6px;'>Fundamentaler Score</div>"
+            f"<div style='color:{_sc};font-size:3rem;font-weight:900;line-height:1;'>"
+            f"{_score}</div>"
+            f"<div style='color:#546e7a;font-size:0.8rem;margin:4px 0;'>von {_score_max} Punkten</div>"
+            f"<div style='background:{_sc}22;border:1px solid {_sc}55;border-radius:20px;"
+            f"display:inline-block;padding:3px 14px;margin-top:6px;'>"
+            f"<span style='color:{_sc};font-size:1.1rem;font-weight:800;'>{_grade}</span>"
+            f"<span style='color:{_sc};font-size:0.8rem;margin-left:6px;'>{_verdict}</span>"
+            f"</div></div>",
+            unsafe_allow_html=True)
+    with _sb:
+        for _cn, _cp, _cm, _cl in _score_criteria:
+            _bar_pct = int(_cp / _cm * 100)
+            _bar_clr = '#00e676' if _bar_pct >= 75 else '#ffd600' if _bar_pct >= 40 else '#ff5252'
+            st.markdown(
+                f"<div style='margin-bottom:8px;'>"
+                f"<div style='display:flex;justify-content:space-between;align-items:baseline;"
+                f"margin-bottom:3px;'>"
+                f"<span style='color:#eceff1;font-size:0.8rem;font-weight:600;'>{_cn}</span>"
+                f"<span style='color:{_bar_clr};font-size:0.78rem;font-weight:700;'>"
+                f"{_cp}/{_cm}</span></div>"
+                f"<div style='background:#1a2740;border-radius:4px;height:6px;'>"
+                f"<div style='background:{_bar_clr};width:{_bar_pct}%;height:6px;"
+                f"border-radius:4px;'></div></div>"
+                f"<div style='color:#546e7a;font-size:0.68rem;margin-top:2px;'>{_cl}</div>"
+                f"</div>",
+                unsafe_allow_html=True)
+    st.caption("Score basiert auf TER, Fondsvolumen, Fondsalter, Replikationsmethode und Streuung. "
+               "Keine Anlageberatung. Quelle: yFinance, statische Fondsdaten.")
     _col_a, _col_b = st.columns([1, 1.1])
 
     with _col_a:
