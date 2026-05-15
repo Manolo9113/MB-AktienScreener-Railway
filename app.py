@@ -3725,11 +3725,11 @@ def _parse_portfolio_csv(file_bytes: bytes) -> pd.DataFrame:
         port = buy_agg.copy()
         port['total_sold'] = 0.0
     port['total_sold'] = port['total_sold'].fillna(0.0)
-    port['shares'] = (port['total_bought'] - port['total_sold']).round(6)
-    # Position gilt als geschlossen wenn Stückzahl < 0.001 ODER Restwert < € 0.50
+    port['shares'] = (port['total_bought'] - port['total_sold']).round(4)
+    # Position gilt als geschlossen: < 0.001 Anteile UND Restwert < € 1.00
     port['_residual_val'] = port['shares'] * port['avg_cost'].fillna(0)
-    port = port[(port['shares'] > 0.001) | (port['_residual_val'] > 0.50)].copy()
-    port = port[port['shares'] > 0].drop(columns=['_residual_val'])
+    port = port[(port['shares'] >= 0.001) & (port['_residual_val'] >= 1.0)].copy()
+    port = port.drop(columns=['_residual_val'])
     port['cost_basis'] = port['avg_cost'] * port['shares']
     port['is_crypto'] = port['ISIN'].str.startswith('XC')
     warrant_wkn_prefix = ('GJ', 'UJ', 'MJ', 'MA', 'GX', 'HC', 'XS', 'GA', 'SB', 'TB')
@@ -5875,10 +5875,13 @@ if st.session_state.get("show_portfolio"):
         crypto     = df_port[df_port['is_crypto']].copy()
         warrants   = df_port[df_port['is_warrant']].copy()
 
-        _alloc_cache_key   = f"alloc_{hash(frozenset(isin_map.items()))}"
-        _prices_cache_key  = f"prices_{_alloc_cache_key}"
-        _qext_cache_key    = f"qext_{_alloc_cache_key}"
-        _crypto_cache_key  = f"crypto_{_alloc_cache_key}"
+        # Cache-Key: stabil basierend auf CSV-Inhalt (NICHT auf isin_map — die ändert sich beim FMP-Fallback!)
+        _csv_b = st.session_state.get("portfolio_csv_bytes") or b""
+        _csv_key = hash(_csv_b)
+        _prices_cache_key  = f"prices_{_csv_key}"
+        _qext_cache_key    = f"qext_{_csv_key}"
+        _crypto_cache_key  = f"crypto_{_csv_key}"
+        _alloc_cache_key   = f"alloc_{_csv_key}"
 
         prices: dict        = st.session_state.get(_prices_cache_key, {})
         quotes_ext: dict    = st.session_state.get(_qext_cache_key, {})
@@ -5886,10 +5889,12 @@ if st.session_state.get("show_portfolio"):
         _alloc_infos: dict  = st.session_state.get(_alloc_cache_key, {})
         _sparklines: dict   = st.session_state.get(f"spark_{_alloc_cache_key}", {})
 
-        # ── Kurse automatisch laden (einmalig pro Session, dann gecacht) ─────
-        _prices_loaded = bool(prices)
-        if not prices and not stocks_etf.empty:
-            _tickers_to_load = [(isin_map.get(i), i) for i in stocks_etf['ISIN'] if isin_map.get(i)]
+        # ── Kurse automatisch laden (nur wenn noch Positionen ohne Kurs) ─────
+        _all_isins = stocks_etf['ISIN'].tolist() if not stocks_etf.empty else []
+        _missing_isins = [i for i in _all_isins if not prices.get(i)]
+        _prices_loaded = len(_missing_isins) == 0
+        if _missing_isins and not stocks_etf.empty:
+            _tickers_to_load = [(isin_map.get(i), i) for i in _missing_isins if isin_map.get(i)]
             if _tickers_to_load:
                 _pprog = st.progress(0, f"Kurse werden geladen: 0 / {len(_tickers_to_load)}…")
                 for _pi, (_pt, _pi_isin) in enumerate(_tickers_to_load, 1):
@@ -5903,7 +5908,7 @@ if st.session_state.get("show_portfolio"):
                 # FMP-ISIN-Fallback: für Positionen die noch keinen Preis haben
                 if FMP_API_KEY:
                     _still_missing = [(_pi_isin2, isin_map.get(_pi_isin2, ''))
-                                      for _pi_isin2 in stocks_etf['ISIN']
+                                      for _pi_isin2 in _missing_isins
                                       if not prices.get(_pi_isin2)]
                     if _still_missing:
                         _fp2 = st.progress(0, f"ISIN-Fallback: 0 / {len(_still_missing)}…")
