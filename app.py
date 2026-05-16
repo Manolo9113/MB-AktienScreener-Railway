@@ -589,20 +589,24 @@ def _sb_load_portfolio() -> tuple:
         pass
     return None, None
 
-def _save_portfolio_settings(excluded_isins: list, manual_prices: dict) -> bool:
-    """Speichert Portfolio-Korrekturen (Ausschlüsse + manuelle Kurse) auf Railway Volume /data."""
+def _save_portfolio_settings(excluded_isins: list, manual_prices: dict, manual_shares: dict = None) -> bool:
+    """Speichert Portfolio-Korrekturen (Ausschlüsse + manuelle Kurse + manuelle Anteile) auf Railway Volume /data."""
     try:
         import os, json
         data_dir = "/data" if os.path.isdir("/data") else "/tmp"
         path = os.path.join(data_dir, "portfolio_settings.json")
         with open(path, "w") as f:
-            json.dump({"excluded_isins": excluded_isins, "manual_prices": manual_prices}, f)
+            json.dump({
+                "excluded_isins": excluded_isins,
+                "manual_prices": manual_prices,
+                "manual_shares": manual_shares or {},
+            }, f)
         return True
     except Exception:
         return False
 
 def _load_portfolio_settings() -> dict:
-    """Lädt Portfolio-Korrekturen vom Railway Volume. Gibt {'excluded_isins': [], 'manual_prices': {}} zurück."""
+    """Lädt Portfolio-Korrekturen vom Railway Volume. Gibt {'excluded_isins': [], 'manual_prices': {}, 'manual_shares': {}} zurück."""
     try:
         import os, json
         data_dir = "/data" if os.path.isdir("/data") else "/tmp"
@@ -3641,6 +3645,7 @@ if "portfolio_settings_loaded" not in st.session_state:
     _pf_settings = _load_portfolio_settings()
     st.session_state["portfolio_excluded_isins"] = _pf_settings.get("excluded_isins", [])
     st.session_state["portfolio_manual_prices"]  = _pf_settings.get("manual_prices", {})
+    st.session_state["portfolio_manual_shares"]  = _pf_settings.get("manual_shares", {})
     st.session_state["portfolio_settings_loaded"] = True
 
 def _go_to_ticker(t):
@@ -6289,6 +6294,35 @@ if st.session_state.get("show_portfolio"):
             stocks_etf = stocks_etf[~stocks_etf['ISIN'].isin(_excl_set)].copy()
             crypto     = crypto[~crypto['ISIN'].isin(_excl_set)].copy()
 
+        # Manuelle Anteils-Korrektur via gespeichertem Delta (Δ = Zielwert − CSV-Wert zum Speicherzeitpunkt).
+        # Delta wird auf aktuelle CSV-Stückzahl addiert → neue Käufe fließen automatisch ein.
+        _man_shares = st.session_state.get("portfolio_manual_shares", {})
+        for _msisin, _ms_entry in _man_shares.items():
+            # Neues Format: {"delta": float, "csv_at_save": float}  |  altes Format: float (Migration)
+            if isinstance(_ms_entry, dict):
+                _ms_delta = float(_ms_entry.get("delta", 0))
+            else:
+                # Altes Format (absoluter Wert) — einmalig als Delta interpretieren
+                # indem der gespeicherte Wert direkt als Zielwert behandelt wird:
+                # Delta = gespeicherter_Wert − 0  (wird beim nächsten Speichern korrekt ersetzt)
+                _ms_delta = float(_ms_entry)
+            if _ms_delta == 0:
+                continue
+            _ms_mask = stocks_etf['ISIN'] == _msisin
+            if _ms_mask.any():
+                _ms_new = (stocks_etf.loc[_ms_mask, 'shares'] + _ms_delta).clip(lower=0)
+                stocks_etf.loc[_ms_mask, 'shares'] = _ms_new
+                stocks_etf.loc[_ms_mask, 'cost_basis'] = (
+                    stocks_etf.loc[_ms_mask, 'avg_cost'] * _ms_new
+                )
+            _mc_mask = crypto['ISIN'] == _msisin
+            if _mc_mask.any():
+                _mc_new = (crypto.loc[_mc_mask, 'shares'] + _ms_delta).clip(lower=0)
+                crypto.loc[_mc_mask, 'shares'] = _mc_new
+                crypto.loc[_mc_mask, 'cost_basis'] = (
+                    crypto.loc[_mc_mask, 'avg_cost'] * _mc_new
+                )
+
         # Cache-Key: stabil basierend auf CSV-Inhalt (NICHT auf isin_map — die ändert sich beim FMP-Fallback!)
         _csv_b = st.session_state.get("portfolio_csv_bytes") or b""
         _csv_key = hash(_csv_b)
@@ -6547,6 +6581,7 @@ if st.session_state.get("show_portfolio"):
                     _save_portfolio_settings(
                         _new_excl_isins,
                         st.session_state.get("portfolio_manual_prices", {}),
+                        st.session_state.get("portfolio_manual_shares", {}),
                     )
                     for _ck in [_alloc_cache_key, f"spark_{_alloc_cache_key}"]:
                         st.session_state.pop(_ck, None)
@@ -6578,6 +6613,7 @@ if st.session_state.get("show_portfolio"):
                         _save_portfolio_settings(
                             st.session_state.get("portfolio_excluded_isins", []),
                             _saved_mp,
+                            st.session_state.get("portfolio_manual_shares", {}),
                         )
                         for _ck in [_prices_cache_key, _alloc_cache_key, f"spark_{_alloc_cache_key}"]:
                             st.session_state.pop(_ck, None)
@@ -6585,8 +6621,61 @@ if st.session_state.get("show_portfolio"):
                 else:
                     st.success("Alle Positionen haben einen Kurs.")
 
-        tab_pos, tab_alloc, tab_perf, tab_holdings = st.tabs(
-            ["📊 Positionen", "🥧 Aufteilung", "📈 Performance", "🔍 Holdings"])
+            st.markdown("---")
+            st.markdown("**Anteile manuell korrigieren**")
+            st.caption(
+                "Tatsächliche Stückzahl eingeben. Neue Käufe in späteren CSVs werden "
+                "automatisch dazugerechnet — einmal eingeben reicht."
+            )
+            _man_shr = dict(st.session_state.get("portfolio_manual_shares", {}))
+            _all_pf_rows = [r for _, r in df_port.iterrows() if r['ISIN'] not in _excl_set]
+            _shr_cols = st.columns(3)
+            for _si, _srow in enumerate(_all_pf_rows):
+                _sisin   = _srow['ISIN']
+                _csv_sh  = float(_srow['shares'])   # roher CSV-Wert (noch kein Delta)
+                _entry   = _man_shr.get(_sisin)
+                # Aus gespeichertem Delta aktuellen Zielwert berechnen
+                if isinstance(_entry, dict):
+                    _stored_delta = float(_entry.get("delta", 0))
+                elif _entry:
+                    _stored_delta = float(_entry)   # altes Format: war absoluter Wert, jetzt als Delta
+                else:
+                    _stored_delta = 0.0
+                _display_val = max(0.0, _csv_sh + _stored_delta) if _stored_delta else 0.0
+                with _shr_cols[_si % 3]:
+                    _new_abs = st.number_input(
+                        f"{_srow['name'][:28]}",
+                        min_value=0.0,
+                        value=_display_val,
+                        step=0.001,
+                        format="%.4f",
+                        key=f"ms_{_sisin}",
+                        help=(
+                            f"ISIN: {_sisin}\n"
+                            f"CSV-Wert: {_csv_sh:.4f} Stk.\n"
+                            f"{'Gespeichertes Δ: {:+.4f} Stk.'.format(_stored_delta) if _stored_delta else 'Noch keine Korrektur gespeichert'}\n"
+                            f"0 = Korrektur entfernen"
+                        ),
+                    )
+                    _new_delta = round(_new_abs - _csv_sh, 6) if _new_abs > 0 else 0.0
+                    _man_shr[_sisin] = {"delta": _new_delta, "csv_at_save": _csv_sh}
+            if st.button("💾 Anteile speichern", key="pf_save_shares"):
+                _saved_shr = {
+                    k: v for k, v in _man_shr.items()
+                    if (v.get("delta", 0) if isinstance(v, dict) else v) != 0
+                }
+                st.session_state["portfolio_manual_shares"] = _saved_shr
+                _save_portfolio_settings(
+                    st.session_state.get("portfolio_excluded_isins", []),
+                    st.session_state.get("portfolio_manual_prices", {}),
+                    _saved_shr,
+                )
+                for _ck in [_prices_cache_key, _alloc_cache_key, f"spark_{_alloc_cache_key}"]:
+                    st.session_state.pop(_ck, None)
+                st.rerun()
+
+        tab_pos, tab_alloc, tab_perf, tab_holdings, tab_ki = st.tabs(
+            ["📊 Positionen", "🥧 Aufteilung", "📈 Performance", "🔍 Holdings", "🤖 KI-Analyse"])
 
         # ── Disk-Cache für Sektor-/Analyst-Daten laden (überlebt Deploys) ──────
         _disk_sec_cache = _load_isin_sector_cache()
@@ -6771,6 +6860,71 @@ if st.session_state.get("show_portfolio"):
                         unsafe_allow_html=True)
 
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+            # ── Positions-Donut ──────────────────────────────────────
+            _dn_labels, _dn_values = [], []
+            for _, _dnr in stocks_etf.iterrows():
+                _dnp = prices.get(_dnr['ISIN'])
+                _dnv = (_dnp * _dnr['shares']) if _dnp else _dnr['cost_basis']
+                if _dnv > 0:
+                    _dn_labels.append(_dnr['name'][:30])
+                    _dn_values.append(round(_dnv, 2))
+            for _, _dnr in crypto.iterrows():
+                _dnp = _crypto_prices.get(_dnr['ISIN'])
+                _dnv = (_dnp * _dnr['shares']) if _dnp else _dnr['cost_basis']
+                if _dnv > 0:
+                    _dn_labels.append(f"₿ {_dnr['name'][:24]}")
+                    _dn_values.append(round(_dnv, 2))
+
+            if _dn_labels:
+                _dn_total  = sum(_dn_values)
+                _dn_selkey = f"dn_sel_{_alloc_cache_key}"
+                _dn_sel    = st.session_state.get(_dn_selkey)
+
+                if _dn_sel is not None and 0 <= _dn_sel < len(_dn_labels):
+                    _dn_pct = _dn_values[_dn_sel] / _dn_total * 100
+                    _dn_ann = (f"<b>{_dn_labels[_dn_sel]}</b><br>"
+                               f"€ {_dn_values[_dn_sel]:,.0f}<br>{_dn_pct:.1f}%")
+                else:
+                    _dn_ann = f"<b>Portfolio</b><br>€ {_dn_total:,.0f}"
+
+                _dn_n    = len(_dn_labels)
+                _dn_clrs = [f'hsl({int(200 + i/_dn_n*240)},{55+int(i/_dn_n*15)}%,{48+int(i/_dn_n*10)}%)'
+                            for i in range(_dn_n)]
+                _dn_fig  = go.Figure(go.Pie(
+                    labels=_dn_labels, values=_dn_values,
+                    hole=0.62, textinfo='none', sort=True,
+                    hovertemplate='<b>%{label}</b><br>€ %{value:,.2f}<br>%{percent}<extra></extra>',
+                    marker=dict(colors=_dn_clrs, line=dict(color='#0a1628', width=1.5)),
+                ))
+                _dn_fig.update_layout(
+                    template='plotly_dark', paper_bgcolor='#0a1628', plot_bgcolor='#0a1628',
+                    showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=340,
+                    annotations=[dict(
+                        text=_dn_ann, x=0.5, y=0.5, showarrow=False,
+                        font=dict(size=13, color='#eceff1'), align='center',
+                    )],
+                )
+                _dn_event = st.plotly_chart(
+                    _dn_fig, use_container_width=True,
+                    on_select="rerun", selection_mode="points",
+                    key=f"donut_{_alloc_cache_key}",
+                )
+                # Update center on click
+                if _dn_event and hasattr(_dn_event, 'selection'):
+                    _dn_pts = (getattr(_dn_event.selection, 'points', None)
+                               or (_dn_event.selection.get('points')
+                                   if isinstance(_dn_event.selection, dict) else None))
+                    if _dn_pts:
+                        _dn_new = (_dn_pts[0].get('point_index')
+                                   if isinstance(_dn_pts[0], dict)
+                                   else getattr(_dn_pts[0], 'point_index', None))
+                        if _dn_new is not None and _dn_new != _dn_sel:
+                            st.session_state[_dn_selkey] = _dn_new
+                            st.rerun()
+                    elif _dn_sel is not None:
+                        st.session_state.pop(_dn_selkey, None)
+
             st.caption("Kurse in EUR umgerechnet (Wechselkurs via yFinance). P&L basiert auf dem Ø-Kaufkurs aus der Orderhistorie.")
 
             # ── Sparplan-Erkennung ────────────────────────────────────
@@ -7430,6 +7584,257 @@ if st.session_state.get("show_portfolio"):
                            f"des ETF-Werts) ist nicht einzeln aufgeführt.")
           except Exception as _e_hb:
               st.error(f"Fehler im Holdings-Tab: {_e_hb}\n{__import__('traceback').format_exc()}")
+
+        with tab_ki:
+          try:
+            st.markdown("<div class='section-header'>🤖 KI-Portfolio-Analyse</div>",
+                        unsafe_allow_html=True)
+            st.caption("Die KI bewertet dein Portfolio fundamental: Qualität, Bewertung, Risiken, "
+                       "Zukunftsfähigkeit und gibt konkrete Handlungsempfehlungen.")
+
+            _kipa_pk = f"ki_pf_result_{_csv_key}"
+            _kipa_mk = f"ki_pf_model_{_csv_key}"
+            _kipa_ts = f"ki_pf_time_{_csv_key}"
+
+            _kipa_c1, _kipa_c2 = st.columns([5, 1])
+            with _kipa_c1:
+                _kipa_gen = st.button(
+                    "🤖 Portfolio analysieren", type="primary",
+                    use_container_width=True, key="btn_kipa_gen",
+                    disabled=not GEMINI_API_KEY,
+                )
+            with _kipa_c2:
+                _kipa_ref = st.button(
+                    "🔄 Neu", use_container_width=True, key="btn_kipa_ref",
+                    disabled=(_kipa_pk not in st.session_state or not GEMINI_API_KEY),
+                )
+            if not GEMINI_API_KEY:
+                st.caption("🔑 GEMINI_API_KEY in Railway-Umgebungsvariablen eintragen.")
+
+            if _kipa_ref:
+                for _kk in [_kipa_pk, _kipa_mk, _kipa_ts]:
+                    st.session_state.pop(_kk, None)
+                st.rerun()
+
+            if _kipa_gen and _kipa_pk not in st.session_state:
+                # ── Portfolio-Daten für den Prompt aufbauen ──────────────────
+                import datetime as _kipa_dt
+
+                # Aktuelle Werte + Sektoren sammeln
+                _kipa_rows = []
+                _kipa_sectors: dict = {}
+                _kipa_regions: dict = {}
+                _kipa_total_val = 0.0
+                for _, _kr in stocks_etf.iterrows():
+                    _kp  = prices.get(_kr['ISIN'])
+                    _kv  = (_kp * _kr['shares']) if _kp else _kr['cost_basis']
+                    _kinf = _alloc_infos.get(_kr['ISIN'], {})
+                    _ksec = (_kinf.get('sector') or
+                             _ISIN_SECTOR_HARD.get(_kr['ISIN'], 'Unbekannt'))
+                    _ksec_de = _SECTOR_DE.get(_ksec, _ksec) or 'Sonstige'
+                    if _kinf.get('quote_type') == 'ETF':
+                        _ksec_de = 'ETF/Fonds'
+                    _kpnl = ((_kv - _kr['cost_basis']) / _kr['cost_basis'] * 100
+                             if _kr['cost_basis'] > 0 else 0.0)
+                    _kipa_rows.append({
+                        'name':   _kr['name'][:40],
+                        'ticker': isin_map.get(_kr['ISIN'], ''),
+                        'value':  _kv,
+                        'pnl':    _kpnl,
+                        'sector': _ksec_de,
+                        'rec':    _kinf.get('recommendation', ''),
+                        'pe':     _kinf.get('forwardPE') or _kinf.get('trailingPE'),
+                        'is_etf': _kinf.get('quote_type') == 'ETF',
+                    })
+                    _kipa_total_val += _kv
+                    _kipa_sectors[_ksec_de] = _kipa_sectors.get(_ksec_de, 0) + _kv
+                    _kreg = _ticker_to_region(isin_map.get(_kr['ISIN'], ''))
+                    _kipa_regions[_kreg] = _kipa_regions.get(_kreg, 0) + _kv
+                for _, _kr in crypto.iterrows():
+                    _kp = _crypto_prices.get(_kr['ISIN'])
+                    _kv = (_kp * _kr['shares']) if _kp else _kr['cost_basis']
+                    _kipa_total_val += _kv
+                    _kipa_sectors['Krypto'] = _kipa_sectors.get('Krypto', 0) + _kv
+                    _kipa_regions['Global'] = _kipa_regions.get('Global', 0) + _kv
+                    _kipa_rows.append({'name': f"₿ {_kr['name'][:35]}", 'ticker': '',
+                                       'value': _kv, 'pnl': 0, 'sector': 'Krypto',
+                                       'rec': '', 'pe': None, 'is_etf': False})
+
+                # Positionen nach Wert sortieren
+                _kipa_rows.sort(key=lambda r: r['value'], reverse=True)
+
+                # Performance-Daten
+                _kipa_irr, _kipa_ret, _kipa_days, _kipa_inv = _calc_portfolio_irr(
+                    st.session_state.get("portfolio_csv_bytes", b""), _kipa_total_val)
+                _kipa_irr_str = f"{_kipa_irr*100:+.1f}% p.a." if _kipa_irr else "n/v"
+                _kipa_ret_str = f"{_kipa_ret*100:+.1f}%" if _kipa_ret else "n/v"
+                _kipa_yrs = f"{_kipa_days//365} J. {(_kipa_days%365)//30} M." if _kipa_days else "n/v"
+
+                # Prompt aufbauen
+                _pos_lines = []
+                for _i, _r in enumerate(_kipa_rows[:25], 1):
+                    _w = _r['value'] / _kipa_total_val * 100 if _kipa_total_val else 0
+                    _pe_s = f"KGV {_r['pe']:.0f}" if _r['pe'] and float(_r['pe']) < 200 else ""
+                    _pnl_s = f"G/V {_r['pnl']:+.0f}%" if _r['pnl'] else ""
+                    _pos_lines.append(
+                        f"{_i:2}. {_r['name']:<40} {_w:5.1f}%  "
+                        f"{_r['sector']:<20} {_pe_s:<10} {_pnl_s}"
+                    )
+                if len(_kipa_rows) > 25:
+                    _pos_lines.append(f"    ... + {len(_kipa_rows)-25} weitere Positionen")
+
+                _sec_lines = sorted(_kipa_sectors.items(), key=lambda x: x[1], reverse=True)
+                _sec_str = "\n".join(
+                    f"  {s:<22} {v/_kipa_total_val*100:.1f}%" for s, v in _sec_lines if _kipa_total_val)
+                _reg_lines = sorted(_kipa_regions.items(), key=lambda x: x[1], reverse=True)
+                _reg_str = "\n".join(
+                    f"  {r:<22} {v/_kipa_total_val*100:.1f}%" for r, v in _reg_lines if _kipa_total_val)
+
+                _pf_summary = f"""
+PORTFOLIO-ÜBERSICHT:
+  Gesamtwert:         € {_kipa_total_val:,.0f}
+  Anzahl Positionen:  {len(_kipa_rows)}
+  Laufzeit:           {_kipa_yrs}
+  IZF (p.a.):         {_kipa_irr_str}
+  Gesamtrendite:      {_kipa_ret_str}
+
+TOP-POSITIONEN (sortiert nach Wert):
+{chr(10).join(_pos_lines)}
+
+SEKTORVERTEILUNG:
+{_sec_str}
+
+GEOGRAFISCHE VERTEILUNG:
+{_reg_str}
+"""
+
+                _sys_kipa = (
+                    "Du bist ein erfahrener Portfoliomanager und Fundamentalanalyst. "
+                    "Du bewertest echte Anlegerportfolios mit der Tiefe eines professionellen "
+                    "Asset Managers — ehrlich, präzise, ohne Schönfärberei. "
+                    "Du kennst die Prinzipien von Buffett, Munger, Peter Lynch und modernem "
+                    "Factor Investing. Antworte ausschließlich auf Deutsch. "
+                    "Sei konkret: nenne echte Positionen aus dem Portfolio, gib echte Zahlen."
+                )
+                _usr_kipa = (
+                    f"Analysiere dieses Anleger-Portfolio umfassend und fundamental:\n\n"
+                    f"{_pf_summary}\n\n"
+                    "Erstelle eine strukturierte Analyse mit **exakt diesen 6 Abschnitten**, "
+                    "getrennt durch '---':\n\n"
+                    "**🏆 PORTFOLIO-SCORE**\n"
+                    "Vergib eine Note (A+ / A / B+ / B / C / D) und erkläre in 2–3 Sätzen warum. "
+                    "Berücksichtige: Qualität der Unternehmen, Diversifikation, Bewertung, "
+                    "Renditeentwicklung.\n\n"
+                    "---\n\n"
+                    "**💎 STÄRKEN**\n"
+                    "Nenne 3–5 konkrete Stärken dieses Portfolios. Beziehe dich auf echte "
+                    "Positionen. Was macht dieses Portfolio gut?\n\n"
+                    "---\n\n"
+                    "**⚠️ SCHWÄCHEN & KLUMPENRISIKEN**\n"
+                    "Nenne 3–5 echte Schwächen oder Risiken. Gibt es Klumpenrisiken "
+                    "(>10% in einer Position/Region/Sektor)? Fehlende Diversifikation? "
+                    "Überteuerte Positionen? Sei direkt.\n\n"
+                    "---\n\n"
+                    "**🔮 ZUKUNFTSFÄHIGKEIT (10-Jahres-Horizont)**\n"
+                    "Wie gut ist dieses Portfolio für die nächsten 10 Jahre positioniert? "
+                    "Analysiere: KI/Digitalisierung-Exposure, Energiewende-Exposition, "
+                    "demografische Trends, geopolitische Risiken (China, Zölle), "
+                    "Währungsrisiken. Was fehlt? Was ist überexponiert?\n\n"
+                    "---\n\n"
+                    "**💡 KONKRETE HANDLUNGSEMPFEHLUNGEN**\n"
+                    "Gib 4–6 spezifische Empfehlungen:\n"
+                    "- Was würdest du aufstocken? (Begründung)\n"
+                    "- Was würdest du reduzieren oder verkaufen? (Begründung)\n"
+                    "- Welche 1–2 neuen Positionen fehlen für eine bessere Balance?\n"
+                    "- Welche Sektoren/Regionen sind unterrepräsentiert?\n\n"
+                    "---\n\n"
+                    "**📊 GESAMTFAZIT**\n"
+                    "Abschließende Einschätzung in 3–4 Sätzen: Wie gut wird dieses Portfolio "
+                    "den MSCI World langfristig schlagen? Was ist der wichtigste Hebel zur "
+                    "Verbesserung?"
+                )
+
+                with st.spinner("🤖 KI analysiert dein Portfolio fundamental…"):
+                    _kipa_txt, _kipa_mdl = _try_gemini(
+                        [{"role": "system", "content": _sys_kipa},
+                         {"role": "user",   "content": _usr_kipa}],
+                        max_tokens=5000, temperature=0.55, api_key=GEMINI_API_KEY,
+                    )
+                if _kipa_txt:
+                    st.session_state[_kipa_pk] = _kipa_txt
+                    st.session_state[_kipa_mk] = _kipa_mdl
+                    st.session_state[_kipa_ts] = _kipa_dt.datetime.now().strftime("%d.%m.%Y %H:%M")
+                    st.rerun()
+                else:
+                    st.error(f"KI-Analyse fehlgeschlagen: {_kipa_mdl}")
+
+            # ── Ergebnis anzeigen ────────────────────────────────────────────
+            if _kipa_pk in st.session_state:
+                _kipa_result = st.session_state[_kipa_pk]
+                _kipa_model  = st.session_state.get(_kipa_mk, "Gemini")
+                _kipa_time   = st.session_state.get(_kipa_ts, "")
+
+                import re as _kipa_re
+                _kipa_blocks = [b.strip() for b in _kipa_result.split("---") if b.strip()]
+
+                # Farb-Map für die Abschnitt-Karten
+                _kipa_colors = {
+                    "SCORE":      ("#ffd600", "#1a1600"),
+                    "STÄRKEN":    ("#00e676", "#001a0d"),
+                    "SCHWÄCHEN":  ("#ff5252", "#1a0000"),
+                    "ZUKUNFT":    ("#7c4dff", "#0d0020"),
+                    "HANDLUNGS":  ("#00b0ff", "#001a2e"),
+                    "FAZIT":      ("#64b5f6", "#071020"),
+                }
+
+                def _kipa_card_color(block_text: str):
+                    t = block_text.upper()
+                    for key, colors in _kipa_colors.items():
+                        if key in t:
+                            return colors
+                    return ("#546e7a", "#0d1a2e")
+
+                for _kb in _kipa_blocks:
+                    _bdr, _bg = _kipa_card_color(_kb)
+                    st.markdown(
+                        f"<div style='background:{_bg};border:1px solid {_bdr}33;"
+                        f"border-left:4px solid {_bdr};border-radius:12px;"
+                        f"padding:18px 22px 14px 22px;margin-bottom:12px;'>",
+                        unsafe_allow_html=True)
+                    st.markdown(_kb)
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+                st.caption(
+                    f"Modell: {_kipa_model} · Generiert: {_kipa_time} · "
+                    f"Keine Anlageberatung — Analyse basiert auf öffentlichen Portfoliodaten.")
+            else:
+                # Vorschau der Analysebereiche wenn noch nicht generiert
+                st.markdown(
+                    "<div style='background:#080f1e;border:1px solid #1a2740;border-radius:12px;"
+                    "padding:20px 24px;margin-top:8px;'>"
+                    "<div style='color:#64b5f6;font-size:0.95rem;font-weight:700;margin-bottom:12px;'>"
+                    "Die KI analysiert folgende Bereiche:</div>"
+                    "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;'>",
+                    unsafe_allow_html=True)
+                for _ap, _ac in [
+                    ("🏆 Portfolio-Score", "Gesamtnote A+ bis F mit Begründung"),
+                    ("💎 Stärken", "Konkrete Qualitätspositionen & Stärken"),
+                    ("⚠️ Risiken & Klumpen", "Konzentrations- und Bewertungsrisiken"),
+                    ("🔮 Zukunftsfähigkeit", "KI, Energie, Demografie, Geopolitik"),
+                    ("💡 Handlungsempfehlungen", "Was kaufen, reduzieren, ergänzen"),
+                    ("📊 Gesamtfazit", "MSCI-World-Vergleich & wichtigster Hebel"),
+                ]:
+                    st.markdown(
+                        f"<div style='background:#0d1f35;border:1px solid #1a2740;"
+                        f"border-radius:8px;padding:10px 12px;'>"
+                        f"<div style='color:#eceff1;font-size:0.85rem;font-weight:600;'>{_ap}</div>"
+                        f"<div style='color:#546e7a;font-size:0.75rem;margin-top:3px;'>{_ac}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True)
+                st.markdown("</div></div>", unsafe_allow_html=True)
+
+          except Exception as _e_ki:
+              st.error(f"Fehler im KI-Analyse-Tab: {_e_ki}")
 
     elif df_port is None:
         st.info("📂 Bitte lade deine Orderhistorie-CSV hoch.\n\n"
@@ -8301,27 +8706,26 @@ if st.session_state.get("show_etf_analyzer"):
         # ETF-Beschreibung
         _desc = _ei.get('description', '')
         if _desc:
-            # Max. 3 Sätze anzeigen, Rest ausklappbar
-            _sentences = [s.strip() for s in _desc.replace('\n', ' ').split('. ') if s.strip()]
+            _sentences  = [s.strip() for s in _desc.replace('\n', ' ').split('. ') if s.strip()]
             _desc_short = '. '.join(_sentences[:3]) + ('.' if len(_sentences) > 3 else '')
             _desc_rest  = '. '.join(_sentences[3:]) + '.' if len(_sentences) > 3 else ''
-            _desc_id = f"desc_{_etf_tkr.replace('.','_')}"
-            _desc_html = (
+            _desc_key   = f"etf_desc_exp_{_etf_tkr}"
+            _desc_exp   = st.session_state.get(_desc_key, False)
+            _shown_txt  = (_desc_short + ' ' + _desc_rest) if (_desc_rest and _desc_exp) else _desc_short
+            st.markdown(
                 f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
-                f"padding:10px 14px;margin-top:4px;margin-bottom:4px;'>"
+                f"padding:10px 14px;margin-top:4px;margin-bottom:2px;'>"
                 f"<div style='color:#78909c;font-size:0.65rem;text-transform:uppercase;"
                 f"letter-spacing:.08em;margin-bottom:5px;'>📋 Beschreibung</div>"
-                f"<div style='color:#cfd8dc;font-size:0.82rem;line-height:1.55;'>{_desc_short}"
-            )
+                f"<div style='color:#cfd8dc;font-size:0.82rem;line-height:1.55;'>{_shown_txt}</div>"
+                f"</div>", unsafe_allow_html=True)
             if _desc_rest:
-                _desc_html += (
-                    f"<span id='more_{_desc_id}' style='display:none;'> {_desc_rest}</span>"
-                    f" <span onclick=\"document.getElementById('more_{_desc_id}').style.display='inline';"
-                    f"this.style.display='none';\" style='color:#64b5f6;cursor:pointer;"
-                    f"font-size:0.75rem;'>Mehr anzeigen ▾</span>"
-                )
-            _desc_html += "</div></div>"
-            st.markdown(_desc_html, unsafe_allow_html=True)
+                if st.button(
+                    "Weniger anzeigen ▴" if _desc_exp else "Mehr anzeigen ▾",
+                    key=f"desc_btn_{_etf_tkr}",
+                ):
+                    st.session_state[_desc_key] = not _desc_exp
+                    st.rerun()
     with _h2:
         if st.button("🔄 Ähnliche ETFs", use_container_width=True, key="btn_similar"):
             st.session_state["etf_show_similar"] = not st.session_state.get("etf_show_similar", False)
