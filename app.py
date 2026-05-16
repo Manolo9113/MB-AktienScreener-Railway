@@ -7604,6 +7604,45 @@ if st.session_state.get("show_etf_analyzer"):
             f"color:{_clr};padding:0 2px;\\'>{_abbr}</span>'\">"
             f"<span style='color:{_clr};font-size:0.72rem;font-weight:700;'>{key}</span></span>")
 
+    # Faktor-/Sektor-Tags vorab berechnen (wird in Header + KI-Analyse genutzt)
+    _nl_tags = (_ei.get('name', '') + ' ' + _ei.get('category', '')).lower()
+    _factor_tags: list = []
+    if any(x in _nl_tags for x in ['value', 'enhanced value', 'substanz']):
+        _factor_tags.append(('📊 Value', '#ffd54f', '#1a1200'))
+    if any(x in _nl_tags for x in [' growth', 'wachstum']):
+        _factor_tags.append(('🚀 Growth', '#81c784', '#001a00'))
+    if 'momentum' in _nl_tags:
+        _factor_tags.append(('⚡ Momentum', '#ff8a65', '#1a0800'))
+    if 'quality' in _nl_tags:
+        _factor_tags.append(('💎 Quality', '#ce93d8', '#150020'))
+    if any(x in _nl_tags for x in ['min vol', 'minimum vol', 'low vol', 'low volatil']):
+        _factor_tags.append(('🛡 Low Vol', '#80cbc4', '#001a18'))
+    if any(x in _nl_tags for x in ['dividend', 'high dividend', 'income', 'yield']):
+        _factor_tags.append(('💰 Dividenden', '#ffd600', '#1a1000'))
+    if any(x in _nl_tags for x in ['esg', ' sri', 'sustainable', 'socially responsible', 'climate', 'paris']):
+        _factor_tags.append(('🌱 ESG/SRI', '#a5d6a7', '#001a05'))
+    if any(x in _nl_tags for x in ['small cap', 'small-cap', 'smallcap', 'small company']):
+        _factor_tags.append(('🔬 Small Cap', '#b0bec5', '#0d1f35'))
+    if any(x in _nl_tags for x in ['multi-factor', 'multifactor', 'multi factor']):
+        _factor_tags.append(('⚙ Multi-Faktor', '#ffab40', '#1a0e00'))
+    _sector_map_tags = [
+        (['technology', 'tech ', 'semiconductor', 'digital'], '💻 Technologie', '#29b6f6', '#001728'),
+        (['healthcare', 'health care', 'medical', 'pharma', 'biotech'], '🏥 Gesundheit', '#66bb6a', '#001500'),
+        (['financial', 'bank', 'insurance'], '🏦 Finanzen', '#ffa726', '#1a0a00'),
+        (['energy', 'clean energy', 'renewable'], '⚡ Energie', '#ffee58', '#1a1800'),
+        (['real estate', 'reit', 'property', 'immobil'], '🏠 Immobilien', '#ef5350', '#1a0000'),
+        (['consumer', 'retail', 'staple', 'discretionary'], '🛒 Konsum', '#ab47bc', '#150015'),
+        (['industrial', 'infrastructure', 'aerospace', 'defense'], '🏭 Industrie', '#78909c', '#0d1820'),
+        (['material', 'commodit', 'gold', 'silver', 'mining'], '⛏ Rohstoffe', '#a1887f', '#1a1005'),
+        (['water', 'environment', 'green'], '💧 Wasser/Umwelt', '#26c6da', '#001a1d'),
+        (['cybersecurity', 'cyber'], '🔒 Cybersecurity', '#ef5350', '#200000'),
+        (['artificial intellig', 'robotics', 'automation', ' ai ', 'machine learn'], '🤖 KI/Robotik', '#7e57c2', '#0e0015'),
+    ]
+    for _kws_t, _lbl_t, _clr_t, _bg_t in _sector_map_tags:
+        if any(kw in _nl_tags for kw in _kws_t):
+            _factor_tags.append((_lbl_t, _clr_t, _bg_t))
+            break
+
     # ── Headerbereich ─────────────────────────────────────────────────────
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
     _h1, _h2 = st.columns([5, 1])
@@ -7624,45 +7663,7 @@ if st.session_state.get("show_etf_analyzer"):
             _pills += _pill(f"🏛 {_ei['domicile']}", '#90a4ae', '#1a2740')
         if _ei.get('category'):
             _pills += _pill(_ei['category'][:28], '#b0bec5', '#161f30')
-        # Faktor- und Sektor-Tags automatisch aus ETF-Name ableiten
-        _nl = (_ei.get('name', '') + ' ' + _ei.get('category', '')).lower()
-        _factor_tags = []
-        if any(x in _nl for x in ['value', 'enhanced value', 'substanz']):
-            _factor_tags.append(('📊 Value', '#ffd54f', '#1a1200'))
-        if any(x in _nl for x in [' growth', 'wachstum']):
-            _factor_tags.append(('🚀 Growth', '#81c784', '#001a00'))
-        if 'momentum' in _nl:
-            _factor_tags.append(('⚡ Momentum', '#ff8a65', '#1a0800'))
-        if 'quality' in _nl:
-            _factor_tags.append(('💎 Quality', '#ce93d8', '#150020'))
-        if any(x in _nl for x in ['min vol', 'minimum vol', 'low vol', 'low volatil']):
-            _factor_tags.append(('🛡 Low Vol', '#80cbc4', '#001a18'))
-        if any(x in _nl for x in ['dividend', 'high dividend', 'income', 'yield']):
-            _factor_tags.append(('💰 Dividenden', '#ffd600', '#1a1000'))
-        if any(x in _nl for x in ['esg', ' sri', 'sustainable', 'socially responsible', 'climate', 'paris']):
-            _factor_tags.append(('🌱 ESG/SRI', '#a5d6a7', '#001a05'))
-        if any(x in _nl for x in ['small cap', 'small-cap', 'smallcap', 'small company']):
-            _factor_tags.append(('🔬 Small Cap', '#b0bec5', '#0d1f35'))
-        if any(x in _nl for x in ['multi-factor', 'multifactor', 'multi factor']):
-            _factor_tags.append(('⚙ Multi-Faktor', '#ffab40', '#1a0e00'))
-        # Sektor-Tags (nur einer pro ETF)
-        _sector_map = [
-            (['technology', 'tech ', 'semiconductor', 'digital'], '💻 Technologie', '#29b6f6', '#001728'),
-            (['healthcare', 'health care', 'medical', 'pharma', 'biotech'], '🏥 Gesundheit', '#66bb6a', '#001500'),
-            (['financial', 'bank', 'insurance'], '🏦 Finanzen', '#ffa726', '#1a0a00'),
-            (['energy', 'clean energy', 'renewable'], '⚡ Energie', '#ffee58', '#1a1800'),
-            (['real estate', 'reit', 'property', 'immobil'], '🏠 Immobilien', '#ef5350', '#1a0000'),
-            (['consumer', 'retail', 'staple', 'discretionary'], '🛒 Konsum', '#ab47bc', '#150015'),
-            (['industrial', 'infrastructure', 'aerospace', 'defense'], '🏭 Industrie', '#78909c', '#0d1820'),
-            (['material', 'commodit', 'gold', 'silver', 'mining'], '⛏ Rohstoffe', '#a1887f', '#1a1005'),
-            (['water', 'environment', 'green'], '💧 Wasser/Umwelt', '#26c6da', '#001a1d'),
-            (['cybersecurity', 'cyber'], '🔒 Cybersecurity', '#ef5350', '#200000'),
-            (['artificial intellig', 'robotics', 'automation', ' ai ', 'machine learn'], '🤖 KI/Robotik', '#7e57c2', '#0e0015'),
-        ]
-        for _kws, _lbl, _clr, _bg in _sector_map:
-            if any(kw in _nl for kw in _kws):
-                _factor_tags.append((_lbl, _clr, _bg))
-                break
+        # Faktor-/Sektor-Tags (vorab berechnet in _factor_tags)
         for _ft, _fc, _fb in _factor_tags:
             _pills += _pill(_ft, _fc, _fb)
         st.markdown(f"{_badge_html}{_name_html}"
@@ -8227,6 +8228,174 @@ if st.session_state.get("show_etf_analyzer"):
                 f"<div style='color:{_clr2};font-size:1.3rem;font-weight:700;'>{_tot:+.1f}%</div>"
                 f"<div style='color:#546e7a;font-size:0.66rem;'>Gesamtrendite ({_per_sel})</div>"
                 f"</div>", unsafe_allow_html=True)
+
+    # ── KI-Analyse ────────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🤖 KI-Analyse</div>", unsafe_allow_html=True)
+
+    if not GEMINI_API_KEY:
+        st.info("🔑 Kein GEMINI_API_KEY konfiguriert — KI-Analyse nicht verfügbar.")
+    else:
+        _etf_ki_key = f"etf_ki_{_etf_tkr}"
+        _run_etf_ki = st.button("🤖 KI-Analyse starten",
+                                key="btn_etf_ki", use_container_width=True, type="primary",
+                                help="Gemini analysiert Strategie, Bewertung, Risiken und Marktkontext (~10–20 Sek.)")
+        if _run_etf_ki:
+            # ── Datenpunkt-Zusammenfassung für den Prompt ─────────────────
+            _ki_name   = _ei.get('name', _etf_tkr)
+            _ki_ter    = f"{_ei.get('ter',0)*100:.2f}%" if _ei.get('ter') else 'unbekannt'
+            _ki_aum    = f"€{_ei.get('aum',0)/1e9:.1f} Mrd." if _ei.get('aum') else 'unbekannt'
+            _ki_dist   = _ei.get('distribution', '—')
+            _ki_dom    = _ei.get('domicile', '—')
+            _ki_cat    = _ei.get('category', '—')
+            _ki_ff     = _ei.get('fund_family', '—')
+            _ki_ytd    = f"{_ei.get('ytd',0)*100:+.1f}%" if _ei.get('ytd') else '—'
+            _ki_1y     = f"{_ei.get('ret_1y',0)*100:+.1f}%" if _ei.get('ret_1y') else '—'
+            _ki_3y     = f"{_ei.get('ret_3y',0)*100:+.1f}%" if _ei.get('ret_3y') else '—'
+            _ki_5y     = f"{_ei.get('ret_5y',0)*100:+.1f}%" if _ei.get('ret_5y') else '—'
+            _ki_factors = ', '.join(t for t, *_ in _factor_tags) if _factor_tags else 'Keine erkannt'
+            # Top-Holdings
+            _ki_top = ''
+            if _th:
+                _ki_top = '\n'.join(f"  - {h[0]}: {h[1]:.1f}%" for h in _th[:8] if len(h) >= 2)
+            # Sektor-Gewichtung
+            _ki_sw = ''
+            if _sw:
+                _sw_sorted = sorted(_sw.items(), key=lambda x: x[1], reverse=True)
+                _ki_sw = '\n'.join(f"  - {s}: {w:.1f}%" for s, w in _sw_sorted[:8])
+            # Länder-Gewichtung
+            _ki_cw = ''
+            if _cw:
+                _cw_sorted = sorted(_cw.items(), key=lambda x: x[1], reverse=True)
+                _ki_cw = '\n'.join(f"  - {c}: {w:.1f}%" for c, w in _cw_sorted[:8])
+            # Bewertungskennzahlen der Positionen (KGV, KBV etc.)
+            _ki_valuation = ''
+            if _ac:
+                _pe_vals  = [v.get('pe')  for v in _ac.values() if v.get('pe')  and v.get('pe')  < 200]
+                _pb_vals  = [v.get('pb')  for v in _ac.values() if v.get('pb')  and v.get('pb')  < 50]
+                _dy_vals  = [v.get('div') for v in _ac.values() if v.get('div') and v.get('div')  > 0]
+                _mg_vals  = [v.get('mg')  for v in _ac.values() if v.get('mg')]
+                if _pe_vals:
+                    _ki_valuation += f"  - Ø KGV der Positionen: {sum(_pe_vals)/len(_pe_vals):.1f}x\n"
+                if _pb_vals:
+                    _ki_valuation += f"  - Ø KBV der Positionen: {sum(_pb_vals)/len(_pb_vals):.2f}x\n"
+                if _dy_vals:
+                    _ki_valuation += f"  - Ø Dividendenrendite: {sum(_dy_vals)/len(_dy_vals)*100:.2f}%\n"
+                if _mg_vals:
+                    _ki_valuation += f"  - Ø Bruttomarge: {sum(_mg_vals)/len(_mg_vals)*100:.1f}%\n"
+
+            _sys_etf = (
+                "Du bist ein unabhängiger ETF-Stratege und Fondsanalyst mit 20 Jahren Erfahrung "
+                "in quantitativen Faktorstrategien und Portfoliokonstruktion. Du schreibst prägnant "
+                "und verzichtest auf Marketing-Phrasen. Antworte auf Deutsch.\n\n"
+                "PFLICHTFORMAT — antworte IMMER in genau diesen 7 Abschnitten in dieser Reihenfolge. "
+                "Jeder Abschnitt beginnt mit der exakten Überschrift (ohne # oder *), "
+                "gefolgt von 3–5 konkreten Punkten als Stichpunkte mit '- ':\n\n"
+                "STRATEGIE & MARKTPHASE\n"
+                "KOSTENEFFIZIENZ\n"
+                "FUNDAMENTALE BEWERTUNG\n"
+                "QUALITÄT & RISIKEN\n"
+                "PERFORMANCE-ANALYSE\n"
+                "PORTFOLIO-EIGNUNG\n"
+                "GESAMTURTEIL\n\n"
+                "Wichtig: Beziehe dich auf konkrete Zahlen aus den Datenpunkten. "
+                "Sei kritisch wenn TER hoch, Konzentration groß oder Strategie im aktuellen "
+                "Marktumfeld nachteilig ist."
+            )
+            _usr_etf = (
+                f"ETF: {_ki_name} ({_etf_tkr})\n"
+                f"Emittent: {_ki_ff} | Kategorie: {_ki_cat} | Domizil: {_ki_dom}\n"
+                f"TER: {_ki_ter} | AUM: {_ki_aum} | Ausschüttung: {_ki_dist}\n"
+                f"Erkannte Faktoren/Strategie: {_ki_factors}\n\n"
+                f"PERFORMANCE:\n"
+                f"  YTD: {_ki_ytd} | 1J: {_ki_1y} | 3J: {_ki_3y} | 5J: {_ki_5y}\n\n"
+                + (f"FUNDAMENTALE KENNZAHLEN DER POSITIONEN:\n{_ki_valuation}\n" if _ki_valuation else "")
+                + (f"TOP-HOLDINGS (bis 8):\n{_ki_top}\n\n" if _ki_top else "")
+                + (f"SEKTORGEWICHTUNG:\n{_ki_sw}\n\n" if _ki_sw else "")
+                + (f"LÄNDERGEWICHTUNG:\n{_ki_cw}\n\n" if _ki_cw else "")
+                + (f"BESCHREIBUNG (Auszug): {_ei.get('description','')[:400]}\n" if _ei.get('description') else "")
+                + "\nBitte analysiere diesen ETF anhand der 7 Pflichtabschnitte. "
+                  "Gehe explizit auf die Bewertung der Positionen (KGV/KBV-Niveau), "
+                  "die Faktorstrategie im aktuellen Marktkontext und die Kostenstruktur ein."
+            )
+            with st.spinner("KI analysiert ETF… (~10–20 Sek.)"):
+                _etf_ki_text, _etf_ki_src = call_ki_api(_sys_etf, _usr_etf, GEMINI_API_KEY, max_tokens=3800)
+            st.session_state[_etf_ki_key] = (_etf_ki_text, _etf_ki_src)
+
+        # ── Ergebnis anzeigen ─────────────────────────────────────────────
+        if st.session_state.get(_etf_ki_key):
+            _etf_ki_text, _etf_ki_src = st.session_state[_etf_ki_key]
+            if _etf_ki_src:
+                st.caption(f"Analysiert mit {_etf_ki_src}")
+
+            _ETF_KI_SECTIONS = {
+                'STRATEGIE & MARKTPHASE':   ('📈', '#42a5f5', '#001a2e'),
+                'KOSTENEFFIZIENZ':           ('💸', '#66bb6a', '#00150a'),
+                'FUNDAMENTALE BEWERTUNG':    ('⚖️', '#ffd54f', '#1a1200'),
+                'QUALITÄT & RISIKEN':        ('🛡', '#ef5350', '#1a0000'),
+                'PERFORMANCE-ANALYSE':       ('📊', '#ab47bc', '#150015'),
+                'PORTFOLIO-EIGNUNG':         ('🎯', '#26c6da', '#001a1d'),
+                'GESAMTURTEIL':              ('🏆', '#00e676', '#001a0a'),
+            }
+            # Abschnitte parsen
+            _ki_raw = _etf_ki_text.strip()
+            _ki_parts: dict[str, str] = {}
+            _ki_order = list(_ETF_KI_SECTIONS.keys())
+            for _idx, _sec in enumerate(_ki_order):
+                _next = _ki_order[_idx + 1] if _idx + 1 < len(_ki_order) else None
+                import re as _re_ki
+                _pat = _sec.replace('&', r'\&').replace('/', r'\/')
+                _m = _re_ki.search(rf'(?:^|\n){_pat}', _ki_raw, _re_ki.IGNORECASE)
+                if _m:
+                    _start = _m.end()
+                    _end   = len(_ki_raw)
+                    if _next:
+                        _nm = _re_ki.search(rf'(?:^|\n){_next}', _ki_raw[_start:], _re_ki.IGNORECASE)
+                        if _nm:
+                            _end = _start + _nm.start()
+                    _body = _ki_raw[_start:_end].strip()
+                    _body = _re_ki.sub(r'\*\*(.*?)\*\*', r'\1', _body)
+                    _body = _re_ki.sub(r'#+\s*', '', _body)
+                    _ki_parts[_sec] = _body
+            if not _ki_parts:
+                st.markdown(_ki_raw)
+            else:
+                for _sec, (_ico, _clr, _bg) in _ETF_KI_SECTIONS.items():
+                    _body = _ki_parts.get(_sec, '')
+                    if not _body:
+                        continue
+                    _lines_html = ''.join(
+                        f"<div style='display:flex;gap:8px;margin-bottom:5px;'>"
+                        f"<span style='color:{_clr};flex-shrink:0;'>•</span>"
+                        f"<span style='color:#cfd8dc;font-size:0.84rem;line-height:1.5;'>"
+                        f"{ln.lstrip('-•· ').strip()}</span></div>"
+                        for ln in _body.splitlines() if ln.strip()
+                    )
+                    st.markdown(
+                        f"<div style='background:{_bg};border:1px solid {_clr}33;"
+                        f"border-radius:8px;padding:12px 14px;margin-bottom:8px;'>"
+                        f"<div style='color:{_clr};font-size:0.72rem;font-weight:700;"
+                        f"text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;'>"
+                        f"{_ico} {_sec}</div>{_lines_html}</div>",
+                        unsafe_allow_html=True)
+
+            # Follow-up Chat
+            st.markdown("---")
+            st.caption("💬 Rückfragen zur Analyse:")
+            _etf_chat_key = f"etf_chat_{_etf_tkr}"
+            with st.form(f"etf_ki_form_{_etf_tkr}", clear_on_submit=True):
+                _etf_q = st.text_input("Frage stellen", placeholder="z.B. Wie verhält sich dieser ETF in Rezessionen?",
+                                       label_visibility="collapsed")
+                if st.form_submit_button("Absenden", use_container_width=True) and _etf_q.strip():
+                    _etf_ctx = st.session_state.get(_etf_chat_key, [])
+                    _etf_ctx.append({"role": "user", "content": _etf_q.strip()})
+                    _etf_reply = call_ki_chat(_sys_etf, _etf_ctx[-8:], GEMINI_API_KEY)
+                    _etf_ctx.append({"role": "assistant", "content": _etf_reply})
+                    st.session_state[_etf_chat_key] = _etf_ctx
+            for _em in st.session_state.get(_etf_chat_key, []):
+                if _em["role"] == "user":
+                    st.markdown(f"**Du:** {_em['content']}")
+                else:
+                    st.markdown(f"**KI:** {_em['content']}")
 
     st.stop()
 
