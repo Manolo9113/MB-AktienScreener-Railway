@@ -3692,7 +3692,101 @@ _ETF_CW = {
     'ISPA.DE': {'USA':54.0,'Kanada':8.0,'UK':6.0,'Japan':5.5,'Schweiz':4.0,
                 'Frankreich':3.5,'Deutschland':3.0,'Australien':2.5,'Sonstige':13.5},
 }
-_CONTINENT_MAP = {
+
+# Sektor-Gewichtungen (Quelle: Fondsanbieter, ca. 2024/25; Sektornamen auf Deutsch)
+_ETF_SW: dict = {
+    # ── MSCI World (entwickelte Märkte) ──────────────────────────────────────
+    **dict.fromkeys(['EUNL.DE','XDWD.DE','XMWO.DE','IWDA.AS','PRAW.DE','PRWA.DE',
+                     'LCUP.DE','PRIW.DE','LCUQ.DE','LCU.DE','LCUA.DE','PRWG.DE'],
+        {'IT & Technologie':23.5,'Finanzwesen':15.0,'Gesundheitswesen':12.0,
+         'Industrie':11.0,'Nicht-Basiskonsumgüter':10.5,'Telekommunikation':8.8,
+         'Basiskonsumgüter':6.8,'Energie':4.0,'Grundstoffe':3.8,
+         'Immobilien':2.4,'Versorger':2.2}),
+    # ── S&P 500 ───────────────────────────────────────────────────────────────
+    **dict.fromkeys(['SXR8.DE','LCUW.DE','SPY5.DE','IUSE.DE','SXR2.DE',
+                     'VUSA.L','CSPX.L','C500.DE','SP5C.DE'],
+        {'IT & Technologie':31.8,'Finanzwesen':13.2,'Gesundheitswesen':11.8,
+         'Industrie':8.5,'Nicht-Basiskonsumgüter':10.3,'Telekommunikation':8.8,
+         'Basiskonsumgüter':5.8,'Energie':3.8,'Grundstoffe':2.3,
+         'Immobilien':2.2,'Versorger':1.5}),
+    # ── FTSE All-World / MSCI ACWI ────────────────────────────────────────────
+    **dict.fromkeys(['VWCE.DE','FWRA.DE','VWRL.L'],
+        {'IT & Technologie':21.5,'Finanzwesen':16.0,'Gesundheitswesen':11.5,
+         'Industrie':10.5,'Nicht-Basiskonsumgüter':11.0,'Telekommunikation':8.5,
+         'Basiskonsumgüter':7.0,'Energie':4.5,'Grundstoffe':4.0,
+         'Immobilien':3.0,'Versorger':2.5}),
+    # ── NASDAQ-100 ────────────────────────────────────────────────────────────
+    **dict.fromkeys(['EQQQ.DE','CNDX.L'],
+        {'IT & Technologie':51.8,'Telekommunikation':17.4,
+         'Nicht-Basiskonsumgüter':14.0,'Gesundheitswesen':7.2,
+         'Industrie':4.5,'Finanzwesen':2.4,'Basiskonsumgüter':1.7,'Sonstige':1.0}),
+    # ── EuroStoxx 50 ─────────────────────────────────────────────────────────
+    **dict.fromkeys(['EXW1.DE','MEUD.DE','LYPS.DE'],
+        {'Finanzwesen':20.5,'Industrie':16.0,'Nicht-Basiskonsumgüter':14.5,
+         'IT & Technologie':9.5,'Gesundheitswesen':8.0,'Versorger':8.5,
+         'Telekommunikation':7.0,'Energie':6.5,'Grundstoffe':5.5,'Basiskonsumgüter':4.0}),
+    # ── MSCI Europe ───────────────────────────────────────────────────────────
+    **dict.fromkeys(['IQQY.DE','IEUA.DE','SPYY.DE','IQQE.DE','XESC.DE',
+                     'IEMC.DE','ZPRX.DE','XEUR.DE','VGK'],
+        {'Finanzwesen':17.5,'Industrie':16.0,'Gesundheitswesen':14.5,
+         'Nicht-Basiskonsumgüter':11.5,'Basiskonsumgüter':10.0,'IT & Technologie':8.5,
+         'Energie':7.0,'Telekommunikation':5.5,'Grundstoffe':5.0,
+         'Versorger':3.0,'Immobilien':1.5}),
+    # ── MSCI EM ───────────────────────────────────────────────────────────────
+    **dict.fromkeys(['IS3N.DE','IS3R.DE','IMEA.DE','XMME.DE','IQQD.DE',
+                     'IQQC.DE','XMIN.DE','IEMA.DE'],
+        {'IT & Technologie':22.0,'Finanzwesen':19.5,'Nicht-Basiskonsumgüter':12.5,
+         'Telekommunikation':10.0,'Basiskonsumgüter':6.5,'Industrie':6.5,
+         'Energie':5.0,'Grundstoffe':5.2,'Gesundheitswesen':4.5,
+         'Immobilien':3.0,'Versorger':1.8}),
+    # ── Japan ─────────────────────────────────────────────────────────────────
+    **dict.fromkeys(['EXV5.DE','XDJP.DE','IQQJ.DE'],
+        {'IT & Technologie':22.0,'Industrie':21.0,'Nicht-Basiskonsumgüter':15.5,
+         'Gesundheitswesen':9.5,'Finanzwesen':8.5,'Basiskonsumgüter':8.0,
+         'Grundstoffe':5.5,'Energie':3.5,'Telekommunikation':3.5,
+         'Versorger':2.0,'Immobilien':1.0}),
+    # ── DAX ───────────────────────────────────────────────────────────────────
+    **dict.fromkeys(['EXS1.DE','DBXD.DE','DAXE.DE'],
+        {'IT & Technologie':18.0,'Nicht-Basiskonsumgüter':15.0,'Industrie':14.5,
+         'Gesundheitswesen':12.5,'Finanzwesen':12.0,'Basiskonsumgüter':9.0,
+         'Energie':7.0,'Grundstoffe':5.0,'Telekommunikation':4.5,'Versorger':2.5}),
+    # ── Dividenden-ETFs ───────────────────────────────────────────────────────
+    **dict.fromkeys(['ISPA.DE','QDIV.DE','XDIV.DE','IDVY.L','VHYL.L'],
+        {'Finanzwesen':18.0,'IT & Technologie':14.5,'Gesundheitswesen':13.5,
+         'Industrie':13.0,'Basiskonsumgüter':12.0,'Energie':10.0,
+         'Nicht-Basiskonsumgüter':8.0,'Grundstoffe':6.0,'Versorger':3.0,
+         'Telekommunikation':2.0}),
+    # ── Sektor-ETFs (100% in einem Sektor) ───────────────────────────────────
+    **dict.fromkeys(['XDWT.DE','QDVE.DE','IUIT.DE'],{'IT & Technologie':100.0}),
+    **dict.fromkeys(['XDWH.DE','QDVG.DE','HEAL.DE'],{'Gesundheitswesen':100.0}),
+    **dict.fromkeys(['XDWF.DE','QDVD.DE'],          {'Finanzwesen':100.0}),
+    'XDWU.DE': {'Versorger':100.0},
+    'SXRV.DE': {'Telekommunikation':100.0},
+    # ── Small/Mid Cap (ähnlich MSCI World, mehr Industrie/Finanzwesen) ────────
+    **dict.fromkeys(['IUSN.DE','ZPRV.DE'],
+        {'Industrie':18.5,'Finanzwesen':17.0,'IT & Technologie':15.0,
+         'Nicht-Basiskonsumgüter':11.0,'Gesundheitswesen':9.5,'Grundstoffe':8.0,
+         'Basiskonsumgüter':7.5,'Energie':6.0,'Telekommunikation':4.0,
+         'Versorger':2.5,'Immobilien':1.0}),
+    'EXI5.DE': {'IT & Technologie':14.0,'Industrie':17.0,'Finanzwesen':16.0,
+                'Gesundheitswesen':9.5,'Nicht-Basiskonsumgüter':12.5,
+                'Basiskonsumgüter':8.0,'Energie':6.5,'Grundstoffe':7.0,
+                'Telekommunikation':4.0,'Versorger':3.0,'Immobilien':2.5},
+    # ── Korea / Taiwan / India ────────────────────────────────────────────────
+    'XMKR.DE': {'IT & Technologie':40.0,'Finanzwesen':18.0,'Nicht-Basiskonsumgüter':14.0,
+                'Industrie':8.0,'Basiskonsumgüter':5.0,'Telekommunikation':5.5,
+                'Grundstoffe':5.5,'Energie':2.0,'Gesundheitswesen':2.0},
+    'IS3W.DE': {'IT & Technologie':60.0,'Nicht-Basiskonsumgüter':14.5,
+                'Finanzwesen':10.0,'Industrie':6.5,'Telekommunikation':4.0,
+                'Grundstoffe':3.0,'Sonstige':2.0},
+    'XMIN.DE': {'Finanzwesen':22.5,'IT & Technologie':18.0,'Nicht-Basiskonsumgüter':15.5,
+                'Energie':12.0,'Grundstoffe':8.5,'Gesundheitswesen':7.0,
+                'Industrie':6.5,'Telekommunikation':5.0,'Basiskonsumgüter':4.0},
+    # ── Clean Energy ──────────────────────────────────────────────────────────
+    'IQQH.DE': {'Energie':35.0,'Versorger':32.0,'Industrie':18.0,
+                'IT & Technologie':10.0,'Grundstoffe':5.0},
+}
+
     'USA':'Nordamerika','Kanada':'Nordamerika','Mexiko':'Nordamerika',
     'UK':'Europa','Deutschland':'Europa','Frankreich':'Europa','Schweiz':'Europa',
     'Niederlande':'Europa','Schweden':'Europa','Dänemark':'Europa','Spanien':'Europa',
@@ -6469,26 +6563,33 @@ if st.session_state.get("show_portfolio"):
                     _tkr2  = isin_map.get(_arow['ISIN'], '')
                     _info2 = _alloc_infos.get(_arow['ISIN'], {})
                     _prc   = prices.get(_arow['ISIN'])
-                    _val   = (_prc if _prc else _arow['avg_cost']) * _arow['shares']
+                    _val   = max(0.0, (_prc if _prc else _arow['avg_cost']) * _arow['shares'])
+
+                    # ETF-Erkennung: analyst-info für Top-10 + bekannte Ticker-Maps für alle anderen
+                    _is_etf = (_info2.get('quote_type') == 'ETF' or
+                               _tkr2 in _ETF_CW or _tkr2 in _ETF_SW)
 
                     if _arow['is_crypto']:
-                        _ac, _reg = 'Krypto', 'Global'
+                        _ac, _reg, _sec_de = 'Krypto', 'Global', 'Krypto'
                     elif _arow['is_warrant']:
-                        _ac, _reg = 'Optionsscheine', _ticker_to_region(_tkr2)
-                    elif _info2.get('quote_type') == 'ETF':
+                        _ac, _reg, _sec_de = 'Optionsscheine', _ticker_to_region(_tkr2), 'Optionsscheine'
+                    elif _is_etf:
                         _ac, _reg = 'ETF / Fonds', _ticker_to_region(_tkr2)
+                        # Sektor-Look-Through: ETF in echte Branchen aufteilen
+                        _sw_lt = _ETF_SW.get(_tkr2)
+                        if _sw_lt:
+                            _sw_sum = sum(_sw_lt.values()) or 1
+                            for _sn, _sw_w in _sw_lt.items():
+                                _alloc_rows.append({'value': _val * _sw_w / _sw_sum,
+                                                    'asset': _ac, 'region': _reg, 'sector': _sn})
+                            continue
+                        _sec_de = 'ETF / Fonds'
                     else:
                         _ac, _reg = 'Aktien', _ticker_to_region(_tkr2)
+                        _raw_sec = _info2.get('sector', '') or _ISIN_SECTOR_HARD.get(_arow['ISIN'], '')
+                        _sec_de  = _SECTOR_DE.get(_raw_sec, _raw_sec) or 'Sonstige'
 
-                    _raw_sec = _info2.get('sector', '') or _ISIN_SECTOR_HARD.get(_arow['ISIN'], '')
-                    _sec_de = _SECTOR_DE.get(_raw_sec, _raw_sec)
-                    if _ac in ('ETF / Fonds', 'Krypto', 'Optionsscheine'):
-                        _sec_de = _ac
-                    elif not _sec_de:
-                        _sec_de = 'Sonstige'
-
-                    _alloc_rows.append({'value': max(0.0, _val),
-                                        'asset': _ac, 'region': _reg, 'sector': _sec_de})
+                    _alloc_rows.append({'value': _val, 'asset': _ac, 'region': _reg, 'sector': _sec_de})
 
                 _adf = pd.DataFrame(_alloc_rows)
                 _tot = _adf['value'].sum()
