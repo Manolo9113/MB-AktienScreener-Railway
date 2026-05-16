@@ -6877,53 +6877,34 @@ if st.session_state.get("show_portfolio"):
                     _dn_values.append(round(_dnv, 2))
 
             if _dn_labels:
-                _dn_total  = sum(_dn_values)
-                _dn_selkey = f"dn_sel_{_alloc_cache_key}"
-                _dn_sel    = st.session_state.get(_dn_selkey)
-
-                if _dn_sel is not None and 0 <= _dn_sel < len(_dn_labels):
-                    _dn_pct = _dn_values[_dn_sel] / _dn_total * 100
-                    _dn_ann = (f"<b>{_dn_labels[_dn_sel]}</b><br>"
-                               f"€ {_dn_values[_dn_sel]:,.0f}<br>{_dn_pct:.1f}%")
-                else:
-                    _dn_ann = f"<b>Portfolio</b><br>€ {_dn_total:,.0f}"
-
-                _dn_n    = len(_dn_labels)
-                _dn_clrs = [f'hsl({int(200 + i/_dn_n*240)},{55+int(i/_dn_n*15)}%,{48+int(i/_dn_n*10)}%)'
-                            for i in range(_dn_n)]
-                _dn_fig  = go.Figure(go.Pie(
+                _dn_total = sum(_dn_values)
+                # Kontrastreiche Farbpalette — gleichmäßig über alle Farbtöne verteilt
+                _DN_PALETTE = [
+                    '#2196F3','#FF5722','#4CAF50','#E91E63','#FF9800',
+                    '#00BCD4','#9C27B0','#CDDC39','#F44336','#00E676',
+                    '#3F51B5','#FFD600','#009688','#FF4081','#8BC34A',
+                    '#7C4DFF','#FF6D00','#26C6DA','#D500F9','#76FF03',
+                    '#FF1744','#00B0FF','#FFAB40','#69F0AE','#EA80FC',
+                    '#40C4FF','#FF6E40','#B2FF59','#FF80AB','#82B1FF',
+                ]
+                _dn_clrs = [_DN_PALETTE[i % len(_DN_PALETTE)] for i in range(len(_dn_labels))]
+                _dn_fig = go.Figure(go.Pie(
                     labels=_dn_labels, values=_dn_values,
                     hole=0.62, textinfo='none', sort=True,
                     hovertemplate='<b>%{label}</b><br>€ %{value:,.2f}<br>%{percent}<extra></extra>',
-                    marker=dict(colors=_dn_clrs, line=dict(color='#0a1628', width=1.5)),
+                    marker=dict(colors=_dn_clrs, line=dict(color='#0a1628', width=2)),
                 ))
                 _dn_fig.update_layout(
                     template='plotly_dark', paper_bgcolor='#0a1628', plot_bgcolor='#0a1628',
                     showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=340,
                     annotations=[dict(
-                        text=_dn_ann, x=0.5, y=0.5, showarrow=False,
+                        text=f"<b>Portfolio</b><br>€ {_dn_total:,.0f}",
+                        x=0.5, y=0.5, showarrow=False,
                         font=dict(size=13, color='#eceff1'), align='center',
                     )],
                 )
-                _dn_event = st.plotly_chart(
-                    _dn_fig, use_container_width=True,
-                    on_select="rerun", selection_mode="points",
-                    key=f"donut_{_alloc_cache_key}",
-                )
-                # Update center on click
-                if _dn_event and hasattr(_dn_event, 'selection'):
-                    _dn_pts = (getattr(_dn_event.selection, 'points', None)
-                               or (_dn_event.selection.get('points')
-                                   if isinstance(_dn_event.selection, dict) else None))
-                    if _dn_pts:
-                        _dn_new = (_dn_pts[0].get('point_index')
-                                   if isinstance(_dn_pts[0], dict)
-                                   else getattr(_dn_pts[0], 'point_index', None))
-                        if _dn_new is not None and _dn_new != _dn_sel:
-                            st.session_state[_dn_selkey] = _dn_new
-                            st.rerun()
-                    elif _dn_sel is not None:
-                        st.session_state.pop(_dn_selkey, None)
+                st.plotly_chart(_dn_fig, use_container_width=True,
+                                key=f"donut_{_alloc_cache_key}")
 
             st.caption("Kurse in EUR umgerechnet (Wechselkurs via yFinance). P&L basiert auf dem Ø-Kaufkurs aus der Orderhistorie.")
 
