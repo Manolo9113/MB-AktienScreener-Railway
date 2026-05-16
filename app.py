@@ -589,6 +589,31 @@ def _sb_load_portfolio() -> tuple:
         pass
     return None, None
 
+def _save_portfolio_settings(excluded_isins: list, manual_prices: dict) -> bool:
+    """Speichert Portfolio-Korrekturen (Ausschlüsse + manuelle Kurse) auf Railway Volume /data."""
+    try:
+        import os, json
+        data_dir = "/data" if os.path.isdir("/data") else "/tmp"
+        path = os.path.join(data_dir, "portfolio_settings.json")
+        with open(path, "w") as f:
+            json.dump({"excluded_isins": excluded_isins, "manual_prices": manual_prices}, f)
+        return True
+    except Exception:
+        return False
+
+def _load_portfolio_settings() -> dict:
+    """Lädt Portfolio-Korrekturen vom Railway Volume. Gibt {'excluded_isins': [], 'manual_prices': {}} zurück."""
+    try:
+        import os, json
+        data_dir = "/data" if os.path.isdir("/data") else "/tmp"
+        path = os.path.join(data_dir, "portfolio_settings.json")
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
 def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
@@ -3590,6 +3615,11 @@ if "portfolio_sb_checked" not in st.session_state:
     st.session_state["portfolio_sb_checked"] = False
 if "portfolio_sb_date" not in st.session_state:
     st.session_state["portfolio_sb_date"] = None
+if "portfolio_settings_loaded" not in st.session_state:
+    _pf_settings = _load_portfolio_settings()
+    st.session_state["portfolio_excluded_isins"] = _pf_settings.get("excluded_isins", [])
+    st.session_state["portfolio_manual_prices"]  = _pf_settings.get("manual_prices", {})
+    st.session_state["portfolio_settings_loaded"] = True
 
 def _go_to_ticker(t):
     st.session_state["ticker"] = t
@@ -3826,7 +3856,7 @@ def _openfigi_batch(isins: tuple, wkn_by_isin: dict = None) -> dict:
     # Samsung GDR auf LSE (SMSN.L) handelt bei ~218.000 GBp ≈ €2.580 — korrekte Preisreferenz
     # SSNGY/SSNLF sind US-OTC-ADRs mit völlig anderem Preisniveau (~$14) → falsch für Portfolio-Bewertung
     _GDR_HARDCODED = {
-        'US78392B1070': 'HXSC.L',  # SK Hynix GDR → LSE GDR (analog SMSN.L)
+        'US78392B1070': 'HXSCL.L',  # SK Hynix GDR → LSE GDR (analog SMSN.L)
         'US7960502018': 'SMSN.L',  # Samsung GDR Pref → LSE GDR (~€2.580 = 218.000 GBp)
         'US7960508882': 'SMSN.L',  # Samsung GDR Stamm → LSE GDR (~€2.580)
         'CNE100006M58': '0300.HK', # Midea Group H-Aktien → HKEx (~€9,96)
@@ -4008,7 +4038,7 @@ def _portfolio_quote_ext(ticker: str) -> dict:
             # HK-Ticker zero-padden: 300.HK → 0300.HK
             _fmp_candidates = [_base.zfill(4) + '.HK', ticker, _base]
         elif '.' not in ticker and ticker.isalpha():
-            # GDR/OTC/LSE-Ticker (HXSC.L, SMSN.L) — auch .L probieren
+            # GDR/OTC/LSE-Ticker (HXSCL.L, SMSN.L) — auch .L probieren
             _fmp_candidates = [ticker, ticker + '.L', _base]
         for _fmp_sym in _fmp_candidates:
             _r = _fmp_quote(_fmp_sym)
@@ -5968,7 +5998,7 @@ if st.session_state.get("show_portfolio"):
         if _missing_isins and not stocks_etf.empty:
             # GDR → geeigneter Ticker (sync mit _GDR_HARDCODED in _openfigi_batch)
             _GDR_FALLBACK = {
-                'US78392B1070': 'HXSC.L',  # SK Hynix GDR → LSE GDR
+                'US78392B1070': 'HXSCL.L',  # SK Hynix GDR → LSE GDR
                 'US7960502018': 'SMSN.L',  # Samsung GDR Pref → LSE GDR (~€2.580)
                 'US7960508882': 'SMSN.L',  # Samsung GDR Stamm → LSE GDR (~€2.580)
                 'CNE100006M58': '0300.HK', # Midea Group H-Aktien → HKEx
@@ -6165,7 +6195,7 @@ if st.session_state.get("show_portfolio"):
                 # GDR-Ticker direkt in isin_map aktualisieren ohne sie komplett zu löschen
                 _rl_imap = st.session_state.get("portfolio_isin_map", {})
                 for _gi, _gt in {
-                    'US78392B1070': 'HXSC.L',
+                    'US78392B1070': 'HXSCL.L',
                     'US7960502018': 'SMSN.L',
                     'US7960508882': 'SMSN.L',
                     'CNE100006M58': '0300.HK',
@@ -6195,7 +6225,10 @@ if st.session_state.get("show_portfolio"):
                 _new_excl_isins = [_excl_opts[l] for l in _new_excl_lbl]
                 if sorted(_new_excl_isins) != sorted(_cur_excl):
                     st.session_state["portfolio_excluded_isins"] = _new_excl_isins
-                    # Caches invalidieren damit Summen neu berechnet werden
+                    _save_portfolio_settings(
+                        _new_excl_isins,
+                        st.session_state.get("portfolio_manual_prices", {}),
+                    )
                     for _ck in [_alloc_cache_key, f"spark_{_alloc_cache_key}"]:
                         st.session_state.pop(_ck, None)
                     st.rerun()
@@ -6220,10 +6253,13 @@ if st.session_state.get("show_portfolio"):
                         if _unew != _ucur:
                             _man_prices[_uisin] = _unew
                             _changed_mp = True
-                    if _changed_mp and st.button("💾 Kurse speichern", key="pf_save_manual"):
-                        st.session_state["portfolio_manual_prices"] = {
-                            k: v for k, v in _man_prices.items() if v and v > 0
-                        }
+                    if st.button("💾 Kurse speichern", key="pf_save_manual"):
+                        _saved_mp = {k: v for k, v in _man_prices.items() if v and v > 0}
+                        st.session_state["portfolio_manual_prices"] = _saved_mp
+                        _save_portfolio_settings(
+                            st.session_state.get("portfolio_excluded_isins", []),
+                            _saved_mp,
+                        )
                         for _ck in [_prices_cache_key, _alloc_cache_key, f"spark_{_alloc_cache_key}"]:
                             st.session_state.pop(_ck, None)
                         st.rerun()
