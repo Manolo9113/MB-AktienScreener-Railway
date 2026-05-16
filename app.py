@@ -3706,8 +3706,10 @@ def _parse_portfolio_csv(file_bytes: bytes) -> pd.DataFrame:
             df[col].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
             errors='coerce'
         ).fillna(0.0)
-    buys  = df[df['Richtung'] == 'Kauf'].copy()
-    sells = df[df['Richtung'] == 'Verkauf'].copy()
+    _buy_types  = ['Kauf', 'Sparplan', 'Depot-Einbuchung']
+    _sell_types = ['Verkauf', 'Rückgabe', 'Rücknahme', 'Entnahme', 'Depot-Ausbuchung']
+    buys  = df[df['Richtung'].isin(_buy_types)].copy()
+    sells = df[df['Richtung'].isin(_sell_types)].copy()
     if buys.empty:
         return pd.DataFrame()
     buys['_wert_abs'] = buys['Wert'].abs()
@@ -4080,9 +4082,11 @@ def _build_performance(csv_bytes: bytes, benchmark_ticker: str):
         df['Wert'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
         errors='coerce'
     ).fillna(0.0)
+    _sell_types = ['Verkauf', 'Rückgabe', 'Rücknahme', 'Entnahme', 'Depot-Ausbuchung']
+    _buy_types  = ['Kauf', 'Sparplan', 'Depot-Einbuchung']
     df['_eur'] = df['_wert'].abs()
-    df.loc[df['Richtung'] == 'Verkauf', '_eur'] = -df.loc[df['Richtung'] == 'Verkauf', '_wert'].abs()
-    df = df[df['Richtung'].isin(['Kauf', 'Verkauf'])].sort_values('_date').reset_index(drop=True)
+    df.loc[df['Richtung'].isin(_sell_types), '_eur'] = -df.loc[df['Richtung'].isin(_sell_types), '_wert'].abs()
+    df = df[df['Richtung'].isin(_buy_types + _sell_types)].sort_values('_date').reset_index(drop=True)
     if df.empty:
         return None
     first_date = df['_date'].min()
@@ -4197,6 +4201,55 @@ def _ticker_to_region(ticker: str) -> str:
     return 'Sonstige'
 
 
+_SFX_COUNTRY = {
+    'DE':'Deutschland','F':'Deutschland','BE':'Deutschland','MU':'Deutschland','HA':'Deutschland',
+    'PA':'Frankreich',
+    'L':'UK','IL':'UK',
+    'AS':'Niederlande',
+    'MI':'Italien',
+    'MC':'Spanien',
+    'SW':'Schweiz','VX':'Schweiz',
+    'ST':'Schweden',
+    'CO':'Dänemark',
+    'OL':'Norwegen',
+    'HE':'Finnland',
+    'BR':'Belgien',
+    'IR':'Irland',
+    'LS':'Portugal',
+    'VI':'Österreich',
+    'WA':'Polen',
+    'KS':'Südkorea','KQ':'Südkorea',
+    'T':'Japan',
+    'HK':'Hongkong',
+    'SS':'China','SZ':'China',
+    'BO':'Indien','NS':'Indien',
+    'SI':'Singapur',
+    'KL':'Malaysia',
+    'BK':'Thailand',
+    'TW':'Taiwan','TWO':'Taiwan',
+    'AX':'Australien',
+    'NZ':'Neuseeland',
+    'SA':'Brasilien',
+    'MX':'Mexiko',
+    'TO':'Kanada','V':'Kanada','CN':'Kanada',
+}
+
+
+def _ticker_to_country(ticker: str) -> str:
+    if not ticker or '.' not in ticker:
+        return 'USA'
+    sfx = ticker.rsplit('.', 1)[1].upper()
+    return _SFX_COUNTRY.get(sfx, 'USA')
+
+
+_ISIN_SECTOR_HARD = {
+    'US78392B1070': 'Technology',        # SK Hynix GDR
+    'US7960502018': 'Technology',        # Samsung Electronics GDR Pref
+    'US7960508882': 'Technology',        # Samsung Electronics GDR Stamm
+    'CNE100006M58': 'Consumer Cyclical', # Midea Group
+}
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def _get_ticker_info_cached(ticker: str) -> dict:
     """Sektor + QuoteType via yFinance (gecacht 24h). Timeout 4s pro Call."""
@@ -4297,9 +4350,11 @@ def _calc_portfolio_irr(csv_bytes: bytes, current_eur_value: float):
         df['Wert'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
         errors='coerce'
     ).fillna(0.0)
-    df = df[df['Richtung'].isin(['Kauf', 'Verkauf'])].copy()
+    _sell_t = ['Verkauf', 'Rückgabe', 'Rücknahme', 'Entnahme', 'Depot-Ausbuchung']
+    _buy_t  = ['Kauf', 'Sparplan', 'Depot-Einbuchung']
+    df = df[df['Richtung'].isin(_buy_t + _sell_t)].copy()
     df['_cf'] = -df['_wert'].abs()
-    df.loc[df['Richtung'] == 'Verkauf', '_cf'] = df.loc[df['Richtung'] == 'Verkauf', '_wert'].abs()
+    df.loc[df['Richtung'].isin(_sell_t), '_cf'] = df.loc[df['Richtung'].isin(_sell_t), '_wert'].abs()
     df = df.sort_values('_date').reset_index(drop=True)
     if df.empty:
         return None, None, None, None
@@ -4364,7 +4419,8 @@ def _detect_savings_plans(csv_bytes: bytes) -> list:
         return []
     if 'Status' in df.columns:
         df = df[df['Status'] == 'ausgeführt'].copy()
-    df = df[df['Richtung'] == 'Kauf'].copy()
+    _buy_types = ['Kauf', 'Sparplan', 'Depot-Einbuchung']
+    df = df[df['Richtung'].isin(_buy_types)].copy()
     df['_date'] = pd.to_datetime(df[date_col].astype(str).str[:10], dayfirst=True, errors='coerce')
     df = df.dropna(subset=['_date'])
     df['_wert'] = pd.to_numeric(
@@ -4425,8 +4481,10 @@ def _calc_realized_pnl(csv_bytes: bytes) -> dict:
         df[col] = pd.to_numeric(
             df[col].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
             errors='coerce').fillna(0.0)
-    buys  = df[df['Richtung'] == 'Kauf'].copy()
-    sells = df[df['Richtung'] == 'Verkauf'].copy()
+    _buy_types  = ['Kauf', 'Sparplan', 'Depot-Einbuchung']
+    _sell_types = ['Verkauf', 'Rückgabe', 'Rücknahme', 'Entnahme', 'Depot-Ausbuchung']
+    buys  = df[df['Richtung'].isin(_buy_types)].copy()
+    sells = df[df['Richtung'].isin(_sell_types)].copy()
     if buys.empty or sells.empty:
         return {'total_pnl': 0.0, 'total_sell_value': 0.0, 'positions': []}
     buy_agg = (buys.groupby('ISIN')
@@ -6314,9 +6372,12 @@ if st.session_state.get("show_portfolio"):
                     else:
                         _ac, _reg = 'Aktien', _ticker_to_region(_tkr2)
 
-                    _sec_de = _SECTOR_DE.get(_info2.get('sector', ''), _info2.get('sector', ''))
-                    if not _sec_de or _ac in ('ETF / Fonds', 'Krypto', 'Optionsscheine'):
+                    _raw_sec = _info2.get('sector', '') or _ISIN_SECTOR_HARD.get(_arow['ISIN'], '')
+                    _sec_de = _SECTOR_DE.get(_raw_sec, _raw_sec)
+                    if _ac in ('ETF / Fonds', 'Krypto', 'Optionsscheine'):
                         _sec_de = _ac
+                    elif not _sec_de:
+                        _sec_de = 'Sonstige'
 
                     _alloc_rows.append({'value': max(0.0, _val),
                                         'asset': _ac, 'region': _reg, 'sector': _sec_de})
@@ -6399,9 +6460,9 @@ if st.session_state.get("show_portfolio"):
                     elif _lrow.get('is_crypto'):
                         _lt['Krypto'] = _lt.get('Krypto', 0) + _lval
                     elif not _lrow.get('is_warrant'):
-                        # Einzelaktien: Land via Region
-                        _lreg = _ticker_to_region(_ltkr)
-                        _lt[_lreg] = _lt.get(_lreg, 0) + _lval
+                        # Einzelaktien: Land via Börsen-Suffix (spezifische Länder statt Regionen)
+                        _lctry = _ticker_to_country(_ltkr)
+                        _lt[_lctry] = _lt.get(_lctry, 0) + _lval
 
                 _lt_total = sum(_lt.values()) or 1
                 _lt_sorted = sorted(_lt.items(), key=lambda x: x[1], reverse=True)
@@ -6448,22 +6509,6 @@ if st.session_state.get("show_portfolio"):
                     st.markdown("<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
                                 "letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;'>"
                                 "Kontinente</div>", unsafe_allow_html=True)
-                    if len(_cont) > 1:
-                        _cont_fig = go.Figure(go.Pie(
-                            labels=list(_cont.keys()),
-                            values=list(_cont.values()),
-                            hole=0.62,
-                            marker=dict(
-                                colors=[_LT_CLR.get(k,'#546e7a') for k in _cont],
-                                line=dict(color='#0a1628', width=2)),
-                            textinfo='none',
-                            hovertemplate='<b>%{label}</b><br>%{percent}<extra></extra>',
-                        ))
-                        _cont_fig.update_layout(
-                            template='plotly_dark', paper_bgcolor='#0a1628',
-                            plot_bgcolor='#0a1628', showlegend=False, height=200,
-                            margin=dict(l=5, r=5, t=5, b=5))
-                        st.plotly_chart(_cont_fig, use_container_width=True)
                     for _co, _cv in _cont.items():
                         _cpct = _cv / _lt_total * 100
                         _cclr = _LT_CLR.get(_co, '#546e7a')
@@ -6473,6 +6518,22 @@ if st.session_state.get("show_portfolio"):
                             f"<span style='color:{_cclr};font-size:0.78rem;'>● {_co}</span>"
                             f"<span style='color:#90a4ae;font-size:0.78rem;font-weight:600;'>"
                             f"{_cpct:.1f}%</span></div>", unsafe_allow_html=True)
+                    if len(_cont) > 1:
+                        _cont_fig = go.Figure(go.Pie(
+                            labels=list(_cont.keys()),
+                            values=list(_cont.values()),
+                            hole=0.62,
+                            marker=dict(
+                                colors=[_LT_CLR.get(k, '#546e7a') for k in _cont],
+                                line=dict(color='#0a1628', width=2)),
+                            textinfo='none',
+                            hovertemplate='<b>%{label}</b><br>%{percent}<extra></extra>',
+                        ))
+                        _cont_fig.update_layout(
+                            template='plotly_dark', paper_bgcolor='#0a1628',
+                            plot_bgcolor='#0a1628', showlegend=False, height=200,
+                            margin=dict(l=5, r=5, t=10, b=5))
+                        st.plotly_chart(_cont_fig, use_container_width=True)
 
                 _lt_note = ""
                 if _lt_etfs_found:
