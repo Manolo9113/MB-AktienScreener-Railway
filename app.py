@@ -6831,6 +6831,71 @@ if st.session_state.get("show_portfolio"):
                         unsafe_allow_html=True)
 
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+            # ── Positions-Donut ──────────────────────────────────────
+            _dn_labels, _dn_values = [], []
+            for _, _dnr in stocks_etf.iterrows():
+                _dnp = prices.get(_dnr['ISIN'])
+                _dnv = (_dnp * _dnr['shares']) if _dnp else _dnr['cost_basis']
+                if _dnv > 0:
+                    _dn_labels.append(_dnr['name'][:30])
+                    _dn_values.append(round(_dnv, 2))
+            for _, _dnr in crypto.iterrows():
+                _dnp = _crypto_prices.get(_dnr['ISIN'])
+                _dnv = (_dnp * _dnr['shares']) if _dnp else _dnr['cost_basis']
+                if _dnv > 0:
+                    _dn_labels.append(f"₿ {_dnr['name'][:24]}")
+                    _dn_values.append(round(_dnv, 2))
+
+            if _dn_labels:
+                _dn_total  = sum(_dn_values)
+                _dn_selkey = f"dn_sel_{_alloc_cache_key}"
+                _dn_sel    = st.session_state.get(_dn_selkey)
+
+                if _dn_sel is not None and 0 <= _dn_sel < len(_dn_labels):
+                    _dn_pct = _dn_values[_dn_sel] / _dn_total * 100
+                    _dn_ann = (f"<b>{_dn_labels[_dn_sel]}</b><br>"
+                               f"€ {_dn_values[_dn_sel]:,.0f}<br>{_dn_pct:.1f}%")
+                else:
+                    _dn_ann = f"<b>Portfolio</b><br>€ {_dn_total:,.0f}"
+
+                _dn_n    = len(_dn_labels)
+                _dn_clrs = [f'hsl({int(200 + i/_dn_n*240)},{55+int(i/_dn_n*15)}%,{48+int(i/_dn_n*10)}%)'
+                            for i in range(_dn_n)]
+                _dn_fig  = go.Figure(go.Pie(
+                    labels=_dn_labels, values=_dn_values,
+                    hole=0.62, textinfo='none', sort=True,
+                    hovertemplate='<b>%{label}</b><br>€ %{value:,.2f}<br>%{percent}<extra></extra>',
+                    marker=dict(colors=_dn_clrs, line=dict(color='#0a1628', width=1.5)),
+                ))
+                _dn_fig.update_layout(
+                    template='plotly_dark', paper_bgcolor='#0a1628', plot_bgcolor='#0a1628',
+                    showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=340,
+                    annotations=[dict(
+                        text=_dn_ann, x=0.5, y=0.5, showarrow=False,
+                        font=dict(size=13, color='#eceff1'), align='center',
+                    )],
+                )
+                _dn_event = st.plotly_chart(
+                    _dn_fig, use_container_width=True,
+                    on_select="rerun", selection_mode="points",
+                    key=f"donut_{_alloc_cache_key}",
+                )
+                # Update center on click
+                if _dn_event and hasattr(_dn_event, 'selection'):
+                    _dn_pts = (getattr(_dn_event.selection, 'points', None)
+                               or (_dn_event.selection.get('points')
+                                   if isinstance(_dn_event.selection, dict) else None))
+                    if _dn_pts:
+                        _dn_new = (_dn_pts[0].get('point_index')
+                                   if isinstance(_dn_pts[0], dict)
+                                   else getattr(_dn_pts[0], 'point_index', None))
+                        if _dn_new is not None and _dn_new != _dn_sel:
+                            st.session_state[_dn_selkey] = _dn_new
+                            st.rerun()
+                    elif _dn_sel is not None:
+                        st.session_state.pop(_dn_selkey, None)
+
             st.caption("Kurse in EUR umgerechnet (Wechselkurs via yFinance). P&L basiert auf dem Ø-Kaufkurs aus der Orderhistorie.")
 
             # ── Sparplan-Erkennung ────────────────────────────────────
@@ -8361,27 +8426,26 @@ if st.session_state.get("show_etf_analyzer"):
         # ETF-Beschreibung
         _desc = _ei.get('description', '')
         if _desc:
-            # Max. 3 Sätze anzeigen, Rest ausklappbar
-            _sentences = [s.strip() for s in _desc.replace('\n', ' ').split('. ') if s.strip()]
+            _sentences  = [s.strip() for s in _desc.replace('\n', ' ').split('. ') if s.strip()]
             _desc_short = '. '.join(_sentences[:3]) + ('.' if len(_sentences) > 3 else '')
             _desc_rest  = '. '.join(_sentences[3:]) + '.' if len(_sentences) > 3 else ''
-            _desc_id = f"desc_{_etf_tkr.replace('.','_')}"
-            _desc_html = (
+            _desc_key   = f"etf_desc_exp_{_etf_tkr}"
+            _desc_exp   = st.session_state.get(_desc_key, False)
+            _shown_txt  = (_desc_short + ' ' + _desc_rest) if (_desc_rest and _desc_exp) else _desc_short
+            st.markdown(
                 f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
-                f"padding:10px 14px;margin-top:4px;margin-bottom:4px;'>"
+                f"padding:10px 14px;margin-top:4px;margin-bottom:2px;'>"
                 f"<div style='color:#78909c;font-size:0.65rem;text-transform:uppercase;"
                 f"letter-spacing:.08em;margin-bottom:5px;'>📋 Beschreibung</div>"
-                f"<div style='color:#cfd8dc;font-size:0.82rem;line-height:1.55;'>{_desc_short}"
-            )
+                f"<div style='color:#cfd8dc;font-size:0.82rem;line-height:1.55;'>{_shown_txt}</div>"
+                f"</div>", unsafe_allow_html=True)
             if _desc_rest:
-                _desc_html += (
-                    f"<span id='more_{_desc_id}' style='display:none;'> {_desc_rest}</span>"
-                    f" <span onclick=\"document.getElementById('more_{_desc_id}').style.display='inline';"
-                    f"this.style.display='none';\" style='color:#64b5f6;cursor:pointer;"
-                    f"font-size:0.75rem;'>Mehr anzeigen ▾</span>"
-                )
-            _desc_html += "</div></div>"
-            st.markdown(_desc_html, unsafe_allow_html=True)
+                if st.button(
+                    "Weniger anzeigen ▴" if _desc_exp else "Mehr anzeigen ▾",
+                    key=f"desc_btn_{_etf_tkr}",
+                ):
+                    st.session_state[_desc_key] = not _desc_exp
+                    st.rerun()
     with _h2:
         if st.button("🔄 Ähnliche ETFs", use_container_width=True, key="btn_similar"):
             st.session_state["etf_show_similar"] = not st.session_state.get("etf_show_similar", False)
