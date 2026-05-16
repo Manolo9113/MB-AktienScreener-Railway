@@ -3822,12 +3822,14 @@ def _openfigi_batch(isins: tuple, wkn_by_isin: dict = None) -> dict:
                 pass
             time.sleep(0.2)
 
-    # GDR → US-OTC-Ticker (FMP/yFinance von Railway aus erreichbar; KRX ist blockiert)
+    # GDR → geeigneter Ticker (erreichbar von Railway; KRX ist geblockt)
+    # Samsung GDR auf LSE (SMSN.L) handelt bei ~218.000 GBp ≈ €2.580 — korrekte Preisreferenz
+    # SSNGY/SSNLF sind US-OTC-ADRs mit völlig anderem Preisniveau (~$14) → falsch für Portfolio-Bewertung
     _GDR_HARDCODED = {
-        'US78392B1070': 'HXSCL',   # SK Hynix GDR → US OTC
-        'US7960502018': 'SSNGY',   # Samsung Electronics GDR Pref → US OTC
-        'US7960508882': 'SSNLF',   # Samsung Electronics GDR → US OTC
-        'CNE100006M58': '0300.HK', # Midea Group H-Aktien → HKEx
+        'US78392B1070': 'HXSCL',   # SK Hynix GDR → US OTC (~€1.070)
+        'US7960502018': 'SMSN.L',  # Samsung GDR Pref → LSE GDR (~€2.580 = 218.000 GBp)
+        'US7960508882': 'SMSN.L',  # Samsung GDR Stamm → LSE GDR (~€2.580)
+        'CNE100006M58': '0300.HK', # Midea Group H-Aktien → HKEx (~€9,96)
     }
     for isin in valids:
         if isin in _GDR_HARDCODED:
@@ -5946,11 +5948,11 @@ if st.session_state.get("show_portfolio"):
         _missing_isins = [i for i in _all_isins if prices.get(i) is None]
         _prices_loaded = len(_missing_isins) == 0
         if _missing_isins and not stocks_etf.empty:
-            # GDR → US-OTC-Ticker (FMP erreichbar; KRX von Railway aus geblockt)
+            # GDR → geeigneter Ticker (sync mit _GDR_HARDCODED in _openfigi_batch)
             _GDR_FALLBACK = {
                 'US78392B1070': 'HXSCL',   # SK Hynix GDR → US OTC
-                'US7960502018': 'SSNGY',   # Samsung Electronics GDR Pref → US OTC
-                'US7960508882': 'SSNLF',   # Samsung Electronics GDR → US OTC
+                'US7960502018': 'SMSN.L',  # Samsung GDR Pref → LSE GDR (~€2.580)
+                'US7960508882': 'SMSN.L',  # Samsung GDR Stamm → LSE GDR (~€2.580)
                 'CNE100006M58': '0300.HK', # Midea Group H-Aktien → HKEx
             }
             for _gdr_isin, _gdr_tkr in _GDR_FALLBACK.items():
