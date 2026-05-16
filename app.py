@@ -6294,22 +6294,34 @@ if st.session_state.get("show_portfolio"):
             stocks_etf = stocks_etf[~stocks_etf['ISIN'].isin(_excl_set)].copy()
             crypto     = crypto[~crypto['ISIN'].isin(_excl_set)].copy()
 
-        # Manuell eingegebene Anteile übernehmen (überschreibt CSV-Berechnung)
+        # Manuelle Anteils-Korrektur via gespeichertem Delta (Δ = Zielwert − CSV-Wert zum Speicherzeitpunkt).
+        # Delta wird auf aktuelle CSV-Stückzahl addiert → neue Käufe fließen automatisch ein.
         _man_shares = st.session_state.get("portfolio_manual_shares", {})
-        for _msisin, _msval in _man_shares.items():
-            if _msval and float(_msval) > 0:
-                _ms_mask = stocks_etf['ISIN'] == _msisin
-                if _ms_mask.any():
-                    stocks_etf.loc[_ms_mask, 'shares'] = float(_msval)
-                    stocks_etf.loc[_ms_mask, 'cost_basis'] = (
-                        stocks_etf.loc[_ms_mask, 'avg_cost'] * float(_msval)
-                    )
-                _mc_mask = crypto['ISIN'] == _msisin
-                if _mc_mask.any():
-                    crypto.loc[_mc_mask, 'shares'] = float(_msval)
-                    crypto.loc[_mc_mask, 'cost_basis'] = (
-                        crypto.loc[_mc_mask, 'avg_cost'] * float(_msval)
-                    )
+        for _msisin, _ms_entry in _man_shares.items():
+            # Neues Format: {"delta": float, "csv_at_save": float}  |  altes Format: float (Migration)
+            if isinstance(_ms_entry, dict):
+                _ms_delta = float(_ms_entry.get("delta", 0))
+            else:
+                # Altes Format (absoluter Wert) — einmalig als Delta interpretieren
+                # indem der gespeicherte Wert direkt als Zielwert behandelt wird:
+                # Delta = gespeicherter_Wert − 0  (wird beim nächsten Speichern korrekt ersetzt)
+                _ms_delta = float(_ms_entry)
+            if _ms_delta == 0:
+                continue
+            _ms_mask = stocks_etf['ISIN'] == _msisin
+            if _ms_mask.any():
+                _ms_new = (stocks_etf.loc[_ms_mask, 'shares'] + _ms_delta).clip(lower=0)
+                stocks_etf.loc[_ms_mask, 'shares'] = _ms_new
+                stocks_etf.loc[_ms_mask, 'cost_basis'] = (
+                    stocks_etf.loc[_ms_mask, 'avg_cost'] * _ms_new
+                )
+            _mc_mask = crypto['ISIN'] == _msisin
+            if _mc_mask.any():
+                _mc_new = (crypto.loc[_mc_mask, 'shares'] + _ms_delta).clip(lower=0)
+                crypto.loc[_mc_mask, 'shares'] = _mc_new
+                crypto.loc[_mc_mask, 'cost_basis'] = (
+                    crypto.loc[_mc_mask, 'avg_cost'] * _mc_new
+                )
 
         # Cache-Key: stabil basierend auf CSV-Inhalt (NICHT auf isin_map — die ändert sich beim FMP-Fallback!)
         _csv_b = st.session_state.get("portfolio_csv_bytes") or b""
@@ -6611,30 +6623,47 @@ if st.session_state.get("show_portfolio"):
 
             st.markdown("---")
             st.markdown("**Anteile manuell korrigieren**")
-            st.caption("Für Broker-Fehler bei Sparplänen: tatsächliche Stückzahl überschreiben (wird dauerhaft gespeichert).")
+            st.caption(
+                "Tatsächliche Stückzahl eingeben. Neue Käufe in späteren CSVs werden "
+                "automatisch dazugerechnet — einmal eingeben reicht."
+            )
             _man_shr = dict(st.session_state.get("portfolio_manual_shares", {}))
             _all_pf_rows = [r for _, r in df_port.iterrows() if r['ISIN'] not in _excl_set]
             _shr_cols = st.columns(3)
-            _changed_shr = False
             for _si, _srow in enumerate(_all_pf_rows):
-                _sisin  = _srow['ISIN']
-                _csv_sh = float(_srow['shares'])
-                _cur_sh = float(_man_shr.get(_sisin, 0.0))
+                _sisin   = _srow['ISIN']
+                _csv_sh  = float(_srow['shares'])   # roher CSV-Wert (noch kein Delta)
+                _entry   = _man_shr.get(_sisin)
+                # Aus gespeichertem Delta aktuellen Zielwert berechnen
+                if isinstance(_entry, dict):
+                    _stored_delta = float(_entry.get("delta", 0))
+                elif _entry:
+                    _stored_delta = float(_entry)   # altes Format: war absoluter Wert, jetzt als Delta
+                else:
+                    _stored_delta = 0.0
+                _display_val = max(0.0, _csv_sh + _stored_delta) if _stored_delta else 0.0
                 with _shr_cols[_si % 3]:
-                    _new_sh = st.number_input(
+                    _new_abs = st.number_input(
                         f"{_srow['name'][:28]}",
                         min_value=0.0,
-                        value=_cur_sh if _cur_sh > 0 else 0.0,
+                        value=_display_val,
                         step=0.001,
                         format="%.4f",
                         key=f"ms_{_sisin}",
-                        help=f"ISIN: {_sisin} · CSV: {_csv_sh:.4f} Stk.",
+                        help=(
+                            f"ISIN: {_sisin}\n"
+                            f"CSV-Wert: {_csv_sh:.4f} Stk.\n"
+                            f"{'Gespeichertes Δ: {:+.4f} Stk.'.format(_stored_delta) if _stored_delta else 'Noch keine Korrektur gespeichert'}\n"
+                            f"0 = Korrektur entfernen"
+                        ),
                     )
-                    if _new_sh != _cur_sh:
-                        _man_shr[_sisin] = _new_sh
-                        _changed_shr = True
+                    _new_delta = round(_new_abs - _csv_sh, 6) if _new_abs > 0 else 0.0
+                    _man_shr[_sisin] = {"delta": _new_delta, "csv_at_save": _csv_sh}
             if st.button("💾 Anteile speichern", key="pf_save_shares"):
-                _saved_shr = {k: v for k, v in _man_shr.items() if v and v > 0}
+                _saved_shr = {
+                    k: v for k, v in _man_shr.items()
+                    if (v.get("delta", 0) if isinstance(v, dict) else v) != 0
+                }
                 st.session_state["portfolio_manual_shares"] = _saved_shr
                 _save_portfolio_settings(
                     st.session_state.get("portfolio_excluded_isins", []),
