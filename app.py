@@ -3826,7 +3826,7 @@ def _openfigi_batch(isins: tuple, wkn_by_isin: dict = None) -> dict:
     # Samsung GDR auf LSE (SMSN.L) handelt bei ~218.000 GBp ≈ €2.580 — korrekte Preisreferenz
     # SSNGY/SSNLF sind US-OTC-ADRs mit völlig anderem Preisniveau (~$14) → falsch für Portfolio-Bewertung
     _GDR_HARDCODED = {
-        'US78392B1070': 'HXSCL',   # SK Hynix GDR → US OTC (~€1.070)
+        'US78392B1070': 'HXSC.L',  # SK Hynix GDR → LSE GDR (analog SMSN.L)
         'US7960502018': 'SMSN.L',  # Samsung GDR Pref → LSE GDR (~€2.580 = 218.000 GBp)
         'US7960508882': 'SMSN.L',  # Samsung GDR Stamm → LSE GDR (~€2.580)
         'CNE100006M58': '0300.HK', # Midea Group H-Aktien → HKEx (~€9,96)
@@ -4008,7 +4008,7 @@ def _portfolio_quote_ext(ticker: str) -> dict:
             # HK-Ticker zero-padden: 300.HK → 0300.HK
             _fmp_candidates = [_base.zfill(4) + '.HK', ticker, _base]
         elif '.' not in ticker and ticker.isalpha():
-            # GDR/OTC/LSE-Ticker (HXSCL, SSNGY, SMSN) — auch .L probieren
+            # GDR/OTC/LSE-Ticker (HXSC.L, SMSN.L) — auch .L probieren
             _fmp_candidates = [ticker, ticker + '.L', _base]
         for _fmp_sym in _fmp_candidates:
             _r = _fmp_quote(_fmp_sym)
@@ -5957,7 +5957,7 @@ if st.session_state.get("show_portfolio"):
         if _missing_isins and not stocks_etf.empty:
             # GDR → geeigneter Ticker (sync mit _GDR_HARDCODED in _openfigi_batch)
             _GDR_FALLBACK = {
-                'US78392B1070': 'HXSCL',   # SK Hynix GDR → US OTC
+                'US78392B1070': 'HXSC.L',  # SK Hynix GDR → LSE GDR
                 'US7960502018': 'SMSN.L',  # Samsung GDR Pref → LSE GDR (~€2.580)
                 'US7960508882': 'SMSN.L',  # Samsung GDR Stamm → LSE GDR (~€2.580)
                 'CNE100006M58': '0300.HK', # Midea Group H-Aktien → HKEx
@@ -6154,7 +6154,7 @@ if st.session_state.get("show_portfolio"):
                 # GDR-Ticker direkt in isin_map aktualisieren ohne sie komplett zu löschen
                 _rl_imap = st.session_state.get("portfolio_isin_map", {})
                 for _gi, _gt in {
-                    'US78392B1070': 'HXSCL',
+                    'US78392B1070': 'HXSC.L',
                     'US7960502018': 'SMSN.L',
                     'US7960508882': 'SMSN.L',
                     'CNE100006M58': '0300.HK',
@@ -8255,8 +8255,17 @@ if st.session_state.get("show_etf_analyzer"):
             _ki_factors = ', '.join(t for t, *_ in _factor_tags) if _factor_tags else 'Keine erkannt'
             # Top-Holdings
             _ki_top = ''
-            if _th:
-                _ki_top = '\n'.join(f"  - {h[0]}: {h[1]:.1f}%" for h in _th[:8] if len(h) >= 2)
+            if _th is not None and not _th.empty:
+                _ki_name_col = next((c for c in ['holdingName','name','Symbol','symbol'] if c in _th.columns), None)
+                _ki_wgt_col  = next((c for c in ['holdingPercent','Holding Percent','weight','Weight'] if c in _th.columns), None)
+                _ki_rows = []
+                for _, _kirow in _th.head(8).iterrows():
+                    _kin = str(_kirow[_ki_name_col])[:30] if _ki_name_col else '—'
+                    _kiw = _kirow[_ki_wgt_col] if _ki_wgt_col else None
+                    if _kiw is not None:
+                        _kiwp = (_kiw * 100) if isinstance(_kiw, float) and _kiw <= 1 else _kiw
+                        _ki_rows.append(f"  - {_kin}: {float(_kiwp):.1f}%")
+                _ki_top = '\n'.join(_ki_rows)
             # Sektor-Gewichtung
             _ki_sw = ''
             if _sw:
