@@ -6696,11 +6696,6 @@ if st.session_state.get("show_portfolio"):
         if _prices_just_fetched:
             st.rerun()
 
-        # ── Render-Diagnose (wird nach Debugging-Phase entfernt) ──────
-        _render_count = st.session_state.get("_dbg_render_count", 0) + 1
-        st.session_state["_dbg_render_count"] = _render_count
-        st.caption(f"🔄 Render #{_render_count} · missing_prices={len(_missing_isins)} · prices_fetched={_prices_just_fetched} · crypto_cached={'✓' if _crypto_cache_key in st.session_state else '✗'}")
-
         # ── Zusammenfassung ──────────────────────────────────────────
         total_invested = df_port['cost_basis'].sum()
         current_vals = []
@@ -7659,9 +7654,17 @@ if st.session_state.get("show_portfolio"):
             st.caption("ETFs werden auf ihre Top-Holdings aufgebrochen und mit Direktinvestments kombiniert. "
                        "Nur die Top-25 Holdings je ETF werden berücksichtigt (≈40–70% des ETF-Werts).")
 
-            # ── Holdings-Breakdown (einmalig pro Session gecacht) ──
+            # ── Holdings-Breakdown (auf Knopfdruck, einmalig gecacht) ──
+            _hb_load_key = f"hb_load_{_alloc_cache_key}"
             if _hb_cache_key not in st.session_state:
-                if True:
+                if not st.session_state.get(_hb_load_key):
+                    st.info("ETF Look-Through analysiert die echten Holdings deiner ETFs. "
+                            "Lädt ~15–60 Sek. (je nach Anzahl ETFs), danach für diese Sitzung gespeichert.")
+                    if st.button("🔍 Holdings laden", type="primary", key="btn_hb_load",
+                                 use_container_width=True):
+                        st.session_state[_hb_load_key] = True
+                        st.rerun()
+                if st.session_state.get(_hb_load_key):
                     _hb_w: dict = {}
                     _hb_etfs_w: list = []
                     for _, _hr in stocks_etf.iterrows():
