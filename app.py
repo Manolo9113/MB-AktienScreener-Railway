@@ -6469,6 +6469,75 @@ if st.session_state.get("show_portfolio"):
                 st.session_state[_alloc_cache_key] = _alloc_infos
             st.session_state[_sec_loaded_key] = True
 
+        # ── Holdings-Breakdown einmalig berechnen (ETF Look-Through) ──────────
+        _hb_cache_key = f"hb_{_alloc_cache_key}"
+        if _hb_cache_key not in st.session_state:
+            _hb_work: dict = {}
+            _hb_etfs_work: list = []
+            # 1. Direkte Einzelwert-Positionen
+            for _, _hr in stocks_etf.iterrows():
+                _hisin = _hr['ISIN']
+                _htkr  = isin_map.get(_hisin, '')
+                _hinf  = _alloc_infos.get(_hisin, {})
+                _his_etf = (_hinf.get('quote_type') == 'ETF' or
+                            _htkr in _ETF_CW or _htkr in _ETF_SW)
+                if _his_etf:
+                    continue
+                _hprc = prices.get(_hisin)
+                _hval = max(0.0, (_hprc if _hprc else _hr['avg_cost']) * _hr['shares'])
+                _hkey = _htkr or _hr['name']
+                if _hkey not in _hb_work:
+                    _hb_work[_hkey] = {'name': _hr['name'], 'ticker': _htkr,
+                                       'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
+                _hb_work[_hkey]['direct'] += _hval
+            # 2. ETF Look-Through
+            _hb_etf_rows = [(isin_map.get(_hr['ISIN'], ''), _hr)
+                            for _, _hr in stocks_etf.iterrows()
+                            if ((_alloc_infos.get(_hr['ISIN'], {}).get('quote_type') == 'ETF') or
+                                isin_map.get(_hr['ISIN'], '') in _ETF_CW or
+                                isin_map.get(_hr['ISIN'], '') in _ETF_SW)
+                            and isin_map.get(_hr['ISIN'], '')]
+            if _hb_etf_rows:
+                _hb_prog = st.progress(0, f"Holdings: 0 / {len(_hb_etf_rows)}…")
+                for _hei, (_htkr2, _hr2) in enumerate(_hb_etf_rows):
+                    _hb_prog.progress((_hei + 1) / len(_hb_etf_rows),
+                                      f"Holdings: {_hei+1} / {len(_hb_etf_rows)} — {_hr2['name'][:30]}…")
+                    _hprc2  = prices.get(_hr2['ISIN'])
+                    _heval  = max(0.0, (_hprc2 if _hprc2 else _hr2['avg_cost']) * _hr2['shares'])
+                    _hetf_lbl = _hr2['name'][:28]
+                    _hholdings = _etf_top_holdings_cached(_htkr2)
+                    if _hholdings:
+                        _hb_etfs_work.append(_hetf_lbl)
+                    for _hn, _hs, _hw in _hholdings:
+                        _hkey2 = _hs if _hs and _hs not in ('nan', 'None') else _hn
+                        _hexposure = _heval * _hw
+                        if _hkey2 not in _hb_work:
+                            _hb_work[_hkey2] = {'name': _hn, 'ticker': _hs,
+                                                'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
+                        _hb_work[_hkey2]['etf_eur'] += _hexposure
+                        _hb_work[_hkey2]['sources'][_hetf_lbl] = \
+                            _hb_work[_hkey2]['sources'].get(_hetf_lbl, 0.0) + _hexposure
+                _hb_prog.empty()
+            # 3. Merge direkte Werte mit ETF-Positionen (gleicher Basis-Ticker)
+            _hb_merged_work: dict = {}
+            for _hk, _hd in _hb_work.items():
+                _hticker = (_hd['ticker'] or '').upper().split('.')[0]
+                _hmatched = None
+                for _ek, _ed in _hb_merged_work.items():
+                    _eticker = (_ed['ticker'] or '').upper().split('.')[0]
+                    if _hticker and _eticker and _hticker == _eticker:
+                        _hmatched = _ek
+                        break
+                if _hmatched:
+                    _hb_merged_work[_hmatched]['direct']  += _hd['direct']
+                    _hb_merged_work[_hmatched]['etf_eur'] += _hd['etf_eur']
+                    for _sn, _sv in _hd['sources'].items():
+                        _hb_merged_work[_hmatched]['sources'][_sn] = \
+                            _hb_merged_work[_hmatched]['sources'].get(_sn, 0) + _sv
+                else:
+                    _hb_merged_work[_hk] = dict(_hd)
+            st.session_state[_hb_cache_key] = (_hb_merged_work, _hb_etfs_work)
+
         with tab_pos:
           try:
             if not _sparklines and not stocks_etf.empty:
@@ -7151,73 +7220,8 @@ if st.session_state.get("show_portfolio"):
             st.caption("ETFs werden auf ihre Top-Holdings aufgebrochen und mit Direktinvestments kombiniert. "
                        "Nur die Top-25 Holdings je ETF werden berücksichtigt (≈40–70% des ETF-Werts).")
 
-            # ── Breakdown aufbauen ──────────────────────────────────────────────
-            _hb: dict = {}  # key (ticker|name) → {name, ticker, direct, etf_eur, sources}
-            _hb_etfs_loaded: list = []
-
-            # 1. Direkte Einzelwert-Positionen
-            for _, _hr in stocks_etf.iterrows():
-                _hisin = _hr['ISIN']
-                _htkr  = isin_map.get(_hisin, '')
-                _hinf  = _alloc_infos.get(_hisin, {})
-                _his_etf = (_hinf.get('quote_type') == 'ETF' or
-                            _htkr in _ETF_CW or _htkr in _ETF_SW)
-                if _his_etf:
-                    continue
-                _hprc = prices.get(_hisin)
-                _hval = max(0.0, (_hprc if _hprc else _hr['avg_cost']) * _hr['shares'])
-                _hkey = _htkr or _hr['name']
-                if _hkey not in _hb:
-                    _hb[_hkey] = {'name': _hr['name'], 'ticker': _htkr,
-                                  'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
-                _hb[_hkey]['direct'] += _hval
-
-            # 2. ETF Look-Through
-            _hb_prog_slot = st.empty()
-            _hb_etf_rows = [(isin_map.get(_hr['ISIN'],''), _hr)
-                            for _, _hr in stocks_etf.iterrows()
-                            if ((_alloc_infos.get(_hr['ISIN'],{}).get('quote_type')=='ETF') or
-                                isin_map.get(_hr['ISIN'],'') in _ETF_CW or
-                                isin_map.get(_hr['ISIN'],'') in _ETF_SW)
-                            and isin_map.get(_hr['ISIN'],'')]
-            for _hei, (_htkr2, _hr2) in enumerate(_hb_etf_rows):
-                _hb_prog_slot.caption(f"Lade ETF-Holdings: {_hei+1}/{len(_hb_etf_rows)} — {_hr2['name'][:40]}…")
-                _hprc2  = prices.get(_hr2['ISIN'])
-                _heval  = max(0.0, (_hprc2 if _hprc2 else _hr2['avg_cost']) * _hr2['shares'])
-                _hetf_lbl = _hr2['name'][:28]
-                _hholdings = _etf_top_holdings_cached(_htkr2)
-                if _hholdings:
-                    _hb_etfs_loaded.append(_hetf_lbl)
-                for _hn, _hs, _hw in _hholdings:
-                    _hkey2 = _hs if _hs and _hs not in ('nan','None') else _hn
-                    _hexposure = _heval * _hw
-                    if _hkey2 not in _hb:
-                        _hb[_hkey2] = {'name': _hn, 'ticker': _hs,
-                                       'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
-                    _hb[_hkey2]['etf_eur'] += _hexposure
-                    _hb[_hkey2]['sources'][_hetf_lbl] = \
-                        _hb[_hkey2]['sources'].get(_hetf_lbl, 0.0) + _hexposure
-            _hb_prog_slot.empty()
-
-            # ── Direkte Werte mit ISIN-Match aus ETFs zusammenführen ────────────
-            # Wenn ticker eines Direktinvestments mit ETF-Holding-Symbol übereinstimmt, zusammenfassen
-            _hb_merged: dict = {}
-            for _hk, _hd in _hb.items():
-                _hticker = (_hd['ticker'] or '').upper().split('.')[0]
-                _hmatched = None
-                for _ek, _ed in _hb_merged.items():
-                    _eticker = (_ed['ticker'] or '').upper().split('.')[0]
-                    if _hticker and _eticker and _hticker == _eticker:
-                        _hmatched = _ek
-                        break
-                if _hmatched:
-                    _hb_merged[_hmatched]['direct']  += _hd['direct']
-                    _hb_merged[_hmatched]['etf_eur']  += _hd['etf_eur']
-                    for _sn, _sv in _hd['sources'].items():
-                        _hb_merged[_hmatched]['sources'][_sn] = \
-                            _hb_merged[_hmatched]['sources'].get(_sn, 0) + _sv
-                else:
-                    _hb_merged[_hk] = dict(_hd)
+            # ── Aus Session-State lesen (Computation läuft einmalig vor st.tabs()) ──
+            _hb_merged, _hb_etfs_loaded = st.session_state.get(_hb_cache_key, ({}, []))
 
             # ── Sortieren und anzeigen ──────────────────────────────────────────
             _hb_list = sorted(
