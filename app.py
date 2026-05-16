@@ -3787,6 +3787,7 @@ _ETF_SW: dict = {
                 'IT & Technologie':10.0,'Grundstoffe':5.0},
 }
 
+_CONTINENT_MAP = {
     'USA':'Nordamerika','Kanada':'Nordamerika','Mexiko':'Nordamerika',
     'UK':'Europa','Deutschland':'Europa','Frankreich':'Europa','Schweiz':'Europa',
     'Niederlande':'Europa','Schweden':'Europa','Dänemark':'Europa','Spanien':'Europa',
