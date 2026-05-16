@@ -6441,36 +6441,36 @@ if st.session_state.get("show_portfolio"):
         tab_pos, tab_alloc, tab_perf, tab_holdings = st.tabs(
             ["📊 Positionen", "🥧 Aufteilung", "📈 Performance", "🔍 Holdings"])
 
+        # ── Analyst- und Sektor-Daten laden (einmalig vor Tab-Anzeige) ──────────
+        if not _alloc_infos and not stocks_etf.empty:
+            _ai_isins = [(isin_map.get(i), i)
+                         for i in stocks_etf.nlargest(10, 'cost_basis')['ISIN']
+                         if isin_map.get(i)]
+            if _ai_isins:
+                _aprog = st.progress(0, f"Analyst-Daten: 0 / {len(_ai_isins)}…")
+                for _aii, (_at, _ai) in enumerate(_ai_isins, 1):
+                    _alloc_infos[_ai] = _get_ticker_info_cached(_at)
+                    _aprog.progress(_aii / len(_ai_isins),
+                                    f"Analyst-Daten: {_aii} / {len(_ai_isins)}…")
+                _aprog.empty()
+                st.session_state[_alloc_cache_key] = _alloc_infos
+        _sec_loaded_key = f"sec_loaded_{_alloc_cache_key}"
+        if not st.session_state.get(_sec_loaded_key) and not stocks_etf.empty:
+            _sec_missing = [(isin_map.get(r['ISIN']), r['ISIN'])
+                            for _, r in stocks_etf.iterrows()
+                            if r['ISIN'] not in _alloc_infos and isin_map.get(r['ISIN'])]
+            if _sec_missing:
+                _sprog = st.progress(0, f"Sektordaten: 0 / {len(_sec_missing)}…")
+                for _sii, (_stk, _sisin) in enumerate(_sec_missing, 1):
+                    _alloc_infos[_sisin] = _get_ticker_info_cached(_stk)
+                    _sprog.progress(_sii / len(_sec_missing),
+                                    f"Sektordaten: {_sii} / {len(_sec_missing)}…")
+                _sprog.empty()
+                st.session_state[_alloc_cache_key] = _alloc_infos
+            st.session_state[_sec_loaded_key] = True
+
         with tab_pos:
           try:
-            # ── Analyst-Daten lazy laden (Top-10, einmalig pro Session) ──
-            if not _alloc_infos and not stocks_etf.empty:
-                _ai_isins = [(isin_map.get(i), i)
-                             for i in stocks_etf.nlargest(10, 'cost_basis')['ISIN']
-                             if isin_map.get(i)]
-                if _ai_isins:
-                    _aprog = st.progress(0, f"Analyst-Daten: 0 / {len(_ai_isins)}…")
-                    for _aii, (_at, _ai) in enumerate(_ai_isins, 1):
-                        _alloc_infos[_ai] = _get_ticker_info_cached(_at)
-                        _aprog.progress(_aii / len(_ai_isins),
-                                        f"Analyst-Daten: {_aii} / {len(_ai_isins)}…")
-                    _aprog.empty()
-                    st.session_state[_alloc_cache_key] = _alloc_infos
-            # Sektor-Daten für alle restlichen Positionen (nur sector + quote_type, 24h gecacht)
-            _sec_loaded_key = f"sec_loaded_{_alloc_cache_key}"
-            if not st.session_state.get(_sec_loaded_key) and not stocks_etf.empty:
-                _sec_missing = [(isin_map.get(r['ISIN']), r['ISIN'])
-                                for _, r in stocks_etf.iterrows()
-                                if r['ISIN'] not in _alloc_infos and isin_map.get(r['ISIN'])]
-                if _sec_missing:
-                    _sprog = st.progress(0, f"Sektordaten: 0 / {len(_sec_missing)}…")
-                    for _sii, (_stk, _sisin) in enumerate(_sec_missing, 1):
-                        _alloc_infos[_sisin] = _get_ticker_info_cached(_stk)
-                        _sprog.progress(_sii / len(_sec_missing),
-                                        f"Sektordaten: {_sii} / {len(_sec_missing)}…")
-                    _sprog.empty()
-                    st.session_state[_alloc_cache_key] = _alloc_infos
-                st.session_state[_sec_loaded_key] = True
             if not _sparklines and not stocks_etf.empty:
                 _sp_tkrs = tuple(t for t in
                                  [isin_map.get(i) for i in stocks_etf['ISIN']] if t)
