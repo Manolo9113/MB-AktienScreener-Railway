@@ -454,6 +454,150 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ==================== LIGHT MODE CSS ====================
+if st.session_state.get("light_mode"):
+    st.markdown("""<style>
+    .stApp { background: #f0f4f8 !important; }
+    section[data-testid="stSidebar"] {
+        background: #e8f0fe !important;
+        border-right: 1px solid #bdd7f5 !important;
+    }
+    section[data-testid="stSidebar"] * { color: #1a202c !important; }
+    section[data-testid="stSidebar"] .section-header { color: #1565c0 !important; border-bottom-color: #bdd7f5 !important; }
+    .stApp, .main, section[data-testid="stMain"] { background: #f0f4f8 !important; }
+    .main .block-container { background: #f0f4f8 !important; }
+    /* Cards and containers */
+    .header-wrap, .metric-card, .score-section {
+        background: #ffffff !important;
+        border-color: #cbd5e0 !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+    }
+    .header-title { color: #1a202c !important; }
+    .header-sub { color: #2b6cb0 !important; }
+    .metric-label { color: #4a5568 !important; }
+    .metric-value { color: #1a202c !important; }
+    .metric-sub { color: #718096 !important; }
+    .section-header { color: #2b6cb0 !important; border-bottom-color: #bdd7f5 !important; }
+    /* Streamlit native elements */
+    p, div, span, h1, h2, h3, label { color: #1a202c !important; }
+    .stMarkdown p { color: #2d3748 !important; }
+    .stTextInput input {
+        background: #ffffff !important;
+        border-color: #bdd7f5 !important;
+        color: #1a202c !important;
+    }
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        background: #e2eaf7 !important;
+        border-color: #bdd7f5 !important;
+    }
+    .stTabs [data-baseweb="tab"] { color: #4a5568 !important; }
+    .stTabs [aria-selected="true"] { background: #1565c0 !important; color: #fff !important; }
+    /* Expander */
+    .streamlit-expanderHeader { background: #e2eaf7 !important; color: #1565c0 !important; }
+    /* Insight/grok boxes */
+    .insight-box { background: #e8f4ff !important; border-left-color: #1565c0 !important; color: #2d3748 !important; }
+    .grok-box { background: #f3e8ff !important; border-color: #d6bcfa !important; }
+    /* Metrics */
+    div[data-testid="stMetricValue"] { color: #1a202c !important; }
+    div[data-testid="stMetricLabel"] { color: #4a5568 !important; }
+    div[data-testid="stMetricDelta"] { /* keep green/red */ }
+    /* Captions */
+    .stCaption, small { color: #718096 !important; }
+    /* Progress bars */
+    div[data-testid="stProgressBar"] > div { background-color: #bdd7f5 !important; }
+    /* Info/success/error boxes keep their colors */
+    hr { border-color: #cbd5e0 !important; }
+    </style>""", unsafe_allow_html=True)
+
+# ==================== QUOTES ====================
+_QUOTES = [
+    ("Der Preis ist, was du bezahlst. Wert ist, was du bekommst.", "Warren Buffett"),
+    ("Es ist weit besser, ein wunderbares Unternehmen zu einem fairen Preis zu kaufen, als ein faires Unternehmen zu einem wunderbaren Preis.", "Warren Buffett"),
+    ("Sei ängstlich, wenn andere gierig sind, und gierig, wenn andere ängstlich sind.", "Warren Buffett"),
+    ("Unsere Lieblingshaltezeit ist für immer.", "Warren Buffett"),
+    ("Regel Nummer eins: Verliere niemals Geld. Regel Nummer zwei: Vergiss niemals Regel Nummer eins.", "Warren Buffett"),
+    ("Risiko entsteht, wenn man nicht weiß, was man tut.", "Warren Buffett"),
+    ("Jemand sitzt heute im Schatten, weil jemand anderes vor langer Zeit einen Baum gepflanzt hat.", "Warren Buffett"),
+    ("Es dauert 20 Jahre, einen guten Ruf aufzubauen, und fünf Minuten, ihn zu ruinieren.", "Warren Buffett"),
+    ("Der Aktienmarkt ist ein Mechanismus zur Übertragung von Geld vom Ungeduldigen zum Geduldigen.", "Warren Buffett"),
+    ("In der Welt des Geschäfts sind die gefährlichsten Menschen jene, die nur eine Idee kennen.", "Charlie Munger"),
+    ("Invertiere, immer invertiere.", "Charlie Munger"),
+    ("Alle intelligenten Investitionen sind Wertinvestitionen — mehr wert zu bekommen, als man zahlt.", "Charlie Munger"),
+    ("Zeige mir den Anreiz und ich zeige dir das Ergebnis.", "Charlie Munger"),
+    ("Um ein gutes Leben zu führen, braucht man nicht viele Dinge. Man muss vor allem wissen, was man vermeiden muss.", "Charlie Munger"),
+    ("Ich habe nichts Neues zu sagen — aber das Alte ist immer noch wahr.", "Charlie Munger"),
+    ("Die Börse ist keine Lotterie — sie ist ein Ort, an dem man Unternehmensanteile kauft.", "Peter Lynch"),
+    ("Kaufe, was du kennst.", "Peter Lynch"),
+    ("Wer keine Zeit hat, seine Aktien zu recherchieren, sollte lieber in Indexfonds investieren.", "Peter Lynch"),
+    ("Hinter jeder Aktie steckt ein Unternehmen. Finde heraus, was es macht.", "Peter Lynch"),
+    ("Investieren ohne zu forschen ist wie Poker spielen, ohne auf die Karten zu schauen.", "Peter Lynch"),
+    ("Der intelligente Investor ist ein Realist, der an Optimisten verkauft und von Pessimisten kauft.", "Benjamin Graham"),
+    ("Der Markt ist kurzfristig eine Abstimmungsmaschine, langfristig jedoch eine Waage.", "Benjamin Graham"),
+    ("Margin of Safety — das sind die drei wichtigsten Worte beim Investieren.", "Benjamin Graham"),
+    ("Der schlimmste Feind des Investors ist wahrscheinlich er selbst.", "Benjamin Graham"),
+    ("Ein Unternehmen ist es wert, was ein rationaler Käufer dafür zahlen würde.", "Benjamin Graham"),
+    ("Der Markt kann länger irrational bleiben, als man solvent bleiben kann.", "John Maynard Keynes"),
+    ("Langfristig sind wir alle tot.", "John Maynard Keynes"),
+    ("Wenn die Fakten sich ändern, ändere ich meine Meinung. Was tun Sie?", "John Maynard Keynes"),
+    ("Schwierig ist es, neue Ideen zu verbreiten — nicht weil alte Ideen falsch sind, sondern weil sie so tief verwurzelt sind.", "John Maynard Keynes"),
+    ("Die Wirtschaft ist eine Wissenschaft der Auswahlmöglichkeiten unter Knappheit.", "John Maynard Keynes"),
+    ("Der Unterschied zwischen Glücksspiel und Spekulation ist oft nur eine Frage der Zeiträume.", "Nassim Taleb"),
+    ("Sei nicht besorgt, ob du recht hast oder nicht. Sei besorgt, wie viel du verlierst, wenn du falsch liegst.", "Nassim Taleb"),
+    ("Überlebe zuerst; reich werden kommt danach.", "Nassim Taleb"),
+    ("Schwarze Schwäne dominieren die Geschichte — seltene Ereignisse bewegen die Welt.", "Nassim Taleb"),
+    ("Komplexität verbirgt Fragilität.", "Nassim Taleb"),
+    ("Geld sucht sich seinen eigenen Weg — man muss nur da sein, wenn es ankommt.", "Jesse Livermore"),
+    ("Ein Spekulant muss sich selbst kennen und seine Grenzen akzeptieren.", "Jesse Livermore"),
+    ("Nie verliere den Faden. Die Basistrends des Marktes sind das Wichtigste.", "Jesse Livermore"),
+    ("Märkte sind niemals falsch — nur Meinungen sind es.", "Jesse Livermore"),
+    ("Geduld ist eine Tugend beim Investieren — und das Warten auf den richtigen Moment das Schwierigste.", "Jesse Livermore"),
+    ("Märkte sind nicht effizient — sie werden von Reflexivität gesteuert.", "George Soros"),
+    ("Es spielt keine Rolle, ob ich recht habe oder falsch liege. Wichtig ist, wie viel ich verdiene, wenn ich richtig liege, und wie viel ich verliere, wenn ich falsch liege.", "George Soros"),
+    ("Der beste Weg, einen Fehler zu erkennen, ist, bereit zu sein, ihn zuzugeben.", "George Soros"),
+    ("Finanzmärkte sind im Allgemeinen unberechenbar.", "George Soros"),
+    ("Investiere in außergewöhnliche Menschen, bevor du in außergewöhnliche Unternehmen investierst.", "Philip Fisher"),
+    ("Die Zeit eines Investors ist am besten genutzt, um nach dem Wenigen Ausschau zu halten, das wirklich außergewöhnlich ist.", "Philip Fisher"),
+    ("Die meisten Anlagen schlagen den Markt nicht — es sei denn, der Investor hat einen echten Informationsvorsprung.", "Philip Fisher"),
+    ("Kaufe in Zeiten der Pessimismus und verkaufe in Zeiten des Optimismus.", "John Templeton"),
+    ("Die vier gefährlichsten Worte beim Investieren sind: Diesmal ist es anders.", "John Templeton"),
+    ("Bull-Märkte werden im Pessimismus geboren, wachsen in der Skepsis, reifen im Optimismus und sterben in der Euphorie.", "John Templeton"),
+    ("Der einfachste Weg zu Reichtum ist, bescheidener zu sein als dein Einkommen.", "John Templeton"),
+    ("Der wichtigste Schlüssel zum Anlageerfolg ist das Verständnis des Konjunkturzyklus.", "Ray Dalio"),
+    ("Schmerz plus Reflexion gleich Fortschritt.", "Ray Dalio"),
+    ("Seien Sie offen für die Möglichkeit, dass Sie falsch liegen.", "Ray Dalio"),
+    ("Die größte Gefahr für einen Investor ist nicht das Risiko — es ist die Risikovermeidung.", "Howard Marks"),
+    ("Gute Zeiten bringen schlechte Entscheidungen hervor.", "Howard Marks"),
+    ("Das Risiko liegt nicht im Verlust — es liegt in der Unwissenheit.", "Howard Marks"),
+    ("Der Markt belohnt Geduld und bestraft Ungeduld.", "Carl Icahn"),
+    ("In der Investmentwelt haben die Geduldigen mehr als die Aktiven.", "Seth Klarman"),
+    ("Sicherheitsmarge ist der zentrale Begriff des Investierens.", "Seth Klarman"),
+    ("Der Markt ist für kurze Zeit eine Popularitätsmaschine, aber auf lange Sicht eine Waage.", "Joel Greenblatt"),
+    ("Kaufe gute Unternehmen zu günstigen Preisen — das ist die ganze Investmentstrategie.", "Joel Greenblatt"),
+    ("Folge dem Trend, bis er sich ändert.", "William O'Neil"),
+    ("Diversifikation ist der einzige kostenlose Mittagstisch beim Investieren.", "John Bogle"),
+    ("Einfachheit ist die höchste Form der Eleganz — auch beim Investieren.", "John Bogle"),
+    ("An der Börse ist der Patient der Lehrmeister des Ungeduldigen.", "André Kostolany"),
+    ("Kaufen, wenn die Kanonen donnern, verkaufen, wenn die Violinen spielen.", "André Kostolany"),
+    ("Wer die Börse versteht, macht Geld; wer sie nicht versteht, auch — aber viel langsamer.", "André Kostolany"),
+    ("Geld allein macht nicht glücklich — aber es beruhigt die Nerven.", "André Kostolany"),
+    ("Der Wohlstand der Nationen entspringt der Arbeitsteilung und dem freien Handel.", "Adam Smith"),
+    ("Nicht vom Wohlwollen des Bäckers, des Metzgers oder des Brauers erwarten wir unser Mittagessen, sondern von ihrem Eigeninteresse.", "Adam Smith"),
+    ("Die Preissignale des Marktes sind die effizienteste Form der Informationsübertragung.", "Friedrich Hayek"),
+    ("Freiwilliger Austausch zwischen Individuen ist die Grundlage einer freien Gesellschaft.", "Milton Friedman"),
+    ("Inflation ist überall und immer ein monetäres Phänomen.", "Milton Friedman"),
+    ("Im Zweifel kultiviere deinen eigenen Garten.", "Voltaire"),
+    ("Das Beste ist der Feind des Guten.", "Voltaire"),
+    ("Wir sind, was wir wiederholt tun. Vortrefflichkeit ist daher keine Handlung, sondern eine Gewohnheit.", "Aristoteles"),
+    ("Glück ist die Tätigkeit der Seele in Übereinstimmung mit der Tugend.", "Aristoteles"),
+    ("Beschränke dich auf das Wesentliche, das heißt: auf das, was Vernunft und Natur erfordern.", "Marcus Aurelius"),
+    ("Beherrsche deine Gedanken — sonst beherrschen sie dich.", "Marcus Aurelius"),
+    ("Nicht die Dinge selbst beunruhigen die Menschen, sondern die Meinungen über die Dinge.", "Epiktet"),
+    ("Es ist nicht arm, wer wenig hat, sondern wer mehr begehrt.", "Seneca"),
+    ("Nutze die Zeit, bevor die Zeit vergeht.", "Seneca"),
+    ("Das Leben ist lang genug, wenn man es richtig nutzt.", "Seneca"),
+]
+
 # ==================== API KEY ====================
 import os
 
@@ -3641,6 +3785,8 @@ if "portfolio_sb_checked" not in st.session_state:
     st.session_state["portfolio_sb_checked"] = False
 if "portfolio_sb_date" not in st.session_state:
     st.session_state["portfolio_sb_date"] = None
+if "light_mode" not in st.session_state:
+    st.session_state["light_mode"] = False
 if "portfolio_settings_loaded" not in st.session_state:
     _pf_settings = _load_portfolio_settings()
     st.session_state["portfolio_excluded_isins"] = _pf_settings.get("excluded_isins", [])
@@ -4804,6 +4950,15 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("<div class='section-header'>⚙️ Einstellungen</div>", unsafe_allow_html=True)
+    _lm = st.session_state.get("light_mode", False)
+    if st.toggle("☀️ Hell-Modus", value=_lm, key="toggle_light_mode"):
+        if not _lm:
+            st.session_state["light_mode"] = True
+            st.rerun()
+    else:
+        if _lm:
+            st.session_state["light_mode"] = False
+            st.rerun()
     show_peers = st.toggle("Peer-Vergleich anzeigen", value=True)
     show_insider = st.toggle("Insider-Transaktionen", value=True)
     show_dcf = st.toggle("DCF Rechner", value=True)
@@ -4898,6 +5053,34 @@ with st.sidebar:
 
 # ==================== LANDING PAGE ====================
 if st.session_state["show_landing"]:
+    import datetime as _qdt
+    _q_idx = _qdt.date.today().timetuple().tm_yday % len(_QUOTES)
+    _q_text, _q_author = _QUOTES[_q_idx]
+    if st.session_state.get("light_mode"):
+        st.markdown(f"""
+<div style='background:#f0f7ff;border:1px solid #bdd7f5;border-left:4px solid #1565c0;
+border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
+  <div style='color:#4a5568;font-size:0.65rem;text-transform:uppercase;
+  letter-spacing:.1em;margin-bottom:10px;'>💬 Zitat des Tages</div>
+  <div style='color:#2d3748;font-size:0.95rem;line-height:1.7;
+  font-style:italic;'>„{_q_text}"</div>
+  <div style='color:#1565c0;font-size:0.78rem;font-weight:600;
+  margin-top:10px;text-align:right;'>— {_q_author}</div>
+</div>
+""", unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+<div style='background:linear-gradient(135deg,#0a1628,#0d1f3c);
+border:1px solid #1e3a5f;border-left:4px solid #00e5ff;
+border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
+  <div style='color:#78909c;font-size:0.65rem;text-transform:uppercase;
+  letter-spacing:.1em;margin-bottom:10px;'>💬 Zitat des Tages</div>
+  <div style='color:#cfd8dc;font-size:0.95rem;line-height:1.7;
+  font-style:italic;'>„{_q_text}"</div>
+  <div style='color:#64b5f6;font-size:0.78rem;font-weight:600;
+  margin-top:10px;text-align:right;'>— {_q_author}</div>
+</div>
+""", unsafe_allow_html=True)
     st.markdown("""
     <div style="text-align:center; padding:48px 0 32px 0;">
         <div style="font-size:3rem; font-weight:800; color:#fff; letter-spacing:-1px;">
