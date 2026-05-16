@@ -6696,6 +6696,11 @@ if st.session_state.get("show_portfolio"):
         if _prices_just_fetched:
             st.rerun()
 
+        # ── Render-Diagnose (wird nach Debugging-Phase entfernt) ──────
+        _render_count = st.session_state.get("_dbg_render_count", 0) + 1
+        st.session_state["_dbg_render_count"] = _render_count
+        st.caption(f"🔄 Render #{_render_count} · missing_prices={len(_missing_isins)} · prices_fetched={_prices_just_fetched} · crypto_cached={'✓' if _crypto_cache_key in st.session_state else '✗'}")
+
         # ── Zusammenfassung ──────────────────────────────────────────
         total_invested = df_port['cost_basis'].sum()
         current_vals = []
