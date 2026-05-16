@@ -3856,7 +3856,7 @@ def _openfigi_batch(isins: tuple, wkn_by_isin: dict = None) -> dict:
     # Samsung GDR auf LSE (SMSN.L) handelt bei ~218.000 GBp ≈ €2.580 — korrekte Preisreferenz
     # SSNGY/SSNLF sind US-OTC-ADRs mit völlig anderem Preisniveau (~$14) → falsch für Portfolio-Bewertung
     _GDR_HARDCODED = {
-        'US78392B1070': 'HXSCL.L',  # SK Hynix GDR → LSE GDR (analog SMSN.L)
+        'US78392B1070': '000660.KS',  # SK Hynix → KOSPI (KRW→EUR via yFinance)
         'US7960502018': 'SMSN.L',  # Samsung GDR Pref → LSE GDR (~€2.580 = 218.000 GBp)
         'US7960508882': 'SMSN.L',  # Samsung GDR Stamm → LSE GDR (~€2.580)
         'CNE100006M58': '0300.HK', # Midea Group H-Aktien → HKEx (~€9,96)
@@ -4038,7 +4038,7 @@ def _portfolio_quote_ext(ticker: str) -> dict:
             # HK-Ticker zero-padden: 300.HK → 0300.HK
             _fmp_candidates = [_base.zfill(4) + '.HK', ticker, _base]
         elif '.' not in ticker and ticker.isalpha():
-            # GDR/OTC/LSE-Ticker (HXSCL.L, SMSN.L) — auch .L probieren
+            # GDR/OTC/LSE-Ticker (000660.KS (SK Hynix KOSPI), SMSN.L) — auch .L probieren
             _fmp_candidates = [ticker, ticker + '.L', _base]
         for _fmp_sym in _fmp_candidates:
             _r = _fmp_quote(_fmp_sym)
@@ -5998,7 +5998,7 @@ if st.session_state.get("show_portfolio"):
         if _missing_isins and not stocks_etf.empty:
             # GDR → geeigneter Ticker (sync mit _GDR_HARDCODED in _openfigi_batch)
             _GDR_FALLBACK = {
-                'US78392B1070': 'HXSCL.L',  # SK Hynix GDR → LSE GDR
+                'US78392B1070': '000660.KS',  # SK Hynix → KOSPI
                 'US7960502018': 'SMSN.L',  # Samsung GDR Pref → LSE GDR (~€2.580)
                 'US7960508882': 'SMSN.L',  # Samsung GDR Stamm → LSE GDR (~€2.580)
                 'CNE100006M58': '0300.HK', # Midea Group H-Aktien → HKEx
@@ -6195,7 +6195,7 @@ if st.session_state.get("show_portfolio"):
                 # GDR-Ticker direkt in isin_map aktualisieren ohne sie komplett zu löschen
                 _rl_imap = st.session_state.get("portfolio_isin_map", {})
                 for _gi, _gt in {
-                    'US78392B1070': 'HXSCL.L',
+                    'US78392B1070': '000660.KS',
                     'US7960502018': 'SMSN.L',
                     'US7960508882': 'SMSN.L',
                     'CNE100006M58': '0300.HK',
