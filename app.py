@@ -3728,9 +3728,10 @@ def _parse_portfolio_csv(file_bytes: bytes) -> pd.DataFrame:
         port['total_sold'] = 0.0
     port['total_sold'] = port['total_sold'].fillna(0.0)
     port['shares'] = (port['total_bought'] - port['total_sold']).round(4)
-    # Position gilt als geschlossen: < 0.001 Anteile UND Restwert < € 1.00
+    # Position ist offen wenn: genug Anteile ODER genug Restwert (OR statt AND — z.B. 0.0001 × €50k = €5 zählt)
     port['_residual_val'] = port['shares'] * port['avg_cost'].fillna(0)
-    port = port[(port['shares'] >= 0.001) & (port['_residual_val'] >= 1.0)].copy()
+    port = port[(port['shares'] >= 0.001) | (port['_residual_val'] >= 1.0)].copy()
+    port = port[port['shares'] > 0].copy()  # Negative Bestände (Datenfehler) entfernen
     port = port.drop(columns=['_residual_val'])
     port['cost_basis'] = port['avg_cost'] * port['shares']
     port['is_crypto'] = port['ISIN'].str.startswith('XC')
@@ -4006,42 +4007,11 @@ def _portfolio_quote_ext(ticker: str) -> dict:
             if _r:
                 return _r
 
-        # Letzter Versuch: ISIN-Suche über FMP
-        # (wird nur aufgerufen wenn wir einen sinnlosen Ticker haben)
-        _fmp_candidates_extra = []
+        # China A-Shares zusätzlich probieren
         if ticker.endswith('.SS') or ticker.endswith('.SZ'):
-            _fmp_candidates_extra = [ticker, _base]
-        for _fmp_sym in _fmp_candidates_extra:
-            _r = _fmp_quote(_fmp_sym)
+            _r = _fmp_quote(ticker) or _fmp_quote(_base)
             if _r:
                 return _r
-
-        # Legacy: direkte FMP-Quote Schleife (für Rückwärtskompatibilität)
-        for _fmp_sym in [ticker, _base]:
-            try:
-                _fr = requests.get(
-                    f"https://financialmodelingprep.com/api/v3/quote/{_fmp_sym}",
-                    params={'apikey': FMP_API_KEY}, timeout=5)
-                if _fr.ok and _fr.json():
-                    _fd = _fr.json()[0]
-                    _price = float(_fd.get('price') or 0)
-                    if not _price:
-                        continue
-                    _currency = str(_fd.get('currency') or 'EUR').strip()
-                    if _currency == 'GBp':
-                        _price /= 100.0
-                        _currency = 'GBP'
-                    _fx = _get_eur_fx_rate(_currency) if _currency != 'EUR' else 1.0
-                    _chg = _fd.get('changesPercentage')
-                    return {
-                        'price_eur':     _price * _fx,
-                        'year_high_eur': float(_fd['yearHigh']) * _fx if _fd.get('yearHigh') else None,
-                        'year_low_eur':  float(_fd['yearLow'])  * _fx if _fd.get('yearLow')  else None,
-                        'day_chg_pct':   float(_chg) if _chg is not None else None,
-                        'fx':            _fx,
-                    }
-            except Exception:
-                pass
 
     return _empty
 
@@ -4501,6 +4471,7 @@ def _calc_realized_pnl(csv_bytes: bytes) -> dict:
     merged = sell_agg.merge(buy_agg[['ISIN','avg_cost']], on='ISIN', how='left')
     merged['cost_of_sold'] = merged['avg_cost'] * merged['total_sold']
     merged['pnl'] = merged['sell_value'] - merged['cost_of_sold']
+    no_cost_isins = merged[merged['avg_cost'].isna()]['ISIN'].tolist()
     positions = []
     for _, row in merged.iterrows():
         if pd.notna(row['pnl']):
@@ -4512,7 +4483,8 @@ def _calc_realized_pnl(csv_bytes: bytes) -> dict:
     positions.sort(key=lambda x: abs(x['pnl']), reverse=True)
     total_pnl = merged['pnl'].sum()
     total_sell = merged['sell_value'].sum()
-    return {'total_pnl': total_pnl, 'total_sell_value': total_sell, 'positions': positions}
+    return {'total_pnl': total_pnl, 'total_sell_value': total_sell,
+            'positions': positions, 'no_cost_isins': no_cost_isins}
 
 
 # ==================== SIDEBAR ====================
@@ -6234,19 +6206,20 @@ if st.session_state.get("show_portfolio"):
                                      f"font-size:0.68rem;'> {_dc:+.2f}%</span>") if _dc is not None else ''
                             _yh, _yl = _qx.get('year_high_eur'), _qx.get('year_low_eur')
                             _52h = ''
-                            if _yh and _yl and _yh > _yl and cur_price:
+                            if _yh and _yl and _yh > _yl and cur_price and cur_price > 0:
                                 _pp = max(0, min(100, (cur_price - _yl) / (_yh - _yl) * 100))
+                                _pfmt = (lambda v: f"€{v:.4f}" if v < 1 else f"€{v:,.2f}" if v < 100 else f"€{v:,.0f}")
                                 _52h = (f"<div style='margin-top:4px;'>"
                                         f"<div style='display:flex;justify-content:space-between;"
                                         f"color:#37474f;font-size:0.6rem;'>"
-                                        f"<span>€{_yl:.0f}</span><span style='color:#455a64;'>52W</span>"
-                                        f"<span>€{_yh:.0f}</span></div>"
+                                        f"<span>{_pfmt(_yl)}</span><span style='color:#455a64;'>52W</span>"
+                                        f"<span>{_pfmt(_yh)}</span></div>"
                                         f"<div style='background:#1a2740;border-radius:3px;height:4px;margin-top:2px;'>"
                                         f"<div style='background:#42a5f5;width:{_pp:.0f}%;height:4px;border-radius:3px;'>"
                                         f"</div></div></div>")
                             st.markdown(
                                 f"<div style='color:#78909c;font-size:0.72rem;'>Kurs · Heute · P&L</div>"
-                                f"<div style='color:#eceff1;font-size:0.88rem;font-weight:600;'>€ {cur_price:.2f}{_dc_h}</div>"
+                                f"<div style='color:#eceff1;font-size:0.88rem;font-weight:600;'>{'€ ' + (f'{cur_price:.4f}' if cur_price < 1 else f'{cur_price:,.2f}')}{_dc_h}</div>"
                                 f"<div style='color:{_clr};font-size:0.8rem;font-weight:600;'>"
                                 f"{pnl_pos:+.1f}% (€ {cur_val - row['cost_basis']:+,.0f})</div>{_52h}",
                                 unsafe_allow_html=True)
@@ -6270,7 +6243,7 @@ if st.session_state.get("show_portfolio"):
                         _dfx  = quotes_ext.get(_dr['ISIN'], {}).get('fx', 1.0)
                         _deur = _drate * _dfx * _dr['shares']
                         _dp   = prices.get(_dr['ISIN'])
-                        _dyld = (_drate * _dfx / _dp * 100) if _dp else None
+                        _dyld = (_drate * _dfx / _dp * 100) if (_dp and _dp > 0) else None
                         _div_items.append({'name': _dr['name'][:34], 'eur': _deur, 'yield': _dyld})
                 if _div_items:
                     _div_sum = sum(d['eur'] for d in _div_items)
@@ -6549,9 +6522,10 @@ if st.session_state.get("show_portfolio"):
                 _pv = {}
                 for _, _cr in df_port.iterrows():
                     _p2 = prices.get(_cr['ISIN'])
-                    _pv[_cr['name'][:32]] = (_p2 * _cr['shares']) if _p2 else _cr['cost_basis']
-                _ptotal = sum(_pv.values()) or 1
-                _pshares = {k: v / _ptotal * 100 for k, v in _pv.items()}
+                    _pval = (_p2 * _cr['shares']) if _p2 else _cr['cost_basis']
+                    _pv[_cr['ISIN']] = (_pval, _cr['name'][:32])  # ISIN als Key verhindert Name-Kollisionen
+                _ptotal = sum(v for v, _ in _pv.values()) or 1
+                _pshares = {nm: val / _ptotal * 100 for _, (val, nm) in _pv.items()}
                 _hhi = sum(s ** 2 for s in _pshares.values())
                 if   _hhi < 1500: _hhi_label, _hhi_col = "Gut diversifiziert ✓", "#00e676"
                 elif _hhi < 2500: _hhi_label, _hhi_col = "Moderat konzentriert", "#ffd600"
@@ -6595,7 +6569,8 @@ if st.session_state.get("show_portfolio"):
                 _INFL = 2.2
                 _irr_pct       = _irr * 100 if _irr is not None else None
                 _simple_pct    = _simple_ret * 100 if _simple_ret is not None else None
-                _real_ret_pct  = (_irr_pct - _INFL) if _irr_pct is not None else None
+                # Fisher-Formel: (1+nominal)/(1+inflation)-1 (nicht simple Subtraktion)
+                _real_ret_pct  = ((1 + _irr_pct/100) / (1 + _INFL/100) - 1) * 100 if _irr_pct is not None else None
                 _years_str     = f"{_days // 365} J. {(_days % 365) // 30} M." if _days else "—"
 
                 def _kpi(label, value, color="#eceff1", sub=None):
@@ -6619,7 +6594,7 @@ if st.session_state.get("show_portfolio"):
                 with _k3:
                     _v = f"{_real_ret_pct:+.2f}% p.a." if _real_ret_pct is not None else "—"
                     _c = "#00e676" if (_real_ret_pct or 0) >= 0 else "#ff5252"
-                    st.markdown(_kpi("Realrendite", _v, _c, f"IZF − Inflation ({_INFL}%)"), unsafe_allow_html=True)
+                    st.markdown(_kpi("Realrendite", _v, _c, f"Fisher: (1+IZF)/(1+{_INFL}%)−1"), unsafe_allow_html=True)
                 with _k4:
                     st.markdown(_kpi("Anlagedauer", _years_str, "#eceff1",
                                      f"€ {_invested_total:,.0f} investiert" if _invested_total else None),
@@ -6631,7 +6606,9 @@ if st.session_state.get("show_portfolio"):
                 _KEST = 0.26375
                 _FSA  = 1000.0
                 _cur_val_tax   = current_total or 0.0
-                _unrealized_g  = _cur_val_tax - (stocks_etf['cost_basis'].sum() if not stocks_etf.empty else 0)
+                _cost_stocks   = stocks_etf['cost_basis'].sum() if not stocks_etf.empty else 0.0
+                _cost_crypto   = crypto['cost_basis'].sum() if not crypto.empty else 0.0
+                _unrealized_g  = _cur_val_tax - (_cost_stocks + _cost_crypto)
                 _taxable_g     = max(0.0, _unrealized_g - _FSA)
                 _kest_estimate = _taxable_g * _KEST
                 _net_after_tax = _cur_val_tax - _kest_estimate
@@ -6694,6 +6671,9 @@ if st.session_state.get("show_portfolio"):
                                          f"</tr>")
                         _rp_html += "</table>"
                         st.markdown(_rp_html, unsafe_allow_html=True)
+                    _nc = _rpnl.get('no_cost_isins', [])
+                    if _nc:
+                        st.warning(f"⚠️ {len(_nc)} Verkauf/-käufe ohne Kaufdaten (evtl. Depotübertrag): P&L für diese Positionen nicht berechnet.")
                     st.caption("⚠️ Durchschnittskostenmethode (kein FIFO). Nur Trades aus der CSV. "
                                "Ohne Dividenden, Ordergebühren und Steuern.")
                     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
@@ -6719,10 +6699,10 @@ if st.session_state.get("show_portfolio"):
                                     unsafe_allow_html=True)
                         _ta, _tb = st.columns(2)
 
-                        def _tf_card(row, positive):
-                            _sign = "+" if positive else ""
-                            _clr  = "#00e676" if positive else "#ff5252"
-                            _bg   = "rgba(0,230,118,0.06)" if positive else "rgba(255,82,82,0.06)"
+                        def _tf_card(row):
+                            _is_pos = row['pnl_pct'] >= 0
+                            _clr  = "#00e676" if _is_pos else "#ff5252"
+                            _bg   = "rgba(0,230,118,0.06)" if _is_pos else "rgba(255,82,82,0.06)"
                             return (f"<div style='background:{_bg};border:1px solid #1e2d45;"
                                     f"border-radius:8px;padding:10px 14px;margin-bottom:6px;"
                                     f"display:flex;justify-content:space-between;align-items:center;'>"
@@ -6731,18 +6711,18 @@ if st.session_state.get("show_portfolio"):
                                     f"<div style='color:#546e7a;font-size:0.74rem;'>€ {row['val']:,.0f}</div></div>"
                                     f"<div style='text-align:right;'>"
                                     f"<div style='color:{_clr};font-size:1rem;font-weight:800;'>"
-                                    f"{_sign}{row['pnl_pct']:.1f}%</div>"
+                                    f"{row['pnl_pct']:+.1f}%</div>"
                                     f"<div style='color:{_clr};font-size:0.74rem;opacity:.8;'>"
-                                    f"{_sign}€ {abs(row['pnl_eur']):,.0f}</div></div></div>")
+                                    f"€ {row['pnl_eur']:+,.0f}</div></div></div>")
 
                         with _ta:
                             st.markdown("**Top Gewinner**")
                             for _, _r in _top3.iterrows():
-                                st.markdown(_tf_card(_r, True), unsafe_allow_html=True)
+                                st.markdown(_tf_card(_r), unsafe_allow_html=True)
                         with _tb:
                             st.markdown("**Flop Verlierer**")
                             for _, _r in _flop3.iterrows():
-                                st.markdown(_tf_card(_r, False), unsafe_allow_html=True)
+                                st.markdown(_tf_card(_r), unsafe_allow_html=True)
 
                 st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
