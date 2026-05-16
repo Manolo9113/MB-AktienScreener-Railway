@@ -8378,21 +8378,21 @@ if st.session_state.get("show_etf_analyzer"):
             if _cw:
                 _cw_sorted = sorted(_cw.items(), key=lambda x: x[1], reverse=True)
                 _ki_cw = '\n'.join(f"  - {c}: {w:.1f}%" for c, w in _cw_sorted[:8])
-            # Bewertungskennzahlen der Positionen (KGV, KBV etc.)
+            # Bewertungskennzahlen der Positionen (KGV, KBV etc.) — aus _eq_vals (ETF equity_holdings)
             _ki_valuation = ''
-            if _ac:
-                _pe_vals  = [v.get('pe')  for v in _ac.values() if v.get('pe')  and v.get('pe')  < 200]
-                _pb_vals  = [v.get('pb')  for v in _ac.values() if v.get('pb')  and v.get('pb')  < 50]
-                _dy_vals  = [v.get('div') for v in _ac.values() if v.get('div') and v.get('div')  > 0]
-                _mg_vals  = [v.get('mg')  for v in _ac.values() if v.get('mg')]
-                if _pe_vals:
-                    _ki_valuation += f"  - Ø KGV der Positionen: {sum(_pe_vals)/len(_pe_vals):.1f}x\n"
-                if _pb_vals:
-                    _ki_valuation += f"  - Ø KBV der Positionen: {sum(_pb_vals)/len(_pb_vals):.2f}x\n"
-                if _dy_vals:
-                    _ki_valuation += f"  - Ø Dividendenrendite: {sum(_dy_vals)/len(_dy_vals)*100:.2f}%\n"
-                if _mg_vals:
-                    _ki_valuation += f"  - Ø Bruttomarge: {sum(_mg_vals)/len(_mg_vals)*100:.1f}%\n"
+            if _eq_vals:
+                _pe = _eq_vals.get('priceToEarnings')
+                _pb = _eq_vals.get('priceToBook')
+                _ps = _eq_vals.get('priceToSales')
+                _wg = _eq_vals.get('threeYearEarningsGrowth')
+                if _pe and float(_pe) < 200:
+                    _ki_valuation += f"  - Ø KGV der Positionen: {float(_pe):.1f}x\n"
+                if _pb and float(_pb) < 50:
+                    _ki_valuation += f"  - Ø KBV der Positionen: {float(_pb):.2f}x\n"
+                if _ps and float(_ps) < 100:
+                    _ki_valuation += f"  - Ø KUV der Positionen: {float(_ps):.2f}x\n"
+                if _wg:
+                    _ki_valuation += f"  - Ø Gewinnwachstum 3J: {float(_wg)*100:.1f}%\n"
 
             _sys_etf = (
                 "Du bist ein unabhängiger ETF-Stratege und Fondsanalyst mit 20 Jahren Erfahrung "
