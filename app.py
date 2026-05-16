@@ -6571,6 +6571,7 @@ if st.session_state.get("show_portfolio"):
         # Wert 0.0 = versucht, kein Kurs gefunden (Sentinel, kein Retry)
         _missing_isins = [i for i in _all_isins if prices.get(i) is None]
         _prices_loaded = len(_missing_isins) == 0
+        _prices_just_fetched = False
         if _missing_isins and not stocks_etf.empty:
             # GDR → geeigneter Ticker (sync mit _GDR_HARDCODED in _openfigi_batch)
             _GDR_FALLBACK = {
@@ -6662,15 +6663,15 @@ if st.session_state.get("show_portfolio"):
                         _fp2.empty()
                         st.session_state["portfolio_isin_map"] = isin_map
 
-                # Sentinel: alle noch nicht gefundenen Preise auf 0.0 setzen
-                # damit sie beim nächsten Laden NICHT erneut versucht werden
-                for _si in _missing_isins:
-                    if prices.get(_si) is None:
-                        prices[_si] = 0.0
-
-                st.session_state[_prices_cache_key] = prices
-                st.session_state[_qext_cache_key]   = quotes_ext
-        if not _crypto_prices and not crypto.empty:
+                _prices_just_fetched = True
+            # Sentinel: alle noch nicht gefundenen Preise auf 0.0 setzen
+            # damit sie beim nächsten Laden NICHT erneut versucht werden
+            for _si in _missing_isins:
+                if prices.get(_si) is None:
+                    prices[_si] = 0.0
+            st.session_state[_prices_cache_key] = prices
+            st.session_state[_qext_cache_key]   = quotes_ext
+        if _crypto_cache_key not in st.session_state and not crypto.empty:
             import re as _re
             import concurrent.futures as _cf_c
             for _, _crow in crypto.iterrows():
@@ -6690,8 +6691,9 @@ if st.session_state.get("show_portfolio"):
                                 _crypto_prices[_crow['ISIN']] = float(_cp_c)
                         except Exception:
                             pass
+            _prices_just_fetched = True
             st.session_state[_crypto_cache_key] = _crypto_prices
-        if not _prices_loaded and (prices or _crypto_prices):
+        if _prices_just_fetched:
             st.rerun()
 
         # ── Zusammenfassung ──────────────────────────────────────────
