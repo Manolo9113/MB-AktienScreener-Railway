@@ -457,57 +457,97 @@ st.markdown("""
 # ==================== LIGHT MODE CSS ====================
 if st.session_state.get("light_mode"):
     st.markdown("""<style>
-    .stApp { background: #f0f4f8 !important; }
+    /* ── Hintergründe ─────────────────────────────────── */
+    .stApp,
+    div[data-testid="stAppViewContainer"],
+    section[data-testid="stMain"],
+    .main,
+    .main .block-container { background: #f5f7fa !important; }
+
+    /* ── Sidebar ───────────────────────────────────────── */
     section[data-testid="stSidebar"] {
-        background: #e8f0fe !important;
-        border-right: 1px solid #bdd7f5 !important;
+        background: linear-gradient(180deg,#e8f0fe,#dde8fb) !important;
+        border-right: 1px solid #c0d0f0 !important;
     }
-    section[data-testid="stSidebar"] * { color: #1a202c !important; }
-    section[data-testid="stSidebar"] .section-header { color: #1565c0 !important; border-bottom-color: #bdd7f5 !important; }
-    .stApp, .main, section[data-testid="stMain"] { background: #f0f4f8 !important; }
-    .main .block-container { background: #f0f4f8 !important; }
-    /* Cards and containers */
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span,
+    section[data-testid="stSidebar"] div { color: #1a202c !important; }
+    section[data-testid="stSidebar"] .section-header {
+        color: #1565c0 !important; border-bottom-color: #c0d0f0 !important; }
+    section[data-testid="stSidebar"] input {
+        background: #fff !important; border-color: #c0d0f0 !important; color: #1a202c !important; }
+
+    /* ── CSS-Klassen ───────────────────────────────────── */
     .header-wrap, .metric-card, .score-section {
         background: #ffffff !important;
-        border-color: #cbd5e0 !important;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
-    }
-    .header-title { color: #1a202c !important; }
-    .header-sub { color: #2b6cb0 !important; }
-    .metric-label { color: #4a5568 !important; }
-    .metric-value { color: #1a202c !important; }
-    .metric-sub { color: #718096 !important; }
-    .section-header { color: #2b6cb0 !important; border-bottom-color: #bdd7f5 !important; }
-    /* Streamlit native elements */
-    p, div, span, h1, h2, h3, label { color: #1a202c !important; }
-    .stMarkdown p { color: #2d3748 !important; }
-    .stTextInput input {
+        border-color: #dde3ee !important;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.07) !important; }
+    .header-title { color: #0f172a !important; }
+    .header-sub   { color: #2563eb !important; }
+    .metric-label { color: #64748b !important; }
+    .metric-value { color: #0f172a !important; }
+    .metric-sub   { color: #94a3b8 !important; }
+    .section-header { color: #2563eb !important; border-bottom-color: #dde3ee !important; }
+    .insight-box  { background: #eff6ff !important; border-left-color: #2563eb !important; color: #1e3a5f !important; }
+    .grok-box     { background: #faf5ff !important; border-color: #c4b5fd !important; }
+
+    /* ── Inline dark backgrounds via Attribut-Selektor ── */
+    div[style*="#0d1f35"], div[style*="#0d1f3c"], div[style*="#0a1628"],
+    div[style*="#080f1e"], div[style*="#0d1526"], div[style*="#071020"],
+    div[style*="#001a2e"], div[style*="#0d2035"], div[style*="#0d1a2e"],
+    div[style*="#1a2740"], div[style*="#132040"], div[style*="#080d18"],
+    div[style*="#0a1421"], div[style*="#0d2340"] {
         background: #ffffff !important;
-        border-color: #bdd7f5 !important;
-        color: #1a202c !important;
-    }
+        border-color: #dde3ee !important; }
+
+    /* ── Inline dark text-Farben ───────────────────────── */
+    *[style*="color:#eceff1"], *[style*="color: #eceff1"] { color: #0f172a !important; }
+    *[style*="color:#cfd8dc"], *[style*="color: #cfd8dc"] { color: #334155 !important; }
+    *[style*="color:#b0bec5"], *[style*="color: #b0bec5"] { color: #475569 !important; }
+    *[style*="color:#90a4ae"], *[style*="color: #90a4ae"] { color: #64748b !important; }
+    *[style*="color:#78909c"], *[style*="color: #78909c"] { color: #64748b !important; }
+    *[style*="color:#546e7a"], *[style*="color: #546e7a"] { color: #94a3b8 !important; }
+    *[style*="color:#64b5f6"], *[style*="color: #64b5f6"] { color: #2563eb !important; }
+    *[style*="color:#42a5f5"], *[style*="color: #42a5f5"] { color: #2563eb !important; }
+
+    /* ── Streamlit native ──────────────────────────────── */
+    div[data-testid="stMarkdownContainer"] p { color: #334155 !important; }
+    div[data-testid="stMetricValue"]  { color: #0f172a !important; }
+    div[data-testid="stMetricLabel"]  { color: #64748b !important; }
+    .stCaption, small                 { color: #94a3b8 !important; }
+    hr                                { border-color: #dde3ee !important; }
+
+    .stTextInput input {
+        background: #fff !important; border-color: #c0d0f0 !important;
+        color: #0f172a !important; box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important; }
+
     /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
-        background: #e2eaf7 !important;
-        border-color: #bdd7f5 !important;
-    }
-    .stTabs [data-baseweb="tab"] { color: #4a5568 !important; }
-    .stTabs [aria-selected="true"] { background: #1565c0 !important; color: #fff !important; }
+        background: #e8f0fe !important; border-color: #c0d0f0 !important; }
+    .stTabs [data-baseweb="tab"]    { color: #64748b !important; }
+    .stTabs [aria-selected="true"]  { background: #2563eb !important; color: #fff !important; }
+
     /* Expander */
-    .streamlit-expanderHeader { background: #e2eaf7 !important; color: #1565c0 !important; }
-    /* Insight/grok boxes */
-    .insight-box { background: #e8f4ff !important; border-left-color: #1565c0 !important; color: #2d3748 !important; }
-    .grok-box { background: #f3e8ff !important; border-color: #d6bcfa !important; }
-    /* Metrics */
-    div[data-testid="stMetricValue"] { color: #1a202c !important; }
-    div[data-testid="stMetricLabel"] { color: #4a5568 !important; }
-    div[data-testid="stMetricDelta"] { /* keep green/red */ }
-    /* Captions */
-    .stCaption, small { color: #718096 !important; }
-    /* Progress bars */
-    div[data-testid="stProgressBar"] > div { background-color: #bdd7f5 !important; }
-    /* Info/success/error boxes keep their colors */
-    hr { border-color: #cbd5e0 !important; }
+    details summary                  { background: #e8f0fe !important; color: #2563eb !important; border-radius: 8px; }
+    details[open] summary            { border-radius: 8px 8px 0 0; }
+    details > div                    { background: #f0f5ff !important; border: 1px solid #c0d0f0 !important; }
+
+    /* Buttons (sidebar + nav) */
+    div[data-testid="stButton"] > button {
+        background: #e8f0fe !important; color: #1e40af !important;
+        border: 1px solid #c0d0f0 !important; }
+    div[data-testid="stButton"] > button:hover {
+        background: #dde8fb !important; border-color: #93c5fd !important; }
+    div[data-testid="stButton"] > button[kind="primary"] {
+        background: linear-gradient(135deg,#1d4ed8,#2563eb) !important;
+        color: #fff !important; border: none !important; }
+
+    /* Selectboxen & Multiselect */
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="popover"] { background: #fff !important; color: #0f172a !important; }
+
+    div[data-testid="stProgressBar"] > div { background-color: #bfdbfe !important; }
     </style>""", unsafe_allow_html=True)
 
 # ==================== QUOTES ====================
@@ -7383,9 +7423,12 @@ if st.session_state.get("show_portfolio"):
             else:
                 # ── Rendite-Kennzahlen ────────────────────────────────────
                 _cur_val_perf = current_total or 0.0
-                with st.spinner("Renditekennzahlen werden berechnet…"):
-                    _irr, _simple_ret, _days, _invested_total = _calc_portfolio_irr(
-                        _csv_bytes, _cur_val_perf)
+                _irr_cache_key = f"irr_{_csv_key}"
+                if _irr_cache_key not in st.session_state:
+                    with st.spinner("Renditekennzahlen werden berechnet…"):
+                        _irr_res = _calc_portfolio_irr(_csv_bytes, _cur_val_perf)
+                    st.session_state[_irr_cache_key] = _irr_res
+                _irr, _simple_ret, _days, _invested_total = st.session_state[_irr_cache_key]
 
                 _INFL = 2.2
                 _irr_pct       = _irr * 100 if _irr is not None else None
