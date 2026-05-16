@@ -3548,8 +3548,10 @@ def _parse_portfolio_csv(file_bytes: bytes) -> pd.DataFrame:
             df[col].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
             errors='coerce'
         ).fillna(0.0)
-    buys  = df[df['Richtung'] == 'Kauf'].copy()
-    sells = df[df['Richtung'] == 'Verkauf'].copy()
+    _buy_types  = ['Kauf', 'Sparplan', 'Depot-Einbuchung']
+    _sell_types = ['Verkauf', 'Rückgabe', 'Rücknahme', 'Entnahme', 'Depot-Ausbuchung']
+    buys  = df[df['Richtung'].isin(_buy_types)].copy()
+    sells = df[df['Richtung'].isin(_sell_types)].copy()
     if buys.empty:
         return pd.DataFrame()
     buys['_wert_abs'] = buys['Wert'].abs()
@@ -3793,9 +3795,11 @@ def _build_performance(csv_bytes: bytes, benchmark_ticker: str):
         df['Wert'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
         errors='coerce'
     ).fillna(0.0)
+    _sell_types = ['Verkauf', 'Rückgabe', 'Rücknahme', 'Entnahme', 'Depot-Ausbuchung']
+    _buy_types  = ['Kauf', 'Sparplan', 'Depot-Einbuchung']
     df['_eur'] = df['_wert'].abs()
-    df.loc[df['Richtung'] == 'Verkauf', '_eur'] = -df.loc[df['Richtung'] == 'Verkauf', '_wert'].abs()
-    df = df[df['Richtung'].isin(['Kauf', 'Verkauf'])].sort_values('_date').reset_index(drop=True)
+    df.loc[df['Richtung'].isin(_sell_types), '_eur'] = -df.loc[df['Richtung'].isin(_sell_types), '_wert'].abs()
+    df = df[df['Richtung'].isin(_buy_types + _sell_types)].sort_values('_date').reset_index(drop=True)
     if df.empty:
         return None
     first_date = df['_date'].min()
@@ -3910,6 +3914,118 @@ def _ticker_to_region(ticker: str) -> str:
     return 'Sonstige'
 
 
+_SFX_COUNTRY = {
+    'DE':'Deutschland','F':'Deutschland','BE':'Deutschland','MU':'Deutschland','HA':'Deutschland',
+    'PA':'Frankreich',
+    'L':'UK','IL':'UK',
+    'AS':'Niederlande',
+    'MI':'Italien',
+    'MC':'Spanien',
+    'SW':'Schweiz','VX':'Schweiz',
+    'ST':'Schweden',
+    'CO':'Dänemark',
+    'OL':'Norwegen',
+    'HE':'Finnland',
+    'BR':'Belgien',
+    'IR':'Irland',
+    'LS':'Portugal',
+    'VI':'Österreich',
+    'WA':'Polen',
+    'KS':'Südkorea','KQ':'Südkorea',
+    'T':'Japan',
+    'HK':'Hongkong',
+    'SS':'China','SZ':'China',
+    'BO':'Indien','NS':'Indien',
+    'SI':'Singapur',
+    'KL':'Malaysia',
+    'BK':'Thailand',
+    'TW':'Taiwan','TWO':'Taiwan',
+    'AX':'Australien',
+    'NZ':'Neuseeland',
+    'SA':'Brasilien',
+    'MX':'Mexiko',
+    'TO':'Kanada','V':'Kanada','CN':'Kanada',
+}
+
+
+def _ticker_to_country(ticker: str) -> str:
+    if not ticker or '.' not in ticker:
+        return 'USA'
+    sfx = ticker.rsplit('.', 1)[1].upper()
+    return _SFX_COUNTRY.get(sfx, 'USA')
+
+
+_ETF_CW = {
+    'VWCE.DE': {'USA':62.5,'Japan':5.7,'UK':3.8,'Frankreich':3.1,'Kanada':2.9,
+                'Schweiz':2.6,'Deutschland':2.5,'Australien':2.1,'Indien':1.8,
+                'Taiwan':1.8,'Südkorea':1.6,'Niederlande':1.2,'Sonstige':7.4},
+    'FWRA.DE': {'USA':62.5,'Japan':5.7,'UK':3.8,'Frankreich':3.1,'Kanada':2.9,
+                'Schweiz':2.6,'Deutschland':2.5,'Australien':2.1,'Indien':1.8,
+                'Taiwan':1.8,'Südkorea':1.6,'Niederlande':1.2,'Sonstige':7.4},
+    'VWRL.L':  {'USA':62.5,'Japan':5.7,'UK':3.8,'Frankreich':3.1,'Kanada':2.9,
+                'Schweiz':2.6,'Deutschland':2.5,'Australien':2.1,'Indien':1.8,
+                'Taiwan':1.8,'Südkorea':1.6,'Niederlande':1.2,'Sonstige':7.4},
+    'SXR8.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+    'XDWD.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+    'EUNL.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+    'XMWO.DE': {'USA':69.0,'Japan':6.2,'UK':4.4,'Frankreich':3.4,'Kanada':3.1,
+                'Schweiz':2.8,'Deutschland':2.8,'Australien':2.0,'Niederlande':1.4,'Sonstige':4.9},
+    'SXR2.DE': {'USA':100.0}, 'IUSE.DE': {'USA':100.0}, 'LCUW.DE': {'USA':100.0},
+    'VUSA.L':  {'USA':100.0}, 'SPY5.DE': {'USA':100.0}, 'CSPX.L':  {'USA':100.0},
+    'EQQQ.DE': {'USA':97.0,'Sonstige':3.0}, 'CNDX.L': {'USA':97.0,'Sonstige':3.0},
+    'EXW1.DE': {'Deutschland':17.2,'Frankreich':16.8,'Niederlande':14.2,'Spanien':9.5,
+                'Italien':8.5,'Belgien':4.8,'Finnland':4.2,'Irland':3.5,'Sonstige':21.3},
+    'MEUD.DE': {'Deutschland':17.2,'Frankreich':16.8,'Niederlande':14.2,'Spanien':9.5,
+                'Italien':8.5,'Belgien':4.8,'Finnland':4.2,'Irland':3.5,'Sonstige':21.3},
+    'LYPS.DE': {'Deutschland':17.2,'Frankreich':16.8,'Niederlande':14.2,'Spanien':9.5,
+                'Italien':8.5,'Belgien':4.8,'Finnland':4.2,'Irland':3.5,'Sonstige':21.3},
+    'IQQY.DE': {'UK':23.8,'Frankreich':17.0,'Schweiz':13.5,'Deutschland':12.8,
+                'Niederlande':8.2,'Schweden':5.3,'Dänemark':4.1,'Spanien':3.5,
+                'Italien':3.0,'Sonstige':8.8},
+    'IEUA.DE': {'UK':23.8,'Frankreich':17.0,'Schweiz':13.5,'Deutschland':12.8,
+                'Niederlande':8.2,'Schweden':5.3,'Dänemark':4.1,'Spanien':3.5,
+                'Italien':3.0,'Sonstige':8.8},
+    'EXS1.DE': {'Deutschland':100.0}, 'DBXD.DE': {'Deutschland':100.0},
+    'EXV5.DE': {'Japan':100.0}, 'XDJP.DE': {'Japan':100.0},
+    'IQQC.DE': {'China':100.0},
+    'IS3N.DE': {'China':26.8,'Indien':14.2,'Taiwan':17.1,'Südkorea':12.3,
+                'Brasilien':5.1,'Saudi-Arabien':4.0,'Südafrika':3.5,
+                'Mexiko':2.5,'Indonesien':1.6,'Sonstige':12.9},
+    'IS3R.DE': {'China':26.8,'Indien':14.2,'Taiwan':17.1,'Südkorea':12.3,
+                'Brasilien':5.1,'Saudi-Arabien':4.0,'Südafrika':3.5,
+                'Mexiko':2.5,'Indonesien':1.6,'Sonstige':12.9},
+    'XMME.DE': {'China':26.8,'Indien':14.2,'Taiwan':17.1,'Südkorea':12.3,
+                'Brasilien':5.1,'Saudi-Arabien':4.0,'Südafrika':3.5,
+                'Mexiko':2.5,'Indonesien':1.6,'Sonstige':12.9},
+    'VHYL.L':  {'USA':60.2,'UK':7.1,'Japan':6.0,'Schweiz':4.2,'Frankreich':3.5,
+                'Deutschland':3.0,'Australien':2.8,'Sonstige':13.2},
+    'ISPA.DE': {'USA':54.0,'Kanada':8.0,'UK':6.0,'Japan':5.5,'Schweiz':4.0,
+                'Frankreich':3.5,'Deutschland':3.0,'Australien':2.5,'Sonstige':13.5},
+}
+
+_CONTINENT_MAP = {
+    'USA':'Nordamerika','Kanada':'Nordamerika','Mexiko':'Nordamerika',
+    'UK':'Europa','Deutschland':'Europa','Frankreich':'Europa','Schweiz':'Europa',
+    'Niederlande':'Europa','Schweden':'Europa','Dänemark':'Europa','Spanien':'Europa',
+    'Italien':'Europa','Belgien':'Europa','Norwegen':'Europa','Finnland':'Europa',
+    'Irland':'Europa','Österreich':'Europa','Polen':'Europa','Portugal':'Europa',
+    'Japan':'Asien/Pazifik','China':'Asien/Pazifik','Südkorea':'Asien/Pazifik',
+    'Taiwan':'Asien/Pazifik','Australien':'Asien/Pazifik','Indien':'Asien/Pazifik',
+    'Hongkong':'Asien/Pazifik','Singapur':'Asien/Pazifik','Indonesien':'Asien/Pazifik',
+    'Malaysia':'Asien/Pazifik','Thailand':'Asien/Pazifik','Philippinen':'Asien/Pazifik',
+    'Neuseeland':'Asien/Pazifik',
+    'Brasilien':'Lateinamerika','Chile':'Lateinamerika','Kolumbien':'Lateinamerika',
+    'Peru':'Lateinamerika','Argentinien':'Lateinamerika',
+    'Saudi-Arabien':'Mittlerer Osten','Israel':'Mittlerer Osten','VAE':'Mittlerer Osten',
+    'Katar':'Mittlerer Osten','Kuwait':'Mittlerer Osten',
+    'Südafrika':'Afrika','Ägypten':'Afrika','Nigeria':'Afrika',
+    'Sonstige':'Sonstige',
+}
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def _get_ticker_info_cached(ticker: str) -> dict:
     """Sektor + QuoteType via yFinance (gecacht 24h). Timeout 4s pro Call."""
@@ -4010,9 +4126,11 @@ def _calc_portfolio_irr(csv_bytes: bytes, current_eur_value: float):
         df['Wert'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
         errors='coerce'
     ).fillna(0.0)
-    df = df[df['Richtung'].isin(['Kauf', 'Verkauf'])].copy()
+    _sell_t = ['Verkauf', 'Rückgabe', 'Rücknahme', 'Entnahme', 'Depot-Ausbuchung']
+    _buy_t  = ['Kauf', 'Sparplan', 'Depot-Einbuchung']
+    df = df[df['Richtung'].isin(_buy_t + _sell_t)].copy()
     df['_cf'] = -df['_wert'].abs()
-    df.loc[df['Richtung'] == 'Verkauf', '_cf'] = df.loc[df['Richtung'] == 'Verkauf', '_wert'].abs()
+    df.loc[df['Richtung'].isin(_sell_t), '_cf'] = df.loc[df['Richtung'].isin(_sell_t), '_wert'].abs()
     df = df.sort_values('_date').reset_index(drop=True)
     if df.empty:
         return None, None, None, None
@@ -4077,7 +4195,8 @@ def _detect_savings_plans(csv_bytes: bytes) -> list:
         return []
     if 'Status' in df.columns:
         df = df[df['Status'] == 'ausgeführt'].copy()
-    df = df[df['Richtung'] == 'Kauf'].copy()
+    _buy_types = ['Kauf', 'Sparplan', 'Depot-Einbuchung']
+    df = df[df['Richtung'].isin(_buy_types)].copy()
     df['_date'] = pd.to_datetime(df[date_col].astype(str).str[:10], dayfirst=True, errors='coerce')
     df = df.dropna(subset=['_date'])
     df['_wert'] = pd.to_numeric(
@@ -4113,6 +4232,63 @@ def _detect_savings_plans(csv_bytes: bytes) -> list:
                       'start': dates[0].strftime('%b %Y'), 'last': dates[-1].strftime('%b %Y'),
                       'freq': freq})
     return sorted(plans, key=lambda x: x['total'], reverse=True)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _calc_realized_pnl(csv_bytes: bytes) -> dict:
+    """Realisierte Gewinne/Verluste (Durchschnittskostenmethode, wie deutsches Broker-Standard).
+    Gibt zurück: {'total_pnl': float, 'total_sell_value': float, 'positions': list[dict]}"""
+    df = None
+    for enc in ['utf-8-sig', 'utf-8', 'latin-1']:
+        try:
+            df = pd.read_csv(io.BytesIO(csv_bytes), sep=';', decimal=',', encoding=enc, dtype=str)
+            break
+        except Exception:
+            continue
+    if df is None or df.empty:
+        return {}
+    df.columns = df.columns.str.strip()
+    needed = {'Richtung', 'ISIN', 'Name', 'Anzahl ausgeführt', 'Wert'}
+    if not needed.issubset(df.columns):
+        return {}
+    if 'Status' in df.columns:
+        df = df[df['Status'] == 'ausgeführt'].copy()
+    for col in ['Anzahl ausgeführt', 'Wert']:
+        df[col] = pd.to_numeric(
+            df[col].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
+            errors='coerce').fillna(0.0)
+    _buy_types  = ['Kauf', 'Sparplan', 'Depot-Einbuchung']
+    _sell_types = ['Verkauf', 'Rückgabe', 'Rücknahme', 'Entnahme', 'Depot-Ausbuchung']
+    buys  = df[df['Richtung'].isin(_buy_types)].copy()
+    sells = df[df['Richtung'].isin(_sell_types)].copy()
+    if buys.empty or sells.empty:
+        return {'total_pnl': 0.0, 'total_sell_value': 0.0, 'positions': []}
+    buy_agg = (buys.groupby('ISIN')
+               .agg(name=('Name', 'first'),
+                    total_bought=('Anzahl ausgeführt', 'sum'),
+                    total_cost=('Wert', lambda x: x.abs().sum()))
+               .reset_index())
+    buy_agg['avg_cost'] = buy_agg['total_cost'] / buy_agg['total_bought'].replace(0, float('nan'))
+    sell_agg = (sells.groupby('ISIN')
+                .agg(name=('Name', 'first'),
+                     total_sold=('Anzahl ausgeführt', 'sum'),
+                     sell_value=('Wert', lambda x: x.abs().sum()))
+                .reset_index())
+    merged = sell_agg.merge(buy_agg[['ISIN','avg_cost']], on='ISIN', how='left')
+    merged['cost_of_sold'] = merged['avg_cost'] * merged['total_sold']
+    merged['pnl'] = merged['sell_value'] - merged['cost_of_sold']
+    positions = []
+    for _, row in merged.iterrows():
+        if pd.notna(row['pnl']):
+            positions.append({
+                'isin': row['ISIN'], 'name': str(row['name'])[:35],
+                'shares_sold': row['total_sold'], 'sell_value': row['sell_value'],
+                'cost_of_sold': row['cost_of_sold'], 'pnl': row['pnl'],
+            })
+    positions.sort(key=lambda x: abs(x['pnl']), reverse=True)
+    total_pnl = merged['pnl'].sum()
+    total_sell = merged['sell_value'].sum()
+    return {'total_pnl': total_pnl, 'total_sell_value': total_sell, 'positions': positions}
 
 
 # ==================== SIDEBAR ====================
@@ -5748,8 +5924,10 @@ if st.session_state.get("show_portfolio"):
                         _ac, _reg = 'Aktien', _ticker_to_region(_tkr2)
 
                     _sec_de = _SECTOR_DE.get(_info2.get('sector', ''), _info2.get('sector', ''))
-                    if not _sec_de or _ac in ('ETF / Fonds', 'Krypto', 'Optionsscheine'):
+                    if _ac in ('ETF / Fonds', 'Krypto', 'Optionsscheine'):
                         _sec_de = _ac
+                    elif not _sec_de:
+                        _sec_de = 'Sonstige'
 
                     _alloc_rows.append({'value': max(0.0, _val),
                                         'asset': _ac, 'region': _reg, 'sector': _sec_de})
@@ -5802,8 +5980,114 @@ if st.session_state.get("show_portfolio"):
                                 unsafe_allow_html=True)
 
                 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-                st.caption("Sektoren via yFinance (leer = kein Sektor-Mapping verfügbar). "
-                           "Regionen basieren auf der Börsenlistung. ETFs nicht nach Inhalt aufgebrochen.")
+                st.caption("Sektoren via yFinance. Regionen basieren auf der Börsenlistung. "
+                           "ETF Look-Through → echte Länderexposition weiter unten.")
+
+                # ── ETF Look-Through: Länder- / Kontinentexposition ───
+                st.markdown("<div class='section-header'>🌍 Geographische Exposition (Look-Through)</div>",
+                            unsafe_allow_html=True)
+                _lt: dict = {}
+                _lt_etfs_found = []
+                _lt_etfs_missing = []
+                for _, _lrow in df_port.iterrows():
+                    _ltkr  = isin_map.get(_lrow['ISIN'], '')
+                    _lprc  = prices.get(_lrow['ISIN'])
+                    _lval  = (_lprc if _lprc else _lrow['avg_cost']) * _lrow['shares']
+                    _linf  = _alloc_infos.get(_lrow['ISIN'], {})
+                    _is_etf = _linf.get('quote_type') == 'ETF' or _lrow.get('is_etf', False)
+                    if _is_etf and _ltkr:
+                        _lcw = _ETF_CW.get(_ltkr)
+                        if _lcw:
+                            _lcw_sum = sum(_lcw.values())
+                            for _lc, _lw in _lcw.items():
+                                _lt[_lc] = _lt.get(_lc, 0) + _lval * (_lw / _lcw_sum)
+                            _lt_etfs_found.append(_lrow['name'][:28])
+                        else:
+                            _lt['Sonstige'] = _lt.get('Sonstige', 0) + _lval
+                            _lt_etfs_missing.append(_lrow['name'][:28])
+                    elif _lrow.get('is_crypto'):
+                        _lt['Krypto'] = _lt.get('Krypto', 0) + _lval
+                    elif not _lrow.get('is_warrant'):
+                        _lctry = _ticker_to_country(_ltkr)
+                        _lt[_lctry] = _lt.get(_lctry, 0) + _lval
+
+                _lt_total = sum(_lt.values()) or 1
+                _lt_sorted = sorted(_lt.items(), key=lambda x: x[1], reverse=True)
+
+                _LT_CLR = {
+                    'USA':'#1565c0','Deutschland':'#00838f','UK':'#7b1fa2',
+                    'Japan':'#e65100','Frankreich':'#2e7d32','Kanada':'#f57f17',
+                    'Schweiz':'#4a148c','Australien':'#00695c','China':'#b71c1c',
+                    'Indien':'#ff6f00','Taiwan':'#880e4f','Südkorea':'#1b5e20',
+                    'Niederlande':'#006064','Schweden':'#01579b','Spanien':'#bf360c',
+                    'Brasilien':'#33691e','Sonstige':'#455a64','Krypto':'#f9a825',
+                    'Hongkong':'#c62828','Singapur':'#00838f',
+                    'Nordamerika':'#1565c0','Europa':'#00695c','Asien/Pazifik':'#e64a19',
+                    'Lateinamerika':'#f57f17','Mittlerer Osten':'#5d4037','Afrika':'#6d4c41',
+                }
+
+                _cont: dict = {}
+                for _lc, _lv in _lt.items():
+                    _lco = _CONTINENT_MAP.get(_lc, 'Sonstige')
+                    _cont[_lco] = _cont.get(_lco, 0) + _lv
+                _cont = dict(sorted(_cont.items(), key=lambda x: x[1], reverse=True))
+
+                _lta, _ltb = st.columns([1.1, 1])
+                with _lta:
+                    st.markdown("<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+                                "letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;'>"
+                                "Länder</div>", unsafe_allow_html=True)
+                    for _lc, _lv in _lt_sorted[:15]:
+                        _lpct = _lv / _lt_total * 100
+                        _lclr = _LT_CLR.get(_lc, '#546e7a')
+                        _lbar = min(int(_lpct * 1.8), 100)
+                        st.markdown(
+                            f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
+                            f"<span style='color:{_lclr};font-size:0.72rem;'>●</span>"
+                            f"<span style='color:#eceff1;font-size:0.76rem;flex:1;'>{_lc[:20]}</span>"
+                            f"<div style='background:#1a2740;border-radius:3px;width:60px;height:6px;'>"
+                            f"<div style='background:{_lclr};width:{_lbar}%;height:6px;border-radius:3px;'>"
+                            f"</div></div>"
+                            f"<span style='color:#90a4ae;font-size:0.76rem;font-weight:600;"
+                            f"min-width:38px;text-align:right;'>{_lpct:.1f}%</span></div>",
+                            unsafe_allow_html=True)
+                with _ltb:
+                    st.markdown("<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+                                "letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;'>"
+                                "Kontinente</div>", unsafe_allow_html=True)
+                    for _co, _cv in _cont.items():
+                        _cpct = _cv / _lt_total * 100
+                        _cclr = _LT_CLR.get(_co, '#546e7a')
+                        st.markdown(
+                            f"<div style='display:flex;justify-content:space-between;"
+                            f"padding:3px 0;border-bottom:1px solid #1a2740;'>"
+                            f"<span style='color:{_cclr};font-size:0.78rem;'>● {_co}</span>"
+                            f"<span style='color:#90a4ae;font-size:0.78rem;font-weight:600;'>"
+                            f"{_cpct:.1f}%</span></div>", unsafe_allow_html=True)
+                    if len(_cont) > 1:
+                        _cont_fig = go.Figure(go.Pie(
+                            labels=list(_cont.keys()),
+                            values=list(_cont.values()),
+                            hole=0.62,
+                            marker=dict(
+                                colors=[_LT_CLR.get(k, '#546e7a') for k in _cont],
+                                line=dict(color='#0a1628', width=2)),
+                            textinfo='none',
+                            hovertemplate='<b>%{label}</b><br>%{percent}<extra></extra>',
+                        ))
+                        _cont_fig.update_layout(
+                            template='plotly_dark', paper_bgcolor='#0a1628',
+                            plot_bgcolor='#0a1628', showlegend=False, height=200,
+                            margin=dict(l=5, r=5, t=10, b=5))
+                        st.plotly_chart(_cont_fig, use_container_width=True)
+
+                _lt_note = ""
+                if _lt_etfs_found:
+                    _lt_note += f"✓ Look-Through: {', '.join(_lt_etfs_found[:4])}."
+                if _lt_etfs_missing:
+                    _lt_note += f" ⚠️ Keine CW-Daten: {', '.join(_lt_etfs_missing[:3])} → als Sonstige."
+                if _lt_note:
+                    st.caption(_lt_note)
 
                 # ── Konzentrations-Risiko ─────────────────────────────
                 st.markdown("<div class='section-header'>📊 Konzentrations-Risiko</div>",
