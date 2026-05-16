@@ -3660,6 +3660,17 @@ def _openfigi_batch(isins: tuple, wkn_by_isin: dict = None) -> dict:
                 pass
             time.sleep(0.2)
 
+    # GDR-Hardcode: bekannte GDR-ISINs → KRX/HKEx-Ticker (OpenFIGI liefert für GDRs oft nichts)
+    _GDR_HARDCODED = {
+        'US78392B1070': '000660.KS',  # SK Hynix GDR → KRX
+        'US7960502018': '005935.KS',  # Samsung Electronics GDR Pref → KRX Vorzug
+        'US7960508882': '005930.KS',  # Samsung Electronics GDR → KRX Stamm
+        'CNE100006M58': '0300.HK',    # Midea Group H-Aktien → HKEx
+    }
+    for isin in valids:
+        if isin not in result and isin in _GDR_HARDCODED:
+            result[isin] = _GDR_HARDCODED[isin]
+
     return result
 
 
@@ -3848,6 +3859,14 @@ def _build_performance(csv_bytes: bytes, benchmark_ticker: str):
     if not dates_out:
         return None
     return dates_out, invested_out, bm_val_out
+
+# Hardcoded sector overrides for ISINs where yFinance sector lookup fails (GDRs, OTC etc.)
+_ISIN_SECTOR_HARD = {
+    'US78392B1070': 'Technology',       # SK Hynix GDR
+    'US7960502018': 'Technology',       # Samsung Electronics GDR Pref
+    'US7960508882': 'Technology',       # Samsung Electronics GDR Stamm
+    'CNE100006M58': 'Consumer Cyclical',# Midea Group
+}
 
 _SECTOR_DE = {
     'Technology': 'IT & Technologie',
@@ -5656,6 +5675,18 @@ if st.session_state.get("show_portfolio"):
         # Kurse laden
         prices: dict = {}
         quotes_ext: dict = {}
+
+        # GDR-Laufzeit-Injection: bekannte GDR-ISINs sicherstellen falls OpenFIGI blockiert war
+        _GDR_RT = {
+            'US78392B1070': '000660.KS',
+            'US7960502018': '005935.KS',
+            'US7960508882': '005930.KS',
+            'CNE100006M58': '0300.HK',
+        }
+        for _gi, _gt in _GDR_RT.items():
+            if _gi not in isin_map and _gi in stocks_etf['ISIN'].values:
+                isin_map[_gi] = _gt
+
         if not stocks_etf.empty:
             with st.spinner("Aktuelle Kurse werden geladen…"):
                 for isin in stocks_etf['ISIN']:
@@ -5923,7 +5954,8 @@ if st.session_state.get("show_portfolio"):
                     else:
                         _ac, _reg = 'Aktien', _ticker_to_region(_tkr2)
 
-                    _sec_de = _SECTOR_DE.get(_info2.get('sector', ''), _info2.get('sector', ''))
+                    _raw_sec = _info2.get('sector', '') or _ISIN_SECTOR_HARD.get(_arow['ISIN'], '')
+                    _sec_de = _SECTOR_DE.get(_raw_sec, _raw_sec)
                     if _ac in ('ETF / Fonds', 'Krypto', 'Optionsscheine'):
                         _sec_de = _ac
                     elif not _sec_de:
