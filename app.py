@@ -6935,15 +6935,8 @@ if st.session_state.get("show_portfolio"):
 
         with tab_pos:
           try:
-            if not _sparklines and not stocks_etf.empty:
-                _sp_tkrs = tuple(t for t in
-                                 [isin_map.get(i) for i in stocks_etf['ISIN']] if t)
-                if _sp_tkrs:
-                    if st.button("📈 Sparklines laden", key="btn_load_sparklines",
-                                 help="Lädt 3-Monats-Kursverläufe für alle Positionen (einmalig)"):
-                        with st.spinner("Kursverläufe werden geladen…"):
-                            _sparklines = _sparklines_bulk(_sp_tkrs)
-                        st.session_state[f"spark_{_alloc_cache_key}"] = _sparklines
+            # Sparklines: nur anzeigen wenn bereits im Session-/Prozess-Cache, niemals auto-laden.
+            # Kein Button — Button-Click triggert Rerun → blockiert alle Tabs gleichermaßen.
 
             # ── Aktien & ETFs ────────────────────────────────────────────
             if not stocks_etf.empty:
@@ -7592,7 +7585,7 @@ if st.session_state.get("show_portfolio"):
 
                 st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
-                # ── Benchmark-Vergleich ───────────────────────────────────
+                # ── Benchmark-Vergleich (auf Knopfdruck — verhindert Blockade beim ersten Render) ──
                 st.markdown("<div class='section-header'>📊 Benchmark-Vergleich</div>",
                             unsafe_allow_html=True)
                 _BENCHMARKS = {
@@ -7601,84 +7594,90 @@ if st.session_state.get("show_portfolio"):
                     "NASDAQ 100 — EQQQ.DE": "EQQQ.DE",
                     "DAX — EXS1.DE": "EXS1.DE",
                 }
-                bm_label = st.selectbox("Benchmark auswählen", list(_BENCHMARKS.keys()), key="pf_bm_select")
-                bm_ticker = _BENCHMARKS[bm_label]
-                _bm_cache_key = f"bm_{_csv_key}_{bm_ticker}"
-                if _bm_cache_key not in st.session_state:
-                    with st.spinner("Benchmark-Daten werden geladen…"):
-                        st.session_state[_bm_cache_key] = _build_performance(_csv_bytes, bm_ticker)
-                _perf = st.session_state[_bm_cache_key]
-                if _perf is None:
-                    st.warning("Benchmark-Berechnung nicht möglich — CSV benötigt eine Datums-Spalte.")
+                _bm_show_key = f"bm_show_{_csv_key}"
+                if not st.session_state.get(_bm_show_key):
+                    if st.button("📊 Benchmark-Chart laden", key="btn_show_bm",
+                                 help="Lädt Benchmark-Vergleich (einmalig ~5 Sek.)"):
+                        st.session_state[_bm_show_key] = True
+                        st.rerun()
                 else:
-                    _dates_p, _invested_p, _bm_p = _perf
-                    _pf_val_now = current_total or 0.0
-                    import plotly.graph_objects as _go
-                    _fig = _go.Figure()
-                    _fig.add_trace(_go.Scatter(
-                        x=_dates_p, y=_invested_p,
-                        name="Investiert (kumuliert)",
-                        line=dict(color="#ffd600", width=2, dash="dot"),
-                        fill="tozeroy", fillcolor="rgba(255,214,0,0.07)"
-                    ))
-                    _fig.add_trace(_go.Scatter(
-                        x=_dates_p, y=_bm_p,
-                        name=f"Benchmark ({bm_label})",
-                        line=dict(color="#42a5f5", width=2.5),
-                        fill="tozeroy", fillcolor="rgba(66,165,245,0.09)"
-                    ))
-                    # Aktueller Portfolio-Wert als Datenpunkt (heute)
-                    if _pf_val_now > 0 and _dates_p:
-                        _today_ts = pd.Timestamp.today().normalize()
+                    bm_label = st.selectbox("Benchmark auswählen", list(_BENCHMARKS.keys()), key="pf_bm_select")
+                    bm_ticker = _BENCHMARKS[bm_label]
+                    _bm_cache_key = f"bm_{_csv_key}_{bm_ticker}"
+                    if _bm_cache_key not in st.session_state:
+                        with st.spinner("Benchmark-Daten werden geladen…"):
+                            st.session_state[_bm_cache_key] = _build_performance(_csv_bytes, bm_ticker)
+                    _perf = st.session_state[_bm_cache_key]
+                    if _perf is None:
+                        st.warning("Benchmark-Berechnung nicht möglich — CSV benötigt eine Datums-Spalte.")
+                    else:
+                        _dates_p, _invested_p, _bm_p = _perf
+                        _pf_val_now = current_total or 0.0
+                        import plotly.graph_objects as _go
+                        _fig = _go.Figure()
                         _fig.add_trace(_go.Scatter(
-                            x=[_dates_p[-1], _today_ts],
-                            y=[_pf_val_now, _pf_val_now],
-                            name="Mein Portfolio (aktuell)",
-                            line=dict(color="#00e676", width=2.5),
-                            mode="lines+markers",
-                            marker=dict(size=[0, 10], color="#00e676"),
+                            x=_dates_p, y=_invested_p,
+                            name="Investiert (kumuliert)",
+                            line=dict(color="#ffd600", width=2, dash="dot"),
+                            fill="tozeroy", fillcolor="rgba(255,214,0,0.07)"
                         ))
-                    _fig.update_layout(
-                        template="plotly_dark", height=380,
-                        paper_bgcolor="#0a1628", plot_bgcolor="#0a1628",
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-                        margin=dict(l=10, r=10, t=36, b=10),
-                        xaxis=dict(showgrid=False, title=""),
-                        yaxis=dict(showgrid=True, gridcolor="#1e2d45",
-                                   tickprefix="€", tickformat=",.0f"),
-                        hovermode="x unified",
-                    )
-                    st.plotly_chart(_fig, use_container_width=True)
-                    if _bm_p and _invested_p[-1] > 0:
-                        _invested_last = _invested_p[-1]
-                        _bm_gain_eur = _bm_p[-1] - _invested_last
-                        _bm_gain_pct = (_bm_p[-1] / _invested_last - 1) * 100
-                        _pf_gain_eur = _pf_val_now - _invested_last
-                        _pf_gain_pct = (_pf_val_now / _invested_last - 1) * 100 if _invested_last > 0 else 0
-                        _alpha = _pf_gain_pct - _bm_gain_pct
-                        _sc1, _sc2, _sc3, _sc4 = st.columns(4)
-                        _sc1.metric("Investiert gesamt", f"€ {_invested_last:,.0f}")
-                        _sc2.metric("Mein Portfolio", f"€ {_pf_val_now:,.0f}",
-                                    delta=f"{_pf_gain_pct:+.1f}% ({_pf_gain_eur:+,.0f} €)",
-                                    delta_color="normal" if _pf_gain_eur >= 0 else "inverse")
-                        _sc3.metric(f"Benchmark", f"€ {_bm_p[-1]:,.0f}",
-                                    delta=f"{_bm_gain_pct:+.1f}% ({_bm_gain_eur:+,.0f} €)",
-                                    delta_color="normal" if _bm_gain_eur >= 0 else "inverse")
-                        _alpha_color = "#00e676" if _alpha >= 0 else "#ff5252"
-                        _alpha_sign  = "+" if _alpha >= 0 else ""
-                        st.markdown(
-                            f"<div style='background:#0d1a2e;border:1px solid #1e2d45;border-radius:10px;"
-                            f"padding:12px 16px;text-align:center;margin-top:8px;'>"
-                            f"<span style='color:#64b5f6;font-size:0.75rem;font-weight:600;"
-                            f"text-transform:uppercase;letter-spacing:.06em;'>Portfolio vs. Benchmark (Alpha)</span>"
-                            f"<div style='color:{_alpha_color};font-size:1.5rem;font-weight:800;"
-                            f"margin-top:4px;'>{_alpha_sign}{_alpha:.1f} Prozentpunkte</div>"
-                            f"<div style='color:#546e7a;font-size:0.72rem;margin-top:2px;'>"
-                            f"{'Outperformance' if _alpha >= 0 else 'Underperformance'} gegenüber {bm_label}</div>"
-                            f"</div>",
-                            unsafe_allow_html=True)
-                    st.caption("Methodik: Jeder Kauf simuliert einen gleichwertigen Kauf des Benchmarks. "
-                               "Verkäufe reduzieren die Benchmark-Position anteilig. Kosten nicht berücksichtigt.")
+                        _fig.add_trace(_go.Scatter(
+                            x=_dates_p, y=_bm_p,
+                            name=f"Benchmark ({bm_label})",
+                            line=dict(color="#42a5f5", width=2.5),
+                            fill="tozeroy", fillcolor="rgba(66,165,245,0.09)"
+                        ))
+                        if _pf_val_now > 0 and _dates_p:
+                            _today_ts = pd.Timestamp.today().normalize()
+                            _fig.add_trace(_go.Scatter(
+                                x=[_dates_p[-1], _today_ts],
+                                y=[_pf_val_now, _pf_val_now],
+                                name="Mein Portfolio (aktuell)",
+                                line=dict(color="#00e676", width=2.5),
+                                mode="lines+markers",
+                                marker=dict(size=[0, 10], color="#00e676"),
+                            ))
+                        _fig.update_layout(
+                            template="plotly_dark", height=380,
+                            paper_bgcolor="#0a1628", plot_bgcolor="#0a1628",
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                            margin=dict(l=10, r=10, t=36, b=10),
+                            xaxis=dict(showgrid=False, title=""),
+                            yaxis=dict(showgrid=True, gridcolor="#1e2d45",
+                                       tickprefix="€", tickformat=",.0f"),
+                            hovermode="x unified",
+                        )
+                        st.plotly_chart(_fig, use_container_width=True)
+                        if _bm_p and _invested_p[-1] > 0:
+                            _invested_last = _invested_p[-1]
+                            _bm_gain_eur = _bm_p[-1] - _invested_last
+                            _bm_gain_pct = (_bm_p[-1] / _invested_last - 1) * 100
+                            _pf_gain_eur = _pf_val_now - _invested_last
+                            _pf_gain_pct = (_pf_val_now / _invested_last - 1) * 100 if _invested_last > 0 else 0
+                            _alpha = _pf_gain_pct - _bm_gain_pct
+                            _sc1, _sc2, _sc3, _sc4 = st.columns(4)
+                            _sc1.metric("Investiert gesamt", f"€ {_invested_last:,.0f}")
+                            _sc2.metric("Mein Portfolio", f"€ {_pf_val_now:,.0f}",
+                                        delta=f"{_pf_gain_pct:+.1f}% ({_pf_gain_eur:+,.0f} €)",
+                                        delta_color="normal" if _pf_gain_eur >= 0 else "inverse")
+                            _sc3.metric(f"Benchmark", f"€ {_bm_p[-1]:,.0f}",
+                                        delta=f"{_bm_gain_pct:+.1f}% ({_bm_gain_eur:+,.0f} €)",
+                                        delta_color="normal" if _bm_gain_eur >= 0 else "inverse")
+                            _alpha_color = "#00e676" if _alpha >= 0 else "#ff5252"
+                            _alpha_sign  = "+" if _alpha >= 0 else ""
+                            st.markdown(
+                                f"<div style='background:#0d1a2e;border:1px solid #1e2d45;border-radius:10px;"
+                                f"padding:12px 16px;text-align:center;margin-top:8px;'>"
+                                f"<span style='color:#64b5f6;font-size:0.75rem;font-weight:600;"
+                                f"text-transform:uppercase;letter-spacing:.06em;'>Portfolio vs. Benchmark (Alpha)</span>"
+                                f"<div style='color:{_alpha_color};font-size:1.5rem;font-weight:800;"
+                                f"margin-top:4px;'>{_alpha_sign}{_alpha:.1f} Prozentpunkte</div>"
+                                f"<div style='color:#546e7a;font-size:0.72rem;margin-top:2px;'>"
+                                f"{'Outperformance' if _alpha >= 0 else 'Underperformance'} gegenüber {bm_label}</div>"
+                                f"</div>",
+                                unsafe_allow_html=True)
+                        st.caption("Methodik: Jeder Kauf simuliert einen gleichwertigen Kauf des Benchmarks. "
+                                   "Verkäufe reduzieren die Benchmark-Position anteilig. Kosten nicht berücksichtigt.")
 
           except Exception as _e_perf:
               st.error(f"Fehler im Performance-Tab: {_e_perf}")
