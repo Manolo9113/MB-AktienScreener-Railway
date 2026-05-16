@@ -6645,8 +6645,8 @@ if st.session_state.get("show_portfolio"):
                     st.session_state.pop(_ck, None)
                 st.rerun()
 
-        tab_pos, tab_alloc, tab_perf, tab_holdings = st.tabs(
-            ["📊 Positionen", "🥧 Aufteilung", "📈 Performance", "🔍 Holdings"])
+        tab_pos, tab_alloc, tab_perf, tab_holdings, tab_ki = st.tabs(
+            ["📊 Positionen", "🥧 Aufteilung", "📈 Performance", "🔍 Holdings", "🤖 KI-Analyse"])
 
         # ── Disk-Cache für Sektor-/Analyst-Daten laden (überlebt Deploys) ──────
         _disk_sec_cache = _load_isin_sector_cache()
@@ -7555,6 +7555,257 @@ if st.session_state.get("show_portfolio"):
                            f"des ETF-Werts) ist nicht einzeln aufgeführt.")
           except Exception as _e_hb:
               st.error(f"Fehler im Holdings-Tab: {_e_hb}\n{__import__('traceback').format_exc()}")
+
+        with tab_ki:
+          try:
+            st.markdown("<div class='section-header'>🤖 KI-Portfolio-Analyse</div>",
+                        unsafe_allow_html=True)
+            st.caption("Die KI bewertet dein Portfolio fundamental: Qualität, Bewertung, Risiken, "
+                       "Zukunftsfähigkeit und gibt konkrete Handlungsempfehlungen.")
+
+            _kipa_pk = f"ki_pf_result_{_csv_key}"
+            _kipa_mk = f"ki_pf_model_{_csv_key}"
+            _kipa_ts = f"ki_pf_time_{_csv_key}"
+
+            _kipa_c1, _kipa_c2 = st.columns([5, 1])
+            with _kipa_c1:
+                _kipa_gen = st.button(
+                    "🤖 Portfolio analysieren", type="primary",
+                    use_container_width=True, key="btn_kipa_gen",
+                    disabled=not GEMINI_API_KEY,
+                )
+            with _kipa_c2:
+                _kipa_ref = st.button(
+                    "🔄 Neu", use_container_width=True, key="btn_kipa_ref",
+                    disabled=(_kipa_pk not in st.session_state or not GEMINI_API_KEY),
+                )
+            if not GEMINI_API_KEY:
+                st.caption("🔑 GEMINI_API_KEY in Railway-Umgebungsvariablen eintragen.")
+
+            if _kipa_ref:
+                for _kk in [_kipa_pk, _kipa_mk, _kipa_ts]:
+                    st.session_state.pop(_kk, None)
+                st.rerun()
+
+            if _kipa_gen and _kipa_pk not in st.session_state:
+                # ── Portfolio-Daten für den Prompt aufbauen ──────────────────
+                import datetime as _kipa_dt
+
+                # Aktuelle Werte + Sektoren sammeln
+                _kipa_rows = []
+                _kipa_sectors: dict = {}
+                _kipa_regions: dict = {}
+                _kipa_total_val = 0.0
+                for _, _kr in stocks_etf.iterrows():
+                    _kp  = prices.get(_kr['ISIN'])
+                    _kv  = (_kp * _kr['shares']) if _kp else _kr['cost_basis']
+                    _kinf = _alloc_infos.get(_kr['ISIN'], {})
+                    _ksec = (_kinf.get('sector') or
+                             _ISIN_SECTOR_HARD.get(_kr['ISIN'], 'Unbekannt'))
+                    _ksec_de = _SECTOR_DE.get(_ksec, _ksec) or 'Sonstige'
+                    if _kinf.get('quote_type') == 'ETF':
+                        _ksec_de = 'ETF/Fonds'
+                    _kpnl = ((_kv - _kr['cost_basis']) / _kr['cost_basis'] * 100
+                             if _kr['cost_basis'] > 0 else 0.0)
+                    _kipa_rows.append({
+                        'name':   _kr['name'][:40],
+                        'ticker': isin_map.get(_kr['ISIN'], ''),
+                        'value':  _kv,
+                        'pnl':    _kpnl,
+                        'sector': _ksec_de,
+                        'rec':    _kinf.get('recommendation', ''),
+                        'pe':     _kinf.get('forwardPE') or _kinf.get('trailingPE'),
+                        'is_etf': _kinf.get('quote_type') == 'ETF',
+                    })
+                    _kipa_total_val += _kv
+                    _kipa_sectors[_ksec_de] = _kipa_sectors.get(_ksec_de, 0) + _kv
+                    _kreg = _ticker_to_region(isin_map.get(_kr['ISIN'], ''))
+                    _kipa_regions[_kreg] = _kipa_regions.get(_kreg, 0) + _kv
+                for _, _kr in crypto.iterrows():
+                    _kp = _crypto_prices.get(_kr['ISIN'])
+                    _kv = (_kp * _kr['shares']) if _kp else _kr['cost_basis']
+                    _kipa_total_val += _kv
+                    _kipa_sectors['Krypto'] = _kipa_sectors.get('Krypto', 0) + _kv
+                    _kipa_regions['Global'] = _kipa_regions.get('Global', 0) + _kv
+                    _kipa_rows.append({'name': f"₿ {_kr['name'][:35]}", 'ticker': '',
+                                       'value': _kv, 'pnl': 0, 'sector': 'Krypto',
+                                       'rec': '', 'pe': None, 'is_etf': False})
+
+                # Positionen nach Wert sortieren
+                _kipa_rows.sort(key=lambda r: r['value'], reverse=True)
+
+                # Performance-Daten
+                _kipa_irr, _kipa_ret, _kipa_days, _kipa_inv = _calc_portfolio_irr(
+                    st.session_state.get("portfolio_csv_bytes", b""), _kipa_total_val)
+                _kipa_irr_str = f"{_kipa_irr*100:+.1f}% p.a." if _kipa_irr else "n/v"
+                _kipa_ret_str = f"{_kipa_ret*100:+.1f}%" if _kipa_ret else "n/v"
+                _kipa_yrs = f"{_kipa_days//365} J. {(_kipa_days%365)//30} M." if _kipa_days else "n/v"
+
+                # Prompt aufbauen
+                _pos_lines = []
+                for _i, _r in enumerate(_kipa_rows[:25], 1):
+                    _w = _r['value'] / _kipa_total_val * 100 if _kipa_total_val else 0
+                    _pe_s = f"KGV {_r['pe']:.0f}" if _r['pe'] and float(_r['pe']) < 200 else ""
+                    _pnl_s = f"G/V {_r['pnl']:+.0f}%" if _r['pnl'] else ""
+                    _pos_lines.append(
+                        f"{_i:2}. {_r['name']:<40} {_w:5.1f}%  "
+                        f"{_r['sector']:<20} {_pe_s:<10} {_pnl_s}"
+                    )
+                if len(_kipa_rows) > 25:
+                    _pos_lines.append(f"    ... + {len(_kipa_rows)-25} weitere Positionen")
+
+                _sec_lines = sorted(_kipa_sectors.items(), key=lambda x: x[1], reverse=True)
+                _sec_str = "\n".join(
+                    f"  {s:<22} {v/_kipa_total_val*100:.1f}%" for s, v in _sec_lines if _kipa_total_val)
+                _reg_lines = sorted(_kipa_regions.items(), key=lambda x: x[1], reverse=True)
+                _reg_str = "\n".join(
+                    f"  {r:<22} {v/_kipa_total_val*100:.1f}%" for r, v in _reg_lines if _kipa_total_val)
+
+                _pf_summary = f"""
+PORTFOLIO-ÜBERSICHT:
+  Gesamtwert:         € {_kipa_total_val:,.0f}
+  Anzahl Positionen:  {len(_kipa_rows)}
+  Laufzeit:           {_kipa_yrs}
+  IZF (p.a.):         {_kipa_irr_str}
+  Gesamtrendite:      {_kipa_ret_str}
+
+TOP-POSITIONEN (sortiert nach Wert):
+{chr(10).join(_pos_lines)}
+
+SEKTORVERTEILUNG:
+{_sec_str}
+
+GEOGRAFISCHE VERTEILUNG:
+{_reg_str}
+"""
+
+                _sys_kipa = (
+                    "Du bist ein erfahrener Portfoliomanager und Fundamentalanalyst. "
+                    "Du bewertest echte Anlegerportfolios mit der Tiefe eines professionellen "
+                    "Asset Managers — ehrlich, präzise, ohne Schönfärberei. "
+                    "Du kennst die Prinzipien von Buffett, Munger, Peter Lynch und modernem "
+                    "Factor Investing. Antworte ausschließlich auf Deutsch. "
+                    "Sei konkret: nenne echte Positionen aus dem Portfolio, gib echte Zahlen."
+                )
+                _usr_kipa = (
+                    f"Analysiere dieses Anleger-Portfolio umfassend und fundamental:\n\n"
+                    f"{_pf_summary}\n\n"
+                    "Erstelle eine strukturierte Analyse mit **exakt diesen 6 Abschnitten**, "
+                    "getrennt durch '---':\n\n"
+                    "**🏆 PORTFOLIO-SCORE**\n"
+                    "Vergib eine Note (A+ / A / B+ / B / C / D) und erkläre in 2–3 Sätzen warum. "
+                    "Berücksichtige: Qualität der Unternehmen, Diversifikation, Bewertung, "
+                    "Renditeentwicklung.\n\n"
+                    "---\n\n"
+                    "**💎 STÄRKEN**\n"
+                    "Nenne 3–5 konkrete Stärken dieses Portfolios. Beziehe dich auf echte "
+                    "Positionen. Was macht dieses Portfolio gut?\n\n"
+                    "---\n\n"
+                    "**⚠️ SCHWÄCHEN & KLUMPENRISIKEN**\n"
+                    "Nenne 3–5 echte Schwächen oder Risiken. Gibt es Klumpenrisiken "
+                    "(>10% in einer Position/Region/Sektor)? Fehlende Diversifikation? "
+                    "Überteuerte Positionen? Sei direkt.\n\n"
+                    "---\n\n"
+                    "**🔮 ZUKUNFTSFÄHIGKEIT (10-Jahres-Horizont)**\n"
+                    "Wie gut ist dieses Portfolio für die nächsten 10 Jahre positioniert? "
+                    "Analysiere: KI/Digitalisierung-Exposure, Energiewende-Exposition, "
+                    "demografische Trends, geopolitische Risiken (China, Zölle), "
+                    "Währungsrisiken. Was fehlt? Was ist überexponiert?\n\n"
+                    "---\n\n"
+                    "**💡 KONKRETE HANDLUNGSEMPFEHLUNGEN**\n"
+                    "Gib 4–6 spezifische Empfehlungen:\n"
+                    "- Was würdest du aufstocken? (Begründung)\n"
+                    "- Was würdest du reduzieren oder verkaufen? (Begründung)\n"
+                    "- Welche 1–2 neuen Positionen fehlen für eine bessere Balance?\n"
+                    "- Welche Sektoren/Regionen sind unterrepräsentiert?\n\n"
+                    "---\n\n"
+                    "**📊 GESAMTFAZIT**\n"
+                    "Abschließende Einschätzung in 3–4 Sätzen: Wie gut wird dieses Portfolio "
+                    "den MSCI World langfristig schlagen? Was ist der wichtigste Hebel zur "
+                    "Verbesserung?"
+                )
+
+                with st.spinner("🤖 KI analysiert dein Portfolio fundamental…"):
+                    _kipa_txt, _kipa_mdl = _try_gemini(
+                        [{"role": "system", "content": _sys_kipa},
+                         {"role": "user",   "content": _usr_kipa}],
+                        max_tokens=5000, temperature=0.55, api_key=GEMINI_API_KEY,
+                    )
+                if _kipa_txt:
+                    st.session_state[_kipa_pk] = _kipa_txt
+                    st.session_state[_kipa_mk] = _kipa_mdl
+                    st.session_state[_kipa_ts] = _kipa_dt.datetime.now().strftime("%d.%m.%Y %H:%M")
+                    st.rerun()
+                else:
+                    st.error(f"KI-Analyse fehlgeschlagen: {_kipa_mdl}")
+
+            # ── Ergebnis anzeigen ────────────────────────────────────────────
+            if _kipa_pk in st.session_state:
+                _kipa_result = st.session_state[_kipa_pk]
+                _kipa_model  = st.session_state.get(_kipa_mk, "Gemini")
+                _kipa_time   = st.session_state.get(_kipa_ts, "")
+
+                import re as _kipa_re
+                _kipa_blocks = [b.strip() for b in _kipa_result.split("---") if b.strip()]
+
+                # Farb-Map für die Abschnitt-Karten
+                _kipa_colors = {
+                    "SCORE":      ("#ffd600", "#1a1600"),
+                    "STÄRKEN":    ("#00e676", "#001a0d"),
+                    "SCHWÄCHEN":  ("#ff5252", "#1a0000"),
+                    "ZUKUNFT":    ("#7c4dff", "#0d0020"),
+                    "HANDLUNGS":  ("#00b0ff", "#001a2e"),
+                    "FAZIT":      ("#64b5f6", "#071020"),
+                }
+
+                def _kipa_card_color(block_text: str):
+                    t = block_text.upper()
+                    for key, colors in _kipa_colors.items():
+                        if key in t:
+                            return colors
+                    return ("#546e7a", "#0d1a2e")
+
+                for _kb in _kipa_blocks:
+                    _bdr, _bg = _kipa_card_color(_kb)
+                    st.markdown(
+                        f"<div style='background:{_bg};border:1px solid {_bdr}33;"
+                        f"border-left:4px solid {_bdr};border-radius:12px;"
+                        f"padding:18px 22px 14px 22px;margin-bottom:12px;'>",
+                        unsafe_allow_html=True)
+                    st.markdown(_kb)
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+                st.caption(
+                    f"Modell: {_kipa_model} · Generiert: {_kipa_time} · "
+                    f"Keine Anlageberatung — Analyse basiert auf öffentlichen Portfoliodaten.")
+            else:
+                # Vorschau der Analysebereiche wenn noch nicht generiert
+                st.markdown(
+                    "<div style='background:#080f1e;border:1px solid #1a2740;border-radius:12px;"
+                    "padding:20px 24px;margin-top:8px;'>"
+                    "<div style='color:#64b5f6;font-size:0.95rem;font-weight:700;margin-bottom:12px;'>"
+                    "Die KI analysiert folgende Bereiche:</div>"
+                    "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;'>",
+                    unsafe_allow_html=True)
+                for _ap, _ac in [
+                    ("🏆 Portfolio-Score", "Gesamtnote A+ bis F mit Begründung"),
+                    ("💎 Stärken", "Konkrete Qualitätspositionen & Stärken"),
+                    ("⚠️ Risiken & Klumpen", "Konzentrations- und Bewertungsrisiken"),
+                    ("🔮 Zukunftsfähigkeit", "KI, Energie, Demografie, Geopolitik"),
+                    ("💡 Handlungsempfehlungen", "Was kaufen, reduzieren, ergänzen"),
+                    ("📊 Gesamtfazit", "MSCI-World-Vergleich & wichtigster Hebel"),
+                ]:
+                    st.markdown(
+                        f"<div style='background:#0d1f35;border:1px solid #1a2740;"
+                        f"border-radius:8px;padding:10px 12px;'>"
+                        f"<div style='color:#eceff1;font-size:0.85rem;font-weight:600;'>{_ap}</div>"
+                        f"<div style='color:#546e7a;font-size:0.75rem;margin-top:3px;'>{_ac}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True)
+                st.markdown("</div></div>", unsafe_allow_html=True)
+
+          except Exception as _e_ki:
+              st.error(f"Fehler im KI-Analyse-Tab: {_e_ki}")
 
     elif df_port is None:
         st.info("📂 Bitte lade deine Orderhistorie-CSV hoch.\n\n"
