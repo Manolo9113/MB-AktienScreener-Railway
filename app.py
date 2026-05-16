@@ -454,6 +454,190 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ==================== LIGHT MODE CSS ====================
+if st.session_state.get("light_mode"):
+    st.markdown("""<style>
+    /* ── Hintergründe ─────────────────────────────────── */
+    .stApp,
+    div[data-testid="stAppViewContainer"],
+    section[data-testid="stMain"],
+    .main,
+    .main .block-container { background: #f5f7fa !important; }
+
+    /* ── Sidebar ───────────────────────────────────────── */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg,#e8f0fe,#dde8fb) !important;
+        border-right: 1px solid #c0d0f0 !important;
+    }
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span,
+    section[data-testid="stSidebar"] div { color: #1a202c !important; }
+    section[data-testid="stSidebar"] .section-header {
+        color: #1565c0 !important; border-bottom-color: #c0d0f0 !important; }
+    section[data-testid="stSidebar"] input {
+        background: #fff !important; border-color: #c0d0f0 !important; color: #1a202c !important; }
+
+    /* ── CSS-Klassen ───────────────────────────────────── */
+    .header-wrap, .metric-card, .score-section {
+        background: #ffffff !important;
+        border-color: #dde3ee !important;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.07) !important; }
+    .header-title { color: #0f172a !important; }
+    .header-sub   { color: #2563eb !important; }
+    .metric-label { color: #64748b !important; }
+    .metric-value { color: #0f172a !important; }
+    .metric-sub   { color: #94a3b8 !important; }
+    .section-header { color: #2563eb !important; border-bottom-color: #dde3ee !important; }
+    .insight-box  { background: #eff6ff !important; border-left-color: #2563eb !important; color: #1e3a5f !important; }
+    .grok-box     { background: #faf5ff !important; border-color: #c4b5fd !important; }
+
+    /* ── Inline dark backgrounds via Attribut-Selektor ── */
+    div[style*="#0d1f35"], div[style*="#0d1f3c"], div[style*="#0a1628"],
+    div[style*="#080f1e"], div[style*="#0d1526"], div[style*="#071020"],
+    div[style*="#001a2e"], div[style*="#0d2035"], div[style*="#0d1a2e"],
+    div[style*="#1a2740"], div[style*="#132040"], div[style*="#080d18"],
+    div[style*="#0a1421"], div[style*="#0d2340"] {
+        background: #ffffff !important;
+        border-color: #dde3ee !important; }
+
+    /* ── Inline dark text-Farben ───────────────────────── */
+    *[style*="color:#eceff1"], *[style*="color: #eceff1"] { color: #0f172a !important; }
+    *[style*="color:#cfd8dc"], *[style*="color: #cfd8dc"] { color: #334155 !important; }
+    *[style*="color:#b0bec5"], *[style*="color: #b0bec5"] { color: #475569 !important; }
+    *[style*="color:#90a4ae"], *[style*="color: #90a4ae"] { color: #64748b !important; }
+    *[style*="color:#78909c"], *[style*="color: #78909c"] { color: #64748b !important; }
+    *[style*="color:#546e7a"], *[style*="color: #546e7a"] { color: #94a3b8 !important; }
+    *[style*="color:#64b5f6"], *[style*="color: #64b5f6"] { color: #2563eb !important; }
+    *[style*="color:#42a5f5"], *[style*="color: #42a5f5"] { color: #2563eb !important; }
+
+    /* ── Streamlit native ──────────────────────────────── */
+    div[data-testid="stMarkdownContainer"] p { color: #334155 !important; }
+    div[data-testid="stMetricValue"]  { color: #0f172a !important; }
+    div[data-testid="stMetricLabel"]  { color: #64748b !important; }
+    .stCaption, small                 { color: #94a3b8 !important; }
+    hr                                { border-color: #dde3ee !important; }
+
+    .stTextInput input {
+        background: #fff !important; border-color: #c0d0f0 !important;
+        color: #0f172a !important; box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important; }
+
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        background: #e8f0fe !important; border-color: #c0d0f0 !important; }
+    .stTabs [data-baseweb="tab"]    { color: #64748b !important; }
+    .stTabs [aria-selected="true"]  { background: #2563eb !important; color: #fff !important; }
+
+    /* Expander */
+    details summary                  { background: #e8f0fe !important; color: #2563eb !important; border-radius: 8px; }
+    details[open] summary            { border-radius: 8px 8px 0 0; }
+    details > div                    { background: #f0f5ff !important; border: 1px solid #c0d0f0 !important; }
+
+    /* Buttons (sidebar + nav) */
+    div[data-testid="stButton"] > button {
+        background: #e8f0fe !important; color: #1e40af !important;
+        border: 1px solid #c0d0f0 !important; }
+    div[data-testid="stButton"] > button:hover {
+        background: #dde8fb !important; border-color: #93c5fd !important; }
+    div[data-testid="stButton"] > button[kind="primary"] {
+        background: linear-gradient(135deg,#1d4ed8,#2563eb) !important;
+        color: #fff !important; border: none !important; }
+
+    /* Selectboxen & Multiselect */
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="popover"] { background: #fff !important; color: #0f172a !important; }
+
+    div[data-testid="stProgressBar"] > div { background-color: #bfdbfe !important; }
+    </style>""", unsafe_allow_html=True)
+
+# ==================== QUOTES ====================
+_QUOTES = [
+    ("Der Preis ist, was du bezahlst. Wert ist, was du bekommst.", "Warren Buffett"),
+    ("Es ist weit besser, ein wunderbares Unternehmen zu einem fairen Preis zu kaufen, als ein faires Unternehmen zu einem wunderbaren Preis.", "Warren Buffett"),
+    ("Sei ängstlich, wenn andere gierig sind, und gierig, wenn andere ängstlich sind.", "Warren Buffett"),
+    ("Unsere Lieblingshaltezeit ist für immer.", "Warren Buffett"),
+    ("Regel Nummer eins: Verliere niemals Geld. Regel Nummer zwei: Vergiss niemals Regel Nummer eins.", "Warren Buffett"),
+    ("Risiko entsteht, wenn man nicht weiß, was man tut.", "Warren Buffett"),
+    ("Jemand sitzt heute im Schatten, weil jemand anderes vor langer Zeit einen Baum gepflanzt hat.", "Warren Buffett"),
+    ("Es dauert 20 Jahre, einen guten Ruf aufzubauen, und fünf Minuten, ihn zu ruinieren.", "Warren Buffett"),
+    ("Der Aktienmarkt ist ein Mechanismus zur Übertragung von Geld vom Ungeduldigen zum Geduldigen.", "Warren Buffett"),
+    ("In der Welt des Geschäfts sind die gefährlichsten Menschen jene, die nur eine Idee kennen.", "Charlie Munger"),
+    ("Invertiere, immer invertiere.", "Charlie Munger"),
+    ("Alle intelligenten Investitionen sind Wertinvestitionen — mehr wert zu bekommen, als man zahlt.", "Charlie Munger"),
+    ("Zeige mir den Anreiz und ich zeige dir das Ergebnis.", "Charlie Munger"),
+    ("Um ein gutes Leben zu führen, braucht man nicht viele Dinge. Man muss vor allem wissen, was man vermeiden muss.", "Charlie Munger"),
+    ("Ich habe nichts Neues zu sagen — aber das Alte ist immer noch wahr.", "Charlie Munger"),
+    ("Die Börse ist keine Lotterie — sie ist ein Ort, an dem man Unternehmensanteile kauft.", "Peter Lynch"),
+    ("Kaufe, was du kennst.", "Peter Lynch"),
+    ("Wer keine Zeit hat, seine Aktien zu recherchieren, sollte lieber in Indexfonds investieren.", "Peter Lynch"),
+    ("Hinter jeder Aktie steckt ein Unternehmen. Finde heraus, was es macht.", "Peter Lynch"),
+    ("Investieren ohne zu forschen ist wie Poker spielen, ohne auf die Karten zu schauen.", "Peter Lynch"),
+    ("Der intelligente Investor ist ein Realist, der an Optimisten verkauft und von Pessimisten kauft.", "Benjamin Graham"),
+    ("Der Markt ist kurzfristig eine Abstimmungsmaschine, langfristig jedoch eine Waage.", "Benjamin Graham"),
+    ("Margin of Safety — das sind die drei wichtigsten Worte beim Investieren.", "Benjamin Graham"),
+    ("Der schlimmste Feind des Investors ist wahrscheinlich er selbst.", "Benjamin Graham"),
+    ("Ein Unternehmen ist es wert, was ein rationaler Käufer dafür zahlen würde.", "Benjamin Graham"),
+    ("Der Markt kann länger irrational bleiben, als man solvent bleiben kann.", "John Maynard Keynes"),
+    ("Langfristig sind wir alle tot.", "John Maynard Keynes"),
+    ("Wenn die Fakten sich ändern, ändere ich meine Meinung. Was tun Sie?", "John Maynard Keynes"),
+    ("Schwierig ist es, neue Ideen zu verbreiten — nicht weil alte Ideen falsch sind, sondern weil sie so tief verwurzelt sind.", "John Maynard Keynes"),
+    ("Die Wirtschaft ist eine Wissenschaft der Auswahlmöglichkeiten unter Knappheit.", "John Maynard Keynes"),
+    ("Der Unterschied zwischen Glücksspiel und Spekulation ist oft nur eine Frage der Zeiträume.", "Nassim Taleb"),
+    ("Sei nicht besorgt, ob du recht hast oder nicht. Sei besorgt, wie viel du verlierst, wenn du falsch liegst.", "Nassim Taleb"),
+    ("Überlebe zuerst; reich werden kommt danach.", "Nassim Taleb"),
+    ("Schwarze Schwäne dominieren die Geschichte — seltene Ereignisse bewegen die Welt.", "Nassim Taleb"),
+    ("Komplexität verbirgt Fragilität.", "Nassim Taleb"),
+    ("Geld sucht sich seinen eigenen Weg — man muss nur da sein, wenn es ankommt.", "Jesse Livermore"),
+    ("Ein Spekulant muss sich selbst kennen und seine Grenzen akzeptieren.", "Jesse Livermore"),
+    ("Nie verliere den Faden. Die Basistrends des Marktes sind das Wichtigste.", "Jesse Livermore"),
+    ("Märkte sind niemals falsch — nur Meinungen sind es.", "Jesse Livermore"),
+    ("Geduld ist eine Tugend beim Investieren — und das Warten auf den richtigen Moment das Schwierigste.", "Jesse Livermore"),
+    ("Märkte sind nicht effizient — sie werden von Reflexivität gesteuert.", "George Soros"),
+    ("Es spielt keine Rolle, ob ich recht habe oder falsch liege. Wichtig ist, wie viel ich verdiene, wenn ich richtig liege, und wie viel ich verliere, wenn ich falsch liege.", "George Soros"),
+    ("Der beste Weg, einen Fehler zu erkennen, ist, bereit zu sein, ihn zuzugeben.", "George Soros"),
+    ("Finanzmärkte sind im Allgemeinen unberechenbar.", "George Soros"),
+    ("Investiere in außergewöhnliche Menschen, bevor du in außergewöhnliche Unternehmen investierst.", "Philip Fisher"),
+    ("Die Zeit eines Investors ist am besten genutzt, um nach dem Wenigen Ausschau zu halten, das wirklich außergewöhnlich ist.", "Philip Fisher"),
+    ("Die meisten Anlagen schlagen den Markt nicht — es sei denn, der Investor hat einen echten Informationsvorsprung.", "Philip Fisher"),
+    ("Kaufe in Zeiten der Pessimismus und verkaufe in Zeiten des Optimismus.", "John Templeton"),
+    ("Die vier gefährlichsten Worte beim Investieren sind: Diesmal ist es anders.", "John Templeton"),
+    ("Bull-Märkte werden im Pessimismus geboren, wachsen in der Skepsis, reifen im Optimismus und sterben in der Euphorie.", "John Templeton"),
+    ("Der einfachste Weg zu Reichtum ist, bescheidener zu sein als dein Einkommen.", "John Templeton"),
+    ("Der wichtigste Schlüssel zum Anlageerfolg ist das Verständnis des Konjunkturzyklus.", "Ray Dalio"),
+    ("Schmerz plus Reflexion gleich Fortschritt.", "Ray Dalio"),
+    ("Seien Sie offen für die Möglichkeit, dass Sie falsch liegen.", "Ray Dalio"),
+    ("Die größte Gefahr für einen Investor ist nicht das Risiko — es ist die Risikovermeidung.", "Howard Marks"),
+    ("Gute Zeiten bringen schlechte Entscheidungen hervor.", "Howard Marks"),
+    ("Das Risiko liegt nicht im Verlust — es liegt in der Unwissenheit.", "Howard Marks"),
+    ("Der Markt belohnt Geduld und bestraft Ungeduld.", "Carl Icahn"),
+    ("In der Investmentwelt haben die Geduldigen mehr als die Aktiven.", "Seth Klarman"),
+    ("Sicherheitsmarge ist der zentrale Begriff des Investierens.", "Seth Klarman"),
+    ("Der Markt ist für kurze Zeit eine Popularitätsmaschine, aber auf lange Sicht eine Waage.", "Joel Greenblatt"),
+    ("Kaufe gute Unternehmen zu günstigen Preisen — das ist die ganze Investmentstrategie.", "Joel Greenblatt"),
+    ("Folge dem Trend, bis er sich ändert.", "William O'Neil"),
+    ("Diversifikation ist der einzige kostenlose Mittagstisch beim Investieren.", "John Bogle"),
+    ("Einfachheit ist die höchste Form der Eleganz — auch beim Investieren.", "John Bogle"),
+    ("An der Börse ist der Patient der Lehrmeister des Ungeduldigen.", "André Kostolany"),
+    ("Kaufen, wenn die Kanonen donnern, verkaufen, wenn die Violinen spielen.", "André Kostolany"),
+    ("Wer die Börse versteht, macht Geld; wer sie nicht versteht, auch — aber viel langsamer.", "André Kostolany"),
+    ("Geld allein macht nicht glücklich — aber es beruhigt die Nerven.", "André Kostolany"),
+    ("Der Wohlstand der Nationen entspringt der Arbeitsteilung und dem freien Handel.", "Adam Smith"),
+    ("Nicht vom Wohlwollen des Bäckers, des Metzgers oder des Brauers erwarten wir unser Mittagessen, sondern von ihrem Eigeninteresse.", "Adam Smith"),
+    ("Die Preissignale des Marktes sind die effizienteste Form der Informationsübertragung.", "Friedrich Hayek"),
+    ("Freiwilliger Austausch zwischen Individuen ist die Grundlage einer freien Gesellschaft.", "Milton Friedman"),
+    ("Inflation ist überall und immer ein monetäres Phänomen.", "Milton Friedman"),
+    ("Im Zweifel kultiviere deinen eigenen Garten.", "Voltaire"),
+    ("Das Beste ist der Feind des Guten.", "Voltaire"),
+    ("Wir sind, was wir wiederholt tun. Vortrefflichkeit ist daher keine Handlung, sondern eine Gewohnheit.", "Aristoteles"),
+    ("Glück ist die Tätigkeit der Seele in Übereinstimmung mit der Tugend.", "Aristoteles"),
+    ("Beschränke dich auf das Wesentliche, das heißt: auf das, was Vernunft und Natur erfordern.", "Marcus Aurelius"),
+    ("Beherrsche deine Gedanken — sonst beherrschen sie dich.", "Marcus Aurelius"),
+    ("Nicht die Dinge selbst beunruhigen die Menschen, sondern die Meinungen über die Dinge.", "Epiktet"),
+    ("Es ist nicht arm, wer wenig hat, sondern wer mehr begehrt.", "Seneca"),
+    ("Nutze die Zeit, bevor die Zeit vergeht.", "Seneca"),
+    ("Das Leben ist lang genug, wenn man es richtig nutzt.", "Seneca"),
+]
+
 # ==================== API KEY ====================
 import os
 
@@ -3641,6 +3825,8 @@ if "portfolio_sb_checked" not in st.session_state:
     st.session_state["portfolio_sb_checked"] = False
 if "portfolio_sb_date" not in st.session_state:
     st.session_state["portfolio_sb_date"] = None
+if "light_mode" not in st.session_state:
+    st.session_state["light_mode"] = False
 if "portfolio_settings_loaded" not in st.session_state:
     _pf_settings = _load_portfolio_settings()
     st.session_state["portfolio_excluded_isins"] = _pf_settings.get("excluded_isins", [])
@@ -4804,6 +4990,15 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("<div class='section-header'>⚙️ Einstellungen</div>", unsafe_allow_html=True)
+    _lm = st.session_state.get("light_mode", False)
+    if st.toggle("☀️ Hell-Modus", value=_lm, key="toggle_light_mode"):
+        if not _lm:
+            st.session_state["light_mode"] = True
+            st.rerun()
+    else:
+        if _lm:
+            st.session_state["light_mode"] = False
+            st.rerun()
     show_peers = st.toggle("Peer-Vergleich anzeigen", value=True)
     show_insider = st.toggle("Insider-Transaktionen", value=True)
     show_dcf = st.toggle("DCF Rechner", value=True)
@@ -4898,6 +5093,34 @@ with st.sidebar:
 
 # ==================== LANDING PAGE ====================
 if st.session_state["show_landing"]:
+    import datetime as _qdt
+    _q_idx = _qdt.date.today().timetuple().tm_yday % len(_QUOTES)
+    _q_text, _q_author = _QUOTES[_q_idx]
+    if st.session_state.get("light_mode"):
+        st.markdown(f"""
+<div style='background:#f0f7ff;border:1px solid #bdd7f5;border-left:4px solid #1565c0;
+border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
+  <div style='color:#4a5568;font-size:0.65rem;text-transform:uppercase;
+  letter-spacing:.1em;margin-bottom:10px;'>💬 Zitat des Tages</div>
+  <div style='color:#2d3748;font-size:0.95rem;line-height:1.7;
+  font-style:italic;'>„{_q_text}"</div>
+  <div style='color:#1565c0;font-size:0.78rem;font-weight:600;
+  margin-top:10px;text-align:right;'>— {_q_author}</div>
+</div>
+""", unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+<div style='background:linear-gradient(135deg,#0a1628,#0d1f3c);
+border:1px solid #1e3a5f;border-left:4px solid #00e5ff;
+border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
+  <div style='color:#78909c;font-size:0.65rem;text-transform:uppercase;
+  letter-spacing:.1em;margin-bottom:10px;'>💬 Zitat des Tages</div>
+  <div style='color:#cfd8dc;font-size:0.95rem;line-height:1.7;
+  font-style:italic;'>„{_q_text}"</div>
+  <div style='color:#64b5f6;font-size:0.78rem;font-weight:600;
+  margin-top:10px;text-align:right;'>— {_q_author}</div>
+</div>
+""", unsafe_allow_html=True)
     st.markdown("""
     <div style="text-align:center; padding:48px 0 32px 0;">
         <div style="font-size:3rem; font-weight:800; color:#fff; letter-spacing:-1px;">
@@ -6716,9 +6939,11 @@ if st.session_state.get("show_portfolio"):
                 _sp_tkrs = tuple(t for t in
                                  [isin_map.get(i) for i in stocks_etf['ISIN']] if t)
                 if _sp_tkrs:
-                    with st.spinner("Kursverläufe werden geladen…"):
-                        _sparklines = _sparklines_bulk(_sp_tkrs)
-                    st.session_state[f"spark_{_alloc_cache_key}"] = _sparklines
+                    if st.button("📈 Sparklines laden", key="btn_load_sparklines",
+                                 help="Lädt 3-Monats-Kursverläufe für alle Positionen (einmalig)"):
+                        with st.spinner("Kursverläufe werden geladen…"):
+                            _sparklines = _sparklines_bulk(_sp_tkrs)
+                        st.session_state[f"spark_{_alloc_cache_key}"] = _sparklines
 
             # ── Aktien & ETFs ────────────────────────────────────────────
             if not stocks_etf.empty:
@@ -6877,53 +7102,34 @@ if st.session_state.get("show_portfolio"):
                     _dn_values.append(round(_dnv, 2))
 
             if _dn_labels:
-                _dn_total  = sum(_dn_values)
-                _dn_selkey = f"dn_sel_{_alloc_cache_key}"
-                _dn_sel    = st.session_state.get(_dn_selkey)
-
-                if _dn_sel is not None and 0 <= _dn_sel < len(_dn_labels):
-                    _dn_pct = _dn_values[_dn_sel] / _dn_total * 100
-                    _dn_ann = (f"<b>{_dn_labels[_dn_sel]}</b><br>"
-                               f"€ {_dn_values[_dn_sel]:,.0f}<br>{_dn_pct:.1f}%")
-                else:
-                    _dn_ann = f"<b>Portfolio</b><br>€ {_dn_total:,.0f}"
-
-                _dn_n    = len(_dn_labels)
-                _dn_clrs = [f'hsl({int(200 + i/_dn_n*240)},{55+int(i/_dn_n*15)}%,{48+int(i/_dn_n*10)}%)'
-                            for i in range(_dn_n)]
-                _dn_fig  = go.Figure(go.Pie(
+                _dn_total = sum(_dn_values)
+                # Kontrastreiche Farbpalette — gleichmäßig über alle Farbtöne verteilt
+                _DN_PALETTE = [
+                    '#2196F3','#FF5722','#4CAF50','#E91E63','#FF9800',
+                    '#00BCD4','#9C27B0','#CDDC39','#F44336','#00E676',
+                    '#3F51B5','#FFD600','#009688','#FF4081','#8BC34A',
+                    '#7C4DFF','#FF6D00','#26C6DA','#D500F9','#76FF03',
+                    '#FF1744','#00B0FF','#FFAB40','#69F0AE','#EA80FC',
+                    '#40C4FF','#FF6E40','#B2FF59','#FF80AB','#82B1FF',
+                ]
+                _dn_clrs = [_DN_PALETTE[i % len(_DN_PALETTE)] for i in range(len(_dn_labels))]
+                _dn_fig = go.Figure(go.Pie(
                     labels=_dn_labels, values=_dn_values,
                     hole=0.62, textinfo='none', sort=True,
                     hovertemplate='<b>%{label}</b><br>€ %{value:,.2f}<br>%{percent}<extra></extra>',
-                    marker=dict(colors=_dn_clrs, line=dict(color='#0a1628', width=1.5)),
+                    marker=dict(colors=_dn_clrs, line=dict(color='#0a1628', width=2)),
                 ))
                 _dn_fig.update_layout(
                     template='plotly_dark', paper_bgcolor='#0a1628', plot_bgcolor='#0a1628',
                     showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=340,
                     annotations=[dict(
-                        text=_dn_ann, x=0.5, y=0.5, showarrow=False,
+                        text=f"<b>Portfolio</b><br>€ {_dn_total:,.0f}",
+                        x=0.5, y=0.5, showarrow=False,
                         font=dict(size=13, color='#eceff1'), align='center',
                     )],
                 )
-                _dn_event = st.plotly_chart(
-                    _dn_fig, use_container_width=True,
-                    on_select="rerun", selection_mode="points",
-                    key=f"donut_{_alloc_cache_key}",
-                )
-                # Update center on click
-                if _dn_event and hasattr(_dn_event, 'selection'):
-                    _dn_pts = (getattr(_dn_event.selection, 'points', None)
-                               or (_dn_event.selection.get('points')
-                                   if isinstance(_dn_event.selection, dict) else None))
-                    if _dn_pts:
-                        _dn_new = (_dn_pts[0].get('point_index')
-                                   if isinstance(_dn_pts[0], dict)
-                                   else getattr(_dn_pts[0], 'point_index', None))
-                        if _dn_new is not None and _dn_new != _dn_sel:
-                            st.session_state[_dn_selkey] = _dn_new
-                            st.rerun()
-                    elif _dn_sel is not None:
-                        st.session_state.pop(_dn_selkey, None)
+                st.plotly_chart(_dn_fig, use_container_width=True,
+                                key=f"donut_{_alloc_cache_key}")
 
             st.caption("Kurse in EUR umgerechnet (Wechselkurs via yFinance). P&L basiert auf dem Ø-Kaufkurs aus der Orderhistorie.")
 
@@ -7219,9 +7425,12 @@ if st.session_state.get("show_portfolio"):
             else:
                 # ── Rendite-Kennzahlen ────────────────────────────────────
                 _cur_val_perf = current_total or 0.0
-                with st.spinner("Renditekennzahlen werden berechnet…"):
-                    _irr, _simple_ret, _days, _invested_total = _calc_portfolio_irr(
-                        _csv_bytes, _cur_val_perf)
+                _irr_cache_key = f"irr_{_csv_key}"
+                if _irr_cache_key not in st.session_state:
+                    with st.spinner("Renditekennzahlen werden berechnet…"):
+                        _irr_res = _calc_portfolio_irr(_csv_bytes, _cur_val_perf)
+                    st.session_state[_irr_cache_key] = _irr_res
+                _irr, _simple_ret, _days, _invested_total = st.session_state[_irr_cache_key]
 
                 _INFL = 2.2
                 _irr_pct       = _irr * 100 if _irr is not None else None
@@ -7394,8 +7603,11 @@ if st.session_state.get("show_portfolio"):
                 }
                 bm_label = st.selectbox("Benchmark auswählen", list(_BENCHMARKS.keys()), key="pf_bm_select")
                 bm_ticker = _BENCHMARKS[bm_label]
-                with st.spinner("Benchmark-Daten werden geladen…"):
-                    _perf = _build_performance(_csv_bytes, bm_ticker)
+                _bm_cache_key = f"bm_{_csv_key}_{bm_ticker}"
+                if _bm_cache_key not in st.session_state:
+                    with st.spinner("Benchmark-Daten werden geladen…"):
+                        st.session_state[_bm_cache_key] = _build_performance(_csv_bytes, bm_ticker)
+                _perf = st.session_state[_bm_cache_key]
                 if _perf is None:
                     st.warning("Benchmark-Berechnung nicht möglich — CSV benötigt eine Datums-Spalte.")
                 else:
@@ -7478,64 +7690,72 @@ if st.session_state.get("show_portfolio"):
             st.caption("ETFs werden auf ihre Top-Holdings aufgebrochen und mit Direktinvestments kombiniert. "
                        "Nur die Top-25 Holdings je ETF werden berücksichtigt (≈40–70% des ETF-Werts).")
 
-            # ── Holdings-Breakdown (lazy, einmalig pro Session) ─────────────────
+            # ── Holdings-Breakdown (auf Knopfdruck, einmalig pro Session gecacht) ──
+            _hb_load_key = f"hb_load_req_{_alloc_cache_key}"
             if _hb_cache_key not in st.session_state:
-                _hb_w: dict = {}
-                _hb_etfs_w: list = []
-                for _, _hr in stocks_etf.iterrows():
-                    _hisin = _hr['ISIN']
-                    _htkr  = isin_map.get(_hisin, '')
-                    _hinf  = _alloc_infos.get(_hisin, {})
-                    if (_hinf.get('quote_type') == 'ETF' or
-                            _htkr in _ETF_CW or _htkr in _ETF_SW):
-                        continue
-                    _hprc = prices.get(_hisin)
-                    _hval = max(0.0, (_hprc if _hprc else _hr['avg_cost']) * _hr['shares'])
-                    _hkey = _htkr or _hr['name']
-                    if _hkey not in _hb_w:
-                        _hb_w[_hkey] = {'name': _hr['name'], 'ticker': _htkr,
-                                        'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
-                    _hb_w[_hkey]['direct'] += _hval
-                _hb_etf_rows2 = [(isin_map.get(_hr['ISIN'], ''), _hr)
-                                 for _, _hr in stocks_etf.iterrows()
-                                 if ((_alloc_infos.get(_hr['ISIN'], {}).get('quote_type') == 'ETF') or
-                                     isin_map.get(_hr['ISIN'], '') in _ETF_CW or
-                                     isin_map.get(_hr['ISIN'], '') in _ETF_SW)
-                                 and isin_map.get(_hr['ISIN'], '')]
-                if _hb_etf_rows2:
-                    _hb_prog2 = st.progress(0, f"ETF-Holdings: 0 / {len(_hb_etf_rows2)}…")
-                    for _hei2, (_htkr2, _hr2) in enumerate(_hb_etf_rows2):
-                        _hb_prog2.progress((_hei2 + 1) / len(_hb_etf_rows2),
-                                           f"ETF-Holdings: {_hei2+1}/{len(_hb_etf_rows2)} — {_hr2['name'][:28]}…")
-                        _hprc2  = prices.get(_hr2['ISIN'])
-                        _heval  = max(0.0, (_hprc2 if _hprc2 else _hr2['avg_cost']) * _hr2['shares'])
-                        _hetf_lbl = _hr2['name'][:28]
-                        _hholdings = _etf_top_holdings_cached(_htkr2)
-                        if _hholdings:
-                            _hb_etfs_w.append(_hetf_lbl)
-                        for _hn, _hs, _hw in _hholdings:
-                            _hkey2 = _hs if _hs and _hs not in ('nan', 'None') else _hn
-                            _hexposure = _heval * _hw
-                            if _hkey2 not in _hb_w:
-                                _hb_w[_hkey2] = {'name': _hn, 'ticker': _hs,
-                                                 'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
-                            _hb_w[_hkey2]['etf_eur'] += _hexposure
-                            _hb_w[_hkey2]['sources'][_hetf_lbl] = \
-                                _hb_w[_hkey2]['sources'].get(_hetf_lbl, 0.0) + _hexposure
-                    _hb_prog2.empty()
-                _hb_mg: dict = {}
-                for _hk, _hd in _hb_w.items():
-                    _ht = (_hd['ticker'] or '').upper().split('.')[0]
-                    _hm = next((k for k, d in _hb_mg.items()
-                                if _ht and (d['ticker'] or '').upper().split('.')[0] == _ht), None)
-                    if _hm:
-                        _hb_mg[_hm]['direct']  += _hd['direct']
-                        _hb_mg[_hm]['etf_eur'] += _hd['etf_eur']
-                        for _sn, _sv in _hd['sources'].items():
-                            _hb_mg[_hm]['sources'][_sn] = _hb_mg[_hm]['sources'].get(_sn, 0) + _sv
-                    else:
-                        _hb_mg[_hk] = dict(_hd)
-                st.session_state[_hb_cache_key] = (_hb_mg, _hb_etfs_w)
+                if not st.session_state.get(_hb_load_key):
+                    st.info("Holdings-Analyse noch nicht geladen. Klicke den Button, um ETF-Holdings aufzuschlüsseln "
+                            "(lädt ~10–30 Sek., wird danach für diese Sitzung gespeichert).")
+                    if st.button("🔍 Holdings laden", type="primary", key="btn_hb_load"):
+                        st.session_state[_hb_load_key] = True
+                        st.rerun()
+                else:
+                    _hb_w: dict = {}
+                    _hb_etfs_w: list = []
+                    for _, _hr in stocks_etf.iterrows():
+                        _hisin = _hr['ISIN']
+                        _htkr  = isin_map.get(_hisin, '')
+                        _hinf  = _alloc_infos.get(_hisin, {})
+                        if (_hinf.get('quote_type') == 'ETF' or
+                                _htkr in _ETF_CW or _htkr in _ETF_SW):
+                            continue
+                        _hprc = prices.get(_hisin)
+                        _hval = max(0.0, (_hprc if _hprc else _hr['avg_cost']) * _hr['shares'])
+                        _hkey = _htkr or _hr['name']
+                        if _hkey not in _hb_w:
+                            _hb_w[_hkey] = {'name': _hr['name'], 'ticker': _htkr,
+                                            'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
+                        _hb_w[_hkey]['direct'] += _hval
+                    _hb_etf_rows2 = [(isin_map.get(_hr['ISIN'], ''), _hr)
+                                     for _, _hr in stocks_etf.iterrows()
+                                     if ((_alloc_infos.get(_hr['ISIN'], {}).get('quote_type') == 'ETF') or
+                                         isin_map.get(_hr['ISIN'], '') in _ETF_CW or
+                                         isin_map.get(_hr['ISIN'], '') in _ETF_SW)
+                                     and isin_map.get(_hr['ISIN'], '')]
+                    if _hb_etf_rows2:
+                        _hb_prog2 = st.progress(0, f"ETF-Holdings: 0 / {len(_hb_etf_rows2)}…")
+                        for _hei2, (_htkr2, _hr2) in enumerate(_hb_etf_rows2):
+                            _hb_prog2.progress((_hei2 + 1) / len(_hb_etf_rows2),
+                                               f"ETF-Holdings: {_hei2+1}/{len(_hb_etf_rows2)} — {_hr2['name'][:28]}…")
+                            _hprc2  = prices.get(_hr2['ISIN'])
+                            _heval  = max(0.0, (_hprc2 if _hprc2 else _hr2['avg_cost']) * _hr2['shares'])
+                            _hetf_lbl = _hr2['name'][:28]
+                            _hholdings = _etf_top_holdings_cached(_htkr2)
+                            if _hholdings:
+                                _hb_etfs_w.append(_hetf_lbl)
+                            for _hn, _hs, _hw in _hholdings:
+                                _hkey2 = _hs if _hs and _hs not in ('nan', 'None') else _hn
+                                _hexposure = _heval * _hw
+                                if _hkey2 not in _hb_w:
+                                    _hb_w[_hkey2] = {'name': _hn, 'ticker': _hs,
+                                                     'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
+                                _hb_w[_hkey2]['etf_eur'] += _hexposure
+                                _hb_w[_hkey2]['sources'][_hetf_lbl] = \
+                                    _hb_w[_hkey2]['sources'].get(_hetf_lbl, 0.0) + _hexposure
+                        _hb_prog2.empty()
+                    _hb_mg: dict = {}
+                    for _hk, _hd in _hb_w.items():
+                        _ht = (_hd['ticker'] or '').upper().split('.')[0]
+                        _hm = next((k for k, d in _hb_mg.items()
+                                    if _ht and (d['ticker'] or '').upper().split('.')[0] == _ht), None)
+                        if _hm:
+                            _hb_mg[_hm]['direct']  += _hd['direct']
+                            _hb_mg[_hm]['etf_eur'] += _hd['etf_eur']
+                            for _sn, _sv in _hd['sources'].items():
+                                _hb_mg[_hm]['sources'][_sn] = _hb_mg[_hm]['sources'].get(_sn, 0) + _sv
+                        else:
+                            _hb_mg[_hk] = dict(_hd)
+                    st.session_state[_hb_cache_key] = (_hb_mg, _hb_etfs_w)
 
             _hb_merged, _hb_etfs_loaded = st.session_state.get(_hb_cache_key, ({}, []))
 
