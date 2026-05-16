@@ -6045,6 +6045,131 @@ if st.session_state["show_landing"]:
             _go_to_ticker(t)
             st.rerun()
 
+    # ── KI-Investmentstrategie ─────────────────────────────────────────────────
+    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style='background:linear-gradient(135deg,#0a1a35 0%,#0d2040 100%);
+    border:1px solid #1a3a6c;border-radius:16px;padding:22px 26px 16px 26px;margin-bottom:16px;
+    box-shadow:0 4px 32px rgba(0,80,200,0.12);'>
+        <div style='display:flex;align-items:center;gap:12px;margin-bottom:8px;'>
+            <span style='font-size:1.8rem;'>🤖</span>
+            <div>
+                <div style='font-size:1.15rem;font-weight:700;color:#e3f2fd;'>KI-Investmentstrategie</div>
+                <div style='color:#546e7a;font-size:0.78rem;margin-top:2px;'>
+                    Als professioneller Langfristinvestor — Burggraben · Wachstum · Bewertung · Zukunft
+                </div>
+            </div>
+        </div>
+        <div style='color:#78909c;font-size:0.8rem;border-top:1px solid #1a3a5c;padding-top:10px;margin-top:4px;'>
+            Die KI wählt Aktien, die den breiten Markt (MSCI World) langfristig übertreffen sollen —
+            basierend auf dauerhaften Wettbewerbsvorteilen, Wachstumspotenzial und fairer Bewertung.
+            Kein Anlageberatung.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    _ki_pk  = "ki_landing_picks"
+    _ki_mk  = "ki_landing_model"
+    _ki_ts  = "ki_landing_ts"
+
+    _kc1, _kc2 = st.columns([5, 1])
+    with _kc1:
+        _ki_gen = st.button("🤖 KI-Aktienauswahl generieren", type="primary",
+                            use_container_width=True, key="btn_ki_gen",
+                            disabled=not GEMINI_API_KEY)
+    with _kc2:
+        _ki_ref = st.button("🔄 Neu", use_container_width=True, key="btn_ki_ref",
+                            disabled=(_ki_pk not in st.session_state or not GEMINI_API_KEY))
+
+    if not GEMINI_API_KEY:
+        st.caption("🔑 GEMINI_API_KEY in Railway-Umgebungsvariablen eintragen.")
+
+    if _ki_ref:
+        for _k in [_ki_pk, _ki_mk, _ki_ts]:
+            st.session_state.pop(_k, None)
+        st.rerun()
+
+    if _ki_gen and _ki_pk not in st.session_state:
+        _sys_ki = (
+            "Du bist ein erfahrener institutioneller Investor mit der Philosophie von "
+            "Warren Buffett, Charlie Munger und dem Konzept des 'Quality Investing'. "
+            "Du analysierst Aktien nach: dauerhaftem Burggraben (Wettbewerbsvorteil), "
+            "Wachstumspotenzial über 5–10 Jahre, fundamentaler Qualität (hohe Eigenkapitalrendite, "
+            "starker Free Cashflow, solide Bilanz) sowie fairer Bewertung. "
+            "Dein Ziel: Aktien identifizieren, die den MSCI World Index langfristig "
+            "signifikant outperformen können. Antworte ausschließlich auf Deutsch. "
+            "Sei konkret, fundiert und ehrlich — keine Marketing-Sprache."
+        )
+        _usr_ki = (
+            "Wähle genau 7 Aktien aus, in die du als professioneller institutioneller Investor "
+            "heute langfristig investieren würdest. Misch Wachstums- und Quality-Value-Titel. "
+            "Mindestens 2 europäische oder asiatische Titel (nicht nur US-Mega-Caps). "
+            "Begründe jede Wahl strukturiert.\n\n"
+            "Für jede Aktie exakt dieses Format:\n\n"
+            "**[Nr]. [TICKER] – [FIRMENNAME]**\n"
+            "*[SEKTOR] · [Wachstum / Quality-Value / Dividende+Wachstum]*\n\n"
+            "🏰 **Burggraben:** [Konkreter, dauerhafter Wettbewerbsvorteil — warum verliert "
+            "das Unternehmen keine Kunden?]\n"
+            "📈 **Wachstumskatalysator:** [Was treibt das Wachstum die nächsten 10 Jahre? "
+            "TAM, Marktanteil, neue Märkte?]\n"
+            "💰 **Bewertung:** [Ist die Aktie fair/günstig/teuer? Kurze KGV- oder "
+            "Cashflow-Einschätzung]\n"
+            "⚠️ **Hauptrisiko:** [Das wichtigste Risiko in einem Satz]\n\n"
+            "---\n\n"
+            "Wiederhole dieses Format für alle 7 Aktien, getrennt durch '---'.\n\n"
+            "Schreibe abschließend:\n"
+            "**Strategie & Portfolio-Logik:** [Warum ergänzen sich diese 7 Aktien? Wie "
+            "soll diese Kombination den Markt langfristig schlagen?]"
+        )
+        with st.spinner("🤖 KI analysiert globale Märkte und Fundamentaldaten…"):
+            _ki_txt, _ki_mdl = _try_gemini(
+                [{"role": "system", "content": _sys_ki},
+                 {"role": "user",   "content": _usr_ki}],
+                max_tokens=4500, temperature=0.65, api_key=GEMINI_API_KEY
+            )
+        if _ki_txt:
+            import datetime as _kidt
+            st.session_state[_ki_pk] = _ki_txt
+            st.session_state[_ki_mk] = _ki_mdl
+            st.session_state[_ki_ts] = _kidt.datetime.now().strftime("%d.%m.%Y %H:%M")
+            st.rerun()
+        else:
+            st.error(f"KI-Analyse fehlgeschlagen: {_ki_mdl}")
+
+    if _ki_pk in st.session_state:
+        _ki_result = st.session_state[_ki_pk]
+        _ki_model  = st.session_state.get(_ki_mk, "Gemini")
+        _ki_time   = st.session_state.get(_ki_ts, "")
+
+        # Parse blocks separated by ---
+        import re as _kire
+        _ki_blocks = [b.strip() for b in _ki_result.split("---") if b.strip()]
+
+        for _kb in _ki_blocks:
+            # Extract ticker for the "Analysieren" button (matches **1. NVDA –)
+            _kb_tkr = None
+            _m = _kire.search(r'\*\*\d+\.\s+([A-Z0-9]{1,6})\s*[–\-—]', _kb)
+            if _m:
+                _kb_tkr = _m.group(1)
+
+            # Style the card
+            _border = "#1565c0" if _kb_tkr else "#1a3a5c"
+            st.markdown(
+                f"<div style='background:#080f1e;border:1px solid {_border}33;"
+                f"border-left:3px solid {_border};border-radius:10px;"
+                f"padding:16px 20px 12px 20px;margin-bottom:10px;'>",
+                unsafe_allow_html=True)
+            st.markdown(_kb)
+            if _kb_tkr:
+                if st.button(f"📊 {_kb_tkr} analysieren →",
+                             key=f"ki_goto_{_kb_tkr}", use_container_width=False):
+                    _go_to_ticker(_kb_tkr)
+                    st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        st.caption(f"Modell: {_ki_model} · Generiert: {_ki_time} · "
+                   f"Keine Anlageberatung — eigene Recherche empfohlen.")
+
     st.stop()
 
 # ==================== PORTFOLIO PAGE ====================
