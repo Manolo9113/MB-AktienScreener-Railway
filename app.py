@@ -7306,6 +7306,7 @@ if st.session_state.get("show_etf_analyzer"):
                 'exchange':    exch or '—',
                 'div_yield':   inf.get('dividendYield'),
                 'quote_type':  inf.get('quoteType','ETF'),
+                'description': inf.get('longBusinessSummary') or '',
             }
         except Exception:
             return {}
@@ -7623,9 +7624,74 @@ if st.session_state.get("show_etf_analyzer"):
             _pills += _pill(f"🏛 {_ei['domicile']}", '#90a4ae', '#1a2740')
         if _ei.get('category'):
             _pills += _pill(_ei['category'][:28], '#b0bec5', '#161f30')
+        # Faktor- und Sektor-Tags automatisch aus ETF-Name ableiten
+        _nl = (_ei.get('name', '') + ' ' + _ei.get('category', '')).lower()
+        _factor_tags = []
+        if any(x in _nl for x in ['value', 'enhanced value', 'substanz']):
+            _factor_tags.append(('📊 Value', '#ffd54f', '#1a1200'))
+        if any(x in _nl for x in [' growth', 'wachstum']):
+            _factor_tags.append(('🚀 Growth', '#81c784', '#001a00'))
+        if 'momentum' in _nl:
+            _factor_tags.append(('⚡ Momentum', '#ff8a65', '#1a0800'))
+        if 'quality' in _nl:
+            _factor_tags.append(('💎 Quality', '#ce93d8', '#150020'))
+        if any(x in _nl for x in ['min vol', 'minimum vol', 'low vol', 'low volatil']):
+            _factor_tags.append(('🛡 Low Vol', '#80cbc4', '#001a18'))
+        if any(x in _nl for x in ['dividend', 'high dividend', 'income', 'yield']):
+            _factor_tags.append(('💰 Dividenden', '#ffd600', '#1a1000'))
+        if any(x in _nl for x in ['esg', ' sri', 'sustainable', 'socially responsible', 'climate', 'paris']):
+            _factor_tags.append(('🌱 ESG/SRI', '#a5d6a7', '#001a05'))
+        if any(x in _nl for x in ['small cap', 'small-cap', 'smallcap', 'small company']):
+            _factor_tags.append(('🔬 Small Cap', '#b0bec5', '#0d1f35'))
+        if any(x in _nl for x in ['multi-factor', 'multifactor', 'multi factor']):
+            _factor_tags.append(('⚙ Multi-Faktor', '#ffab40', '#1a0e00'))
+        # Sektor-Tags (nur einer pro ETF)
+        _sector_map = [
+            (['technology', 'tech ', 'semiconductor', 'digital'], '💻 Technologie', '#29b6f6', '#001728'),
+            (['healthcare', 'health care', 'medical', 'pharma', 'biotech'], '🏥 Gesundheit', '#66bb6a', '#001500'),
+            (['financial', 'bank', 'insurance'], '🏦 Finanzen', '#ffa726', '#1a0a00'),
+            (['energy', 'clean energy', 'renewable'], '⚡ Energie', '#ffee58', '#1a1800'),
+            (['real estate', 'reit', 'property', 'immobil'], '🏠 Immobilien', '#ef5350', '#1a0000'),
+            (['consumer', 'retail', 'staple', 'discretionary'], '🛒 Konsum', '#ab47bc', '#150015'),
+            (['industrial', 'infrastructure', 'aerospace', 'defense'], '🏭 Industrie', '#78909c', '#0d1820'),
+            (['material', 'commodit', 'gold', 'silver', 'mining'], '⛏ Rohstoffe', '#a1887f', '#1a1005'),
+            (['water', 'environment', 'green'], '💧 Wasser/Umwelt', '#26c6da', '#001a1d'),
+            (['cybersecurity', 'cyber'], '🔒 Cybersecurity', '#ef5350', '#200000'),
+            (['artificial intellig', 'robotics', 'automation', ' ai ', 'machine learn'], '🤖 KI/Robotik', '#7e57c2', '#0e0015'),
+        ]
+        for _kws, _lbl, _clr, _bg in _sector_map:
+            if any(kw in _nl for kw in _kws):
+                _factor_tags.append((_lbl, _clr, _bg))
+                break
+        for _ft, _fc, _fb in _factor_tags:
+            _pills += _pill(_ft, _fc, _fb)
         st.markdown(f"{_badge_html}{_name_html}"
                     f"<div style='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;'>"
                     f"{_pills}</div>", unsafe_allow_html=True)
+        # ETF-Beschreibung
+        _desc = _ei.get('description', '')
+        if _desc:
+            # Max. 3 Sätze anzeigen, Rest ausklappbar
+            _sentences = [s.strip() for s in _desc.replace('\n', ' ').split('. ') if s.strip()]
+            _desc_short = '. '.join(_sentences[:3]) + ('.' if len(_sentences) > 3 else '')
+            _desc_rest  = '. '.join(_sentences[3:]) + '.' if len(_sentences) > 3 else ''
+            _desc_id = f"desc_{_etf_tkr.replace('.','_')}"
+            _desc_html = (
+                f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
+                f"padding:10px 14px;margin-top:4px;margin-bottom:4px;'>"
+                f"<div style='color:#78909c;font-size:0.65rem;text-transform:uppercase;"
+                f"letter-spacing:.08em;margin-bottom:5px;'>📋 Beschreibung</div>"
+                f"<div style='color:#cfd8dc;font-size:0.82rem;line-height:1.55;'>{_desc_short}"
+            )
+            if _desc_rest:
+                _desc_html += (
+                    f"<span id='more_{_desc_id}' style='display:none;'> {_desc_rest}</span>"
+                    f" <span onclick=\"document.getElementById('more_{_desc_id}').style.display='inline';"
+                    f"this.style.display='none';\" style='color:#64b5f6;cursor:pointer;"
+                    f"font-size:0.75rem;'>Mehr anzeigen ▾</span>"
+                )
+            _desc_html += "</div></div>"
+            st.markdown(_desc_html, unsafe_allow_html=True)
     with _h2:
         if st.button("🔄 Ähnliche ETFs", use_container_width=True, key="btn_similar"):
             st.session_state["etf_show_similar"] = not st.session_state.get("etf_show_similar", False)
