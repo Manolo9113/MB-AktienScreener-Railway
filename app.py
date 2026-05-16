@@ -3900,27 +3900,34 @@ def _portfolio_quote_ext(ticker: str) -> dict:
     _empty = {'price_eur': None, 'year_high_eur': None, 'year_low_eur': None,
               'day_chg_pct': None, 'fx': 1.0}
 
+    import concurrent.futures as _cf_pq
     def _fetch(t):
-        try:
-            fi = yf.Ticker(t).fast_info
-            price = float(getattr(fi, 'last_price', None) or getattr(fi, 'regular_market_price', None) or 0)
-            if not price:
+        def _do():
+            try:
+                fi = yf.Ticker(t).fast_info
+                price = float(getattr(fi, 'last_price', None) or getattr(fi, 'regular_market_price', None) or 0)
+                if not price:
+                    return None
+                currency = str(getattr(fi, 'currency', 'EUR') or 'EUR').strip()
+                if currency == 'GBp' or (currency == 'GBP' and t.endswith('.L') and price > 500):
+                    price /= 100.0
+                    currency = 'GBP'
+                fx = _get_eur_fx_rate(currency) if currency != 'EUR' else 1.0
+                y_high  = getattr(fi, 'year_high', None)
+                y_low   = getattr(fi, 'year_low', None)
+                day_chg = getattr(fi, 'regular_market_change_percent', None)
+                return {
+                    'price_eur':     price * fx,
+                    'year_high_eur': float(y_high) * fx if y_high else None,
+                    'year_low_eur':  float(y_low)  * fx if y_low  else None,
+                    'day_chg_pct':   float(day_chg) if day_chg is not None else None,
+                    'fx':            fx,
+                }
+            except Exception:
                 return None
-            currency = str(getattr(fi, 'currency', 'EUR') or 'EUR').strip()
-            if currency == 'GBp' or (currency == 'GBP' and t.endswith('.L') and price > 500):
-                price /= 100.0
-                currency = 'GBP'
-            fx = _get_eur_fx_rate(currency) if currency != 'EUR' else 1.0
-            y_high  = getattr(fi, 'year_high', None)
-            y_low   = getattr(fi, 'year_low', None)
-            day_chg = getattr(fi, 'regular_market_change_percent', None)
-            return {
-                'price_eur':     price * fx,
-                'year_high_eur': float(y_high) * fx if y_high else None,
-                'year_low_eur':  float(y_low)  * fx if y_low  else None,
-                'day_chg_pct':   float(day_chg) if day_chg is not None else None,
-                'fx':            fx,
-            }
+        try:
+            with _cf_pq.ThreadPoolExecutor(max_workers=1) as _ex:
+                return _ex.submit(_do).result(timeout=5.0)
         except Exception:
             return None
 
@@ -6133,13 +6140,28 @@ if st.session_state.get("show_portfolio"):
         with _caption_cols[1]:
             if _unpriced > 0 and st.button("🔄 Ticker neu laden", key="pf_reload_tickers",
                                             use_container_width=True, help="Kurs-Cache leeren und erneut laden"):
-                for _ck in [_prices_cache_key, _qext_cache_key, _crypto_cache_key, _alloc_cache_key,
-                             f"spark_{_alloc_cache_key}"]:
+                # Nur Preise der ungelösten Positionen löschen — NICHT die gesamte isin_map!
+                # (Löschen von portfolio_isin_map würde alle 69 Positionen per FMP-ISIN neu suchen → ~7 Min.)
+                _rl_prices = st.session_state.get(_prices_cache_key, {})
+                _rl_qext   = st.session_state.get(_qext_cache_key, {})
+                for _ri in _unpriced_isins:
+                    _rl_prices.pop(_ri, None)
+                    _rl_qext.pop(_ri, None)
+                st.session_state[_prices_cache_key] = _rl_prices
+                st.session_state[_qext_cache_key]   = _rl_qext
+                for _ck in [_alloc_cache_key, f"spark_{_alloc_cache_key}", _crypto_cache_key]:
                     st.session_state.pop(_ck, None)
-                st.session_state.pop("portfolio_isin_map", None)
-                # Cache der Kurs- und Ticker-Funktionen leeren damit frische API-Abfragen gemacht werden
+                # GDR-Ticker direkt in isin_map aktualisieren ohne sie komplett zu löschen
+                _rl_imap = st.session_state.get("portfolio_isin_map", {})
+                for _gi, _gt in {
+                    'US78392B1070': 'HXSCL',
+                    'US7960502018': 'SMSN.L',
+                    'US7960508882': 'SMSN.L',
+                    'CNE100006M58': '0300.HK',
+                }.items():
+                    _rl_imap[_gi] = _gt
+                st.session_state["portfolio_isin_map"] = _rl_imap
                 _portfolio_quote_ext.clear()
-                _openfigi_batch.clear()
                 st.rerun()
 
         tab_pos, tab_alloc, tab_perf = st.tabs(["📊 Positionen", "🥧 Aufteilung", "📈 Performance"])
