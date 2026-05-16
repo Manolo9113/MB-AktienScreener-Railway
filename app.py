@@ -5934,6 +5934,12 @@ if st.session_state.get("show_portfolio"):
         crypto     = df_port[df_port['is_crypto']].copy()
         warrants   = df_port[df_port['is_warrant']].copy()
 
+        # Manuell ausgeschlossene Positionen herausfiltern (Broker-Fehler / bereits verkauft)
+        _excl_set = set(st.session_state.get("portfolio_excluded_isins", []))
+        if _excl_set:
+            stocks_etf = stocks_etf[~stocks_etf['ISIN'].isin(_excl_set)].copy()
+            crypto     = crypto[~crypto['ISIN'].isin(_excl_set)].copy()
+
         # Cache-Key: stabil basierend auf CSV-Inhalt (NICHT auf isin_map — die ändert sich beim FMP-Fallback!)
         _csv_b = st.session_state.get("portfolio_csv_bytes") or b""
         _csv_key = hash(_csv_b)
@@ -5947,6 +5953,11 @@ if st.session_state.get("show_portfolio"):
         _crypto_prices: dict = st.session_state.get(_crypto_cache_key, {})
         _alloc_infos: dict  = st.session_state.get(_alloc_cache_key, {})
         _sparklines: dict   = st.session_state.get(f"spark_{_alloc_cache_key}", {})
+
+        # Manuell eingegebene Kurse übernehmen (vor Auto-Loader, damit kein Retry)
+        for _mi, _mp in st.session_state.get("portfolio_manual_prices", {}).items():
+            if _mp and float(_mp) > 0:
+                prices[_mi] = float(_mp)
 
         # ── Kurse automatisch laden (nur wenn noch Positionen ohne Kurs) ─────
         _all_isins = stocks_etf['ISIN'].tolist() if not stocks_etf.empty else []
@@ -6163,6 +6174,61 @@ if st.session_state.get("show_portfolio"):
                 st.session_state["portfolio_isin_map"] = _rl_imap
                 _portfolio_quote_ext.clear()
                 st.rerun()
+
+        # ── Portfolio-Korrekturen (Ausschlüsse + manuelle Kurse) ─────────────
+        with st.expander("⚙️ Portfolio-Korrekturen", expanded=False):
+            _pf_col1, _pf_col2 = st.columns(2)
+
+            with _pf_col1:
+                st.markdown("**Positionen ausschließen**")
+                st.caption("Broker-Fehler: Position ist laut CSV noch offen, wurde aber bereits verkauft.")
+                _all_pos_dict = {r['ISIN']: r['name'] for _, r in df_port.iterrows()}
+                _excl_opts    = {f"{n[:38]} ({i})": i for i, n in _all_pos_dict.items()}
+                _cur_excl     = st.session_state.get("portfolio_excluded_isins", [])
+                _cur_excl_lbl = [lbl for lbl, isin in _excl_opts.items() if isin in _cur_excl]
+                _new_excl_lbl = st.multiselect(
+                    "Ausgeschlossene Positionen:",
+                    options=list(_excl_opts.keys()),
+                    default=_cur_excl_lbl,
+                    key="pf_excl_select",
+                )
+                _new_excl_isins = [_excl_opts[l] for l in _new_excl_lbl]
+                if sorted(_new_excl_isins) != sorted(_cur_excl):
+                    st.session_state["portfolio_excluded_isins"] = _new_excl_isins
+                    # Caches invalidieren damit Summen neu berechnet werden
+                    for _ck in [_alloc_cache_key, f"spark_{_alloc_cache_key}"]:
+                        st.session_state.pop(_ck, None)
+                    st.rerun()
+
+            with _pf_col2:
+                st.markdown("**Kurse manuell eingeben (EUR)**")
+                st.caption("Für Positionen ohne automatischen Kurs (z.B. GDRs, exotische Ticker).")
+                _man_prices = dict(st.session_state.get("portfolio_manual_prices", {}))
+                _unpriced_pf = [r for _, r in df_port.iterrows()
+                                if r['ISIN'] not in _excl_set and not prices.get(r['ISIN'])]
+                if _unpriced_pf:
+                    _changed_mp = False
+                    for _urow in _unpriced_pf:
+                        _uisin = _urow['ISIN']
+                        _ucur  = float(_man_prices.get(_uisin, 0.0))
+                        _unew  = st.number_input(
+                            f"{_urow['name'][:32]}",
+                            min_value=0.0, value=_ucur, step=1.0, format="%.2f",
+                            key=f"mp_{_uisin}",
+                            help=f"ISIN: {_uisin}",
+                        )
+                        if _unew != _ucur:
+                            _man_prices[_uisin] = _unew
+                            _changed_mp = True
+                    if _changed_mp and st.button("💾 Kurse speichern", key="pf_save_manual"):
+                        st.session_state["portfolio_manual_prices"] = {
+                            k: v for k, v in _man_prices.items() if v and v > 0
+                        }
+                        for _ck in [_prices_cache_key, _alloc_cache_key, f"spark_{_alloc_cache_key}"]:
+                            st.session_state.pop(_ck, None)
+                        st.rerun()
+                else:
+                    st.success("Alle Positionen haben einen Kurs.")
 
         tab_pos, tab_alloc, tab_perf = st.tabs(["📊 Positionen", "🥧 Aufteilung", "📈 Performance"])
 
