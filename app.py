@@ -6939,9 +6939,11 @@ if st.session_state.get("show_portfolio"):
                 _sp_tkrs = tuple(t for t in
                                  [isin_map.get(i) for i in stocks_etf['ISIN']] if t)
                 if _sp_tkrs:
-                    with st.spinner("Kursverläufe werden geladen…"):
-                        _sparklines = _sparklines_bulk(_sp_tkrs)
-                    st.session_state[f"spark_{_alloc_cache_key}"] = _sparklines
+                    if st.button("📈 Sparklines laden", key="btn_load_sparklines",
+                                 help="Lädt 3-Monats-Kursverläufe für alle Positionen (einmalig)"):
+                        with st.spinner("Kursverläufe werden geladen…"):
+                            _sparklines = _sparklines_bulk(_sp_tkrs)
+                        st.session_state[f"spark_{_alloc_cache_key}"] = _sparklines
 
             # ── Aktien & ETFs ────────────────────────────────────────────
             if not stocks_etf.empty:
@@ -7601,8 +7603,11 @@ if st.session_state.get("show_portfolio"):
                 }
                 bm_label = st.selectbox("Benchmark auswählen", list(_BENCHMARKS.keys()), key="pf_bm_select")
                 bm_ticker = _BENCHMARKS[bm_label]
-                with st.spinner("Benchmark-Daten werden geladen…"):
-                    _perf = _build_performance(_csv_bytes, bm_ticker)
+                _bm_cache_key = f"bm_{_csv_key}_{bm_ticker}"
+                if _bm_cache_key not in st.session_state:
+                    with st.spinner("Benchmark-Daten werden geladen…"):
+                        st.session_state[_bm_cache_key] = _build_performance(_csv_bytes, bm_ticker)
+                _perf = st.session_state[_bm_cache_key]
                 if _perf is None:
                     st.warning("Benchmark-Berechnung nicht möglich — CSV benötigt eine Datums-Spalte.")
                 else:
@@ -7685,64 +7690,72 @@ if st.session_state.get("show_portfolio"):
             st.caption("ETFs werden auf ihre Top-Holdings aufgebrochen und mit Direktinvestments kombiniert. "
                        "Nur die Top-25 Holdings je ETF werden berücksichtigt (≈40–70% des ETF-Werts).")
 
-            # ── Holdings-Breakdown (lazy, einmalig pro Session) ─────────────────
+            # ── Holdings-Breakdown (auf Knopfdruck, einmalig pro Session gecacht) ──
+            _hb_load_key = f"hb_load_req_{_alloc_cache_key}"
             if _hb_cache_key not in st.session_state:
-                _hb_w: dict = {}
-                _hb_etfs_w: list = []
-                for _, _hr in stocks_etf.iterrows():
-                    _hisin = _hr['ISIN']
-                    _htkr  = isin_map.get(_hisin, '')
-                    _hinf  = _alloc_infos.get(_hisin, {})
-                    if (_hinf.get('quote_type') == 'ETF' or
-                            _htkr in _ETF_CW or _htkr in _ETF_SW):
-                        continue
-                    _hprc = prices.get(_hisin)
-                    _hval = max(0.0, (_hprc if _hprc else _hr['avg_cost']) * _hr['shares'])
-                    _hkey = _htkr or _hr['name']
-                    if _hkey not in _hb_w:
-                        _hb_w[_hkey] = {'name': _hr['name'], 'ticker': _htkr,
-                                        'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
-                    _hb_w[_hkey]['direct'] += _hval
-                _hb_etf_rows2 = [(isin_map.get(_hr['ISIN'], ''), _hr)
-                                 for _, _hr in stocks_etf.iterrows()
-                                 if ((_alloc_infos.get(_hr['ISIN'], {}).get('quote_type') == 'ETF') or
-                                     isin_map.get(_hr['ISIN'], '') in _ETF_CW or
-                                     isin_map.get(_hr['ISIN'], '') in _ETF_SW)
-                                 and isin_map.get(_hr['ISIN'], '')]
-                if _hb_etf_rows2:
-                    _hb_prog2 = st.progress(0, f"ETF-Holdings: 0 / {len(_hb_etf_rows2)}…")
-                    for _hei2, (_htkr2, _hr2) in enumerate(_hb_etf_rows2):
-                        _hb_prog2.progress((_hei2 + 1) / len(_hb_etf_rows2),
-                                           f"ETF-Holdings: {_hei2+1}/{len(_hb_etf_rows2)} — {_hr2['name'][:28]}…")
-                        _hprc2  = prices.get(_hr2['ISIN'])
-                        _heval  = max(0.0, (_hprc2 if _hprc2 else _hr2['avg_cost']) * _hr2['shares'])
-                        _hetf_lbl = _hr2['name'][:28]
-                        _hholdings = _etf_top_holdings_cached(_htkr2)
-                        if _hholdings:
-                            _hb_etfs_w.append(_hetf_lbl)
-                        for _hn, _hs, _hw in _hholdings:
-                            _hkey2 = _hs if _hs and _hs not in ('nan', 'None') else _hn
-                            _hexposure = _heval * _hw
-                            if _hkey2 not in _hb_w:
-                                _hb_w[_hkey2] = {'name': _hn, 'ticker': _hs,
-                                                 'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
-                            _hb_w[_hkey2]['etf_eur'] += _hexposure
-                            _hb_w[_hkey2]['sources'][_hetf_lbl] = \
-                                _hb_w[_hkey2]['sources'].get(_hetf_lbl, 0.0) + _hexposure
-                    _hb_prog2.empty()
-                _hb_mg: dict = {}
-                for _hk, _hd in _hb_w.items():
-                    _ht = (_hd['ticker'] or '').upper().split('.')[0]
-                    _hm = next((k for k, d in _hb_mg.items()
-                                if _ht and (d['ticker'] or '').upper().split('.')[0] == _ht), None)
-                    if _hm:
-                        _hb_mg[_hm]['direct']  += _hd['direct']
-                        _hb_mg[_hm]['etf_eur'] += _hd['etf_eur']
-                        for _sn, _sv in _hd['sources'].items():
-                            _hb_mg[_hm]['sources'][_sn] = _hb_mg[_hm]['sources'].get(_sn, 0) + _sv
-                    else:
-                        _hb_mg[_hk] = dict(_hd)
-                st.session_state[_hb_cache_key] = (_hb_mg, _hb_etfs_w)
+                if not st.session_state.get(_hb_load_key):
+                    st.info("Holdings-Analyse noch nicht geladen. Klicke den Button, um ETF-Holdings aufzuschlüsseln "
+                            "(lädt ~10–30 Sek., wird danach für diese Sitzung gespeichert).")
+                    if st.button("🔍 Holdings laden", type="primary", key="btn_hb_load"):
+                        st.session_state[_hb_load_key] = True
+                        st.rerun()
+                else:
+                    _hb_w: dict = {}
+                    _hb_etfs_w: list = []
+                    for _, _hr in stocks_etf.iterrows():
+                        _hisin = _hr['ISIN']
+                        _htkr  = isin_map.get(_hisin, '')
+                        _hinf  = _alloc_infos.get(_hisin, {})
+                        if (_hinf.get('quote_type') == 'ETF' or
+                                _htkr in _ETF_CW or _htkr in _ETF_SW):
+                            continue
+                        _hprc = prices.get(_hisin)
+                        _hval = max(0.0, (_hprc if _hprc else _hr['avg_cost']) * _hr['shares'])
+                        _hkey = _htkr or _hr['name']
+                        if _hkey not in _hb_w:
+                            _hb_w[_hkey] = {'name': _hr['name'], 'ticker': _htkr,
+                                            'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
+                        _hb_w[_hkey]['direct'] += _hval
+                    _hb_etf_rows2 = [(isin_map.get(_hr['ISIN'], ''), _hr)
+                                     for _, _hr in stocks_etf.iterrows()
+                                     if ((_alloc_infos.get(_hr['ISIN'], {}).get('quote_type') == 'ETF') or
+                                         isin_map.get(_hr['ISIN'], '') in _ETF_CW or
+                                         isin_map.get(_hr['ISIN'], '') in _ETF_SW)
+                                     and isin_map.get(_hr['ISIN'], '')]
+                    if _hb_etf_rows2:
+                        _hb_prog2 = st.progress(0, f"ETF-Holdings: 0 / {len(_hb_etf_rows2)}…")
+                        for _hei2, (_htkr2, _hr2) in enumerate(_hb_etf_rows2):
+                            _hb_prog2.progress((_hei2 + 1) / len(_hb_etf_rows2),
+                                               f"ETF-Holdings: {_hei2+1}/{len(_hb_etf_rows2)} — {_hr2['name'][:28]}…")
+                            _hprc2  = prices.get(_hr2['ISIN'])
+                            _heval  = max(0.0, (_hprc2 if _hprc2 else _hr2['avg_cost']) * _hr2['shares'])
+                            _hetf_lbl = _hr2['name'][:28]
+                            _hholdings = _etf_top_holdings_cached(_htkr2)
+                            if _hholdings:
+                                _hb_etfs_w.append(_hetf_lbl)
+                            for _hn, _hs, _hw in _hholdings:
+                                _hkey2 = _hs if _hs and _hs not in ('nan', 'None') else _hn
+                                _hexposure = _heval * _hw
+                                if _hkey2 not in _hb_w:
+                                    _hb_w[_hkey2] = {'name': _hn, 'ticker': _hs,
+                                                     'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
+                                _hb_w[_hkey2]['etf_eur'] += _hexposure
+                                _hb_w[_hkey2]['sources'][_hetf_lbl] = \
+                                    _hb_w[_hkey2]['sources'].get(_hetf_lbl, 0.0) + _hexposure
+                        _hb_prog2.empty()
+                    _hb_mg: dict = {}
+                    for _hk, _hd in _hb_w.items():
+                        _ht = (_hd['ticker'] or '').upper().split('.')[0]
+                        _hm = next((k for k, d in _hb_mg.items()
+                                    if _ht and (d['ticker'] or '').upper().split('.')[0] == _ht), None)
+                        if _hm:
+                            _hb_mg[_hm]['direct']  += _hd['direct']
+                            _hb_mg[_hm]['etf_eur'] += _hd['etf_eur']
+                            for _sn, _sv in _hd['sources'].items():
+                                _hb_mg[_hm]['sources'][_sn] = _hb_mg[_hm]['sources'].get(_sn, 0) + _sv
+                        else:
+                            _hb_mg[_hk] = dict(_hd)
+                    st.session_state[_hb_cache_key] = (_hb_mg, _hb_etfs_w)
 
             _hb_merged, _hb_etfs_loaded = st.session_state.get(_hb_cache_key, ({}, []))
 
