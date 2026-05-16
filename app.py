@@ -6377,6 +6377,21 @@ if st.session_state.get("show_portfolio"):
                                         f"Analyst-Daten: {_aii} / {len(_ai_isins)}…")
                     _aprog.empty()
                     st.session_state[_alloc_cache_key] = _alloc_infos
+            # Sektor-Daten für alle restlichen Positionen (nur sector + quote_type, 24h gecacht)
+            _sec_loaded_key = f"sec_loaded_{_alloc_cache_key}"
+            if not st.session_state.get(_sec_loaded_key) and not stocks_etf.empty:
+                _sec_missing = [(isin_map.get(r['ISIN']), r['ISIN'])
+                                for _, r in stocks_etf.iterrows()
+                                if r['ISIN'] not in _alloc_infos and isin_map.get(r['ISIN'])]
+                if _sec_missing:
+                    _sprog = st.progress(0, f"Sektordaten: 0 / {len(_sec_missing)}…")
+                    for _sii, (_stk, _sisin) in enumerate(_sec_missing, 1):
+                        _alloc_infos[_sisin] = _get_ticker_info_cached(_stk)
+                        _sprog.progress(_sii / len(_sec_missing),
+                                        f"Sektordaten: {_sii} / {len(_sec_missing)}…")
+                    _sprog.empty()
+                    st.session_state[_alloc_cache_key] = _alloc_infos
+                st.session_state[_sec_loaded_key] = True
             if not _sparklines and not stocks_etf.empty:
                 _sp_tkrs = tuple(t for t in
                                  [isin_map.get(i) for i in stocks_etf['ISIN']] if t)
