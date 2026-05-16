@@ -3822,17 +3822,16 @@ def _openfigi_batch(isins: tuple, wkn_by_isin: dict = None) -> dict:
                 pass
             time.sleep(0.2)
 
-    # Hardcodierte GDR/ADR → KRX-Fallback für bekannte ISINs ohne zuverlässige API-Daten
-    # GDRs haben US-ISIN, kein ISIN-Muster ableitbar → direkte KRX-Abbildung
+    # GDR → US-OTC-Ticker (FMP/yFinance von Railway aus erreichbar; KRX ist blockiert)
     _GDR_HARDCODED = {
-        'US78392B1070': '000660.KS',  # SK Hynix GDR (HXSCL.L) → KRX
-        'US7960502018': '005935.KS',  # Samsung Electronics GDR Pref (SSNGY) → KRX Vorzug
-        'US7960508882': '005930.KS',  # Samsung Electronics GDR (SSNNF) → KRX Stamm
-        'CNE100006M58': '0300.HK',    # Midea Group H-Aktien → HKEx
+        'US78392B1070': 'HXSCL',   # SK Hynix GDR → US OTC
+        'US7960502018': 'SSNGY',   # Samsung Electronics GDR Pref → US OTC
+        'US7960508882': 'SSNLF',   # Samsung Electronics GDR → US OTC
+        'CNE100006M58': '0300.HK', # Midea Group H-Aktien → HKEx
     }
     for isin in valids:
-        if isin not in result and isin in _GDR_HARDCODED:
-            result[isin] = _GDR_HARDCODED[isin]
+        if isin in _GDR_HARDCODED:
+            result[isin] = _GDR_HARDCODED[isin]  # Immer überschreiben: KRX/OpenFIGI-Fehler vermeiden
 
     # ISIN-Pattern-Fallback: direkte Ableitung wenn OpenFIGI blockiert ist (Railway 403)
     # Koreanische ISINs: KR + Typ(1) + KRX-Code(6) + Check(3)  →  XXXXXX.KS
@@ -4210,6 +4209,15 @@ def _ticker_to_country(ticker: str) -> str:
         return 'USA'
     sfx = ticker.rsplit('.', 1)[1].upper()
     return _SFX_COUNTRY.get(sfx, 'USA')
+
+
+# GDR-ISINs haben US-ISIN aber echtes Heimatland — Ticker-Suffix würde 'USA' liefern
+_GDR_COUNTRY = {
+    'US78392B1070': 'Südkorea',  # SK Hynix GDR
+    'US7960502018': 'Südkorea',  # Samsung Electronics GDR Pref
+    'US7960508882': 'Südkorea',  # Samsung Electronics GDR
+    'CNE100006M58': 'China',     # Midea Group
+}
 
 
 _ISIN_SECTOR_HARD = {
@@ -5938,12 +5946,12 @@ if st.session_state.get("show_portfolio"):
         _missing_isins = [i for i in _all_isins if prices.get(i) is None]
         _prices_loaded = len(_missing_isins) == 0
         if _missing_isins and not stocks_etf.empty:
-            # Hardcoded GDR/HK-Mapping auf bekannte KRX/HKEx-Ticker (zuverlässige Preisquellen)
+            # GDR → US-OTC-Ticker (FMP erreichbar; KRX von Railway aus geblockt)
             _GDR_FALLBACK = {
-                'US78392B1070': '000660.KS',
-                'US7960502018': '005935.KS',
-                'US7960508882': '005930.KS',
-                'CNE100006M58': '0300.HK',
+                'US78392B1070': 'HXSCL',   # SK Hynix GDR → US OTC
+                'US7960502018': 'SSNGY',   # Samsung Electronics GDR Pref → US OTC
+                'US7960508882': 'SSNLF',   # Samsung Electronics GDR → US OTC
+                'CNE100006M58': '0300.HK', # Midea Group H-Aktien → HKEx
             }
             for _gdr_isin, _gdr_tkr in _GDR_FALLBACK.items():
                 if _gdr_isin in _missing_isins and _gdr_isin not in isin_map:
@@ -6127,8 +6135,9 @@ if st.session_state.get("show_portfolio"):
                              f"spark_{_alloc_cache_key}"]:
                     st.session_state.pop(_ck, None)
                 st.session_state.pop("portfolio_isin_map", None)
-                # Cache der Kurs-Funktion leeren damit frische API-Abfragen gemacht werden
+                # Cache der Kurs- und Ticker-Funktionen leeren damit frische API-Abfragen gemacht werden
                 _portfolio_quote_ext.clear()
+                _openfigi_batch.clear()
                 st.rerun()
 
         tab_pos, tab_alloc, tab_perf = st.tabs(["📊 Positionen", "🥧 Aufteilung", "📈 Performance"])
@@ -6433,8 +6442,8 @@ if st.session_state.get("show_portfolio"):
                     elif _lrow.get('is_crypto'):
                         _lt['Krypto'] = _lt.get('Krypto', 0) + _lval
                     elif not _lrow.get('is_warrant'):
-                        # Einzelaktien: Land via Börsen-Suffix (spezifische Länder statt Regionen)
-                        _lctry = _ticker_to_country(_ltkr)
+                        # Einzelaktien: Land via Börsen-Suffix; GDR-Überschreibung für US-ISIN mit Heimatland
+                        _lctry = _GDR_COUNTRY.get(_lrow['ISIN'], _ticker_to_country(_ltkr))
                         _lt[_lctry] = _lt.get(_lctry, 0) + _lval
 
                 _lt_total = sum(_lt.values()) or 1
