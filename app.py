@@ -4148,6 +4148,83 @@ def _portfolio_quote_ext(ticker: str) -> dict:
     return _empty
 
 
+# US-Datenticker für ETF-Holdings-Lookup (XETRA/LSE ETFs haben kaum funds_data in yFinance)
+_PF_ETF_DATA_TKR: dict = {
+    'SXR8.DE':'IVV',   'EUNL.DE':'URTH',  'XDWD.DE':'URTH',  'XMWO.DE':'URTH',
+    'VWCE.DE':'VT',    'FWRA.DE':'VT',    'VWRL.L':'VT',     'IWDA.AS':'URTH',
+    'EQQQ.DE':'QQQ',   'CNDX.L':'QQQ',    'IS3N.DE':'IEMG',  'IS3R.DE':'IEMG',
+    'IMEA.DE':'IEMG',  'XMME.DE':'EEM',   'IQQD.DE':'EEM',   'SPY5.DE':'SPY',
+    'LCUW.DE':'IVV',   'IUSE.DE':'IVV',   'SXR2.DE':'IVV',   'VUSA.L':'IVV',
+    'CSPX.L':'IVV',    'C500.DE':'IVV',   'SP5C.DE':'IVV',   'PRAW.DE':'URTH',
+    'PRWA.DE':'URTH',  'EXW1.DE':'FEZ',   'MEUD.DE':'FEZ',   'LYPS.DE':'FEZ',
+    'IQQY.DE':'VGK',   'IEUA.DE':'VGK',   'SPYY.DE':'VGK',   'XESC.DE':'FEZ',
+    'EXS1.DE':'EWG',   'DBXD.DE':'EWG',   'DAXE.DE':'EWG',   'EXV5.DE':'EWJ',
+    'XDJP.DE':'EWJ',   'IQQJ.DE':'EWJ',   'IQQC.DE':'MCHI',  'IUSN.DE':'SCHA',
+    'ZPRV.DE':'IWM',   'EXI5.DE':'IJH',   'ISPA.DE':'SCHD',  'QDIV.DE':'VYM',
+    'XDIV.DE':'VYM',   'XDWT.DE':'IXN',   'QDVE.DE':'XLK',   'IUIT.DE':'IXN',
+    'XDWH.DE':'IXV',   'QDVG.DE':'XLV',   'HEAL.DE':'IXV',   'XDWF.DE':'IXG',
+    'SXRV.DE':'XLC',   'XDWU.DE':'XLU',   'XMIN.DE':'INDA',  'XMKR.DE':'EWY',
+    'IS3W.DE':'EWT',   'IQQH.DE':'ICLN',  'VHYL.L':'VYM',
+}
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _etf_top_holdings_cached(ticker: str) -> list:
+    """Top-Holdings eines ETFs als [(name, symbol, weight_frac), ...] — gecacht 24h."""
+    import concurrent.futures as _cf_eth
+    def _parse(fd):
+        th = getattr(fd, 'top_holdings', None)
+        if th is None or (hasattr(th, 'empty') and th.empty):
+            return []
+        _nc = next((c for c in ['holdingName','name','Symbol','symbol'] if c in th.columns), None)
+        _wc = next((c for c in ['holdingPercent','weight','Weight','Holding Percent'] if c in th.columns), None)
+        _sc = next((c for c in ['symbol','Symbol','ticker','Ticker'] if c in th.columns), None)
+        rows = []
+        for _, row in th.iterrows():
+            n = str(row[_nc]) if _nc else ''
+            w = float(row[_wc]) if _wc and pd.notna(row.get(_wc)) else 0.0
+            s = str(row[_sc]) if _sc and pd.notna(row.get(_sc, '')) else ''
+            if s in ('nan', 'None', ''): s = ''
+            if w > 0 and n:
+                rows.append((n, s, w if w <= 1.0 else w / 100.0))
+        return rows
+    # yFinance — zuerst direkt, dann US-Datenticker
+    for _t in [ticker, _PF_ETF_DATA_TKR.get(ticker, '')]:
+        if not _t:
+            continue
+        try:
+            def _do(t=_t):
+                return _parse(yf.Ticker(t).funds_data)
+            with _cf_eth.ThreadPoolExecutor(max_workers=1) as _ex:
+                rows = _ex.submit(_do).result(timeout=6.0)
+            if rows:
+                return rows
+        except Exception:
+            pass
+    # FMP fallback
+    if FMP_API_KEY:
+        for _t in [ticker, _PF_ETF_DATA_TKR.get(ticker, ticker)]:
+            if not _t:
+                continue
+            try:
+                _fr = requests.get(
+                    f"https://financialmodelingprep.com/api/v3/etf-holder/{_t}",
+                    params={'apikey': FMP_API_KEY}, timeout=5)
+                if _fr.ok and _fr.json():
+                    rows = []
+                    for h in _fr.json()[:25]:
+                        n = h.get('asset') or h.get('name') or ''
+                        s = h.get('symbol') or ''
+                        w = float(h.get('weightPercentage') or 0) / 100.0
+                        if w > 0 and n:
+                            rows.append((n, s, w))
+                    if rows:
+                        return rows
+            except Exception:
+                pass
+    return []
+
+
 def _portfolio_price(ticker: str):
     """Wrapper → aktueller Kurs in EUR (gecacht via _portfolio_quote_ext)."""
     return _portfolio_quote_ext(ticker).get('price_eur')
@@ -6360,7 +6437,8 @@ if st.session_state.get("show_portfolio"):
                 else:
                     st.success("Alle Positionen haben einen Kurs.")
 
-        tab_pos, tab_alloc, tab_perf = st.tabs(["📊 Positionen", "🥧 Aufteilung", "📈 Performance"])
+        tab_pos, tab_alloc, tab_perf, tab_holdings = st.tabs(
+            ["📊 Positionen", "🥧 Aufteilung", "📈 Performance", "🔍 Holdings"])
 
         with tab_pos:
           try:
@@ -7064,6 +7142,127 @@ if st.session_state.get("show_portfolio"):
 
           except Exception as _e_perf:
               st.error(f"Fehler im Performance-Tab: {_e_perf}")
+
+        with tab_holdings:
+          try:
+            st.markdown("<div class='section-header'>🔍 Echte Unternehmens-Exposition</div>",
+                        unsafe_allow_html=True)
+            st.caption("ETFs werden auf ihre Top-Holdings aufgebrochen und mit Direktinvestments kombiniert. "
+                       "Nur die Top-25 Holdings je ETF werden berücksichtigt (≈40–70% des ETF-Werts).")
+
+            # ── Breakdown aufbauen ──────────────────────────────────────────────
+            _hb: dict = {}  # key (ticker|name) → {name, ticker, direct, etf_eur, sources}
+            _hb_etfs_loaded: list = []
+
+            # 1. Direkte Einzelwert-Positionen
+            for _, _hr in stocks_etf.iterrows():
+                _hisin = _hr['ISIN']
+                _htkr  = isin_map.get(_hisin, '')
+                _hinf  = _alloc_infos.get(_hisin, {})
+                _his_etf = (_hinf.get('quote_type') == 'ETF' or
+                            _htkr in _ETF_CW or _htkr in _ETF_SW)
+                if _his_etf:
+                    continue
+                _hprc = prices.get(_hisin)
+                _hval = max(0.0, (_hprc if _hprc else _hr['avg_cost']) * _hr['shares'])
+                _hkey = _htkr or _hr['name']
+                if _hkey not in _hb:
+                    _hb[_hkey] = {'name': _hr['name'], 'ticker': _htkr,
+                                  'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
+                _hb[_hkey]['direct'] += _hval
+
+            # 2. ETF Look-Through
+            _hb_prog_slot = st.empty()
+            _hb_etf_rows = [(isin_map.get(_hr['ISIN'],''), _hr)
+                            for _, _hr in stocks_etf.iterrows()
+                            if ((_alloc_infos.get(_hr['ISIN'],{}).get('quote_type')=='ETF') or
+                                isin_map.get(_hr['ISIN'],'') in _ETF_CW or
+                                isin_map.get(_hr['ISIN'],'') in _ETF_SW)
+                            and isin_map.get(_hr['ISIN'],'')]
+            for _hei, (_htkr2, _hr2) in enumerate(_hb_etf_rows):
+                _hb_prog_slot.caption(f"Lade ETF-Holdings: {_hei+1}/{len(_hb_etf_rows)} — {_hr2['name'][:40]}…")
+                _hprc2  = prices.get(_hr2['ISIN'])
+                _heval  = max(0.0, (_hprc2 if _hprc2 else _hr2['avg_cost']) * _hr2['shares'])
+                _hetf_lbl = _hr2['name'][:28]
+                _hholdings = _etf_top_holdings_cached(_htkr2)
+                if _hholdings:
+                    _hb_etfs_loaded.append(_hetf_lbl)
+                for _hn, _hs, _hw in _hholdings:
+                    _hkey2 = _hs if _hs and _hs not in ('nan','None') else _hn
+                    _hexposure = _heval * _hw
+                    if _hkey2 not in _hb:
+                        _hb[_hkey2] = {'name': _hn, 'ticker': _hs,
+                                       'direct': 0.0, 'etf_eur': 0.0, 'sources': {}}
+                    _hb[_hkey2]['etf_eur'] += _hexposure
+                    _hb[_hkey2]['sources'][_hetf_lbl] = \
+                        _hb[_hkey2]['sources'].get(_hetf_lbl, 0.0) + _hexposure
+            _hb_prog_slot.empty()
+
+            # ── Direkte Werte mit ISIN-Match aus ETFs zusammenführen ────────────
+            # Wenn ticker eines Direktinvestments mit ETF-Holding-Symbol übereinstimmt, zusammenfassen
+            _hb_merged: dict = {}
+            for _hk, _hd in _hb.items():
+                _hticker = (_hd['ticker'] or '').upper().split('.')[0]
+                _hmatched = None
+                for _ek, _ed in _hb_merged.items():
+                    _eticker = (_ed['ticker'] or '').upper().split('.')[0]
+                    if _hticker and _eticker and _hticker == _eticker:
+                        _hmatched = _ek
+                        break
+                if _hmatched:
+                    _hb_merged[_hmatched]['direct']  += _hd['direct']
+                    _hb_merged[_hmatched]['etf_eur']  += _hd['etf_eur']
+                    for _sn, _sv in _hd['sources'].items():
+                        _hb_merged[_hmatched]['sources'][_sn] = \
+                            _hb_merged[_hmatched]['sources'].get(_sn, 0) + _sv
+                else:
+                    _hb_merged[_hk] = dict(_hd)
+
+            # ── Sortieren und anzeigen ──────────────────────────────────────────
+            _hb_list = sorted(
+                [{'key':k, **v, 'total': v['direct']+v['etf_eur']}
+                 for k,v in _hb_merged.items() if v['direct']+v['etf_eur'] >= 1.0],
+                key=lambda x: x['total'], reverse=True)
+
+            if not _hb_list:
+                st.info("Keine Holdings-Daten verfügbar. ETF-Daten werden per yFinance/FMP geladen.")
+            else:
+                _hb_grand = sum(h['total'] for h in _hb_list)
+                st.markdown(f"**{len(_hb_list)} Unternehmen** · Davon mit ETF-Exposition aus "
+                            f"{len(_hb_etfs_loaded)} ETF(s): "
+                            f"{', '.join(_hb_etfs_loaded[:4])}{'…' if len(_hb_etfs_loaded)>4 else ''}")
+                st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+                for _rk, _hd in enumerate(_hb_list[:35], 1):
+                    _pct   = _hd['total'] / _hb_grand * 100 if _hb_grand else 0
+                    _bw    = min(int(_pct * 6), 100)
+                    _dclr  = '#1565c0' if _hd['direct'] > 0 else '#0d47a1'
+                    # Quellentext
+                    _src_parts = []
+                    if _hd['direct'] > 0:
+                        _src_parts.append(f"<span style='color:#64b5f6;'>Direkt €{_hd['direct']:,.0f}</span>")
+                    for _sn, _sv in sorted(_hd['sources'].items(), key=lambda x: x[1], reverse=True)[:3]:
+                        _src_parts.append(f"<span style='color:#78909c;'>{_sn[:22]} €{_sv:,.0f}</span>")
+                    _src_html = " · ".join(_src_parts)
+                    st.markdown(
+                        f"<div style='margin-bottom:7px;padding:7px 10px;background:#0d1f38;"
+                        f"border-radius:6px;border-left:3px solid {_dclr};'>"
+                        f"<div style='display:flex;justify-content:space-between;"
+                        f"align-items:baseline;margin-bottom:3px;'>"
+                        f"<span style='color:#eceff1;font-size:0.82rem;font-weight:600;'>"
+                        f"{_rk}. {str(_hd['name'])[:40]}</span>"
+                        f"<span style='color:#90a4ae;font-size:0.76rem;'>"
+                        f"€{_hd['total']:,.0f} · {_pct:.2f}%</span></div>"
+                        f"<div style='background:#1a2740;height:4px;border-radius:2px;margin-bottom:4px;'>"
+                        f"<div style='background:{_dclr};width:{_bw}%;height:4px;"
+                        f"border-radius:2px;'></div></div>"
+                        f"<div style='font-size:0.68rem;'>{_src_html}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True)
+                st.caption(f"Hinweis: ETF Look-Through erfasst nur die Top-25 Holdings je ETF. "
+                           f"Der Rest ({100 - sum(h['total'] for h in _hb_list if not h['sources']) / _hb_grand * 100 if _hb_grand else 0:.0f}%+ "
+                           f"des ETF-Werts) ist nicht einzeln aufgeführt.")
+          except Exception as _e_hb:
+              st.error(f"Fehler im Holdings-Tab: {_e_hb}\n{__import__('traceback').format_exc()}")
 
     elif df_port is None:
         st.info("📂 Bitte lade deine Orderhistorie-CSV hoch.\n\n"
