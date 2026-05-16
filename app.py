@@ -7644,6 +7644,46 @@ if st.session_state.get("show_etf_analyzer"):
         except Exception:
             return {}
 
+    _ETF_STATIC_DESC: dict = {
+        # ── Welt-ETFs ────────────────────────────────────────────────────────
+        'XDWD.DE':  "Synthetischer ETF auf den MSCI World Index mit ca. 1.500 Unternehmen aus 23 Industrieländern. Swap-basierte Replikation (Deutsche Bank). Schwerpunkt USA (~69%), Japan, UK und Frankreich.",
+        'EUNL.DE':  "Physischer ETF auf den MSCI World Index mit über 1.500 Unternehmen. Einer der größten MSCI-World-ETFs in Europa mit ~€70 Mrd. Fondsvolumen. USA-Anteil ca. 70%, thesaurierend.",
+        'XMWO.DE':  "Physischer MSCI World UCITS ETF mit Vollreplikation. Breite Diversifikation über 23 Industrieländer, ca. 1.500 Titel. USA dominiert mit ~70% Gewicht.",
+        'IWDA.AS':  "iShares Core MSCI World UCITS ETF — einer der meistgehandelten Welt-ETFs, notiert in Amsterdam. Über 1.500 Unternehmen, physische Replikation, thesaurierend.",
+        'PRAW.DE':  "Amundi Prime Global UCITS ETF — extrem kostengünstiger ETF (TER 0,05%) auf den Solactive GBS Global Markets Developed Large & Mid Cap Index. Physische Replikation.",
+        'PRWA.DE':  "Amundi Prime Global UCITS ETF — extrem kostengünstiger ETF (TER 0,05%) auf den Solactive GBS Global Markets Developed Large & Mid Cap Index. Physische Replikation.",
+        # ── All Country / ACWI ───────────────────────────────────────────────
+        'VWCE.DE':  "Vanguard FTSE All-World UCITS ETF mit ca. 3.700 Unternehmen aus Industrie- und Schwellenländern. Physische Vollreplikation des FTSE All-World Index. USA ~62%, thesaurierend.",
+        'FWRA.DE':  "Amundi Prime All Country World UCITS ETF (TER 0,05%) auf den Solactive GBS Global Markets All Cap Index mit >3.700 Titeln aus Industrie- und Schwellenländern. Physische Replikation, thesaurierend.",
+        'VWRL.L':   "Vanguard FTSE All-World UCITS ETF in GBP, ausschüttend. Ca. 3.700 Unternehmen global, USA ~62%. Günstige TER von 0,22% und sehr hohe Liquidität.",
+        # ── S&P 500 ───────────────────────────────────────────────────────────
+        'SXR8.DE':  "iShares Core S&P 500 UCITS ETF — repliziert die 500 größten US-Unternehmen. Einer der liquidesten ETFs in Europa mit >€90 Mrd. Fondsvolumen. Physisch, thesaurierend.",
+        'LCUW.DE':  "Amundi S&P 500 UCITS ETF (TER 0,07%) — synthetische Replikation des S&P 500 Index. Kostengünstigste Alternative zu SXR8.DE mit vergleichbarer Performance.",
+        'SPY5.DE':  "SPDR S&P 500 UCITS ETF — europäische Version des weltweit größten ETFs. Physische Replikation der 500 größten US-Unternehmen. Sehr hohe Liquidität.",
+        'IUSE.DE':  "iShares S&P 500 EUR Hedged UCITS ETF — repliziert den S&P 500 mit Währungsabsicherung gegen EUR/USD-Risiko. Geeignet für EUR-Anleger mit kurzfristigem Fokus.",
+        'CSPX.L':   "iShares Core S&P 500 UCITS ETF in USD (LSE). Physische Replikation des S&P 500 mit über 500 US-Großunternehmen. Thesaurierend.",
+        'VUSA.L':   "Vanguard S&P 500 UCITS ETF in USD (LSE). Physische Vollreplikation, thesaurierend. TER 0,07%.",
+        # ── Nasdaq-100 ───────────────────────────────────────────────────────
+        'EQQQ.DE':  "iShares Nasdaq-100 UCITS ETF — bildet die 100 größten Nicht-Finanzwerte des Nasdaq ab. ~55% IT-Sektor-Konzentration. Physische Replikation, thesaurierend.",
+        'CNDX.L':   "iShares Nasdaq-100 UCITS ETF in USD (LSE). Physische Replikation der 100 größten Nasdaq-Unternehmen. Starke Technologieausrichtung mit Apple, Microsoft, NVIDIA an der Spitze.",
+        # ── Schwellenländer ───────────────────────────────────────────────────
+        'IS3N.DE':  "iShares Core MSCI Emerging Markets IMI UCITS ETF mit >1.400 Titeln aus Schwellenländern. China ~30%, Indien ~18%, Taiwan ~17%. Physische Replikation.",
+        'XMME.DE':  "Xtrackers MSCI Emerging Markets Swap UCITS ETF — synthetische Replikation von ~1.400 EM-Aktien. China, Taiwan, Indien als Hauptmärkte.",
+        # ── Europa ───────────────────────────────────────────────────────────
+        'EXS1.DE':  "iShares Core DAX UCITS ETF — repliziert die 40 größten deutschen Aktien (DAX). Physische Vollreplikation, ausschüttend. Konzentration auf Industrie, Chemie und Finanzwerte.",
+        'MEUD.DE':  "Lyxor Core STOXX Europe 600 UCITS ETF — abdeckt ca. 600 europäische Unternehmen. Synthetische Replikation, sehr günstige TER von 0,07%.",
+        'EXW1.DE':  "iShares STOXX Europe 600 UCITS ETF — ca. 600 Unternehmen aus 17 europäischen Ländern. Physische Replikation, ausschüttend.",
+        # ── Dividenden-ETFs ───────────────────────────────────────────────────
+        'ISPA.DE':  "iShares STOXX Global Select Dividend 100 UCITS ETF mit den 100 dividendenstärksten Aktien weltweit. Hohe Ausschüttungsrendite (~4%), ausschüttend.",
+        'QDIV.DE':  "iShares MSCI World Quality Dividend UCITS ETF — kombiniert Dividendenstärke mit Qualitätskriterien. Ca. 400 Unternehmen, ausschüttend.",
+        'XDIV.DE':  "Xtrackers MSCI World High Dividend Yield UCITS ETF mit ca. 400 dividendenstarken Unternehmen weltweit. Synthetische Replikation.",
+        # ── Sektor-ETFs ───────────────────────────────────────────────────────
+        'XDWT.DE':  "Xtrackers MSCI World Information Technology UCITS ETF — 100% IT-Sektor, ca. 250 Unternehmen. Apple, Microsoft und NVIDIA als Hauptpositionen.",
+        'QDVE.DE':  "iShares S&P 500 Information Technology Sector UCITS ETF — US-IT-Giganten wie Apple, Microsoft, NVIDIA. Stark konzentriert auf wenige Mega-Caps.",
+        'XDWH.DE':  "Xtrackers MSCI World Health Care UCITS ETF — globale Pharmaunternehmen, Medizintechnik und Biotech. J&J, UnitedHealth, Eli Lilly als Hauptpositionen.",
+        'IQQH.DE':  "iShares Global Clean Energy UCITS ETF mit ca. 100 Unternehmen aus erneuerbarer Energie. Windkraft, Solar, Wasserstoff. Hohe Volatilität.",
+    }
+
     @st.cache_data(ttl=3600, show_spinner=False)
     def _etf_info(ticker: str) -> dict:
         try:
@@ -7724,7 +7764,8 @@ if st.session_state.get("show_etf_analyzer"):
                 'exchange':    exch or '—',
                 'div_yield':   inf.get('dividendYield'),
                 'quote_type':  inf.get('quoteType','ETF'),
-                'description': inf.get('longBusinessSummary') or '',
+                'description': (_ETF_STATIC_DESC.get(ticker)
+                                or inf.get('longBusinessSummary') or ''),
             }
         except Exception:
             return {}
@@ -7807,8 +7848,9 @@ if st.session_state.get("show_etf_analyzer"):
             if not cw:
                 cw = dict(_ETF_STATIC_CW.get(ticker, {}))
 
-            # Fallback 4: eq_vals via yFinance .info (trailingPE, priceToBook etc.)
-            if not eq_vals:
+            # Fallback 4: supplement missing fields via yFinance .info (also runs when eq_vals is partial)
+            _missing_val = lambda: not all(eq_vals.get(k) for k in ('priceToBook', 'priceToSales'))
+            if _missing_val():
                 _info_tkr = _data_tkr or ticker
                 try:
                     _inf2 = yf.Ticker(_info_tkr).info
@@ -7818,16 +7860,18 @@ if st.session_state.get("show_etf_analyzer"):
                         'priceToSalesTrailing12Months':  'priceToSales',
                         'earningsGrowth':                'threeYearEarningsGrowth',
                         'enterpriseToEbitda':            'priceToCashflow',
+                        'medianMarketCap':               'medianMarketCap',
                     }
                     for _yf_k, _eq_k in _field_map.items():
-                        _v = _inf2.get(_yf_k)
-                        if _v is not None:
-                            eq_vals[_eq_k] = float(_v) * (100 if _yf_k == 'earningsGrowth' else 1)
+                        if _eq_k not in eq_vals:  # only fill missing fields
+                            _v = _inf2.get(_yf_k)
+                            if _v is not None:
+                                eq_vals[_eq_k] = float(_v) * (100 if _yf_k == 'earningsGrowth' else 1)
                 except Exception:
                     pass
 
-            # Fallback 5: eq_vals via FMP key-metrics
-            if not eq_vals and FMP_API_KEY:
+            # Fallback 5: supplement missing via FMP key-metrics (also runs when eq_vals is partial)
+            if _missing_val() and FMP_API_KEY:
                 _fmp_val_tkr = _data_tkr or _fmp_tkr
                 try:
                     _fr = requests.get(
@@ -7836,16 +7880,17 @@ if st.session_state.get("show_etf_analyzer"):
                     if _fr.ok and _fr.json():
                         _km = _fr.json()[0]
                         _fmap = {
-                            'peRatioTTM':     'priceToEarnings',
-                            'pbRatioTTM':     'priceToBook',
+                            'peRatioTTM':           'priceToEarnings',
+                            'pbRatioTTM':           'priceToBook',
                             'priceToSalesRatioTTM': 'priceToSales',
                             'revenueGrowthTTM':     'threeYearEarningsGrowth',
                             'marketCapTTM':         'medianMarketCap',
                         }
                         for _fk, _ek in _fmap.items():
-                            _v = _km.get(_fk)
-                            if _v is not None:
-                                eq_vals[_ek] = float(_v)
+                            if _ek not in eq_vals:  # only fill missing fields
+                                _v = _km.get(_fk)
+                                if _v is not None:
+                                    eq_vals[_ek] = float(_v)
                 except Exception:
                     pass
 
