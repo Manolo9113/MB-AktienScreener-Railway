@@ -3801,6 +3801,8 @@ if "ticker" not in st.session_state:
     st.session_state["ticker"] = ""
 if "show_landing" not in st.session_state:
     st.session_state["show_landing"] = True
+if "show_stocks" not in st.session_state:
+    st.session_state["show_stocks"] = False
 if "search_input" not in st.session_state:
     st.session_state["search_input"] = ""
 if "search_msg" not in st.session_state:
@@ -3863,6 +3865,7 @@ def _go_to_ticker(t):
     st.session_state["show_landing"] = False
     st.session_state["show_portfolio"] = False
     st.session_state["show_etf_analyzer"] = False
+    st.session_state["show_stocks"] = False
     st.session_state["search_input"] = t
     st.session_state["search_msg"] = ""
     st.session_state["active_tab"] = 0
@@ -5001,16 +5004,25 @@ with st.sidebar:
     if not st.session_state["show_landing"] and st.button("🏠 Startseite", use_container_width=True):
         st.session_state["show_landing"] = True
         st.session_state["show_portfolio"] = False
+        st.session_state["show_stocks"] = False
+        st.rerun()
+    if not st.session_state.get("show_stocks") and st.button("💡 Aktienideen", use_container_width=True):
+        st.session_state["show_stocks"] = True
+        st.session_state["show_landing"] = False
+        st.session_state["show_portfolio"] = False
+        st.session_state["show_etf_analyzer"] = False
         st.rerun()
     if st.button("📁 Mein Portfolio", use_container_width=True):
         st.session_state["show_portfolio"] = True
         st.session_state["show_landing"] = False
         st.session_state["show_etf_analyzer"] = False
+        st.session_state["show_stocks"] = False
         st.rerun()
     if st.button("🔎 ETF-Analyzer", use_container_width=True):
         st.session_state["show_etf_analyzer"] = True
         st.session_state["show_portfolio"] = False
         st.session_state["show_landing"] = False
+        st.session_state["show_stocks"] = False
         st.rerun()
 
     st.markdown("<div class='section-header'>⚙️ Einstellungen</div>", unsafe_allow_html=True)
@@ -5879,10 +5891,16 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                         unsafe_allow_html=True)
 
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    st.stop()
+
+# ==================== AKTIENIDEEN PAGE ====================
+elif st.session_state.get("show_stocks"):
+    st.markdown("<div class='section-header'>💡 Aktienideen & Screener</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # ── Aktienempfehlungen Accordion ──
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    with st.expander("💡  Aktienideen — Growth · Value · Dividende · Overhyped  (täglich aktualisiert)", expanded=False):
+    with st.expander("💡  Aktienideen — Growth · Value · Dividende · Overhyped  (täglich aktualisiert)", expanded=True):
         with st.spinner("Lade Aktienempfehlungen…"):
             _gp, _vp, _dp, _hp = load_stock_picks()
 
@@ -9752,6 +9770,7 @@ if hist.empty or not yf_info:
     """, unsafe_allow_html=True)
     if st.button("← Zurück zur Startseite", key="err_back"):
         st.session_state["show_landing"] = True
+        st.session_state["show_stocks"] = False
         st.session_state["ticker"] = ""
         st.rerun()
     st.stop()
