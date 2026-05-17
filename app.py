@@ -495,13 +495,12 @@ if st.session_state.get("light_mode"):
         color: #1d4ed8 !important; border-bottom-color: #e2e8f0 !important; }
 
     /* ═══════════════════════════════════════════════════════
-       SCHRITT 4: Alle Buttons (native Streamlit)
+       SCHRITT 4: Alle Buttons — korrekte Streamlit-Selektoren
+       Spezifität muss (0,2,2) erreichen um Global-CSS zu schlagen
     ═══════════════════════════════════════════════════════ */
-    button,
-    .stButton > button,
-    div[data-testid="stButton"] > button,
-    button[data-testid="baseButton-secondary"],
-    button[kind="secondary"] {
+
+    /* Reguläre Buttons: Merken, Aktualisieren, Entsperren etc. */
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"] {
         background: #ffffff !important;
         background-color: #ffffff !important;
         color: #1e40af !important;
@@ -509,16 +508,13 @@ if st.session_state.get("light_mode"):
         box-shadow: 0 1px 4px rgba(37,99,235,0.10) !important;
         font-weight: 600 !important;
     }
-    button:hover,
-    .stButton > button:hover,
-    div[data-testid="stButton"] > button:hover {
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-secondary"]:hover {
         background: #eff6ff !important;
         background-color: #eff6ff !important;
         border-color: #93c5fd !important;
         color: #1d4ed8 !important;
     }
-    button[data-testid="baseButton-primary"],
-    button[kind="primary"] {
+    div[data-testid="stButton"] > button[data-testid="stBaseButton-primary"] {
         background: linear-gradient(135deg, #1d4ed8, #2563eb) !important;
         background-color: #2563eb !important;
         color: #ffffff !important;
@@ -526,25 +522,45 @@ if st.session_state.get("light_mode"):
         box-shadow: 0 2px 10px rgba(37,99,235,0.35) !important;
     }
 
+    /* Horizontal-Tab-Buttons (Kennzahlen / Wachstum / Chart etc.) */
+    div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-secondary"] {
+        background: #f1f5f9 !important;
+        background-color: #f1f5f9 !important;
+        border: 1px solid #e2e8f0 !important;
+        color: #64748b !important;
+        border-radius: 6px 6px 0 0 !important;
+    }
+    div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-secondary"]:hover {
+        background: #e2e8f0 !important;
+        background-color: #e2e8f0 !important;
+        color: #334155 !important;
+        border-color: #c7d2fe !important;
+    }
+    div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-primary"] {
+        background: #2563eb !important;
+        background-color: #2563eb !important;
+        border: 1px solid #2563eb !important;
+        color: #ffffff !important;
+        border-radius: 6px 6px 0 0 !important;
+        font-weight: 700 !important;
+    }
+
     /* ═══════════════════════════════════════════════════════
-       SCHRITT 5: Expander (beide Streamlit-Varianten)
+       SCHRITT 5: Expander
     ═══════════════════════════════════════════════════════ */
     .streamlit-expanderHeader,
-    div[data-testid="stExpander"] > details > summary,
-    details summary {
+    details summary,
+    div[data-testid="stExpander"] details summary {
         background: #eef2ff !important;
         background-color: #eef2ff !important;
         color: #1d4ed8 !important;
         border-radius: 10px !important;
         border: 1px solid #c7d2fe !important;
     }
-    details[open] > summary,
-    div[data-testid="stExpander"] > details[open] > summary {
-        border-radius: 10px 10px 0 0 !important;
-    }
+    details[open] summary { border-radius: 10px 10px 0 0 !important; }
     .streamlit-expanderContent,
-    div[data-testid="stExpander"] > details > div,
-    details > div {
+    details > div,
+    div[data-testid="stExpander"] details > div {
         background: #f8fafc !important;
         border: 1px solid #e2e8f0 !important;
         border-top: none !important;
