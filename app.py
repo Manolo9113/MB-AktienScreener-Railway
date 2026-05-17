@@ -10748,6 +10748,49 @@ st.markdown(
     f"Geladen: {_now_str} · Cache max. 5 Min.</div>",
     unsafe_allow_html=True)
 
+# ── Quick Links: Homepage + IR + Geschäftsbericht ─────────────────
+_hdr_website  = yf_info.get("website", "") or ""
+_hdr_exchange = (yf_info.get("exchange", "") or "").upper()
+_hdr_is_us    = _hdr_exchange in ("NYQ", "NMS", "NGM", "NCM", "ASE", "PCX", "NYS", "NASDAQ", "NYSE")
+_hdr_links    = []
+_btn_base     = ("text-decoration:none;font-weight:600;font-size:0.8rem;"
+                 "padding:4px 11px;border-radius:7px;white-space:nowrap;display:inline-block;")
+if _hdr_website:
+    _hdr_links.append(
+        f"<a href='{_hdr_website}' target='_blank' rel='noopener' "
+        f"style='color:{_C_ACCENT};background:rgba(100,181,246,0.12);"
+        f"border:1px solid rgba(100,181,246,0.28);{_btn_base}'>🌐 Homepage</a>"
+    )
+    _hdr_ir = _hdr_website.rstrip("/") + "/investor-relations"
+    _hdr_links.append(
+        f"<a href='{_hdr_ir}' target='_blank' rel='noopener' "
+        f"style='color:{_C_POSITIVE_SFT};background:rgba(105,240,174,0.10);"
+        f"border:1px solid rgba(105,240,174,0.25);{_btn_base}'>📊 Investor Relations</a>"
+    )
+if _hdr_is_us:
+    _hdr_cik = _sec_cik(ticker)
+    if _hdr_cik:
+        _hdr_edgar = (f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany"
+                      f"&CIK={_hdr_cik}&type=10-K&dateb=&owner=include&count=5")
+        _hdr_links.append(
+            f"<a href='{_hdr_edgar}' target='_blank' rel='noopener' "
+            f"style='color:{_C_NEUTRAL};background:rgba(255,214,0,0.10);"
+            f"border:1px solid rgba(255,214,0,0.28);{_btn_base}'>📄 SEC 10-K</a>"
+        )
+else:
+    # Non-US: link to Yahoo Finance filings page as annual report fallback
+    _hdr_links.append(
+        f"<a href='https://finance.yahoo.com/quote/{ticker}/financials/' target='_blank' rel='noopener' "
+        f"style='color:{_C_NEUTRAL};background:rgba(255,214,0,0.10);"
+        f"border:1px solid rgba(255,214,0,0.28);{_btn_base}'>📄 Finanzdaten</a>"
+    )
+if _hdr_links:
+    st.markdown(
+        "<div style='display:flex;flex-wrap:wrap;gap:7px;margin:4px 0 12px 0;'>"
+        + "".join(_hdr_links) + "</div>",
+        unsafe_allow_html=True,
+    )
+
 # ── Watchlist-Button + Refresh ─────────────────────────────────────
 _wl_curr = st.session_state.get("watchlist", [])
 _in_wl   = any(w["ticker"] == ticker for w in _wl_curr)
