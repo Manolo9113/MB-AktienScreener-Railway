@@ -3491,6 +3491,10 @@ _MIDCAP_POOL = {
     "AIXA.DE":     "Aixtron SE – Depositionsanlagen für Leistungshalbleiter & LEDs, MDAX (DE)",
     "PUM.DE":      "Puma SE – Sportartikel mit globalem Vertriebsnetz, attraktive Bewertung (DE)",
     "GTT.PA":      "GTT – LNG-Containment-Quasi-Monopol, >50 % Nettomarge, Euronext Paris (FR)",
+    # ── Neue Kandidaten ───────────────────────────────────────────────────
+    "DOCS":        "Doximity – führende Digital-Plattform für US-Ärzte, ~90 % Bruttomarge, FCF-stark",
+    "APPF":        "AppFolio – SaaS für Immobilienverwaltung, ~64 % GM, >20 % Wachstum, quasi schuldenfrei",
+    "XMTR":        "Xometry – KI-gestützter Marketplace für On-Demand-Fertigung, ~25–36 % Umsatzwachstum",
 }
 
 # ── Small-Cap Pool — profitabel, Nischenführer, positiver FCF Pflicht ─────────
