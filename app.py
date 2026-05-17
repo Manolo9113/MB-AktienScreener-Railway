@@ -5891,6 +5891,187 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             st.markdown('<div style="font-size:0.65rem;color:#37474f;margin-top:2px;">VIX: CBOE · Sentiment: eigene Berechnung (VIX + SPY-Momentum + 200-MA)</div>',
                         unsafe_allow_html=True)
 
+    # ── KI-Makroanalyse ─────────────────────────────────────────────────────
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>🌍 KI-Makroanalyse</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style='background:linear-gradient(135deg,#0a1a35 0%,#0d2040 100%);
+    border:1px solid #1a3a6c;border-radius:16px;padding:18px 24px 14px 24px;margin-bottom:14px;
+    box-shadow:0 4px 32px rgba(0,80,200,0.10);'>
+        <div style='display:flex;align-items:center;gap:12px;margin-bottom:6px;'>
+            <span style='font-size:1.6rem;'>🌍</span>
+            <div>
+                <div style='font-size:1.1rem;font-weight:700;color:#e3f2fd;'>Makroökonomische Lageanalyse</div>
+                <div style='color:#546e7a;font-size:0.77rem;margin-top:2px;'>
+                    Konjunkturzyklus · Zyklische Branchen · Unternehmensgewinne · Zinsumfeld · Anlageempfehlungen
+                </div>
+            </div>
+        </div>
+        <div style='color:#78909c;font-size:0.78rem;border-top:1px solid #1a3a5c;padding-top:8px;margin-top:4px;'>
+            Basiert auf Echtzeitdaten (FRED, yFinance) — Fed Rate, EZB, Inflation, VIX, Bewertungsniveaus.
+            Ergebnis wird 24 Stunden gespeichert. Kein Anlageberatung.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    _maki_pk = "ki_makro_result"
+    _maki_mk = "ki_makro_model"
+    _maki_ts = "ki_makro_time"
+
+    if _maki_pk not in st.session_state:
+        _maki_disk = _pf_disk_load("ki_makro_analysis", max_age_hours=24)
+        if _maki_disk and isinstance(_maki_disk, dict):
+            st.session_state[_maki_pk] = _maki_disk.get("text", "")
+            st.session_state[_maki_mk] = _maki_disk.get("model", "")
+            st.session_state[_maki_ts] = _maki_disk.get("time", "")
+
+    _maki_c1, _maki_c2 = st.columns([5, 1])
+    with _maki_c1:
+        _maki_gen = st.button(
+            "🌍 Makro analysieren", type="primary", key="btn_maki_gen",
+            disabled=not GEMINI_API_KEY,
+            help="Analysiert aktuelle Makrolage auf Basis echter FRED/yFinance-Daten"
+        )
+    with _maki_c2:
+        _maki_regen = st.button(
+            "🔄 Neu", key="btn_maki_regen",
+            disabled=(_maki_pk not in st.session_state or not GEMINI_API_KEY),
+            help="Analyse aktualisieren"
+        )
+    if not GEMINI_API_KEY:
+        st.caption("🔑 GEMINI_API_KEY in Railway-Umgebungsvariablen eintragen.")
+
+    if _maki_gen or _maki_regen:
+        _mdat   = macro.get("macro", {})
+        _mfed   = _mdat.get("🇺🇸 Fed Rate",        {}).get("value", "n/v")
+        _mecb   = _mdat.get("🇪🇺 EZB Rate",         {}).get("value", "n/v")
+        _m10y   = _mdat.get("🇺🇸 10J Rendite",      {}).get("value", "n/v")
+        _mcpi   = _mdat.get("🇺🇸 Inflation",         {}).get("value", "n/v")
+        _mcore  = _mdat.get("🇺🇸 Kerninflation",     {}).get("value", "n/v")
+        _mezinf = _mdat.get("🇪🇺 Inflation",         {}).get("value", "n/v")
+        _munem  = _mdat.get("🇺🇸 Arbeitslosigkeit",  {}).get("value", "n/v")
+        _mjpinf = _mdat.get("🇯🇵 Inflation",         {}).get("value", "n/v")
+        _mvix   = macro.get("vix")
+        _mfg    = macro.get("fear_greed", {})
+        _mfgsco = _mfg.get("score")
+        _mfgrat = _mfg.get("rating", "")
+        _mspe   = macro.get("sp500_trailing_pe")
+        _msfpe  = macro.get("sp500_forward_pe")
+        _mspeg  = macro.get("sp500_peg")
+        _mseg   = macro.get("sp500_eg")
+        _merp   = macro.get("erp")
+        _mcape  = macro.get("shiller_cape")
+        _mcmarg = macro.get("corp_margin")
+        _mbuff  = macro.get("buffett", {})
+        _msecs  = macro.get("sectors", {})
+        _mreg   = _em.get("regime", {})
+        _mrsco  = _mreg.get("score", 0)
+        _mrlab  = _mreg.get("label", "Neutral")
+        _mmods  = _mreg.get("modules", {})
+
+        def _fmt(v, decimals=1, suffix=""):
+            return f"{v:.{decimals}f}{suffix}" if v is not None else "n/v"
+
+        _buff_line = ""
+        if _mbuff:
+            _bv = _mbuff.get("value")
+            _bl = _mbuff.get("label", "")
+            if _bv:
+                _buff_line = f"- Buffett-Indikator (Marktkapitalisierung/BIP): {_bv:.0f}% — {_bl}"
+
+        _secs_line = ""
+        if _msecs:
+            _sec_sorted = sorted(_msecs.items(), key=lambda x: x[1].get("mtd", 0), reverse=True)
+            _secs_line = "Sektorperformance (MTD): " + ", ".join(
+                f"{s} {d.get('mtd', 0):+.1f}%" for s, d in _sec_sorted[:6])
+
+        _mmod_str = " · ".join(f"{k} {v:+.2f}" for k, v in _mmods.items()) if _mmods else "n/v"
+
+        _sys_maki = (
+            "Du bist ein erfahrener Kapitalmarktstratege und Finanzwissenschaftler "
+            "(20+ Jahre institutionelles Portfolio-Management, Makro-Research, Asset Allocation). "
+            "Du kombinierst volkswirtschaftliche Theorie präzise mit pragmatischer Marktanalyse. "
+            "Erkenne Zyklen früh, leite konkrete Anlageimplikationen ab. "
+            "Antworte ausschließlich auf Deutsch. Sei direkt, konkret und ehrlich — "
+            "keine vagen Formulierungen, keine Marketing-Sprache."
+        )
+
+        _usr_maki = f"""Analysiere die aktuelle makroökonomische Lage anhand dieser aktuellen Datenpunkte:
+
+**GELDPOLITIK & ZINSEN:**
+- Fed Funds Rate: {_fmt(_mfed)}%
+- EZB Einlagesatz: {_fmt(_mecb)}%
+- US 10J Staatsanleihe: {_fmt(_m10y)}%
+- Equity Risk Premium (ERP): {_fmt(_merp)}%
+
+**INFLATION:**
+- US CPI (YoY): {_fmt(_mcpi)}%  |  US Kernrate: {_fmt(_mcore)}%
+- Eurozone HICP (YoY): {_fmt(_mezinf)}%  |  Japan CPI: {_fmt(_mjpinf)}%
+
+**KONJUNKTUR & ARBEIT:**
+- US Arbeitslosenquote: {_fmt(_munem)}%
+- Unternehmensgewinnmarge (S&P 500, % des BIP): {_fmt(_mcmarg)}%
+{_buff_line}
+
+**AKTIENMARKT-BEWERTUNG:**
+- S&P 500 Trailing KGV: {_fmt(_mspe)}x  |  Forward KGV: {_fmt(_msfpe)}x
+- Shiller CAPE: {_fmt(_mcape)}x  |  PEG-Ratio: {_fmt(_mspeg)}
+- Erwartetes Gewinnwachstum (S&P 500): {_fmt(_mseg)}%
+
+**MARKTSENTIMENT:**
+- VIX (Volatilität): {_fmt(_mvix)}
+- Fear & Greed Score: {_fmt(_mfgsco, 0)} — {_mfgrat}
+- {_secs_line}
+
+**MAKRO-REGIME (z-Score-gewichtet, eigene Berechnungen):**
+- Regime: {_mrlab} (Composite-Score: {_mrsco:+.2f})
+- Module: {_mmod_str}
+
+---
+
+Erstelle eine strukturierte finanzwirtschaftliche Analyse in genau diesem Format:
+
+## 🔄 Konjunkturzyklusposition
+Wo stehen wir präzise im Wirtschaftszyklus (Früh-/Mittzyklus, Late-Cycle, Kontraktion)? Welche Datenpunkte belegen das? Rezessionswahrscheinlichkeit einschätzen.
+
+## 🏭 Zyklische Branchen — Wo stehen wir?
+Welche Sektoren profitieren, welche leiden in der aktuellen Zyklusphase? Mindestens 4 Sektoren konkret analysieren (zyklisch vs. defensiv, Konsumgüter, Industrie, Finanzwerte, Technologie, Energie, Immobilien/REITs, Rohstoffe). Klare Über-/Untergewichtungsempfehlung.
+
+## 📊 Unternehmensgewinnentwicklung
+Wie entwickeln sich Unternehmensgewinne aktuell? Margendruck oder -expansion? EPS-Momentum, Revisions-Trend, Bewertungsimplikationen aus den vorliegenden KGV/CAPE-Daten. Welche Sektoren haben Rückenwind bei Gewinnen?
+
+## 💰 Zinsumfeld & Kapitalmarktimplikationen
+Interpretation der aktuellen Zinslage: Real vs. nominale Renditen, Zinskurvenform, Zentralbankpfad. Konkrete Implikationen: Welche Assetklassen leiden, welche profitieren? Bonds als Alternative zu Aktien?
+
+## 🎯 Anlageempfehlungen (Finanzwissenschaftliche Einschätzung)
+Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unterscheide nach Zeithorizont (6 Monate taktisch vs. 3–5 Jahre strategisch). Besonderes Augenmerk auf Risiko/Rendite-Verhältnis im aktuellen Umfeld."""
+
+        with st.spinner("🌍 KI analysiert Konjunktur, Sektoren und Zinsen…"):
+            _maki_txt, _maki_mdl = call_ki_api(
+                _sys_maki, _usr_maki, GEMINI_API_KEY, max_tokens=4500
+            )
+        if _maki_txt and not _maki_txt.startswith("⚠️"):
+            import datetime as _maki_dt
+            _maki_now = _maki_dt.datetime.now().strftime("%d.%m.%Y %H:%M")
+            st.session_state[_maki_pk] = _maki_txt
+            st.session_state[_maki_mk] = _maki_mdl
+            st.session_state[_maki_ts] = _maki_now
+            _pf_disk_save("ki_makro_analysis", {
+                "text": _maki_txt, "model": _maki_mdl, "time": _maki_now
+            })
+            st.rerun()
+        else:
+            st.error(f"KI-Analyse fehlgeschlagen: {_maki_mdl or _maki_txt}")
+
+    if _maki_pk in st.session_state and st.session_state.get(_maki_pk):
+        _maki_result = st.session_state[_maki_pk]
+        _maki_model  = st.session_state.get(_maki_mk, "Gemini")
+        _maki_time   = st.session_state.get(_maki_ts, "")
+        with st.expander("📊 Makroanalyse lesen", expanded=True):
+            if _maki_time:
+                st.caption(f"Stand: {_maki_time} · {_maki_model} · Gültig 24h")
+            st.markdown(_maki_result)
+
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     st.stop()
 
