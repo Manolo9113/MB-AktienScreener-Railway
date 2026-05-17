@@ -824,6 +824,31 @@ def _save_isin_sector_cache(cache: dict) -> None:
     except Exception:
         pass
 
+def _pf_disk_save(cache_name: str, data) -> None:
+    """Speichert berechnete Portfolio-Daten auf Railway Volume /data (überlebt Deploys)."""
+    try:
+        import os, pickle
+        path = os.path.join("/data" if os.path.isdir("/data") else "/tmp", f"pf_{cache_name}.pkl")
+        with open(path, "wb") as f:
+            pickle.dump(data, f)
+    except Exception:
+        pass
+
+def _pf_disk_load(cache_name: str, max_age_hours: float = 0):
+    """Lädt gecachte Portfolio-Daten von Railway Volume /data. Gibt None zurück wenn nicht vorhanden oder zu alt."""
+    try:
+        import os, pickle, time
+        path = os.path.join("/data" if os.path.isdir("/data") else "/tmp", f"pf_{cache_name}.pkl")
+        if os.path.exists(path):
+            if max_age_hours > 0 and (time.time() - os.path.getmtime(path)) / 3600 >= max_age_hours:
+                return None
+            with open(path, "rb") as f:
+                return pickle.load(f)
+    except Exception:
+        pass
+    return None
+
+
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
 def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
@@ -3777,6 +3802,8 @@ if "ticker" not in st.session_state:
     st.session_state["ticker"] = ""
 if "show_landing" not in st.session_state:
     st.session_state["show_landing"] = True
+if "show_stocks" not in st.session_state:
+    st.session_state["show_stocks"] = False
 if "search_input" not in st.session_state:
     st.session_state["search_input"] = ""
 if "search_msg" not in st.session_state:
@@ -3839,6 +3866,7 @@ def _go_to_ticker(t):
     st.session_state["show_landing"] = False
     st.session_state["show_portfolio"] = False
     st.session_state["show_etf_analyzer"] = False
+    st.session_state["show_stocks"] = False
     st.session_state["search_input"] = t
     st.session_state["search_msg"] = ""
     st.session_state["active_tab"] = 0
@@ -4977,16 +5005,25 @@ with st.sidebar:
     if not st.session_state["show_landing"] and st.button("🏠 Startseite", use_container_width=True):
         st.session_state["show_landing"] = True
         st.session_state["show_portfolio"] = False
+        st.session_state["show_stocks"] = False
+        st.rerun()
+    if not st.session_state.get("show_stocks") and st.button("💡 Aktienideen", use_container_width=True):
+        st.session_state["show_stocks"] = True
+        st.session_state["show_landing"] = False
+        st.session_state["show_portfolio"] = False
+        st.session_state["show_etf_analyzer"] = False
         st.rerun()
     if st.button("📁 Mein Portfolio", use_container_width=True):
         st.session_state["show_portfolio"] = True
         st.session_state["show_landing"] = False
         st.session_state["show_etf_analyzer"] = False
+        st.session_state["show_stocks"] = False
         st.rerun()
     if st.button("🔎 ETF-Analyzer", use_container_width=True):
         st.session_state["show_etf_analyzer"] = True
         st.session_state["show_portfolio"] = False
         st.session_state["show_landing"] = False
+        st.session_state["show_stocks"] = False
         st.rerun()
 
     st.markdown("<div class='section-header'>⚙️ Einstellungen</div>", unsafe_allow_html=True)
@@ -5196,8 +5233,11 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
 
     # ── Makro-Dashboard ───────────────────────────────────────────────
     st.markdown("<div class='section-header'>📊 Makro-Dashboard</div>", unsafe_allow_html=True)
-    with st.spinner("Lade Makrodaten…"):
-        macro = load_macro_data()
+    macro = _pf_disk_load("macro_basic", max_age_hours=24)
+    if macro is None:
+        with st.spinner("Lade Makrodaten…"):
+            macro = load_macro_data()
+        _pf_disk_save("macro_basic", macro)
 
     _FX_TIPS = {
         "EUR/USD": "Euro zu US-Dollar. Steigt der Wert, wird der Euro stärker (gut für europäische Importeure, schlecht für Exporteure).",
@@ -5569,7 +5609,10 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
 
     # ── Erweitertes Makro-Dashboard (Expander) ────────────────────────
     try:
-        _em = load_extended_macro()
+        _em = _pf_disk_load("macro_extended", max_age_hours=24)
+        if _em is None:
+            _em = load_extended_macro()
+            _pf_disk_save("macro_extended", _em)
     except Exception:
         _em = {"modules": {}, "regime": {}}
 
@@ -5849,10 +5892,16 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                         unsafe_allow_html=True)
 
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    st.stop()
+
+# ==================== AKTIENIDEEN PAGE ====================
+elif st.session_state.get("show_stocks"):
+    st.markdown("<div class='section-header'>💡 Aktienideen & Screener</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # ── Aktienempfehlungen Accordion ──
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    with st.expander("💡  Aktienideen — Growth · Value · Dividende · Overhyped  (täglich aktualisiert)", expanded=False):
+    with st.expander("💡  Aktienideen — Growth · Value · Dividende · Overhyped  (täglich aktualisiert)", expanded=True):
         with st.spinner("Lade Aktienempfehlungen…"):
             _gp, _vp, _dp, _hp = load_stock_picks()
 
@@ -6567,6 +6616,24 @@ if st.session_state.get("show_portfolio"):
 
         # ── Kurse automatisch laden (nur wenn noch Positionen ohne Kurs) ─────
         _all_isins = stocks_etf['ISIN'].tolist() if not stocks_etf.empty else []
+
+        # Disk-Cache wiederherstellen (Railway Volume /data, 30-Min TTL)
+        if not prices and _all_isins:
+            _pd = _pf_disk_load(f"prices_{_csv_key}", max_age_hours=0.5)
+            if _pd:
+                prices = _pd
+                st.session_state[_prices_cache_key] = prices
+            _qd = _pf_disk_load(f"qext_{_csv_key}", max_age_hours=0.5)
+            if _qd:
+                quotes_ext = _qd
+                st.session_state[_qext_cache_key] = quotes_ext
+        if _crypto_cache_key not in st.session_state and not crypto.empty:
+            _cd = _pf_disk_load(f"crypto_{_csv_key}", max_age_hours=0.5)
+            if _cd:
+                _crypto_prices = _cd
+                st.session_state[_crypto_cache_key] = _cd
+
+
         # Nur ISINs die wirklich noch nie versucht wurden (is None = kein Eintrag)
         # Wert 0.0 = versucht, kein Kurs gefunden (Sentinel, kein Retry)
         _missing_isins = [i for i in _all_isins if prices.get(i) is None]
@@ -6671,6 +6738,8 @@ if st.session_state.get("show_portfolio"):
                     prices[_si] = 0.0
             st.session_state[_prices_cache_key] = prices
             st.session_state[_qext_cache_key]   = quotes_ext
+            _pf_disk_save(f"prices_{_csv_key}", prices)
+            _pf_disk_save(f"qext_{_csv_key}", quotes_ext)
         if _crypto_cache_key not in st.session_state and not crypto.empty:
             import re as _re
             import concurrent.futures as _cf_c
@@ -6693,6 +6762,7 @@ if st.session_state.get("show_portfolio"):
                             pass
             _prices_just_fetched = True
             st.session_state[_crypto_cache_key] = _crypto_prices
+            _pf_disk_save(f"crypto_{_csv_key}", _crypto_prices)
         if _prices_just_fetched:
             st.rerun()
 
@@ -6896,7 +6966,7 @@ if st.session_state.get("show_portfolio"):
                     _saved_shr,
                 )
                 # Kurs- und Sektorcaches bleiben erhalten – Stückzahlen ändern sie nicht.
-                # Explizite Navigation-Guards verhindern den Landing-Page-Redirect nach rerun().
+                # Navigationsschutz: explizit Portfolio-Seite behalten (verhindert Landing-Page-Redirect).
                 st.session_state["show_portfolio"] = True
                 st.session_state["show_landing"] = False
                 st.rerun()
@@ -6936,6 +7006,31 @@ if st.session_state.get("show_portfolio"):
         # Cache-Keys für lazy loading in den Tabs
         _sec_loaded_key = f"sec_loaded_{_alloc_cache_key}"
         _hb_cache_key   = f"hb_{_alloc_cache_key}"
+
+        # ── Performance-Daten aus Disk-Cache wiederherstellen (/data überlebt Deploys) ──
+        _irr_ck = f"irr_{_csv_key}"
+        if _irr_ck not in st.session_state:
+            _irr_disk = _pf_disk_load(f"irr_{_csv_key}")
+            if _irr_disk is not None:
+                st.session_state[_irr_ck] = _irr_disk
+        for _bmt in ("SXR8.DE", "VWCE.DE", "EQQQ.DE", "EXS1.DE"):
+            _bmt_k = f"bm_{_csv_key}_{_bmt}"
+            if _bmt_k not in st.session_state:
+                _bmt_disk = _pf_disk_load(f"bm_{_csv_key}_{_bmt}")
+                if _bmt_disk is not None:
+                    st.session_state[_bmt_k] = _bmt_disk
+
+        # ── Render-Diagnose ────────────────────────────────────────────────
+        _dbg_rc = st.session_state.get("_dbg_rc", 0) + 1
+        st.session_state["_dbg_rc"] = _dbg_rc
+        _dbg_irr = "✓" if f"irr_{_csv_key}" in st.session_state else "✗"
+        _dbg_bm  = "✓" if any(k.startswith(f"bm_{_csv_key}_") for k in st.session_state) else "✗"
+        _dbg_sec = "✓" if st.session_state.get(_sec_loaded_key) else "✗"
+        _dbg_hb  = "✓" if _hb_cache_key in st.session_state else "✗"
+        st.caption(
+            f"🔄 Render #{_dbg_rc} · prices={len(prices)} · "
+            f"irr={_dbg_irr} · bm={_dbg_bm} · sec={_dbg_sec} · hb={_dbg_hb}"
+        )
 
         with tab_pos:
           try:
@@ -7128,26 +7223,39 @@ if st.session_state.get("show_portfolio"):
 
         with tab_alloc:
           try:
-            # ── Sektor-Daten für alle Positionen (lazy, einmalig, gespeichert auf Disk) ──
+            # ── Sektor-Daten für alle Positionen (auf Knopfdruck, einmalig gecacht) ──
+            _sec_load_btn_key = f"sec_load_btn_{_alloc_cache_key}"
             if not st.session_state.get(_sec_loaded_key) and not stocks_etf.empty:
                 _sec_miss2 = [(isin_map.get(r['ISIN']), r['ISIN'])
                               for _, r in stocks_etf.iterrows()
                               if r['ISIN'] not in _alloc_infos and isin_map.get(r['ISIN'])]
                 if _sec_miss2:
-                    _sprog2 = st.progress(0, f"Sektordaten: 0 / {len(_sec_miss2)}…")
-                    _new_sc: dict = {}
-                    for _sii2, (_stk2, _sisin2) in enumerate(_sec_miss2, 1):
-                        _inf_s = _get_ticker_info_cached(_stk2)
-                        _alloc_infos[_sisin2] = _inf_s
-                        _new_sc[_sisin2] = {k: _inf_s.get(k, '') for k in
-                                            ('quote_type', 'sector', 'recommendation')}
-                        _sprog2.progress(_sii2 / len(_sec_miss2),
-                                         f"Sektordaten: {_sii2} / {len(_sec_miss2)}…")
-                    _sprog2.empty()
-                    st.session_state[_alloc_cache_key] = _alloc_infos
-                    _disk_sec_cache.update(_new_sc)
-                    _save_isin_sector_cache(_disk_sec_cache)
-                st.session_state[_sec_loaded_key] = True
+                    if not st.session_state.get(_sec_load_btn_key):
+                        st.info(
+                            f"Sektordaten für {len(_sec_miss2)} Positionen fehlen noch. "
+                            "Lädt ~15–60 Sek., danach für diese Sitzung gespeichert."
+                        )
+                        if st.button("📊 Sektordaten laden", type="primary",
+                                     key="btn_sec_load", use_container_width=True):
+                            st.session_state[_sec_load_btn_key] = True
+                            st.rerun()
+                    if st.session_state.get(_sec_load_btn_key):
+                        _sprog2 = st.progress(0, f"Sektordaten: 0 / {len(_sec_miss2)}…")
+                        _new_sc: dict = {}
+                        for _sii2, (_stk2, _sisin2) in enumerate(_sec_miss2, 1):
+                            _inf_s = _get_ticker_info_cached(_stk2)
+                            _alloc_infos[_sisin2] = _inf_s
+                            _new_sc[_sisin2] = {k: _inf_s.get(k, '') for k in
+                                                ('quote_type', 'sector', 'recommendation')}
+                            _sprog2.progress(_sii2 / len(_sec_miss2),
+                                             f"Sektordaten: {_sii2} / {len(_sec_miss2)}…")
+                        _sprog2.empty()
+                        st.session_state[_alloc_cache_key] = _alloc_infos
+                        _disk_sec_cache.update(_new_sc)
+                        _save_isin_sector_cache(_disk_sec_cache)
+                        st.session_state[_sec_loaded_key] = True
+                else:
+                    st.session_state[_sec_loaded_key] = True
 
             if stocks_etf.empty and crypto.empty:
                 st.info("Keine Positionsdaten vorhanden.")
@@ -7390,21 +7498,28 @@ if st.session_state.get("show_portfolio"):
             if not _csv_bytes:
                 st.info("📂 Lade zuerst deine Orderhistorie-CSV hoch, um die Performance zu berechnen.")
             else:
-                _perf_show_key = f"perf_show_{_csv_key}"
-                if not st.session_state.get(_perf_show_key):
-                    if st.button("📈 Performance laden", key="btn_show_perf",
-                                 type="primary",
-                                 help="Berechnet Rendite-Kennzahlen (einmalig, danach gecacht)"):
-                        st.session_state[_perf_show_key] = True
+                _perf_load_key = f"perf_load_{_csv_key}"
+                _irr_cache_key = f"irr_{_csv_key}"
+                if _irr_cache_key in st.session_state:
+                    st.session_state[_perf_load_key] = True
+                if not st.session_state.get(_perf_load_key):
+                    st.info(
+                        "Berechnet IZF, Gesamtrendite, Steuer-Schätzung und Benchmark-Vergleich. "
+                        "Lädt ~15 Sek. — danach dauerhaft gespeichert (auch nach Deploys), "
+                        "bis du eine neue CSV hochlädst."
+                    )
+                    if st.button("📈 Performance laden", type="primary",
+                                 key="btn_perf_load", use_container_width=True):
+                        st.session_state[_perf_load_key] = True
                         st.rerun()
-                if st.session_state.get(_perf_show_key):
-                    # ── Rendite-Kennzahlen ────────────────────────────────────
+                if st.session_state.get(_perf_load_key):
+                # ── Rendite-Kennzahlen ────────────────────────────────────
                     _cur_val_perf = current_total or 0.0
-                    _irr_cache_key = f"irr_{_csv_key}"
                     if _irr_cache_key not in st.session_state:
                         with st.spinner("Renditekennzahlen werden berechnet…"):
                             _irr_res = _calc_portfolio_irr(_csv_bytes, _cur_val_perf)
                         st.session_state[_irr_cache_key] = _irr_res
+                        _pf_disk_save(f"irr_{_csv_key}", _irr_res)
                     _irr, _simple_ret, _days, _invested_total = st.session_state[_irr_cache_key]
 
                     _INFL = 2.2
@@ -7576,90 +7691,84 @@ if st.session_state.get("show_portfolio"):
                         "NASDAQ 100 — EQQQ.DE": "EQQQ.DE",
                         "DAX — EXS1.DE": "EXS1.DE",
                     }
-                    _bm_show_key = f"bm_show_{_csv_key}"
-                    if not st.session_state.get(_bm_show_key):
-                        if st.button("📊 Benchmark-Chart laden", key="btn_show_bm",
-                                     help="Lädt Benchmark-Vergleich (einmalig ~5 Sek.)"):
-                            st.session_state[_bm_show_key] = True
-                            st.rerun()
+                    bm_label = st.selectbox("Benchmark auswählen", list(_BENCHMARKS.keys()), key="pf_bm_select")
+                    bm_ticker = _BENCHMARKS[bm_label]
+                    _bm_cache_key = f"bm_{_csv_key}_{bm_ticker}"
+                    if _bm_cache_key not in st.session_state:
+                        with st.spinner("Benchmark-Daten werden geladen…"):
+                            st.session_state[_bm_cache_key] = _build_performance(_csv_bytes, bm_ticker)
+                        _pf_disk_save(f"bm_{_csv_key}_{bm_ticker}", st.session_state[_bm_cache_key])
+                    _perf = st.session_state[_bm_cache_key]
+                    if _perf is None:
+                        st.warning("Benchmark-Berechnung nicht möglich — CSV benötigt eine Datums-Spalte.")
                     else:
-                        bm_label = st.selectbox("Benchmark auswählen", list(_BENCHMARKS.keys()), key="pf_bm_select")
-                        bm_ticker = _BENCHMARKS[bm_label]
-                        _bm_cache_key = f"bm_{_csv_key}_{bm_ticker}"
-                        if _bm_cache_key not in st.session_state:
-                            with st.spinner("Benchmark-Daten werden geladen…"):
-                                st.session_state[_bm_cache_key] = _build_performance(_csv_bytes, bm_ticker)
-                        _perf = st.session_state[_bm_cache_key]
-                        if _perf is None:
-                            st.warning("Benchmark-Berechnung nicht möglich — CSV benötigt eine Datums-Spalte.")
-                        else:
-                            _dates_p, _invested_p, _bm_p = _perf
-                            _pf_val_now = current_total or 0.0
-                            import plotly.graph_objects as _go
-                            _fig = _go.Figure()
+                        _dates_p, _invested_p, _bm_p = _perf
+                        _pf_val_now = current_total or 0.0
+                        import plotly.graph_objects as _go
+                        _fig = _go.Figure()
+                        _fig.add_trace(_go.Scatter(
+                            x=_dates_p, y=_invested_p,
+                            name="Investiert (kumuliert)",
+                            line=dict(color="#ffd600", width=2, dash="dot"),
+                            fill="tozeroy", fillcolor="rgba(255,214,0,0.07)"
+                        ))
+                        _fig.add_trace(_go.Scatter(
+                            x=_dates_p, y=_bm_p,
+                            name=f"Benchmark ({bm_label})",
+                            line=dict(color="#42a5f5", width=2.5),
+                            fill="tozeroy", fillcolor="rgba(66,165,245,0.09)"
+                        ))
+                        if _pf_val_now > 0 and _dates_p:
+                            _today_ts = pd.Timestamp.today().normalize()
                             _fig.add_trace(_go.Scatter(
-                                x=_dates_p, y=_invested_p,
-                                name="Investiert (kumuliert)",
-                                line=dict(color="#ffd600", width=2, dash="dot"),
-                                fill="tozeroy", fillcolor="rgba(255,214,0,0.07)"
+                                x=[_dates_p[-1], _today_ts],
+                                y=[_pf_val_now, _pf_val_now],
+                                name="Mein Portfolio (aktuell)",
+                                line=dict(color="#00e676", width=2.5),
+                                mode="lines+markers",
+                                marker=dict(size=[0, 10], color="#00e676"),
                             ))
-                            _fig.add_trace(_go.Scatter(
-                                x=_dates_p, y=_bm_p,
-                                name=f"Benchmark ({bm_label})",
-                                line=dict(color="#42a5f5", width=2.5),
-                                fill="tozeroy", fillcolor="rgba(66,165,245,0.09)"
-                            ))
-                            if _pf_val_now > 0 and _dates_p:
-                                _today_ts = pd.Timestamp.today().normalize()
-                                _fig.add_trace(_go.Scatter(
-                                    x=[_dates_p[-1], _today_ts],
-                                    y=[_pf_val_now, _pf_val_now],
-                                    name="Mein Portfolio (aktuell)",
-                                    line=dict(color="#00e676", width=2.5),
-                                    mode="lines+markers",
-                                    marker=dict(size=[0, 10], color="#00e676"),
-                                ))
-                            _fig.update_layout(
-                                template="plotly_dark", height=380,
-                                paper_bgcolor="#0a1628", plot_bgcolor="#0a1628",
-                                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-                                margin=dict(l=10, r=10, t=36, b=10),
-                                xaxis=dict(showgrid=False, title=""),
-                                yaxis=dict(showgrid=True, gridcolor="#1e2d45",
-                                           tickprefix="€", tickformat=",.0f"),
-                                hovermode="x unified",
-                            )
-                            st.plotly_chart(_fig, use_container_width=True)
-                            if _bm_p and _invested_p[-1] > 0:
-                                _invested_last = _invested_p[-1]
-                                _bm_gain_eur = _bm_p[-1] - _invested_last
-                                _bm_gain_pct = (_bm_p[-1] / _invested_last - 1) * 100
-                                _pf_gain_eur = _pf_val_now - _invested_last
-                                _pf_gain_pct = (_pf_val_now / _invested_last - 1) * 100 if _invested_last > 0 else 0
-                                _alpha = _pf_gain_pct - _bm_gain_pct
-                                _sc1, _sc2, _sc3, _sc4 = st.columns(4)
-                                _sc1.metric("Investiert gesamt", f"€ {_invested_last:,.0f}")
-                                _sc2.metric("Mein Portfolio", f"€ {_pf_val_now:,.0f}",
-                                            delta=f"{_pf_gain_pct:+.1f}% ({_pf_gain_eur:+,.0f} €)",
-                                            delta_color="normal" if _pf_gain_eur >= 0 else "inverse")
-                                _sc3.metric(f"Benchmark", f"€ {_bm_p[-1]:,.0f}",
-                                            delta=f"{_bm_gain_pct:+.1f}% ({_bm_gain_eur:+,.0f} €)",
-                                            delta_color="normal" if _bm_gain_eur >= 0 else "inverse")
-                                _alpha_color = "#00e676" if _alpha >= 0 else "#ff5252"
-                                _alpha_sign  = "+" if _alpha >= 0 else ""
-                                st.markdown(
-                                    f"<div style='background:#0d1a2e;border:1px solid #1e2d45;border-radius:10px;"
-                                    f"padding:12px 16px;text-align:center;margin-top:8px;'>"
-                                    f"<span style='color:#64b5f6;font-size:0.75rem;font-weight:600;"
-                                    f"text-transform:uppercase;letter-spacing:.06em;'>Portfolio vs. Benchmark (Alpha)</span>"
-                                    f"<div style='color:{_alpha_color};font-size:1.5rem;font-weight:800;"
-                                    f"margin-top:4px;'>{_alpha_sign}{_alpha:.1f} Prozentpunkte</div>"
-                                    f"<div style='color:#546e7a;font-size:0.72rem;margin-top:2px;'>"
-                                    f"{'Outperformance' if _alpha >= 0 else 'Underperformance'} gegenüber {bm_label}</div>"
-                                    f"</div>",
-                                    unsafe_allow_html=True)
-                            st.caption("Methodik: Jeder Kauf simuliert einen gleichwertigen Kauf des Benchmarks. "
-                                       "Verkäufe reduzieren die Benchmark-Position anteilig. Kosten nicht berücksichtigt.")
+                        _fig.update_layout(
+                            template="plotly_dark", height=380,
+                            paper_bgcolor="#0a1628", plot_bgcolor="#0a1628",
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                            margin=dict(l=10, r=10, t=36, b=10),
+                            xaxis=dict(showgrid=False, title=""),
+                            yaxis=dict(showgrid=True, gridcolor="#1e2d45",
+                                       tickprefix="€", tickformat=",.0f"),
+                            hovermode="x unified",
+                        )
+                        st.plotly_chart(_fig, use_container_width=True)
+                        if _bm_p and _invested_p[-1] > 0:
+                            _invested_last = _invested_p[-1]
+                            _bm_gain_eur = _bm_p[-1] - _invested_last
+                            _bm_gain_pct = (_bm_p[-1] / _invested_last - 1) * 100
+                            _pf_gain_eur = _pf_val_now - _invested_last
+                            _pf_gain_pct = (_pf_val_now / _invested_last - 1) * 100 if _invested_last > 0 else 0
+                            _alpha = _pf_gain_pct - _bm_gain_pct
+                            _sc1, _sc2, _sc3, _sc4 = st.columns(4)
+                            _sc1.metric("Investiert gesamt", f"€ {_invested_last:,.0f}")
+                            _sc2.metric("Mein Portfolio", f"€ {_pf_val_now:,.0f}",
+                                        delta=f"{_pf_gain_pct:+.1f}% ({_pf_gain_eur:+,.0f} €)",
+                                        delta_color="normal" if _pf_gain_eur >= 0 else "inverse")
+                            _sc3.metric(f"Benchmark", f"€ {_bm_p[-1]:,.0f}",
+                                        delta=f"{_bm_gain_pct:+.1f}% ({_bm_gain_eur:+,.0f} €)",
+                                        delta_color="normal" if _bm_gain_eur >= 0 else "inverse")
+                            _alpha_color = "#00e676" if _alpha >= 0 else "#ff5252"
+                            _alpha_sign  = "+" if _alpha >= 0 else ""
+                            st.markdown(
+                                f"<div style='background:#0d1a2e;border:1px solid #1e2d45;border-radius:10px;"
+                                f"padding:12px 16px;text-align:center;margin-top:8px;'>"
+                                f"<span style='color:#64b5f6;font-size:0.75rem;font-weight:600;"
+                                f"text-transform:uppercase;letter-spacing:.06em;'>Portfolio vs. Benchmark (Alpha)</span>"
+                                f"<div style='color:{_alpha_color};font-size:1.5rem;font-weight:800;"
+                                f"margin-top:4px;'>{_alpha_sign}{_alpha:.1f} Prozentpunkte</div>"
+                                f"<div style='color:#546e7a;font-size:0.72rem;margin-top:2px;'>"
+                                f"{'Outperformance' if _alpha >= 0 else 'Underperformance'} gegenüber {bm_label}</div>"
+                                f"</div>",
+                                unsafe_allow_html=True)
+                    st.caption("Methodik: Jeder Kauf simuliert einen gleichwertigen Kauf des Benchmarks. "
+                               "Verkäufe reduzieren die Benchmark-Position anteilig. Kosten nicht berücksichtigt.")
 
           except Exception as _e_perf:
               st.error(f"Fehler im Performance-Tab: {_e_perf}")
@@ -7671,16 +7780,17 @@ if st.session_state.get("show_portfolio"):
             st.caption("ETFs werden auf ihre Top-Holdings aufgebrochen und mit Direktinvestments kombiniert. "
                        "Nur die Top-25 Holdings je ETF werden berücksichtigt (≈40–70% des ETF-Werts).")
 
-            # ── Holdings-Breakdown (auf Knopfdruck, einmalig pro Session gecacht) ──
-            _hb_load_key = f"hb_load_req_{_alloc_cache_key}"
+            # ── Holdings-Breakdown (auf Knopfdruck, einmalig gecacht) ──
+            _hb_load_key = f"hb_load_{_alloc_cache_key}"
             if _hb_cache_key not in st.session_state:
                 if not st.session_state.get(_hb_load_key):
-                    st.info("Holdings-Analyse noch nicht geladen. Klicke den Button, um ETF-Holdings aufzuschlüsseln "
-                            "(lädt ~10–30 Sek., wird danach für diese Sitzung gespeichert).")
-                    if st.button("🔍 Holdings laden", type="primary", key="btn_hb_load"):
+                    st.info("ETF Look-Through analysiert die echten Holdings deiner ETFs. "
+                            "Lädt ~15–60 Sek. (je nach Anzahl ETFs), danach für diese Sitzung gespeichert.")
+                    if st.button("🔍 Holdings laden", type="primary", key="btn_hb_load",
+                                 use_container_width=True):
                         st.session_state[_hb_load_key] = True
                         st.rerun()
-                else:
+                if st.session_state.get(_hb_load_key):
                     _hb_w: dict = {}
                     _hb_etfs_w: list = []
                     for _, _hr in stocks_etf.iterrows():
@@ -7959,7 +8069,7 @@ GEOGRAFISCHE VERTEILUNG:
                     _kipa_txt, _kipa_mdl = _try_gemini(
                         [{"role": "system", "content": _sys_kipa},
                          {"role": "user",   "content": _usr_kipa}],
-                        max_tokens=5000, temperature=0.55, api_key=GEMINI_API_KEY,
+                        max_tokens=8192, temperature=0.55, api_key=GEMINI_API_KEY,
                     )
                 if _kipa_txt:
                     st.session_state[_kipa_pk] = _kipa_txt
@@ -9684,6 +9794,7 @@ if hist.empty or not yf_info:
     """, unsafe_allow_html=True)
     if st.button("← Zurück zur Startseite", key="err_back"):
         st.session_state["show_landing"] = True
+        st.session_state["show_stocks"] = False
         st.session_state["ticker"] = ""
         st.rerun()
     st.stop()
