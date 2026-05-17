@@ -6615,6 +6615,23 @@ if st.session_state.get("show_portfolio"):
 
         # ── Kurse automatisch laden (nur wenn noch Positionen ohne Kurs) ─────
         _all_isins = stocks_etf['ISIN'].tolist() if not stocks_etf.empty else []
+
+        # Disk-Cache wiederherstellen (Railway Volume /data, 30-Min TTL)
+        if not prices and _all_isins:
+            _pd = _pf_disk_load(f"prices_{_csv_key}", max_age_hours=0.5)
+            if _pd:
+                prices = _pd
+                st.session_state[_prices_cache_key] = prices
+            _qd = _pf_disk_load(f"qext_{_csv_key}", max_age_hours=0.5)
+            if _qd:
+                quotes_ext = _qd
+                st.session_state[_qext_cache_key] = quotes_ext
+        if _crypto_cache_key not in st.session_state and not crypto.empty:
+            _cd = _pf_disk_load(f"crypto_{_csv_key}", max_age_hours=0.5)
+            if _cd:
+                _crypto_prices = _cd
+                st.session_state[_crypto_cache_key] = _cd
+
         # Nur ISINs die wirklich noch nie versucht wurden (is None = kein Eintrag)
         # Wert 0.0 = versucht, kein Kurs gefunden (Sentinel, kein Retry)
         _missing_isins = [i for i in _all_isins if prices.get(i) is None]
@@ -6719,6 +6736,8 @@ if st.session_state.get("show_portfolio"):
                     prices[_si] = 0.0
             st.session_state[_prices_cache_key] = prices
             st.session_state[_qext_cache_key]   = quotes_ext
+            _pf_disk_save(f"prices_{_csv_key}", prices)
+            _pf_disk_save(f"qext_{_csv_key}", quotes_ext)
         if _crypto_cache_key not in st.session_state and not crypto.empty:
             import re as _re
             import concurrent.futures as _cf_c
@@ -6741,6 +6760,7 @@ if st.session_state.get("show_portfolio"):
                             pass
             _prices_just_fetched = True
             st.session_state[_crypto_cache_key] = _crypto_prices
+            _pf_disk_save(f"crypto_{_csv_key}", _crypto_prices)
         if _prices_just_fetched:
             st.rerun()
 
