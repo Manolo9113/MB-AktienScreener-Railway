@@ -457,42 +457,61 @@ st.markdown("""
 # ==================== LIGHT MODE CSS ====================
 if st.session_state.get("light_mode"):
     st.markdown("""<style>
-    /* ── Hintergründe ─────────────────────────────────── */
+    /* ── Kernhintergründe ──────────────────────────────── */
     .stApp,
     div[data-testid="stAppViewContainer"],
     section[data-testid="stMain"],
     .main,
-    .main .block-container { background: #f5f7fa !important; }
+    .main .block-container { background: #f8fafc !important; }
 
-    /* ── Sidebar ───────────────────────────────────────── */
+    /* ── Sidebar ────────────────────────────────────────── */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg,#e8f0fe,#dde8fb) !important;
-        border-right: 1px solid #c0d0f0 !important;
+        background: linear-gradient(180deg,#ffffff 0%,#f0f5ff 100%) !important;
+        border-right: 1px solid #e2e8f0 !important;
+        box-shadow: 2px 0 12px rgba(0,0,0,0.05) !important;
     }
     section[data-testid="stSidebar"] label,
     section[data-testid="stSidebar"] p,
     section[data-testid="stSidebar"] span,
-    section[data-testid="stSidebar"] div { color: #1a202c !important; }
+    section[data-testid="stSidebar"] div { color: #1e293b !important; }
     section[data-testid="stSidebar"] .section-header {
-        color: #1565c0 !important; border-bottom-color: #c0d0f0 !important; }
+        color: #1d4ed8 !important; border-bottom-color: #e2e8f0 !important; }
     section[data-testid="stSidebar"] input {
-        background: #fff !important; border-color: #c0d0f0 !important; color: #1a202c !important; }
+        background: #fff !important; border-color: #e2e8f0 !important;
+        color: #0f172a !important; box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important; }
 
-    /* ── CSS-Klassen ───────────────────────────────────── */
+    /* ── Sidebar-Buttons (Schnellauswahl + Navigation) ── */
+    section[data-testid="stSidebar"] div[data-testid="stButton"] > button,
+    section[data-testid="stSidebar"] button {
+        background: #ffffff !important;
+        color: #1e40af !important;
+        border: 1.5px solid #bfdbfe !important;
+        box-shadow: 0 1px 4px rgba(37,99,235,0.10) !important;
+        font-weight: 600 !important;
+        border-radius: 8px !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stButton"] > button:hover,
+    section[data-testid="stSidebar"] button:hover {
+        background: #eff6ff !important;
+        border-color: #93c5fd !important;
+        color: #1d4ed8 !important;
+    }
+
+    /* ── CSS-Klassen ────────────────────────────────────── */
     .header-wrap, .metric-card, .score-section {
         background: #ffffff !important;
-        border-color: #dde3ee !important;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.07) !important; }
+        border-color: #e2e8f0 !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04) !important; }
     .header-title { color: #0f172a !important; }
-    .header-sub   { color: #2563eb !important; }
+    .header-sub   { color: #1d4ed8 !important; }
     .metric-label { color: #64748b !important; }
     .metric-value { color: #0f172a !important; }
     .metric-sub   { color: #94a3b8 !important; }
-    .section-header { color: #2563eb !important; border-bottom-color: #dde3ee !important; }
+    .section-header { color: #1d4ed8 !important; border-bottom-color: #e2e8f0 !important; }
     .insight-box  { background: #eff6ff !important; border-left-color: #2563eb !important; color: #1e3a5f !important; }
     .grok-box     { background: #faf5ff !important; border-color: #c4b5fd !important; }
 
-    /* ── Inline dark backgrounds ─────────────────────── */
+    /* ── Inline dunkle Hintergründe → weiß ─────────────── */
     div[style*="#0d1f35"], div[style*="#0d1f3c"], div[style*="#0a1628"],
     div[style*="#080f1e"], div[style*="#0d1526"], div[style*="#071020"],
     div[style*="#001a2e"], div[style*="#0d2035"], div[style*="#0d1a2e"],
@@ -501,21 +520,30 @@ if st.session_state.get("light_mode"):
     div[style*="#1a2744"], div[style*="#1e2d45"], div[style*="#1a3a5c"],
     div[style*="#1a2e1a"], div[style*="#0a1a35"], div[style*="#0d2040"],
     div[style*="#0a1732"], div[style*="#0e1c36"], div[style*="#162032"],
-    div[style*="#1e3a5f"], div[style*="#152035"], div[style*="#1a304a"] {
+    div[style*="#1e3a5f"], div[style*="#152035"], div[style*="#1a304a"],
+    div[style*="#060e1e"], div[style*="#0b1120"] {
         background: #ffffff !important;
-        border-color: #dde3ee !important; }
+        border-color: #e2e8f0 !important; }
 
-    /* ── Span / any element with dark backgrounds ────── */
+    /* ── Span / Badge mit dunklen Hintergründen ─────────── */
     span[style*="#0d1f3c"], span[style*="#0a1628"], span[style*="#1a2744"],
     span[style*="#1e2d45"], span[style*="#0d1526"] {
-        background: #e8f0fe !important; color: #1e3a5f !important; }
+        background: #eff6ff !important; color: #1e3a5f !important; }
 
-    /* ── Dark text inside light cards ───────────────── */
+    /* ── Kindelemente in umgewandelten Karten ────────────── */
     div[style*="#0d1f35"] *, div[style*="#0d1f3c"] *, div[style*="#0a1628"] *,
     div[style*="#1a2744"] *, div[style*="#1e2d45"] * {
-        color: #1e293b !important; border-color: #dde3ee !important; }
+        color: #1e293b !important; border-color: #e2e8f0 !important; }
 
-    /* ── Inline text colors ──────────────────────────── */
+    /* ── Neonfarben → klare Finanzfarben ────────────────── */
+    *[style*="color:#00e676"], *[style*="color: #00e676"] { color: #16a34a !important; }
+    *[style*="color:#69f0ae"], *[style*="color: #69f0ae"] { color: #22c55e !important; }
+    *[style*="color:#ff5252"], *[style*="color: #ff5252"] { color: #dc2626 !important; }
+    *[style*="color:#ffd600"], *[style*="color: #ffd600"] { color: #d97706 !important; }
+    *[style*="color:#ffb300"], *[style*="color: #ffb300"] { color: #d97706 !important; }
+    *[style*="color:#00e5ff"], *[style*="color: #00e5ff"] { color: #0284c7 !important; }
+
+    /* ── Inline Textfarben ───────────────────────────────── */
     *[style*="color:#eceff1"], *[style*="color: #eceff1"] { color: #0f172a !important; }
     *[style*="color:#e3f2fd"], *[style*="color: #e3f2fd"] { color: #1e40af !important; }
     *[style*="color:#cfd8dc"], *[style*="color: #cfd8dc"] { color: #334155 !important; }
@@ -526,45 +554,60 @@ if st.session_state.get("light_mode"):
     *[style*="color:#37474f"], *[style*="color: #37474f"] { color: #94a3b8 !important; }
     *[style*="color:#64b5f6"], *[style*="color: #64b5f6"] { color: #2563eb !important; }
     *[style*="color:#42a5f5"], *[style*="color: #42a5f5"] { color: #2563eb !important; }
-    *[style*="color:#00e5ff"], *[style*="color: #00e5ff"] { color: #0369a1 !important; }
 
-    /* ── Streamlit native ──────────────────────────────── */
+    /* ── Streamlit-Natives ──────────────────────────────── */
     div[data-testid="stMarkdownContainer"] p { color: #334155 !important; }
     div[data-testid="stMetricValue"]  { color: #0f172a !important; }
     div[data-testid="stMetricLabel"]  { color: #64748b !important; }
     .stCaption, small                 { color: #94a3b8 !important; }
-    hr                                { border-color: #dde3ee !important; }
+    hr                                { border-color: #e2e8f0 !important; }
 
+    /* ── Eingabefelder ──────────────────────────────────── */
     .stTextInput input {
-        background: #fff !important; border-color: #c0d0f0 !important;
+        background: #fff !important; border-color: #e2e8f0 !important;
         color: #0f172a !important; box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important; }
 
-    /* Tabs */
+    /* ── Tabs ───────────────────────────────────────────── */
     .stTabs [data-baseweb="tab-list"] {
-        background: #e8f0fe !important; border-color: #c0d0f0 !important; }
+        background: #f1f5f9 !important; border-color: #e2e8f0 !important; }
     .stTabs [data-baseweb="tab"]    { color: #64748b !important; }
     .stTabs [aria-selected="true"]  { background: #2563eb !important; color: #fff !important; }
 
-    /* Expander */
-    details summary                  { background: #e8f0fe !important; color: #2563eb !important; border-radius: 8px; }
-    details[open] summary            { border-radius: 8px 8px 0 0; }
-    details > div                    { background: #f0f5ff !important; border: 1px solid #c0d0f0 !important; }
+    /* ── Expander ───────────────────────────────────────── */
+    details summary { background: #f1f5f9 !important; color: #1d4ed8 !important; border-radius: 8px; }
+    details[open] summary { border-radius: 8px 8px 0 0; }
+    details > div { background: #f8fafc !important; border: 1px solid #e2e8f0 !important; }
 
-    /* Buttons (sidebar + nav) */
+    /* ── Alle Buttons (global) ──────────────────────────── */
     div[data-testid="stButton"] > button {
-        background: #e8f0fe !important; color: #1e40af !important;
-        border: 1px solid #c0d0f0 !important; }
+        background: #ffffff !important;
+        color: #1e40af !important;
+        border: 1.5px solid #bfdbfe !important;
+        box-shadow: 0 1px 3px rgba(37,99,235,0.08) !important;
+        font-weight: 500 !important;
+    }
     div[data-testid="stButton"] > button:hover {
-        background: #dde8fb !important; border-color: #93c5fd !important; }
-    div[data-testid="stButton"] > button[kind="primary"] {
+        background: #eff6ff !important;
+        border-color: #93c5fd !important;
+        color: #1d4ed8 !important;
+    }
+    div[data-testid="stButton"] > button[kind="primary"],
+    button[data-testid="baseButton-primary"] {
         background: linear-gradient(135deg,#1d4ed8,#2563eb) !important;
-        color: #fff !important; border: none !important; }
+        color: #fff !important; border: none !important;
+        box-shadow: 0 2px 8px rgba(37,99,235,0.30) !important; }
 
-    /* Selectboxen & Multiselect */
+    /* ── Select / Multiselect ───────────────────────────── */
     div[data-baseweb="select"] > div,
-    div[data-baseweb="popover"] { background: #fff !important; color: #0f172a !important; }
+    div[data-baseweb="popover"] {
+        background: #fff !important; color: #0f172a !important;
+        border-color: #e2e8f0 !important; }
 
+    /* ── Fortschrittsbalken ─────────────────────────────── */
     div[data-testid="stProgressBar"] > div { background-color: #bfdbfe !important; }
+
+    /* ── Toggle-Label ───────────────────────────────────── */
+    label[data-testid="stWidgetLabel"] p { color: #334155 !important; }
     </style>""", unsafe_allow_html=True)
 
 # ==================== QUOTES ====================
