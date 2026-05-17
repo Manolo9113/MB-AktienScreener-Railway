@@ -834,12 +834,14 @@ def _pf_disk_save(cache_name: str, data) -> None:
     except Exception:
         pass
 
-def _pf_disk_load(cache_name: str):
-    """Lädt gecachte Portfolio-Daten von Railway Volume /data. Gibt None zurück wenn nicht vorhanden."""
+def _pf_disk_load(cache_name: str, max_age_hours: float = 0):
+    """Lädt gecachte Portfolio-Daten von Railway Volume /data. Gibt None zurück wenn nicht vorhanden oder zu alt."""
     try:
-        import os, pickle
+        import os, pickle, time
         path = os.path.join("/data" if os.path.isdir("/data") else "/tmp", f"pf_{cache_name}.pkl")
         if os.path.exists(path):
+            if max_age_hours > 0 and (time.time() - os.path.getmtime(path)) / 3600 >= max_age_hours:
+                return None
             with open(path, "rb") as f:
                 return pickle.load(f)
     except Exception:
@@ -5218,8 +5220,11 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
 
     # ── Makro-Dashboard ───────────────────────────────────────────────
     st.markdown("<div class='section-header'>📊 Makro-Dashboard</div>", unsafe_allow_html=True)
-    with st.spinner("Lade Makrodaten…"):
-        macro = load_macro_data()
+    macro = _pf_disk_load("macro_basic", max_age_hours=24)
+    if macro is None:
+        with st.spinner("Lade Makrodaten…"):
+            macro = load_macro_data()
+        _pf_disk_save("macro_basic", macro)
 
     _FX_TIPS = {
         "EUR/USD": "Euro zu US-Dollar. Steigt der Wert, wird der Euro stärker (gut für europäische Importeure, schlecht für Exporteure).",
@@ -5591,7 +5596,10 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
 
     # ── Erweitertes Makro-Dashboard (Expander) ────────────────────────
     try:
-        _em = load_extended_macro()
+        _em = _pf_disk_load("macro_extended", max_age_hours=24)
+        if _em is None:
+            _em = load_extended_macro()
+            _pf_disk_save("macro_extended", _em)
     except Exception:
         _em = {"modules": {}, "regime": {}}
 
