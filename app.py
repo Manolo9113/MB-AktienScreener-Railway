@@ -7312,7 +7312,10 @@ if st.session_state.get("show_portfolio"):
 
         _pnl_str  = f"{pnl_eur:+,.0f} ({pnl_pct:+.1f}%)" if pnl_eur is not None else "—"
         _pnl_col  = _C_POSITIVE if (pnl_eur or 0) >= 0 else _C_NEGATIVE
-        _cur_str  = f"€ {current_total:,.0f}" if current_total else "—"
+        _stocks_str = f"€ {_priced_stocks_val:,.0f}" if _priced_stocks_val else "—"
+        _total_str  = f"€ {current_total:,.0f}"       if current_total       else "—"
+        _crypto_note = (f"<div style='color:{_C_TEXT_MUTED};font-size:0.62rem;margin-top:2px;'>"
+                        f"+ Krypto € {_crypto_val:,.0f}</div>") if _crypto_val else ""
         if _unpriced > 0:
             _unpriced_names = ', '.join(_isin_to_name.get(i, i)[:22] for i in _unpriced_isins[:4])
             if _unpriced > 4:
@@ -7323,23 +7326,28 @@ if st.session_state.get("show_portfolio"):
             _unpriced_note = ""
         st.markdown(f"""
         <div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:6px;'>
-          <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
-            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Positionen</div>
+          <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid {_C_BORDER};min-width:0;'>
+            <div style='color:{_C_TEXT_MUTED};font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Positionen</div>
             <div style='color:{_C_TEXT_PRIMARY};font-size:1.25rem;font-weight:700;margin-top:2px;'>{len(df_port)}</div>
             <div style='color:{_C_TEXT_MUTED};font-size:0.62rem;margin-top:2px;'>Aktien · ETFs · Krypto</div>
           </div>
-          <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
-            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Einstandswert</div>
+          <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid {_C_BORDER};min-width:0;'>
+            <div style='color:{_C_TEXT_MUTED};font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Einstandswert</div>
             <div style='color:{_C_TEXT_PRIMARY};font-size:1.25rem;font-weight:700;margin-top:2px;'>€ {total_invested:,.0f}</div>
             <div style='color:{_C_TEXT_MUTED};font-size:0.62rem;margin-top:2px;'>Buchwert offener Positionen</div>
           </div>
-          <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
-            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Aktueller Wert</div>
-            <div style='color:{_C_TEXT_PRIMARY};font-size:1.25rem;font-weight:700;margin-top:2px;'>{_cur_str}</div>
+          <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid {_C_BORDER};min-width:0;'>
+            <div style='color:{_C_TEXT_MUTED};font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Aktien &amp; ETFs</div>
+            <div style='color:{_C_TEXT_PRIMARY};font-size:1.25rem;font-weight:700;margin-top:2px;'>{_stocks_str}</div>
             {_unpriced_note}
           </div>
-          <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
-            <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>P&L unreal.</div>
+          <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid {_C_BORDER};min-width:0;'>
+            <div style='color:{_C_TEXT_MUTED};font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Gesamt inkl. Krypto</div>
+            <div style='color:{_C_ACCENT};font-size:1.25rem;font-weight:700;margin-top:2px;'>{_total_str}</div>
+            {_crypto_note}
+          </div>
+          <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid {_C_BORDER};min-width:0;'>
+            <div style='color:{_C_TEXT_MUTED};font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>P&L unreal.</div>
             <div style='color:{_pnl_col};font-size:1.05rem;font-weight:700;margin-top:2px;'>{_pnl_str}</div>
             <div style='color:{_C_TEXT_MUTED};font-size:0.62rem;margin-top:2px;'>offene Positionen</div>
           </div>
@@ -11407,12 +11415,17 @@ _TABS = [
 ]
 _at = st.session_state.get("active_tab", 0)
 _nav_cols = st.columns(len(_TABS))
+_tab_clicked = False
 for _ni, (_nc, _nl) in enumerate(zip(_nav_cols, _TABS)):
     if _nc.button(_nl, key=f"_nav_{_ni}", use_container_width=True,
                   type="primary" if _at == _ni else "secondary"):
-        st.session_state["active_tab"] = _ni
-        _at = _ni
-st.markdown("<div style='border-top:2px solid #1e3a5f;margin:-6px 0 12px 0;'></div>",
+        if _at != _ni:
+            st.session_state["active_tab"] = _ni
+            _tab_clicked = True
+if _tab_clicked:
+    st.rerun()
+_at = st.session_state.get("active_tab", 0)
+st.markdown(f"<div style='border-top:2px solid {_C_BORDER};margin:-6px 0 12px 0;'></div>",
             unsafe_allow_html=True)
 
 if _at == 0:
