@@ -461,23 +461,23 @@ if st.session_state.get("light_mode"):
        SCHRITT 1: Streamlit CSS-Variablen
     ═══════════════════════════════════════════════════════ */
     :root, [data-theme], .stApp {
-        --background-color:           #faf8f5 !important;
-        --secondary-background-color: #f5f2ee !important;
-        --text-color:                 #111827 !important;
+        --background-color:           #f5ede2 !important;
+        --secondary-background-color: #ede4d8 !important;
+        --text-color:                 #1a1208 !important;
         --primary-color:              #1a56db !important;
         --font:                       sans-serif;
     }
 
     /* ═══════════════════════════════════════════════════════
-       SCHRITT 2: Kern-Hintergründe (warmes Creme-Weiß)
+       SCHRITT 2: Kern-Hintergründe (warmes Crème-Beige)
     ═══════════════════════════════════════════════════════ */
     .stApp, body, html,
     div[data-testid="stAppViewContainer"],
     section[data-testid="stMain"],
     .main, .main .block-container,
     div[data-testid="stVerticalBlock"] {
-        background-color: #faf8f5 !important;
-        background: #faf8f5 !important;
+        background-color: #f5ede2 !important;
+        background: #f5ede2 !important;
     }
 
     /* ═══════════════════════════════════════════════════════
@@ -485,13 +485,13 @@ if st.session_state.get("light_mode"):
     ═══════════════════════════════════════════════════════ */
     section[data-testid="stSidebar"],
     section[data-testid="stSidebar"] > div {
-        background: #f0ede8 !important;
-        border-right: 1px solid #e2d9cc !important;
-        box-shadow: 2px 0 16px rgba(0,0,0,0.07) !important;
+        background: #ece4d8 !important;
+        border-right: 1px solid #d4c4b0 !important;
+        box-shadow: 2px 0 20px rgba(120,80,30,0.10) !important;
     }
-    section[data-testid="stSidebar"] * { color: #111827 !important; }
+    section[data-testid="stSidebar"] * { color: #1a1208 !important; }
     section[data-testid="stSidebar"] .section-header {
-        color: #1a56db !important; border-bottom-color: #e2d9cc !important; }
+        color: #1a56db !important; border-bottom-color: #d4c4b0 !important; }
 
     /* ═══════════════════════════════════════════════════════
        SCHRITT 4: Alle Buttons — korrekte Streamlit-Selektoren
@@ -570,65 +570,65 @@ if st.session_state.get("light_mode"):
        SCHRITT 6: CSS-Klassen (eigene Karten) — Creme-Palette
     ═══════════════════════════════════════════════════════ */
     .header-wrap {
-        background: linear-gradient(135deg, #ffffff, #faf6f1) !important;
-        border-color: #e2d9cc !important;
-        box-shadow: 0 2px 20px rgba(0,0,0,0.07) !important;
+        background: linear-gradient(135deg, #fdf6ee, #f5e8d4) !important;
+        border-color: #d4c4b0 !important;
+        box-shadow: 0 4px 24px rgba(120,80,30,0.10) !important;
     }
     .metric-card {
-        background: #ffffff !important;
-        border-color: #e8e3da !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.04) !important;
+        background: #fff8f0 !important;
+        border-color: #d8cbbe !important;
+        box-shadow: 0 2px 8px rgba(120,80,30,0.08), 0 1px 3px rgba(0,0,0,0.04) !important;
     }
     .score-section {
-        background: linear-gradient(135deg, #ffffff, #f8f5f0) !important;
-        border-color: #e2d9cc !important;
-        box-shadow: 0 4px 24px rgba(0,0,0,0.08) !important;
+        background: linear-gradient(135deg, #fff8f0, #f5e8d4) !important;
+        border-color: #d4c4b0 !important;
+        box-shadow: 0 6px 28px rgba(120,80,30,0.12) !important;
     }
-    .header-title { color: #111827 !important; }
+    .header-title { color: #1a1208 !important; }
     .header-sub   { color: #1a56db !important; }
-    .metric-label { color: #6b7280 !important; }
-    .metric-value { color: #111827 !important; }
-    .metric-sub   { color: #9ca3af !important; }
+    .metric-label { color: #6b5c4a !important; }
+    .metric-value { color: #1a1208 !important; }
+    .metric-sub   { color: #8a7868 !important; }
     .score-title  { color: #1a56db !important; }
-    .section-header { color: #111827 !important; border-bottom-color: #e2d9cc !important;
+    .section-header { color: #1a1208 !important; border-bottom-color: #d4c4b0 !important;
                       font-weight: 700 !important; letter-spacing: 2px !important; }
-    .insight-box  { background: #f0f4ff !important; border-left-color: #1a56db !important; color: #1e3a5f !important; }
+    .insight-box  { background: #eff4ff !important; border-left-color: #1a56db !important; color: #1e3a5f !important; }
     .grok-box     { background: #fdf8ff !important; border-color: #d8b4fe !important; }
     .grok-box h4  { color: #7c3aed !important; }
-    .grok-box p, .grok-box ul, .grok-box li { color: #374151 !important; }
-    .grok-section-title { color: #1a56db !important; border-bottom-color: #e2d9cc !important; }
+    .grok-box p, .grok-box ul, .grok-box li { color: #2d2318 !important; }
+    .grok-section-title { color: #1a56db !important; border-bottom-color: #d4c4b0 !important; }
     .insider-buy  { color: #15803d !important; }
     .insider-sell { color: #b91c1c !important; }
-    .metric-badge-green  { background: rgba(21,128,61,0.10) !important; color: #15803d !important; }
-    .metric-badge-yellow { background: rgba(180,83,9,0.10) !important;  color: #b45309 !important; }
-    .metric-badge-red    { background: rgba(185,28,28,0.10) !important; color: #b91c1c !important; }
-    .metric-badge-gray   { background: rgba(107,114,128,0.10) !important; color: #6b7280 !important; }
+    .metric-badge-green  { background: rgba(21,128,61,0.12) !important; color: #15803d !important; }
+    .metric-badge-yellow { background: rgba(180,83,9,0.12) !important;  color: #b45309 !important; }
+    .metric-badge-red    { background: rgba(185,28,28,0.12) !important; color: #b91c1c !important; }
+    .metric-badge-gray   { background: rgba(107,114,128,0.12) !important; color: #6b5c4a !important; }
 
     /* ═══════════════════════════════════════════════════════
        TABELLEN
     ═══════════════════════════════════════════════════════ */
     table, .stDataFrame table,
     div[data-testid="stDataFrame"] table {
-        background: #ffffff !important;
-        border-color: #e2d9cc !important;
+        background: #fff8f0 !important;
+        border-color: #d4c4b0 !important;
     }
     th, thead th {
-        background: #f0ede8 !important;
-        color: #111827 !important;
-        border-color: #e2d9cc !important;
+        background: #ede4d8 !important;
+        color: #1a1208 !important;
+        border-color: #d4c4b0 !important;
         font-weight: 700 !important;
     }
     td, tbody td {
-        background: #ffffff !important;
-        color: #111827 !important;
-        border-color: #ede8e0 !important;
+        background: #fff8f0 !important;
+        color: #1a1208 !important;
+        border-color: #ddd2c2 !important;
     }
-    tr:nth-child(even) td { background: #faf8f5 !important; }
-    tr:hover td { background: #f5f2ee !important; }
-    tbody[style*="color:#eceff1"] { color: #111827 !important; }
+    tr:nth-child(even) td { background: #f5ede2 !important; }
+    tr:hover td { background: #ede4d8 !important; }
+    tbody[style*="color:#eceff1"] { color: #1a1208 !important; }
 
     /* ═══════════════════════════════════════════════════════
-       SCHRITT 7: Inline dunkle Hintergründe → Creme-Weiß
+       SCHRITT 7: Inline dunkle Hintergründe → Warmes Creme
     ═══════════════════════════════════════════════════════ */
     div[style*="#0d1f35"], div[style*="#0d1f3c"], div[style*="#0a1628"],
     div[style*="#080f1e"], div[style*="#0d1526"], div[style*="#071020"],
@@ -639,22 +639,22 @@ if st.session_state.get("light_mode"):
     div[style*="#0a1a35"], div[style*="#0d2040"], div[style*="#0a1732"],
     div[style*="#0e1c36"], div[style*="#162032"], div[style*="#1e3a5f"],
     div[style*="#152035"], div[style*="#1a304a"], div[style*="#060e1e"] {
-        background: #ffffff !important;
-        border-color: #e2d9cc !important;
+        background: #fff8f0 !important;
+        border-color: #d4c4b0 !important;
     }
     span[style*="#0d1f3c"], span[style*="#0a1628"], span[style*="#1a2744"] {
-        background: #f0ede8 !important; color: #1a56db !important;
+        background: #ede4d8 !important; color: #1a56db !important;
     }
 
     /* ═══════════════════════════════════════════════════════
        SCHRITT 8: Text & Farben
     ═══════════════════════════════════════════════════════ */
-    p, span, div, label, li { color: #111827; }
-    div[data-testid="stMarkdownContainer"] p { color: #374151 !important; }
-    div[data-testid="stMetricValue"]  { color: #111827 !important; }
-    div[data-testid="stMetricLabel"]  { color: #6b7280 !important; }
-    .stCaption, small, .caption-text  { color: #6b7280 !important; }
-    hr { border-color: #e2d9cc !important; }
+    p, span, div, label, li { color: #1a1208; }
+    div[data-testid="stMarkdownContainer"] p { color: #2d2318 !important; }
+    div[data-testid="stMetricValue"]  { color: #1a1208 !important; }
+    div[data-testid="stMetricLabel"]  { color: #6b5c4a !important; }
+    .stCaption, small, .caption-text  { color: #6b5c4a !important; }
+    hr { border-color: #d4c4b0 !important; }
     a  { color: #1a56db !important; }
 
     /* ═══════════════════════════════════════════════════════
@@ -663,32 +663,32 @@ if st.session_state.get("light_mode"):
     input, textarea,
     .stTextInput input,
     .stTextInput > div > div > input {
-        background: #ffffff !important;
-        background-color: #ffffff !important;
-        border-color: #d1c9be !important;
-        color: #111827 !important;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;
+        background: #fff8f0 !important;
+        background-color: #fff8f0 !important;
+        border-color: #c4b4a0 !important;
+        color: #1a1208 !important;
+        box-shadow: 0 1px 4px rgba(120,80,30,0.08) !important;
     }
     div[data-baseweb="select"] > div,
     div[data-baseweb="popover"] {
-        background: #ffffff !important;
-        color: #111827 !important;
-        border-color: #e2d9cc !important;
+        background: #fff8f0 !important;
+        color: #1a1208 !important;
+        border-color: #d4c4b0 !important;
     }
 
     /* ═══════════════════════════════════════════════════════
        SCHRITT 10: Tabs
     ═══════════════════════════════════════════════════════ */
     .stTabs [data-baseweb="tab-list"] {
-        background: #f0ede8 !important; border-color: #e2d9cc !important; }
-    .stTabs [data-baseweb="tab"]    { color: #6b7280 !important; background: transparent !important; }
+        background: #ede4d8 !important; border-color: #d4c4b0 !important; }
+    .stTabs [data-baseweb="tab"]    { color: #6b5c4a !important; background: transparent !important; }
     .stTabs [aria-selected="true"]  { background: #1a56db !important; color: #fff !important; }
 
     /* ═══════════════════════════════════════════════════════
        SCHRITT 11: Fortschritt & Toggle
     ═══════════════════════════════════════════════════════ */
     div[data-testid="stProgressBar"] > div { background-color: #bfdbfe !important; }
-    label[data-testid="stWidgetLabel"] p { color: #334155 !important; }
+    label[data-testid="stWidgetLabel"] p { color: #2d2318 !important; }
 
     /* ═══════════════════════════════════════════════════════
        SCHRITT 12: Tooltips anpassen
@@ -702,21 +702,22 @@ if st.session_state.get("light_mode"):
 
 # ── Farbpalette (Light/Dark) ──────────────────────────────────────────
 _lm = st.session_state.get("light_mode", False)
-_C_TEXT_PRIMARY = "#111827" if _lm else "#eceff1"
-_C_TEXT_SEC     = "#374151" if _lm else "#b0bec5"
-_C_TEXT_MUTED   = "#6b7280" if _lm else "#546e7a"
-_C_TEXT_MUTED2  = "#9ca3af" if _lm else "#90a4ae"
+_C_TEXT_PRIMARY = "#1a1208" if _lm else "#eceff1"
+_C_TEXT_SEC     = "#2d2318" if _lm else "#b0bec5"
+_C_TEXT_MUTED   = "#6b5c4a" if _lm else "#546e7a"
+_C_TEXT_MUTED2  = "#8a7868" if _lm else "#90a4ae"
 _C_ACCENT       = "#1a56db" if _lm else "#64b5f6"
 _C_POSITIVE     = "#15803d" if _lm else "#00e676"
 _C_POSITIVE_SFT = "#16a34a" if _lm else "#69f0ae"
 _C_NEGATIVE     = "#b91c1c" if _lm else "#ff5252"
 _C_NEUTRAL      = "#b45309" if _lm else "#ffd600"
-_C_CARD_BG      = "#ffffff" if _lm else "#0d1f35"
-_C_SURFACE      = "#f5f2ee" if _lm else "#0d1526"
-_C_BORDER       = "#e2d9cc" if _lm else "#1a2744"
+_C_CARD_BG      = "#fff8f0" if _lm else "#0d1f35"
+_C_SURFACE      = "#ede4d8" if _lm else "#0d1526"
+_C_BORDER       = "#d4c4b0" if _lm else "#1a2744"
 _C_CHART_THEME  = "plotly_white" if _lm else "plotly_dark"
 _C_CHART_BG     = "#ffffff"      if _lm else "#0a1628"
-_C_CHART_PAPER  = "#faf8f5"      if _lm else "rgba(0,0,0,0)"
+_C_CHART_PAPER  = "#f5ede2"      if _lm else "rgba(0,0,0,0)"
+_C_CHART_PLOT   = "rgba(255,252,248,0.95)" if _lm else "rgba(13,21,38,0.8)"
 # ==================== QUOTES ====================
 _QUOTES = [
     ("Der Preis ist, was du bezahlst. Wert ist, was du bekommst.", "Warren Buffett"),
@@ -5982,7 +5983,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             ))
             _fig_hm.update_layout(
                 template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
-                plot_bgcolor="rgba(13,21,38,0.8)",
+                plot_bgcolor=_C_CHART_PLOT,
                 height=120, margin=dict(l=60, r=20, t=10, b=60),
                 xaxis=dict(tickangle=-35, tickfont=dict(size=9, color="#90a4ae")),
                 yaxis=dict(tickfont=dict(size=9, color="#546e7a")),
@@ -6012,7 +6013,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                 fig.add_hline(y=0, line=dict(color="#37474f", width=1, dash="dot"))
             fig.update_layout(
                 template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
-                plot_bgcolor="rgba(13,21,38,0.8)", height=height,
+                plot_bgcolor=_C_CHART_PLOT, height=height,
                 margin=dict(l=0, r=0, t=22, b=0), showlegend=False,
                 title=dict(text=title, font=dict(color="#64b5f6", size=11)),
                 xaxis=dict(showgrid=False, tickfont=dict(size=8, color="#546e7a")),
@@ -6041,7 +6042,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                                                   line=dict(color=_C_NEUTRAL, width=1.5), yaxis="y2"))
                     _cf.update_layout(
                         template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
-                        plot_bgcolor="rgba(13,21,38,0.8)", height=220,
+                        plot_bgcolor=_C_CHART_PLOT, height=220,
                         margin=dict(l=0, r=40, t=22, b=0),
                         title=dict(text="Kredit-Spreads (bp)", font=dict(color="#64b5f6", size=11)),
                         legend=dict(font=dict(size=8, color="#b0bec5"), bgcolor="rgba(0,0,0,0)"),
@@ -10765,7 +10766,7 @@ if st.session_state.get("show_wl_compare") and len(st.session_state.get("watchli
     _fig_wl.update_layout(
         template=_C_CHART_THEME,
         paper_bgcolor=_C_CHART_PAPER,
-        plot_bgcolor="rgba(13,21,38,0.8)",
+        plot_bgcolor=_C_CHART_PLOT,
         height=320,
         margin=dict(l=0, r=0, t=10, b=0),
         barmode="group",
@@ -11047,13 +11048,13 @@ if len(hist_plot) >= 2:
     fig.update_layout(
         template=_C_CHART_THEME,
         paper_bgcolor=_C_CHART_PAPER,
-        plot_bgcolor="rgba(13,21,38,0.8)",
+        plot_bgcolor=_C_CHART_PLOT,
         height=580,
         legend=dict(
             orientation="h", yanchor="bottom", y=1.02,
             xanchor="right", x=1,
-            bgcolor="rgba(13,21,38,0.8)",
-            bordercolor="#1e3a5f", borderwidth=1,
+            bgcolor=_C_CHART_PLOT,
+            bordercolor=_C_BORDER, borderwidth=1,
             font=dict(size=11)
         ),
         margin=dict(l=0, r=0, t=30, b=0),
@@ -11132,7 +11133,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
         fig.add_hline(y=0, line_color="#1e3a5f", line_width=1)
         fig.update_layout(
             template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
-            plot_bgcolor="rgba(13,21,38,0.8)", height=420,
+            plot_bgcolor=_C_CHART_PLOT, height=420,
             margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
             yaxis=dict(ticksuffix="%", showgrid=True, gridcolor="#1e2d45"),
             xaxis=dict(showgrid=False),
@@ -11158,7 +11159,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
     fig.add_hline(y=0, line_color="#1e3a5f", line_width=1, secondary_y=False)
     fig.update_layout(
         template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
-        plot_bgcolor="rgba(13,21,38,0.8)", height=460,
+        plot_bgcolor=_C_CHART_PLOT, height=460,
         margin=dict(l=10, r=60, t=30, b=10),
         legend=dict(orientation="h", y=1.08, font=dict(size=11), bgcolor="rgba(0,0,0,0)"),
         xaxis=dict(showgrid=False),
@@ -11350,7 +11351,7 @@ if _at == 0:
         _fig_b.update_layout(
             template=_C_CHART_THEME,
             paper_bgcolor=_C_CHART_PAPER,
-            plot_bgcolor="rgba(13,21,38,0.8)",
+            plot_bgcolor=_C_CHART_PLOT,
             height=340,
             margin=dict(l=0, r=90, t=10, b=0),
             barmode="group",
@@ -11410,7 +11411,7 @@ elif _at == 1:
             fig_g.update_layout(
                 template=_C_CHART_THEME,
                 paper_bgcolor=_C_CHART_PAPER,
-                plot_bgcolor="rgba(13,21,38,0.8)",
+                plot_bgcolor=_C_CHART_PLOT,
                 height=280,
                 margin=dict(l=0, r=0, t=20, b=0),
                 showlegend=False,
@@ -11452,7 +11453,7 @@ elif _at == 1:
         fig.update_layout(
             template=_C_CHART_THEME,
             paper_bgcolor=_C_CHART_PAPER,
-            plot_bgcolor="rgba(13,21,38,0.8)",
+            plot_bgcolor=_C_CHART_PLOT,
             height=240,
             margin=dict(l=0, r=0, t=30, b=0),
             showlegend=False,
@@ -11584,7 +11585,7 @@ elif _at == 1:
                     ))
                 fig_stk.update_layout(
                     barmode="stack", template=_C_CHART_THEME,
-                    paper_bgcolor=_C_CHART_PAPER, plot_bgcolor="rgba(13,21,38,0.8)",
+                    paper_bgcolor=_C_CHART_PAPER, plot_bgcolor=_C_CHART_PLOT,
                     height=chart_h, margin=dict(l=0, r=0, t=10, b=10),
                     legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)",
                                 orientation="h", yanchor="bottom", y=1.02),
@@ -12066,7 +12067,7 @@ elif _at == 3:
                 title=dict(text="Aktienanzahl (Diluted) — Jahresverlauf", font=dict(size=12, color="#90a4ae"), x=0),
                 template=_C_CHART_THEME,
                 paper_bgcolor=_C_CHART_PAPER,
-                plot_bgcolor="rgba(13,21,38,0.8)",
+                plot_bgcolor=_C_CHART_PLOT,
                 height=220,
                 margin=dict(l=0, r=0, t=30, b=0),
                 showlegend=False,
@@ -12163,7 +12164,7 @@ elif _at == 3:
             _fig_es.update_layout(
                 template=_C_CHART_THEME,
                 paper_bgcolor=_C_CHART_PAPER,
-                plot_bgcolor="rgba(13,21,38,0.8)",
+                plot_bgcolor=_C_CHART_PLOT,
                 height=200,
                 margin=dict(l=0, r=0, t=10, b=0),
                 showlegend=False,
@@ -12226,7 +12227,7 @@ elif _at == 3:
         _qfig.update_layout(
             template=_C_CHART_THEME,
             paper_bgcolor=_C_CHART_PAPER,
-            plot_bgcolor="rgba(13,21,38,0.8)",
+            plot_bgcolor=_C_CHART_PLOT,
             height=300,
             showlegend=False,
             margin=dict(l=0, r=0, t=36, b=0),
@@ -12258,7 +12259,7 @@ elif _at == 3:
         ))
         fig.update_layout(
             template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
-            plot_bgcolor="rgba(13,21,38,0.8)", height=260,
+            plot_bgcolor=_C_CHART_PLOT, height=260,
             margin=dict(l=0, r=0, t=30, b=0), showlegend=False,
             yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False),
             xaxis=dict(showgrid=False),
@@ -12312,7 +12313,7 @@ elif _at == 3:
                 ))
                 _fig_cp.update_layout(
                     template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
-                    plot_bgcolor="rgba(13,21,38,0.8)", height=220,
+                    plot_bgcolor=_C_CHART_PLOT, height=220,
                     margin=dict(l=0, r=0, t=30, b=0), showlegend=False,
                     yaxis=dict(showgrid=True, gridcolor="#1e2d45", ticksuffix="%"),
                     xaxis=dict(showgrid=False),
@@ -12363,7 +12364,7 @@ elif _at == 3:
                     ))
                 _fig_dc.update_layout(
                     template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
-                    plot_bgcolor="rgba(13,21,38,0.8)", height=280,
+                    plot_bgcolor=_C_CHART_PLOT, height=280,
                     margin=dict(l=0, r=0, t=30, b=0),
                     barmode="group",
                     legend=dict(orientation="h", yanchor="bottom", y=1.02,
@@ -12398,7 +12399,7 @@ elif _at == 3:
                     _fig_nd.add_hline(y=0, line_color="#546e7a", line_width=1)
                     _fig_nd.update_layout(
                         template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
-                        plot_bgcolor="rgba(13,21,38,0.8)", height=280,
+                        plot_bgcolor=_C_CHART_PLOT, height=280,
                         margin=dict(l=0, r=0, t=30, b=0), showlegend=False,
                         yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False),
                         xaxis=dict(showgrid=False),
@@ -12592,7 +12593,7 @@ elif _at == 4:
             _fig_dcf.update_layout(
                 template=_C_CHART_THEME,
                 paper_bgcolor=_C_CHART_PAPER,
-                plot_bgcolor="rgba(13,21,38,0.8)",
+                plot_bgcolor=_C_CHART_PLOT,
                 height=260, showlegend=False,
                 margin=dict(l=0, r=0, t=30, b=0),
                 yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False,
@@ -12953,10 +12954,10 @@ elif _at == 7:
         fig_ta.update_layout(
             template=_C_CHART_THEME,
             paper_bgcolor=_C_CHART_PAPER,
-            plot_bgcolor="rgba(13,21,38,0.8)",
+            plot_bgcolor=_C_CHART_PLOT,
             height=_height,
             legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
-                        bgcolor="rgba(13,21,38,0.8)", bordercolor="#1e3a5f", borderwidth=1,
+                        bgcolor=_C_CHART_PLOT, bordercolor=_C_BORDER, borderwidth=1,
                         font=dict(size=10)),
             margin=dict(l=0, r=60, t=40, b=0),
             xaxis=dict(
