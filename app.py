@@ -3467,6 +3467,43 @@ _OVERHYPED_POOL = {
     "SMCI":  "Super Micro — Bilanzierungsprobleme, Delisting-Risiko, extrem hohe Kursvolatilität",
 }
 
+# ── Mid-Cap Pool — Nischenführer mit Moat, ~1,5–20 Mrd. Mkt-Cap ──────────────
+_MIDCAP_POOL = {
+    "POOL":        "Pool Corp – quasi-monopolistischer US-Schwimmbad-Distributor, >20 % Nettomargen",
+    "KNSL":        "Kinsale Capital – Spezialversicherung mit außergewöhnlich niedrigem Combined Ratio",
+    "MEDP":        "Medpace Holdings – CRO mit hohen Margen und stabiler klinischer Auftragspipeline",
+    "SAIA":        "Saia Inc – LTL-Freight-Carrier mit starker regionaler Preissetzungsmacht",
+    "RBC":         "RBC Bearings – Präzisionslager für Luft-/Raumfahrt, Rüstung & Industrie",
+    "NVT":         "nVent Electric – Elektrische Gehäuse mit wachsendem Rechenzentrum-Anteil",
+    "TREX":        "Trex Company – Marktführer Verbundterrassen mit 40 %+ Bruttomarge, kaum Konkurrenz",
+    "CSWI":        "CSW Industrials – außergewöhnlicher ROIC durch führende Nischenprodukte (HVAC, Leitungen)",
+    "FTDR":        "Frontdoor – Hausgarantie-Plattform mit hohem FCF und wiederkehrenden Abonnements",
+    "HRI":         "Herc Holdings – Gerätemietpark mit starkem operativen Hebel und Infrastrukturzyklus",
+    "GRBK":        "Green Brick Partners – Homebuilder mit strategischen Landreserven und hohem ROE",
+    "STEP":        "StepStone Group – Alternative-Asset-Manager mit schnell wachsendem AUM",
+    "MGPI":        "MGP Ingredients – Whiskey-Destillerie: Lagerbestände als Burggraben, stabiler FCF",
+    "CRVL":        "CorVel Corp – Workers-Comp-Kostenmanagement, nischendominierende Softwareplattform",
+    "RATIONAL.DE": "Rational AG – Kombi-Dämpfer-Quasi-Monopol für Profiküchen, 25 %+ Nettomarge",
+}
+
+# ── Small-Cap Pool — profitabel, Nischenführer, positiver FCF Pflicht ─────────
+_SMALLCAP_POOL = {
+    "OSIS":  "OSI Systems – Sicherheitsinspektions-Systeme für Behörden & Flughäfen weltweit",
+    "CASS":  "Cass Information Systems – B2B-Zahlungsverarbeitung mit 40 Jahren Profitabilität",
+    "DORM":  "Dorman Products – Automotive-Aftermarket-Nischenteile, profitabel und schuldenarm",
+    "HLIO":  "Helios Technologies – Hydraulik & Steuerungstechnik für Mobilmaschinen weltweit",
+    "STC":   "Stewart Info Services – Titelversicherung mit stabiler Immobilienmarktposition",
+    "UFPT":  "UFP Technologies – Spezialverpackung für Medizintechnik und Luft-/Raumfahrt",
+    "MGRC":  "McGrath RentCorp – Modulare Raummietlösungen für Schulen und Unternehmen, FCF-stark",
+    "LMAT":  "LeMaitre Vascular – Chirurgische Geräte für Gefäßchirurgie, echtes Nischenmonopol",
+    "KFRC":  "Kforce Inc – Tech- & Finance-Personalvermittlung mit positiver FCF-Bilanz",
+    "PRDO":  "Perdoceo Education – Online-Bildung mit hohen Margen, null Langfristschulden",
+    "TBBK":  "The Bancorp – Fintech-Bank mit führender Prepaid-Karten-Infrastruktur",
+    "HRMY":  "Harmony Biosciences – Neurologisches Pharma, profitabel mit wachsender Pipeline",
+    "CENTA": "Central Garden & Pet – Haustier-/Gartenbedarf mit führenden Markenportfolios",
+}
+
+
 def _safe_div_yield(info: dict, price: float) -> float:
     """Berechnet Dividend Yield sauber aus trailingAnnualDividendRate / price."""
     annual = info.get("trailingAnnualDividendRate") or 0
@@ -3779,6 +3816,68 @@ def load_stock_picks():
     div_results.sort(key=lambda x: x["quality_score"], reverse=True)
     hype_results.sort(key=lambda x: x["hype_score"], reverse=True)
     return growth_results[:8], value_results[:8], div_results[:8], hype_results[:8]
+
+
+@st.cache_data(ttl=43200, show_spinner=False)
+def load_small_mid_picks() -> tuple[list[dict], list[dict]]:
+    """
+    Lädt Mid- und Small-Cap-Kandidaten mit Live-Qualitätsfilter.
+    Mid-Cap: FCF>0, Bruttomarge>35%, RevGrowth>8%, D/E<120, Kurs>5
+    Small-Cap: EPS>0, FCF>0, Bruttomarge>40%, RevGrowth>10%, D/E<80, Kurs>5
+    """
+    mid_results, small_results = [], []
+
+    for pool, results, gm_min, rg_min, de_max, need_eps in [
+        (_MIDCAP_POOL,   mid_results,   0.35, 0.08, 120, False),
+        (_SMALLCAP_POOL, small_results, 0.40, 0.10,  80, True),
+    ]:
+        for t, desc in pool.items():
+            try:
+                info = yf.Ticker(t).info
+                price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+                if not price or price < 5:
+                    continue
+                fcf    = info.get("freeCashflow") or 0
+                mktcap = info.get("marketCap") or 1
+                gm     = info.get("grossMargins") or 0
+                rg     = info.get("revenueGrowth") or 0
+                de     = info.get("debtToEquity") or 0
+                eps    = info.get("trailingEps") or 0
+                # Quality gate
+                if fcf <= 0:                     continue
+                if gm < gm_min:                  continue
+                if rg < rg_min:                  continue
+                if de > de_max:                  continue
+                if need_eps and eps <= 0:        continue
+
+                fcf_yield  = fcf / mktcap * 100
+                roe        = (info.get("returnOnEquity") or 0) * 100
+                fwd_pe     = info.get("forwardPE")
+                om         = (info.get("operatingMargins") or 0) * 100
+                week52h    = info.get("fiftyTwoWeekHigh") or price
+                week52l    = info.get("fiftyTwoWeekLow") or price
+                w52_pos    = ((price - week52l) / (week52h - week52l) * 100) if week52h > week52l else 50
+                # Quality score: rewards FCF yield, margins, growth, low debt
+                q_score = (
+                    fcf_yield * 4
+                    + gm * 100 * 0.3
+                    + rg * 100 * 0.5
+                    + max(0, roe) * 0.2
+                    + max(0, 100 - de) * 0.05
+                )
+                results.append({
+                    "ticker": t, "name": info.get("shortName") or t, "desc": desc,
+                    "price": price, "fwd_pe": fwd_pe, "fcf_yield": fcf_yield,
+                    "rev_growth": rg * 100, "gross_margin": gm * 100,
+                    "op_margin": om, "roe": roe, "w52_pos": w52_pos,
+                    "mktcap": mktcap, "q_score": q_score,
+                })
+            except Exception:
+                pass
+
+    mid_results.sort(key=lambda x: x["q_score"], reverse=True)
+    small_results.sort(key=lambda x: x["q_score"], reverse=True)
+    return mid_results[:8], small_results[:8]
 
 
 # ==================== KI ANALYSE (Grok + Gemini Fallback) ====================
@@ -6583,6 +6682,88 @@ elif st.session_state.get("show_stocks"):
         st.markdown(
             "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
             "⚠️ Keine Anlageberatung · Daten via Yahoo Finance · Aktualisierung alle 12 Std.</div>",
+            unsafe_allow_html=True)
+
+    # ── Mid- & Small-Cap Ideen ─────────────────────────────────────────
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    with st.expander("🏗️  Mid- & Small-Cap Ideen — Nischenführer mit Qualitätsfilter  (12h Cache)", expanded=False):
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-bottom:14px;line-height:1.6;'>"
+            "Nur Titel mit <b>positivem FCF</b>, <b>Bruttomarge &gt; 35 %</b> (Mid) / <b>&gt; 40 %</b> (Small), "
+            "<b>Umsatzwachstum &gt; 8 %</b> und <b>vernünftiger Verschuldung</b> werden angezeigt. "
+            "Small-Caps zusätzlich: positiver EPS Pflicht. Fällt ein Titel durch den Filter, erscheint er nicht.</div>",
+            unsafe_allow_html=True)
+        with st.spinner("Lade Mid- & Small-Cap-Daten…"):
+            _mp, _sp = load_small_mid_picks()
+
+        def _mc_badge(label, value, suffix="", fmt=".0f", color="#64b5f6"):
+            if value is None or value == 0:
+                return ""
+            try:
+                val_str = f"{value:{fmt}}{suffix}"
+            except Exception:
+                val_str = f"{value}{suffix}"
+            return (f"<span style='background:rgba(100,181,246,0.1);color:{color};"
+                    f"border-radius:5px;padding:2px 7px;font-size:0.71rem;"
+                    f"font-weight:600;margin-right:4px;white-space:nowrap;'>"
+                    f"{label}&thinsp;{val_str}</span>")
+
+        def _mc_card(s, accent, badges_html):
+            price_str = f"${s['price']:,.2f}" if s['price'] else "—"
+            cap_bn    = s["mktcap"] / 1e9
+            cap_str   = f"{cap_bn:.1f} Mrd."
+            return f"""
+            <div style='background:{_C_CARD_BG};
+                 border:1px solid {_C_BORDER};border-left:3px solid {accent};
+                 border-radius:12px;padding:13px 15px;margin-bottom:10px;'>
+              <div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>
+                <span style='color:{accent};font-size:1.02rem;font-weight:800;
+                      letter-spacing:0.5px;'>{s["ticker"]}</span>
+                <span style='color:{_C_TEXT_MUTED};font-size:0.74rem;'>{cap_str}</span>
+              </div>
+              <div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-bottom:5px;'>{s["name"]}</div>
+              <div style='color:{_C_TEXT_MUTED2};font-size:0.78rem;line-height:1.45;margin-bottom:8px;'>{s["desc"]}</div>
+              <div style='line-height:2;'>{badges_html}</div>
+              {_trend_bar(s["w52_pos"], accent)}
+            </div>"""
+
+        _col_mid, _col_sml = st.columns(2)
+
+        with _col_mid:
+            st.markdown(
+                "<div style='color:#34d399;font-size:0.82rem;font-weight:700;"
+                "text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;"
+                "padding-bottom:7px;border-bottom:1px solid rgba(52,211,153,0.25);'>"
+                "🏗️ Mid-Cap Qualität</div>",
+                unsafe_allow_html=True)
+            if not _mp:
+                st.info("Aktuell keine Mid-Caps, die alle Qualitätshürden erfüllen.")
+            for s in _mp:
+                b = (_mc_badge("Rev▲", s["rev_growth"], "%", ".0f", _C_POSITIVE) +
+                     _mc_badge("GM", s["gross_margin"], "%", ".0f", "#34d399") +
+                     _mc_badge("FCF", s["fcf_yield"], "%", ".1f", "#40c4ff") +
+                     _mc_badge("ROE", s["roe"] if s["roe"] > 0 else None, "%", ".0f", "#a5d6a7"))
+                st.markdown(_mc_card(s, "#34d399", b), unsafe_allow_html=True)
+
+        with _col_sml:
+            st.markdown(
+                "<div style='color:#fb923c;font-size:0.82rem;font-weight:700;"
+                "text-transform:uppercase;letter-spacing:1.5px;margin-bottom:14px;"
+                "padding-bottom:7px;border-bottom:1px solid rgba(251,146,60,0.25);'>"
+                "🔬 Small-Cap Nischen</div>",
+                unsafe_allow_html=True)
+            if not _sp:
+                st.info("Aktuell keine Small-Caps, die alle Qualitätshürden erfüllen.")
+            for s in _sp:
+                b = (_mc_badge("Rev▲", s["rev_growth"], "%", ".0f", _C_POSITIVE) +
+                     _mc_badge("GM", s["gross_margin"], "%", ".0f", "#fb923c") +
+                     _mc_badge("FCF", s["fcf_yield"], "%", ".1f", "#fbbf24") +
+                     _mc_badge("KGV", s["fwd_pe"] if s["fwd_pe"] and s["fwd_pe"] < 60 else None, "x", ".1f", "#fdba74"))
+                st.markdown(_mc_card(s, "#fb923c", b), unsafe_allow_html=True)
+
+        st.markdown(
+            "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
+            "⚠️ Keine Anlageberatung · Mid/Small-Caps = höheres Risiko · Daten via Yahoo Finance</div>",
             unsafe_allow_html=True)
 
     # ── Qualitäts-Screener ─────────────────────────────────────────────
