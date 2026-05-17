@@ -5140,6 +5140,7 @@ def _get_ticker_info_cached(ticker: str) -> dict:
                     'recommendation':  (info.get('recommendationKey') or '').lower(),
                     'target_native':   info.get('targetMeanPrice'),
                     'div_rate_native': info.get('trailingAnnualDividendRate') or 0.0,
+                    'market_cap':      info.get('marketCap'),
                 }
             except _cf.TimeoutError:
                 return _empty
@@ -8107,6 +8108,90 @@ if st.session_state.get("show_portfolio"):
                 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
                 st.caption("Sektoren via yFinance. Regionen basieren auf der Börsenlistung. "
                            "ETF-Look-Through → echte Länderexposition weiter unten.")
+
+                # ── Market-Cap-Klassen Donut ──────────────────────────────────
+                st.markdown("<div class='section-header'>🏦 Marktkapitalisierung</div>",
+                            unsafe_allow_html=True)
+                _MC_BREAKS = [
+                    ("Mega Cap",  200e9, "#7c3aed"),   # > 200 Mrd.
+                    ("Large Cap",  10e9, "#1565c0"),   # 10–200 Mrd.
+                    ("Mid Cap",    2e9,  "#00838f"),   # 2–10 Mrd.
+                    ("Small Cap",  300e6,"#e65100"),   # 300M–2 Mrd.
+                    ("Micro Cap",  0,    "#b71c1c"),   # < 300 M
+                ]
+                def _mc_bucket(cap_eur: float) -> str:
+                    for label, threshold, _ in _MC_BREAKS:
+                        if cap_eur >= threshold:
+                            return label
+                    return "Micro Cap"
+                _MC_COLORS = {b[0]: b[2] for b in _MC_BREAKS}
+                _MC_COLORS.update({"ETF / Fonds": "#546e7a", "Krypto": "#f9a825"})
+
+                _mc_buckets: dict = {}
+                _mc_covered = 0
+                for _, _mrow in df_port.iterrows():
+                    _mtkr  = isin_map.get(_mrow['ISIN'], '')
+                    _minf  = _alloc_infos.get(_mrow['ISIN'], {})
+                    _mprc  = prices.get(_mrow['ISIN'])
+                    _mval  = max(0.0, (_mprc if _mprc else _mrow['avg_cost']) * _mrow['shares'])
+                    if _mval <= 0:
+                        continue
+                    if _mrow.get('is_crypto'):
+                        _mbucket = "Krypto"
+                    elif (_minf.get('quote_type') == 'ETF' or _mtkr in _ETF_CW or _mtkr in _ETF_SW):
+                        _mbucket = "ETF / Fonds"
+                    elif _mrow.get('is_warrant'):
+                        continue
+                    else:
+                        _mcap_raw = _minf.get('market_cap')
+                        if not _mcap_raw:
+                            continue  # cache noch nicht befüllt — wird beim nächsten Sektordaten-Laden ergänzt
+                        _mfx = 1.0
+                        _mcap_eur = _mcap_raw * _mfx
+                        _mbucket  = _mc_bucket(_mcap_eur)
+                        _mc_covered += _mval
+                    _mc_buckets[_mbucket] = _mc_buckets.get(_mbucket, 0) + _mval
+
+                if _mc_buckets:
+                    _mc_tot  = sum(_mc_buckets.values())
+                    _mc_lbls = list(_mc_buckets.keys())
+                    _mc_vals = list(_mc_buckets.values())
+                    _mc_clrs = [_MC_COLORS.get(l, '#546e7a') for l in _mc_lbls]
+                    _mc_fig  = go.Figure(go.Pie(
+                        labels=_mc_lbls, values=_mc_vals, hole=0.62,
+                        marker=dict(colors=_mc_clrs, line=dict(color='#0a1628', width=2)),
+                        textinfo='none',
+                        hovertemplate='<b>%{label}</b><br>€ %{value:,.0f} · %{percent}<extra></extra>',
+                        sort=False,
+                    ))
+                    _mc_fig.update_layout(
+                        template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG, plot_bgcolor=_C_CHART_BG,
+                        showlegend=False, height=240, margin=dict(l=5, r=5, t=5, b=5),
+                    )
+                    _mca, _mcb = st.columns([1, 1.1])
+                    with _mca:
+                        st.plotly_chart(_mc_fig, use_container_width=True)
+                    with _mcb:
+                        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+                        for _mlbl, _mval2 in sorted(_mc_buckets.items(),
+                                                     key=lambda x: x[1], reverse=True):
+                            _mpct = _mval2 / _mc_tot * 100
+                            _mclr = _MC_COLORS.get(_mlbl, '#546e7a')
+                            st.markdown(
+                                f"<div style='display:flex;justify-content:space-between;"
+                                f"align-items:center;padding:5px 2px;"
+                                f"border-bottom:1px solid {_C_BORDER};'>"
+                                f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.83rem;'>"
+                                f"<span style='color:{_mclr};font-size:0.9rem;'>●</span>"
+                                f" {_mlbl}</span>"
+                                f"<span style='color:{_C_TEXT_MUTED2};font-size:0.83rem;"
+                                f"font-weight:600;'>{_mpct:.1f}%</span></div>",
+                                unsafe_allow_html=True)
+                        if _mc_covered < _tot * 0.5:
+                            st.caption("⚠️ Marktkapitalisierung fehlt für viele Positionen. "
+                                       "→ 'Sektordaten laden' klicken um Daten zu ergänzen.")
+                else:
+                    st.caption("Marktkapitalisierungsdaten werden beim nächsten 'Sektordaten laden' ergänzt.")
 
                 # ── ETF Look-Through: echte Länder-/Kontinentexposition ───────
                 st.markdown("<div class='section-header'>🌍 Geographische Exposition (Look-Through)</div>",
