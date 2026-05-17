@@ -8695,97 +8695,217 @@ if st.session_state.get("show_etf_analyzer"):
 
     # ── Statische TER-Datenbank (amtliche KIID-Werte, ändert sich kaum) ──────
     _ETF_STATIC_TER = {
-        # Global
+        # ── Global / MSCI World ──────────────────────────────────────────────
         'SXR8.DE':0.0020,'VWCE.DE':0.0022,'SXR2.DE':0.0007,'IS3N.DE':0.0020,
-        'IS3R.DE':0.0018,'XDWD.DE':0.0020,'EQQQ.DE':0.0030,'EXS1.DE':0.0016,
-        'LCUW.DE':0.0012,'FWRA.DE':0.0015,'IQQH.DE':0.0065,'XMME.DE':0.0025,
-        'IMEA.DE':0.0018,'SPY5.DE':0.0003,'VWRL.L':0.0022,'IWDA.AS':0.0020,
-        'CNDX.L':0.0033,'XDWD.L':0.0020,'VUSA.L':0.0007,'EUNL.DE':0.0020,
-        'DBXD.DE':0.0009,'IS3S.DE':0.0025,'XMEA.DE':0.0025,'IUSN.DE':0.0035,
-        'IUSE.DE':0.0015,'VHYL.L':0.0022,'XMWO.DE':0.0020,
-        # Amundi Prime (sehr günstige ETF-Reihe, TER 0.05–0.07%)
-        'PRAW.DE':0.0005,'PRWA.DE':0.0005,'LCUP.DE':0.0005,'PRIW.DE':0.0007,
+        'IS3R.DE':0.0018,'XDWD.DE':0.0019,'EQQQ.DE':0.0030,'EXS1.DE':0.0016,
+        'IQQH.DE':0.0065,'XMME.DE':0.0020,'IMEA.DE':0.0018,'SPY5.DE':0.0003,
+        'VWRL.L':0.0022,'IWDA.AS':0.0020,'CNDX.L':0.0033,'XDWD.L':0.0020,
+        'VUSA.L':0.0007,'EUNL.DE':0.0020,'DBXD.DE':0.0009,'IS3S.DE':0.0025,
+        'XMEA.DE':0.0025,'IUSN.DE':0.0035,'IUSE.DE':0.0015,'VHYL.L':0.0022,
+        'XMWO.DE':0.0019,'CSPX.L':0.0007,'EIMI.L':0.0018,'WSML.DE':0.0035,
+        # ── Amundi (alle TER aus offiziellen KIID) ──────────────────────────
+        'FWRA.DE':0.0007,   # Amundi Prime All Country World — 0,07%
+        'LCUW.DE':0.0007,   # Amundi S&P 500 (swap) — 0,07%
+        'SP5C.DE':0.0007,   # Amundi S&P 500 (physisch) — 0,07%
+        'C500.DE':0.0025,   # Amundi PEA S&P 500 (synthetisch) — 0,25%
+        'MEUD.DE':0.0015,   # Amundi EURO STOXX 50 — 0,15%
+        'DAXE.DE':0.0013,   # Amundi DAX (swap) — 0,13%
+        'LCUP.DE':0.0012,   # Amundi MSCI World — 0,12%
+        'LYPS.DE':0.0007,   # Amundi STOXX Europe 600 — 0,07%
+        'PRAW.DE':0.0005,'PRWA.DE':0.0005,'PRIW.DE':0.0007,
         'LCUQ.DE':0.0005,'LCU.DE':0.0005,'LCUA.DE':0.0005,'PRWG.DE':0.0005,
-        'DAXE.DE':0.0005,'OBAM.DE':0.0008,'C500.DE':0.0005,'SP5C.DE':0.0005,
-        # Europa
-        'MEUD.DE':0.0015,'EXW1.DE':0.0010,'LYPS.DE':0.0007,'IQQY.DE':0.0012,
-        'XESC.DE':0.0020,'SPYY.DE':0.0012,'IEUA.DE':0.0012,'XEUR.DE':0.0020,
-        'IQQE.DE':0.0040,'IEMC.DE':0.0030,'ZPRX.DE':0.0015,
-        # Japan / Asien
-        'EXV5.DE':0.0012,'XDJP.DE':0.0015,'IQQJ.DE':0.0040,
-        'IQQC.DE':0.0074,'IQQD.DE':0.0061,'IQQP.DE':0.0060,
-        # Dividend
-        'ISPA.DE':0.0040,'QDIV.DE':0.0025,'XDIV.DE':0.0025,'IDVY.L':0.0040,
-        # Sektor-ETFs
+        'OBAM.DE':0.0008,
+        # ── Xtrackers (alle TER aus offiziellen KIID) ───────────────────────
+        'XESC.DE':0.0009,   # Xtrackers Euro Stoxx 50 — 0,09%
+        'XDJP.DE':0.0015,   # Xtrackers MSCI Japan — 0,15%
+        'XDIV.DE':0.0025,   # Xtrackers MSCI World High Dividend — 0,25%
+        'XMKR.DE':0.0020,   # Xtrackers MSCI Korea — 0,20%
+        'XMIN.DE':0.0040,   # Xtrackers MSCI India — 0,40%
         'XDWT.DE':0.0025,'XDWH.DE':0.0025,'XDWF.DE':0.0025,'XDWU.DE':0.0025,
-        'QDVE.DE':0.0015,'QDVG.DE':0.0015,'QDVD.DE':0.0015,'SXRV.DE':0.0015,
-        'IUIT.DE':0.0040,'HEAL.DE':0.0035,
-        # Small/Mid Cap
-        'ZPRV.DE':0.0030,'ZPRX.DE':0.0030,'EXI5.DE':0.0020,
-        # EM Spezifisch
-        'IS3W.DE':0.0020,'XMKR.DE':0.0002,'XMIN.DE':0.0040,
+        'XDWE.DE':0.0025,   # Xtrackers MSCI World Energy
+        'XDWR.DE':0.0025,   # Xtrackers MSCI World Real Estate
+        # ── iShares Sektor-ETFs (S&P 500) ───────────────────────────────────
+        'QDVE.DE':0.0015,   # S&P 500 IT — 0,15%
+        'QDVG.DE':0.0015,   # S&P 500 Health Care — 0,15%
+        'QDVD.DE':0.0015,   # S&P 500 Financials — 0,15%
+        'SXRV.DE':0.0015,   # S&P 500 Communication — 0,15%
+        'SXRP.DE':0.0015,   # S&P 500 Consumer Discretionary — 0,15%
+        'SXRQ.DE':0.0015,   # S&P 500 Consumer Staples — 0,15%
+        'SXRS.DE':0.0015,   # S&P 500 Energy — 0,15%
+        'SXRT.DE':0.0015,   # S&P 500 Industrials — 0,15%
+        'SXRU.DE':0.0015,   # S&P 500 Utilities — 0,15%
+        'SXRW.DE':0.0015,   # S&P 500 Materials — 0,15%
+        # ── iShares MSCI World Sektor ────────────────────────────────────────
+        'IUIT.DE':0.0040,   # MSCI World IT — 0,40%
+        'HEAL.DE':0.0035,   # MSCI World Health — 0,35%
+        # ── Faktor-ETFs ──────────────────────────────────────────────────────
+        'IWQU.DE':0.0030,   # iShares MSCI World Quality — 0,30%
+        'IS3Q.DE':0.0030,   # iShares Edge MSCI World Quality — 0,30%
+        'IWMO.DE':0.0030,   # iShares MSCI World Momentum — 0,30%
+        'MVOL.DE':0.0020,   # iShares MSCI World Min Volatility — 0,20%
+        'WVAL.DE':0.0030,   # iShares MSCI World Value — 0,30%
+        'IFSW.DE':0.0025,   # iShares MSCI World Size — 0,25%
+        'XDEQ.DE':0.0025,   # Xtrackers MSCI World Quality — 0,25%
+        'XDEM.DE':0.0025,   # Xtrackers MSCI World Momentum — 0,25%
+        'XDEV.DE':0.0025,   # Xtrackers MSCI World Value — 0,25%
+        'LGQG.DE':0.0025,   # L&G Global Quality ETF — 0,25%
+        # ── Europa ───────────────────────────────────────────────────────────
+        'EXW1.DE':0.0010,'IQQY.DE':0.0012,'SPYY.DE':0.0012,
+        'IEUA.DE':0.0012,'XEUR.DE':0.0020,'IQQE.DE':0.0040,'IEMC.DE':0.0030,
+        # ── Japan / Asien ────────────────────────────────────────────────────
+        'EXV5.DE':0.0012,'IQQJ.DE':0.0040,
+        'IQQC.DE':0.0074,'IQQD.DE':0.0061,'IQQP.DE':0.0060,
+        'IS3Y.DE':0.0018,   # iShares MSCI EM ex-China — 0,18%
+        # ── Dividenden-ETFs ──────────────────────────────────────────────────
+        'ISPA.DE':0.0040,'QDIV.DE':0.0025,'XDIV.DE':0.0025,'IDVY.L':0.0040,
+        'ZPRV.DE':0.0030,   # SPDR MSCI USA Small Cap Value — 0,30%
+        'ZPRX.DE':0.0030,   # SPDR MSCI Europe Small Cap Value — 0,30%
+        'EXI5.DE':0.0020,   # iShares S&P 500 Mid Cap — 0,20%
+        'IS3W.DE':0.0020,   # iShares MSCI Taiwan — 0,20%
+        # ── Rohstoffe / Themen ───────────────────────────────────────────────
+        'IQQH.DE':0.0065,'4GLD.DE':0.0025,   # Physical Gold — 0,25%
+        'PPFB.DE':0.0025,   # Invesco Physical Gold — 0,25%
+        'EGLN.DE':0.0019,   # iShares Physical Gold — 0,19%
     }
 
     # ── US-Datenticker (für yFinance funds_data + FMP — XETRA hat kaum Daten) ─
     _ETF_DATA_TKR = {
-        # Global
-        'SXR8.DE':'URTH','VWCE.DE':'VT','SXR2.DE':'IVV','IS3N.DE':'IEMG',
+        # ── Global / MSCI World ──────────────────────────────────────────────
+        'SXR8.DE':'IVV','VWCE.DE':'VT','SXR2.DE':'IVV','IS3N.DE':'IEMG',
         'IS3R.DE':'IEMG','XDWD.DE':'URTH','EQQQ.DE':'QQQ','EXS1.DE':'EWG',
-        'LCUW.DE':'IVV','FWRA.DE':'VT','IQQH.DE':'ICLN','XMME.DE':'EEM',
-        'IMEA.DE':'IEMG','SPY5.DE':'SPY','VWRL.L':'VT','IWDA.AS':'URTH',
-        'CNDX.L':'QQQ','DBXD.DE':'EWG','VUSA.L':'IVV','EUNL.DE':'URTH',
-        'IUSN.DE':'SCHA','IUSE.DE':'IVV','VHYL.L':'VYM','XMWO.DE':'URTH',
-        # Europa
-        # Amundi Prime (MSCI World / All Country äquivalent)
-        'PRAW.DE':'URTH','PRWA.DE':'URTH','LCUP.DE':'URTH','PRIW.DE':'VT',
-        'LCUQ.DE':'URTH','LCU.DE':'URTH','LCUA.DE':'URTH','PRWG.DE':'URTH',
-        'C500.DE':'IVV','SP5C.DE':'IVV','DAXE.DE':'EWG',
-        # Europa
-        'MEUD.DE':'FEZ','EXW1.DE':'FEZ','LYPS.DE':'FEZ','IQQY.DE':'VGK',
-        'XESC.DE':'FEZ','SPYY.DE':'VGK','IEUA.DE':'VGK','XEUR.DE':'VGK',
-        'IQQE.DE':'VGK','IEMC.DE':'VGK','ZPRX.DE':'VGK',
-        # Japan / Asien
-        'EXV5.DE':'EWJ','XDJP.DE':'EWJ','IQQJ.DE':'EWJ',
-        'IQQC.DE':'MCHI','IQQD.DE':'EEM','IQQP.DE':'EPP',
-        # Dividend
-        'ISPA.DE':'SCHD','QDIV.DE':'VYM','XDIV.DE':'VYM','IDVY.L':'VYM',
-        # Sektor-ETFs
-        'XDWT.DE':'IXN',   # Xtrackers MSCI World Information Technology → iShares Global Tech
+        'IQQH.DE':'ICLN','XMME.DE':'EEM','IMEA.DE':'IEMG','SPY5.DE':'SPY',
+        'VWRL.L':'VT','IWDA.AS':'URTH','CNDX.L':'QQQ','VUSA.L':'IVV',
+        'EUNL.DE':'URTH','IUSN.DE':'SCHA','IUSE.DE':'IVV','VHYL.L':'VYM',
+        'XMWO.DE':'URTH','CSPX.L':'IVV','EIMI.L':'IEMG','WSML.DE':'SCHA',
+        'DBXD.DE':'EWG',
+        # ── Amundi ──────────────────────────────────────────────────────────
+        'LCUW.DE':'IVV',   # Amundi S&P 500 UCITS (swap)
+        'SP5C.DE':'IVV',   # Amundi S&P 500 UCITS (physisch)
+        'FWRA.DE':'VT',    # Amundi Prime All Country World
+        'PRAW.DE':'URTH',  # Amundi Prime Global (Developed)
+        'PRWA.DE':'VT',    # Amundi Prime All Country World (Acc)
+        'LCUP.DE':'URTH',  # Amundi MSCI World
+        'MEUD.DE':'FEZ',   # Amundi EURO STOXX 50
+        'DAXE.DE':'EWG',   # Amundi DAX
+        'LYPS.DE':'VGK',   # Amundi STOXX Europe 600
+        'C500.DE':'IVV',   # Amundi PEA S&P 500
+        'PRIW.DE':'VT','LCUQ.DE':'URTH','LCU.DE':'IVV',
+        'LCUA.DE':'URTH','PRWG.DE':'URTH','OBAM.DE':'URTH',
+        # ── Xtrackers ───────────────────────────────────────────────────────
+        'XESC.DE':'FEZ',   # Xtrackers Euro Stoxx 50
+        'XDJP.DE':'EWJ',   # Xtrackers MSCI Japan
+        'XDIV.DE':'VYM',   # Xtrackers MSCI World High Dividend
+        'XMKR.DE':'EWY',   # Xtrackers MSCI Korea
+        'XMIN.DE':'INDA',  # Xtrackers MSCI India
+        'XDWT.DE':'IXN',   # Xtrackers MSCI World IT
         'XDWH.DE':'IXV',   # Xtrackers MSCI World Health Care
         'XDWF.DE':'IXG',   # Xtrackers MSCI World Financials
         'XDWU.DE':'XLU',   # Xtrackers MSCI World Utilities
-        'QDVE.DE':'XLK',   # iShares S&P 500 Information Technology
-        'QDVG.DE':'XLV',   # iShares S&P 500 Health Care
-        'QDVD.DE':'XLF',   # iShares S&P 500 Financials
-        'SXRV.DE':'XLC',   # iShares S&P 500 Communication
+        'XDWE.DE':'XLE',   # Xtrackers MSCI World Energy
+        'XDWR.DE':'IYR',   # Xtrackers MSCI World Real Estate
+        'XDEQ.DE':'QUAL',  # Xtrackers MSCI World Quality
+        'XDEM.DE':'MTUM',  # Xtrackers MSCI World Momentum
+        'XDEV.DE':'VLUE',  # Xtrackers MSCI World Value
+        # ── iShares Sektor (S&P 500) ─────────────────────────────────────────
+        'QDVE.DE':'XLK',   # S&P 500 IT
+        'QDVG.DE':'XLV',   # S&P 500 Health Care
+        'QDVD.DE':'XLF',   # S&P 500 Financials
+        'SXRV.DE':'XLC',   # S&P 500 Communication
+        'SXRP.DE':'XLY',   # S&P 500 Consumer Discretionary
+        'SXRQ.DE':'XLP',   # S&P 500 Consumer Staples
+        'SXRS.DE':'XLE',   # S&P 500 Energy
+        'SXRT.DE':'XLI',   # S&P 500 Industrials
+        'SXRU.DE':'XLU',   # S&P 500 Utilities
+        'SXRW.DE':'XLB',   # S&P 500 Materials
+        # ── iShares MSCI World Sektor ────────────────────────────────────────
         'IUIT.DE':'IXN',   # iShares MSCI World IT
         'HEAL.DE':'IXV',   # iShares MSCI World Health
-        # Small/Mid Cap
-        'ZPRV.DE':'IWM',   # SPDR MSCI USA Small Cap
+        # ── Faktor-ETFs ──────────────────────────────────────────────────────
+        'IWQU.DE':'QUAL',  # iShares MSCI World Quality Factor
+        'IS3Q.DE':'QUAL',  # iShares Edge MSCI World Quality
+        'IWMO.DE':'MTUM',  # iShares MSCI World Momentum Factor
+        'MVOL.DE':'USMV',  # iShares MSCI World Min Volatility
+        'WVAL.DE':'VLUE',  # iShares MSCI World Value Factor
+        'IFSW.DE':'SIZE',  # iShares MSCI World Size Factor
+        'LGQG.DE':'QUAL',  # L&G Global Quality ETF
+        # ── Europa ───────────────────────────────────────────────────────────
+        'EXW1.DE':'VGK','IQQY.DE':'VGK','SPYY.DE':'VGK','IEUA.DE':'VGK',
+        'XEUR.DE':'VGK','IQQE.DE':'VGK','IEMC.DE':'VGK','ZPRX.DE':'EWQ',
+        # ── Japan / Asien / EM ───────────────────────────────────────────────
+        'EXV5.DE':'EWJ','IQQJ.DE':'EWJ',
+        'IQQC.DE':'MCHI','IQQD.DE':'EEM','IQQP.DE':'EPP',
+        'IS3Y.DE':'IEMG',  # iShares MSCI EM ex-China
+        # ── Dividend ─────────────────────────────────────────────────────────
+        'ISPA.DE':'SCHD','QDIV.DE':'VYM','XDIV.DE':'VYM','IDVY.L':'VYM',
+        # ── Small/Mid Cap ────────────────────────────────────────────────────
+        'ZPRV.DE':'IWN',   # SPDR MSCI USA Small Cap Value
         'EXI5.DE':'IJH',   # iShares S&P 500 Mid Cap
-        # EM Spezifisch
+        # ── EM Spezifisch ────────────────────────────────────────────────────
         'IS3W.DE':'EWT',   # iShares MSCI Taiwan
-        'XMKR.DE':'EWY',   # Xtrackers MSCI Korea
-        'XMIN.DE':'INDA',  # Xtrackers MSCI India
     }
 
     # ── Statische AUM-Werte (Näherung EUR, Stand 2025) ──────────────────────
     _ETF_STATIC_AUM = {
-        'SXR8.DE': 90_000_000_000,   # iShares Core S&P 500: ~90 Mrd
-        'VWCE.DE': 20_000_000_000,   # Vanguard FTSE All-World: ~20 Mrd
-        'EUNL.DE': 70_000_000_000,   # iShares Core MSCI World: ~70 Mrd
-        'XDWD.DE': 10_000_000_000,   # Xtrackers MSCI World: ~10 Mrd
-        'EQQQ.DE': 22_000_000_000,   # iShares Nasdaq-100: ~22 Mrd
-        'IS3N.DE': 12_000_000_000,   # iShares Core MSCI EM: ~12 Mrd
-        'XDWT.DE':  6_000_000_000,   # Xtrackers MSCI World IT: ~6 Mrd
-        'EXW1.DE':  3_500_000_000,   # iShares Core MSCI Europe: ~3.5 Mrd
-        'IUSN.DE':  2_000_000_000,   # iShares MSCI World Small Cap: ~2 Mrd
-        'FWRA.DE':  3_000_000_000,   # Amundi Prime All Country World: ~3 Mrd
-        'LCUW.DE':  5_000_000_000,   # Amundi S&P 500: ~5 Mrd
-        'SPY5.DE': 40_000_000_000,   # SPDR S&P 500 (EUR): ~40 Mrd
-        'ISPA.DE':  8_000_000_000,   # iShares Core S&P 500 Dividend: ~8 Mrd
-        'VWRL.L':  18_000_000_000,   # Vanguard FTSE All-World (GBP): ~18 Mrd
-        'IWDA.AS': 65_000_000_000,   # iShares Core MSCI World (Amsterdam): ~65 Mrd
+        # ── Große Flaggschiffe ───────────────────────────────────────────────
+        'SXR8.DE': 90_000_000_000,   # iShares Core S&P 500
+        'EUNL.DE': 70_000_000_000,   # iShares Core MSCI World
+        'IWDA.AS': 65_000_000_000,   # iShares Core MSCI World (Amsterdam)
+        'SPY5.DE': 40_000_000_000,   # SPDR S&P 500
+        'CSPX.L':  60_000_000_000,   # iShares Core S&P 500 (LSE)
+        'EQQQ.DE': 22_000_000_000,   # iShares Nasdaq-100
+        'VWCE.DE': 20_000_000_000,   # Vanguard FTSE All-World (Acc)
+        'VWRL.L':  18_000_000_000,   # Vanguard FTSE All-World (GBP)
+        'IS3N.DE': 14_000_000_000,   # iShares Core MSCI EM IMI
+        'XDWD.DE': 12_000_000_000,   # Xtrackers MSCI World Swap
+        'EXS1.DE': 18_000_000_000,   # iShares Core DAX
+        # ── Amundi ──────────────────────────────────────────────────────────
+        'LCUW.DE':  7_000_000_000,   # Amundi S&P 500 UCITS (swap)
+        'SP5C.DE':  8_000_000_000,   # Amundi S&P 500 UCITS (physisch)
+        'FWRA.DE':  4_000_000_000,   # Amundi Prime All Country World
+        'PRAW.DE':  2_000_000_000,   # Amundi Prime Global (Developed)
+        'PRWA.DE':    800_000_000,   # Amundi Prime All Country World (thes.)
+        'LCUP.DE':  2_500_000_000,   # Amundi MSCI World
+        'MEUD.DE':  3_000_000_000,   # Amundi EURO STOXX 50
+        'DAXE.DE':  1_200_000_000,   # Amundi DAX UCITS
+        'LYPS.DE':  2_000_000_000,   # Amundi STOXX Europe 600
+        'C500.DE':    700_000_000,   # Amundi PEA S&P 500
+        # ── Xtrackers ───────────────────────────────────────────────────────
+        'XMWO.DE':  3_500_000_000,   # Xtrackers MSCI World Swap 1C
+        'XESC.DE':  2_500_000_000,   # Xtrackers Euro Stoxx 50
+        'XMME.DE':  3_000_000_000,   # Xtrackers MSCI EM Swap
+        'XDWT.DE':  6_000_000_000,   # Xtrackers MSCI World IT
+        'XDWH.DE':  1_200_000_000,   # Xtrackers MSCI World Health Care
+        'XDWF.DE':    600_000_000,   # Xtrackers MSCI World Financials
+        'XDIV.DE':  2_200_000_000,   # Xtrackers MSCI World High Dividend
+        'XDJP.DE':  1_500_000_000,   # Xtrackers MSCI Japan Swap
+        'XMIN.DE':  1_000_000_000,   # Xtrackers MSCI India
+        'XMKR.DE':    500_000_000,   # Xtrackers MSCI Korea
+        'DBXD.DE':  3_000_000_000,   # Xtrackers DAX
+        # ── iShares Sektor & Faktor ──────────────────────────────────────────
+        'QDVE.DE':  3_000_000_000,   # iShares S&P 500 IT
+        'QDVG.DE':  1_200_000_000,   # iShares S&P 500 Health Care
+        'QDVD.DE':    600_000_000,   # iShares S&P 500 Financials
+        'SXRV.DE':    500_000_000,   # iShares S&P 500 Communication
+        'IUIT.DE':  3_500_000_000,   # iShares MSCI World IT
+        'HEAL.DE':  1_500_000_000,   # iShares MSCI World Health
+        'IWQU.DE':  3_000_000_000,   # iShares MSCI World Quality
+        'IWMO.DE':  2_000_000_000,   # iShares MSCI World Momentum
+        'MVOL.DE':  4_000_000_000,   # iShares MSCI World Min Volatility
+        'WVAL.DE':    800_000_000,   # iShares MSCI World Value
+        'WSML.DE':  2_000_000_000,   # iShares MSCI World Small Cap
+        'IQQH.DE':  1_500_000_000,   # iShares Global Clean Energy
+        'IQQY.DE':  2_000_000_000,   # iShares MSCI Europe
+        'IQQC.DE':  1_200_000_000,   # iShares MSCI China
+        # ── Sonstige ────────────────────────────────────────────────────────
+        'EXW1.DE':  3_500_000_000,   # iShares STOXX Europe 600
+        'IUSN.DE':  2_000_000_000,   # iShares MSCI World Small Cap
+        'ISPA.DE':  8_000_000_000,   # iShares STOXX Global Select Div
+        'ZPRV.DE':    500_000_000,   # SPDR MSCI USA Small Cap Value
+        'ZPRX.DE':    400_000_000,   # SPDR MSCI Europe Small Cap Value
+        'EXV5.DE':  1_000_000_000,   # iShares Core MSCI Japan
+        'IS3W.DE':    800_000_000,   # iShares MSCI Taiwan
+        'VUSA.L':   8_000_000_000,   # Vanguard S&P 500 (GBP)
+        'VHYL.L':   3_000_000_000,   # Vanguard FTSE All-World High Div
     }
 
     # ── Statische Länder-Gewichtungen (Quelle: Fondsanbieter, Stand 2024) ────
@@ -9030,6 +9150,45 @@ if st.session_state.get("show_etf_analyzer"):
         'QDVE.DE':  "iShares S&P 500 Information Technology Sector UCITS ETF — US-IT-Giganten wie Apple, Microsoft, NVIDIA. Stark konzentriert auf wenige Mega-Caps.",
         'XDWH.DE':  "Xtrackers MSCI World Health Care UCITS ETF — globale Pharmaunternehmen, Medizintechnik und Biotech. J&J, UnitedHealth, Eli Lilly als Hauptpositionen.",
         'IQQH.DE':  "iShares Global Clean Energy UCITS ETF mit ca. 100 Unternehmen aus erneuerbarer Energie. Windkraft, Solar, Wasserstoff. Hohe Volatilität.",
+        # ── Amundi (erweitert) ────────────────────────────────────────────────
+        'SP5C.DE':  "Amundi S&P 500 UCITS ETF (TER 0,07%) — physische Replikation des S&P 500 mit 500 US-Unternehmen. Günstiger Einstieg in den amerikanischen Aktienmarkt ohne Währungshedging.",
+        'LCUP.DE':  "Amundi MSCI World UCITS ETF (TER 0,12%) — physische Replikation von ca. 1.500 Unternehmen aus 23 Industrieländern. Gutes Preis-Leistungs-Verhältnis für ein MSCI-World-Basisinvestment.",
+        'MEUD.DE':  "Amundi EURO STOXX 50 UCITS ETF (TER 0,15%) — die 50 größten Unternehmen der Eurozone. Synthetische Replikation, hohe Liquidität. Enthält LVMH, SAP, ASML, TotalEnergies.",
+        'DAXE.DE':  "Amundi DAX UCITS ETF (TER 0,13%) — synthetische Replikation des DAX 40. Fokus auf deutsche Blue Chips: SAP, Siemens, Allianz, BASF. Für gezielte Deutschland-Exposition.",
+        'LYPS.DE':  "Amundi STOXX Europe 600 UCITS ETF (TER 0,07%) — breite europäische Abdeckung mit 600 Unternehmen aus 17 Ländern. Sehr günstig und diversifiziert.",
+        'C500.DE':  "Amundi ETF PEA S&P 500 UCITS (TER 0,25%) — synthetisch replizierter S&P 500 für französische PEA-Konten. Für deutsche Anleger weniger relevant.",
+        # ── Xtrackers (erweitert) ─────────────────────────────────────────────
+        'XESC.DE':  "Xtrackers Euro Stoxx 50 UCITS ETF (TER 0,09%) — sehr günstige swap-basierte Replikation der 50 größten Eurozone-Unternehmen. Hohe Liquidität, ausschüttend.",
+        'XDJP.DE':  "Xtrackers MSCI Japan Swap UCITS ETF (TER 0,15%) — Zugang zum japanischen Aktienmarkt über ~300 Unternehmen. Toyota, Sony, Keyence als Top-Positionen. Währungsrisiko JPY/EUR.",
+        'XMME.DE':  "Xtrackers MSCI Emerging Markets Swap UCITS ETF (TER 0,20%) — synthetische EM-Abdeckung mit ~1.400 Titeln. China, Taiwan, Indien dominieren. Günstigere Alternative zu IS3N.DE.",
+        'XDIV.DE':  "Xtrackers MSCI World High Dividend Yield UCITS ETF (TER 0,25%) — ca. 400 dividendenstarke Aktien weltweit. Ausgewogene Mischung aus Dividendenstärke und Qualität.",
+        'XDWF.DE':  "Xtrackers MSCI World Financials UCITS ETF (TER 0,25%) — Banken, Versicherungen und Finanzdienstleister weltweit. JPMorgan, Berkshire, Visa als Top-Positionen.",
+        'XDWU.DE':  "Xtrackers MSCI World Utilities UCITS ETF (TER 0,25%) — defensive Versorger weltweit. Nextera Energy, Enel, National Grid. Geringe Korrelation zum Gesamtmarkt.",
+        'DBXD.DE':  "Xtrackers DAX UCITS ETF (TER 0,09%) — günstige swap-basierte Replikation des DAX 40. Einer der ältesten deutschen ETFs, sehr hohe Liquidität.",
+        'XMWO.DE':  "Xtrackers MSCI World Swap UCITS ETF (TER 0,19%) — swap-basierte Replikation von ~1.500 Unternehmen aus 23 Industrieländern. Steuerlich vorteilhaft durch Swap-Struktur.",
+        'XMIN.DE':  "Xtrackers MSCI India Swap UCITS ETF (TER 0,40%) — Zugang zum indischen Aktienmarkt via Swap. Reliance, Infosys, HDFC als Hauptpositionen. Wachstumsstark aber volatil.",
+        'XMKR.DE':  "Xtrackers MSCI Korea Swap UCITS ETF (TER 0,20%) — konzentriert auf südkoreanische Technologie- und Industriekonzerne. Samsung, SK Hynix, Hyundai als Top-Positionen.",
+        # ── iShares Sektor (S&P 500) ──────────────────────────────────────────
+        'QDVE.DE':  "iShares S&P 500 Information Technology Sector UCITS ETF (TER 0,15%) — US-IT-Giganten: Apple, Microsoft, NVIDIA, Broadcom. Stark konzentriert, hohes Wachstumspotenzial.",
+        'QDVG.DE':  "iShares S&P 500 Health Care Sector UCITS ETF (TER 0,15%) — US-Pharma und -Medizintechnik: UnitedHealth, Eli Lilly, J&J. Defensiv mit Wachstumskomponente.",
+        'QDVD.DE':  "iShares S&P 500 Financials Sector UCITS ETF (TER 0,15%) — US-Banken und -Versicherungen: JPMorgan, Berkshire Hathaway, Goldman Sachs. Zinsabhängig.",
+        'SXRV.DE':  "iShares S&P 500 Communication Sector UCITS ETF (TER 0,15%) — Alphabet, Meta, Netflix, Disney. Kombination aus Wachstum und Dividende.",
+        'IUIT.DE':  "iShares MSCI World Information Technology UCITS ETF (TER 0,40%) — globale IT-Werte: Apple, Microsoft, NVIDIA, TSMC. Breiter als S&P 500 IT durch internationale Titel.",
+        'HEAL.DE':  "iShares MSCI World Health Care UCITS ETF (TER 0,35%) — globale Pharma, Biotech und Medizintechnik. Eli Lilly, UnitedHealth, Novo Nordisk als Hauptpositionen.",
+        # ── Faktor-ETFs ───────────────────────────────────────────────────────
+        'IWQU.DE':  "iShares MSCI World Quality Factor UCITS ETF (TER 0,30%) — selektiert ~300 Unternehmen nach hoher Eigenkapitalrendite, stabilem Gewinnwachstum und niedriger Verschuldung.",
+        'IS3Q.DE':  "iShares Edge MSCI World Quality Factor UCITS ETF (TER 0,30%) — Quality-Faktor weltweit. Historisch überlegene risikoadjustierte Rendite gegenüber dem MSCI World.",
+        'IWMO.DE':  "iShares MSCI World Momentum Factor UCITS ETF (TER 0,30%) — investiert in Aktien mit starker Kursdynamik. Hohe Umschlagshäufigkeit, überdurchschnittliche Rendite in Bullmärkten.",
+        'MVOL.DE':  "iShares MSCI World Minimum Volatility UCITS ETF (TER 0,20%) — reduziert Schwankungen durch gezielte Titelauswahl. Defensiv mit moderatem Rendite-Risiko-Profil.",
+        'WVAL.DE':  "iShares MSCI World Value Factor UCITS ETF (TER 0,30%) — günstiger bewertete Qualitätsunternehmen weltweit. Historisch bei steigendem Zinsniveau besser als Growth-ETFs.",
+        'WSML.DE':  "iShares MSCI World Small Cap UCITS ETF (TER 0,35%) — Zugang zu ~3.500 kleineren Unternehmen aus Industrieländern. Höheres Wachstumspotenzial, aber auch höhere Volatilität.",
+        'ZPRV.DE':  "SPDR MSCI USA Small Cap Value UCITS ETF (TER 0,30%) — kleine US-Value-Aktien mit niedrigem KBV und KGV. Historisch starke langfristige Renditen (Fama-French Small-Cap-Value-Prämie).",
+        'ZPRX.DE':  "SPDR MSCI Europe Small Cap Value UCITS ETF (TER 0,30%) — europäische Small-Cap-Value-Titel. Geringe Korrelation zu Large-Cap-ETFs, gut zur Diversifikation.",
+        'LGQG.DE':  "L&G Global Quality Equity Factors UCITS ETF (TER 0,25%) — selektiert nach Qualitätskriterien wie ROE, Gewinnstabilität und Bilanzkennzahlen. Günstiger Quality-ETF.",
+        # ── Clean Energy / ESG ────────────────────────────────────────────────
+        'IQQY.DE':  "iShares MSCI Europe UCITS ETF (TER 0,12%) — ca. 430 europäische Unternehmen aus 15 Ländern. UK, Frankreich, Schweiz, Deutschland als Hauptmärkte.",
+        'IS3Y.DE':  "iShares MSCI EM ex-China UCITS ETF (TER 0,18%) — Schwellenländer ohne China. Indien, Taiwan, Südkorea dominieren. Für Anleger die chinesisches Risiko reduzieren wollen.",
+        'IQQC.DE':  "iShares MSCI China UCITS ETF (TER 0,74%) — gezielter Zugang zum chinesischen Aktienmarkt. Alibaba, Tencent, Meituan als Hauptpositionen. Hohes politisches Risiko.",
     }
 
     @st.cache_data(ttl=3600, show_spinner=False)
