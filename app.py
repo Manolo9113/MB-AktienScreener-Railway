@@ -6741,7 +6741,7 @@ elif st.session_state.get("show_stocks"):
             return f"""
             <div style='background:{_C_CARD_BG};
                  border:1px solid {_C_BORDER};border-left:3px solid {accent};
-                 border-radius:12px;padding:13px 15px;margin-bottom:10px;'>
+                 border-radius:12px 12px 0 0;padding:13px 15px 10px 15px;margin-bottom:0;'>
               <div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>
                 <span style='color:{accent};font-size:1.02rem;font-weight:800;
                       letter-spacing:0.5px;'>{s["ticker"]}</span>
@@ -6782,6 +6782,11 @@ elif st.session_state.get("show_stocks"):
                      _mc_badge("ROE", s["roe"] if s["roe"] > 0 else None, "%", ".0f", "#a5d6a7") +
                      _val_badge)
                 st.markdown(_mc_card(s, "#34d399", b), unsafe_allow_html=True)
+                if st.button(f"🔍 {s['ticker']} analysieren",
+                             key=f"mc_go_{s['ticker']}", use_container_width=True):
+                    _go_to_ticker(s["ticker"])
+                    st.rerun()
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
         with _col_sml:
             st.markdown(
@@ -6808,6 +6813,11 @@ elif st.session_state.get("show_stocks"):
                      _mc_badge("FCF", s["fcf_yield"], "%", ".1f", "#fbbf24") +
                      _val_badge)
                 st.markdown(_mc_card(s, "#fb923c", b), unsafe_allow_html=True)
+                if st.button(f"🔍 {s['ticker']} analysieren",
+                             key=f"sc_go_{s['ticker']}", use_container_width=True):
+                    _go_to_ticker(s["ticker"])
+                    st.rerun()
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
         st.markdown(
             "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
