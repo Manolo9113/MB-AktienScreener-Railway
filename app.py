@@ -610,6 +610,21 @@ if st.session_state.get("light_mode"):
     label[data-testid="stWidgetLabel"] p { color: #334155 !important; }
     </style>""", unsafe_allow_html=True)
 
+
+# ── Farbpalette (Light/Dark) ──────────────────────────────────────────
+_lm = st.session_state.get("light_mode", False)
+_C_TEXT_PRIMARY = "#0f172a" if _lm else "#eceff1"
+_C_TEXT_SEC     = "#475569" if _lm else "#b0bec5"
+_C_TEXT_MUTED   = "#64748b" if _lm else "#546e7a"
+_C_TEXT_MUTED2  = "#94a3b8" if _lm else "#90a4ae"
+_C_ACCENT       = "#2563eb" if _lm else "#64b5f6"
+_C_POSITIVE     = "#16a34a" if _lm else "#00e676"
+_C_POSITIVE_SFT = "#22c55e" if _lm else "#69f0ae"
+_C_NEGATIVE     = "#dc2626" if _lm else "#ff5252"
+_C_NEUTRAL      = "#d97706" if _lm else "#ffd600"
+_C_CARD_BG      = "#ffffff" if _lm else "#0d1f35"
+_C_SURFACE      = "#f1f5f9" if _lm else "#0d1526"
+_C_BORDER       = "#e2e8f0" if _lm else "#1a2744"
 # ==================== QUOTES ====================
 _QUOTES = [
     ("Der Preis ist, was du bezahlst. Wert ist, was du bekommst.", "Warren Buffett"),
@@ -2108,9 +2123,9 @@ SECTOR_BENCHMARKS = {
 
 def score_color(s):
     if s >= 75:
-        return "#00e676"
+        return _C_POSITIVE
     elif s >= 50:
-        return "#ffd600"
+        return _C_NEUTRAL
     elif s >= 25:
         return "#ff9100"
     return "#ff1744"
@@ -2449,7 +2464,7 @@ def compute_moat(sector, industry, gross_margin, roic_val, operating_margin,
         market_color = "#00e5ff"
     elif any(k in ind for k in _oligo):
         market_structure = "Oligopol"
-        market_color = "#ffd600"
+        market_color = _C_NEUTRAL
     else:
         market_structure = "Wettbewerb"
         market_color = "#90a4ae"
@@ -2484,17 +2499,17 @@ def compute_moat(sector, industry, gross_margin, roic_val, operating_margin,
 
     if moat_score >= 65:
         moat_width = "Wide Moat"
-        moat_color = "#00e676"
+        moat_color = _C_POSITIVE
         moat_icon  = "🏰"
         moat_desc  = "Breiter, nachhaltiger Wettbewerbsvorteil. Das Unternehmen kann voraussichtlich über 20+ Jahre überdurchschnittliche Renditen erwirtschaften."
     elif moat_score >= 35:
         moat_width = "Narrow Moat"
-        moat_color = "#ffd600"
+        moat_color = _C_NEUTRAL
         moat_icon  = "🛡️"
         moat_desc  = "Schmaler Wettbewerbsvorteil. Vorteil vorhanden, aber Risiko der Erosion durch Technologie- oder Marktveränderungen."
     else:
         moat_width = "No Moat"
-        moat_color = "#ff5252"
+        moat_color = _C_NEGATIVE
         moat_icon  = "⚠️"
         moat_desc  = "Kein klar erkennbarer struktureller Wettbewerbsvorteil. Margen und Renditen unter Druck durch Konkurrenz."
 
@@ -3229,9 +3244,9 @@ def load_extended_macro() -> dict:
             _total_w += weight
 
     composite = round(_total / _total_w, 2) if _total_w > 0 else 0.0
-    if composite > 0.5:    reg_lbl, reg_clr = "Risk-On",  "#00e676"
-    elif composite > -0.5: reg_lbl, reg_clr = "Neutral",  "#ffd600"
-    else:                   reg_lbl, reg_clr = "Risk-Off", "#ff5252"
+    if composite > 0.5:    reg_lbl, reg_clr = "Risk-On",  _C_POSITIVE
+    elif composite > -0.5: reg_lbl, reg_clr = "Neutral",  _C_NEUTRAL
+    else:                   reg_lbl, reg_clr = "Risk-Off", _C_NEGATIVE
 
     out["regime"] = {
         "score":   composite,
@@ -4884,7 +4899,7 @@ def _sparklines_bulk(tickers: tuple) -> dict:
             w, h = 110, 32
             pts = ' '.join(f"{int(i/(len(vals)-1)*w)},{int((1-(v-mn)/rng)*(h-6)+3)}"
                            for i, v in enumerate(vals))
-            clr = '#00e676' if vals[-1] >= vals[0] else '#ff5252'
+            clr = _C_POSITIVE if vals[-1] >= vals[0] else _C_NEGATIVE
             return (f'<svg width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
                     f'<polyline points="{pts}" fill="none" stroke="{clr}" '
                     f'stroke-width="1.8" stroke-linejoin="round"/></svg>')
@@ -5107,7 +5122,7 @@ with st.sidebar:
     st.markdown("""
     <div style='text-align:center; padding: 20px 0 10px 0;'>
         <span style='font-size:2rem;'>📈</span>
-        <div style='color:#64b5f6; font-size:1.3rem; font-weight:700; margin-top:6px;'>StocksMB</div>
+        <div style='color:{_C_ACCENT}; font-size:1.3rem; font-weight:700; margin-top:6px;'>StocksMB</div>
         <div style='color:#37474f; font-size:0.75rem;'>Aktienanalyse Tool</div>
     </div>
     """, unsafe_allow_html=True)
@@ -5158,7 +5173,7 @@ with st.sidebar:
             st.rerun()
 
     if st.session_state["search_msg"]:
-        st.markdown(f"<div style='color:#64b5f6; font-size:0.8rem; padding:6px 4px;'>{st.session_state['search_msg']}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='color:{_C_ACCENT}; font-size:0.8rem; padding:6px 4px;'>{st.session_state['search_msg']}</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='section-header'>⚡ Schnellauswahl</div>", unsafe_allow_html=True)
     quick = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "SAP"]
@@ -5205,7 +5220,7 @@ with st.sidebar:
         st.markdown("<div class='section-header'>🔐 Konto</div>", unsafe_allow_html=True)
         if st.session_state.get("wl_unlocked"):
             st.markdown(
-                "<div style='color:#64b5f6;font-size:0.78rem;padding:4px 0 6px 0;'>🔓 Angemeldet</div>",
+                "<div style='color:{_C_ACCENT};font-size:0.78rem;padding:4px 0 6px 0;'>🔓 Angemeldet</div>",
                 unsafe_allow_html=True)
             if st.button("Abmelden", use_container_width=True, key="wl_logout"):
                 st.session_state["wl_unlocked"] = False
@@ -5278,7 +5293,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
   letter-spacing:.1em;margin-bottom:10px;'>💬 Zitat des Tages</div>
   <div style='color:#cfd8dc;font-size:0.95rem;line-height:1.7;
   font-style:italic;'>„{_q_text}"</div>
-  <div style='color:#64b5f6;font-size:0.78rem;font-weight:600;
+  <div style='color:{_C_ACCENT};font-size:0.78rem;font-weight:600;
   margin-top:10px;text-align:right;'>— {_q_author}</div>
 </div>
 """, unsafe_allow_html=True)
@@ -5287,7 +5302,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
         <div style="font-size:3rem; font-weight:800; color:#fff; letter-spacing:-1px;">
             📈 <span style="color:#00e5ff;">Stocks</span>MB
         </div>
-        <div style="color:#64b5f6; font-size:1.1rem; margin-top:10px;">
+        <div style="color:{_C_ACCENT}; font-size:1.1rem; margin-top:10px;">
             Professionelle Aktienanalyse — Ticker, Name, ISIN oder WKN eingeben
         </div>
     </div>
@@ -5343,13 +5358,13 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
         idx_cols = st.columns(len(indices_data))
         for col, (name, d) in zip(idx_cols, indices_data.items()):
             pct = d["pct"]
-            clr = "#00e676" if pct >= 0 else "#ff5252"
+            clr = _C_POSITIVE if pct >= 0 else _C_NEGATIVE
             arrow = "▲" if pct >= 0 else "▼"
             px_str = f"{d['cur']}{d['price']:,.0f}"
             col.markdown(f"""
             <div class="metric-card" style="text-align:center; padding:14px 8px; cursor:default;">
                 <div class="metric-label" style="font-size:0.7rem;">{name}</div>
-                <div style="color:#eceff1; font-size:1.05rem; font-weight:700; margin:4px 0;">{px_str}</div>
+                <div style="color:{_C_TEXT_PRIMARY}; font-size:1.05rem; font-weight:700; margin:4px 0;">{px_str}</div>
                 <div style="color:{clr}; font-size:0.82rem; font-weight:600;">{arrow} {abs(pct):.2f}%</div>
             </div>""", unsafe_allow_html=True)
 
@@ -5382,12 +5397,12 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
     }
 
     if macro["fx"]:
-        st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin-bottom:6px;'>💱 Wechselkurse</div>",
+        st.markdown(f"<div style='color:{_C_TEXT_MUTED}; font-size:0.75rem; margin-bottom:6px;'>💱 Wechselkurse</div>",
                     unsafe_allow_html=True)
         fx_cols = st.columns(len(macro["fx"]))
         for col, (label, d) in zip(fx_cols, macro["fx"].items()):
             pct = d["pct"]
-            clr = "#00e676" if pct >= 0 else "#ff5252"
+            clr = _C_POSITIVE if pct >= 0 else _C_NEGATIVE
             arrow = "▲" if pct >= 0 else "▼"
             _tip = _FX_TIPS.get(label, "")
             _tip_html = (f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
@@ -5395,14 +5410,14 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             col.markdown(f"""
             <div class="metric-card" style="text-align:center; padding:10px 6px;">
                 <div class="metric-label" style="font-size:0.68rem;">{label}{_tip_html}</div>
-                <div style="color:#eceff1; font-size:0.95rem; font-weight:700; margin:3px 0;">
+                <div style="color:{_C_TEXT_PRIMARY}; font-size:0.95rem; font-weight:700; margin:3px 0;">
                     {d['price']:.{4 if d['price'] < 10 else 2}f}
                 </div>
                 <div style="color:{clr}; font-size:0.75rem;">{arrow} {abs(pct):.2f}%</div>
             </div>""", unsafe_allow_html=True)
 
     if macro["macro"]:
-        st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>🌐 Makro-Indikatoren</div>",
+        st.markdown(f"<div style='color:{_C_TEXT_MUTED}; font-size:0.75rem; margin:10px 0 6px 0;'>🌐 Makro-Indikatoren</div>",
                     unsafe_allow_html=True)
         macro_items = list(macro["macro"].items())
         mc_cols = st.columns(len(macro_items))
@@ -5410,9 +5425,9 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             val = d["value"]
             unit = d["unit"]
             if "Inflation" in label:
-                clr = "#ff5252" if val > 3.0 else "#ffd600" if val > 2.0 else "#00e676"
+                clr = _C_NEGATIVE if val > 3.0 else _C_NEUTRAL if val > 2.0 else _C_POSITIVE
             elif "Arbeitslosigkeit" in label:
-                clr = "#ff5252" if val > 6.0 else "#ffd600" if val > 4.5 else "#00e676"
+                clr = _C_NEGATIVE if val > 6.0 else _C_NEUTRAL if val > 4.5 else _C_POSITIVE
             else:
                 clr = "#64b5f6"
             _tip = _MACRO_TIPS.get(label, "")
@@ -5429,14 +5444,14 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
     # ── BIP-Wachstum ──────────────────────────────────────────────────
     _gdp_specs_ui = ["🇺🇸 USA", "🇪🇺 Eurozone", "🇩🇪 Deutschland", "🇨🇳 China", "🇯🇵 Japan", "🇬🇧 UK", "🇮🇳 Indien"]
     _gdp_data = macro.get("gdp", {})
-    st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>📈 BIP-Wachstum (YoY, aktuellstes Quartal)</div>",
+    st.markdown(f"<div style='color:{_C_TEXT_MUTED}; font-size:0.75rem; margin:10px 0 6px 0;'>📈 BIP-Wachstum (YoY, aktuellstes Quartal)</div>",
                 unsafe_allow_html=True)
     _gdp_cols = st.columns(len(_gdp_specs_ui))
     for _gc, _glab in zip(_gdp_cols, _gdp_specs_ui):
         _gval = _gdp_data.get(_glab)
         if _gval is not None:
-            _gc_clr = "#00e676" if _gval > 2.5 else "#69f0ae" if _gval > 1.0 else \
-                      "#ffd600" if _gval >= 0 else "#ff5252"
+            _gc_clr = _C_POSITIVE if _gval > 2.5 else _C_POSITIVE_SFT if _gval > 1.0 else \
+                      _C_NEUTRAL if _gval >= 0 else _C_NEGATIVE
             _gdisp = f"{_gval:+.1f}%"
         else:
             _gc_clr, _gdisp = "#37474f", "…"
@@ -5462,9 +5477,9 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
     ]
 
     if True:  # always show section
-        st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>🌡️ Konjunkturindikatoren</div>",
+        st.markdown(f"<div style='color:{_C_TEXT_MUTED}; font-size:0.75rem; margin:10px 0 6px 0;'>🌡️ Konjunkturindikatoren</div>",
                     unsafe_allow_html=True)
-        st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>🌡️ Konjunkturindikatoren</div>",
+        st.markdown(f"<div style='color:{_C_TEXT_MUTED}; font-size:0.75rem; margin:10px 0 6px 0;'>🌡️ Konjunkturindikatoren</div>",
                     unsafe_allow_html=True)
         _kj_cols = st.columns(len(_konjunktur_specs))
         _kj_tips = {
@@ -5480,16 +5495,16 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             if _kval is None:
                 _kc_clr, _kdisp = "#37474f", "…"
             elif _ktype == "misery":
-                _kc_clr = "#ff5252" if _kval > 14 else "#ffd600" if _kval > 10 else "#00e676"
+                _kc_clr = _C_NEGATIVE if _kval > 14 else _C_NEUTRAL if _kval > 10 else _C_POSITIVE
                 _kdisp = f"{_kval:.1f}%"
             elif _ktype == "yc":
-                _kc_clr = "#ff5252" if _kval < 0 else "#ffd600" if _kval < 0.3 else "#00e676"
+                _kc_clr = _C_NEGATIVE if _kval < 0 else _C_NEUTRAL if _kval < 0.3 else _C_POSITIVE
                 _kdisp = f"{_kval:+.2f}%"
             elif _ktype == "cs":
-                _kc_clr = "#00e676" if _kval > 80 else "#ffd600" if _kval > 65 else "#ff5252"
+                _kc_clr = _C_POSITIVE if _kval > 80 else _C_NEUTRAL if _kval > 65 else _C_NEGATIVE
                 _kdisp = f"{_kval:.0f}"
             else:
-                _kc_clr = "#ff5252" if _kval > 8 else "#ffd600" if _kval > 6.5 else "#00e676"
+                _kc_clr = _C_NEGATIVE if _kval > 8 else _C_NEUTRAL if _kval > 6.5 else _C_POSITIVE
                 _kdisp = f"{_kval:.1f}%"
             _kc.markdown(f"""
             <div class="metric-card" style="text-align:center; padding:10px 6px;">
@@ -5512,11 +5527,11 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
 
         if _bi:
             with _bi_col:
-                if _bi < 75:   _bi_clr, _bi_lbl = "#00e676", "Unterbewertet"
-                elif _bi < 90: _bi_clr, _bi_lbl = "#69f0ae", "Fair bewertet"
-                elif _bi < 115:_bi_clr, _bi_lbl = "#ffd600", "Leicht überbewertet"
+                if _bi < 75:   _bi_clr, _bi_lbl = _C_POSITIVE, "Unterbewertet"
+                elif _bi < 90: _bi_clr, _bi_lbl = _C_POSITIVE_SFT, "Fair bewertet"
+                elif _bi < 115:_bi_clr, _bi_lbl = _C_NEUTRAL, "Leicht überbewertet"
                 elif _bi < 140:_bi_clr, _bi_lbl = "#ff8f00", "Überbewertet"
-                else:          _bi_clr, _bi_lbl = "#ff5252", "Stark überbewertet"
+                else:          _bi_clr, _bi_lbl = _C_NEGATIVE, "Stark überbewertet"
                 _bi_pct_bar = min(int(_bi / 200 * 100), 100)
                 _bi_vs_hist = "deutlich über dem historischen Schnitt (80–100%)" if _bi > 130 else \
                               "über dem historischen Schnitt (80–100%)" if _bi > 100 else \
@@ -5525,17 +5540,17 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
-                    f'<span style="color:#b0bec5;">Buffett-Indikator'
+                    f'<span style="color:{_C_TEXT_SEC};">Buffett-Indikator'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
                     f'<span class="tt-box">Gesamte US-Marktkapitalisierung (Wilshire 5000) ÷ US-BIP. Buffett nannte ihn 1999/2000 als Warnsignal vor dem Dotcom-Crash. Schwäche: kein Timing-Werkzeug — Märkte können jahrelang "überbewertet" bleiben (1996–2000). Historischer Mittelwert: ~80–100%.</span></span></span>'
                     f'<span style="color:{_bi_clr};font-weight:700;">{_bi:.0f}%</span></div>'
-                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="background:{_C_SURFACE};border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_bi_pct_bar}%;height:5px;border-radius:4px;background:{_bi_clr};"></div></div>'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
                     f'<span>0%</span><span style="color:{_bi_clr};">{_bi_lbl}</span><span>200%</span></div>'
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'&lt;75% = günstig · 75–90% = fair · 90–115% = leicht teuer · &gt;115% = teuer · &gt;140% = Warnsignal</div>'
-                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<div style="font-size:0.62rem;color:{_C_TEXT_MUTED};margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
                     f'<b>Einordnung:</b> Aktuell {_bi:.0f}% — {_bi_vs_hist}. '
                     f'Als Makro-Kontext-Signal geeignet, nicht als Timing-Tool. '
                     f'Treffsicher 1999 &amp; 2007, aber kein zuverlässiger Einstiegszeitpunkt.</div>'
@@ -5546,10 +5561,10 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             with _peg_col:
                 _pe_ref = _sp_trailing_pe or _sp_pe or 0
                 if _sp_peg:
-                    if _sp_peg < 1.5:   _peg_clr, _peg_lbl = "#00e676", "Günstig"
-                    elif _sp_peg < 2.0: _peg_clr, _peg_lbl = "#69f0ae", "Fair"
-                    elif _sp_peg < 3.0: _peg_clr, _peg_lbl = "#ffd600", "Teuer"
-                    else:               _peg_clr, _peg_lbl = "#ff5252", "Sehr teuer"
+                    if _sp_peg < 1.5:   _peg_clr, _peg_lbl = _C_POSITIVE, "Günstig"
+                    elif _sp_peg < 2.0: _peg_clr, _peg_lbl = _C_POSITIVE_SFT, "Fair"
+                    elif _sp_peg < 3.0: _peg_clr, _peg_lbl = _C_NEUTRAL, "Teuer"
+                    else:               _peg_clr, _peg_lbl = _C_NEGATIVE, "Sehr teuer"
                     _peg_bar     = min(int(_sp_peg / 5 * 100), 100)
                     _peg_display = f"PEG {_sp_peg:.2f}x"
                     _eg_str      = f" · EPS-Wachstum {_sp_eg:.1f}%" if _sp_eg else ""
@@ -5557,11 +5572,11 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                     _peg_note    = (f"PEG = KGV ÷ EPS-Wachstum%. PEG {_sp_peg:.2f}x — {_peg_lbl.lower()} vs. hist. Ø ~1,8x."
                                     f"{_eg_str}.{_src_str}")
                 else:
-                    if _pe_ref < 15:   _peg_clr, _peg_lbl = "#00e676", "Günstig"
-                    elif _pe_ref < 18: _peg_clr, _peg_lbl = "#69f0ae", "Fair"
-                    elif _pe_ref < 23: _peg_clr, _peg_lbl = "#ffd600", "Leicht teuer"
+                    if _pe_ref < 15:   _peg_clr, _peg_lbl = _C_POSITIVE, "Günstig"
+                    elif _pe_ref < 18: _peg_clr, _peg_lbl = _C_POSITIVE_SFT, "Fair"
+                    elif _pe_ref < 23: _peg_clr, _peg_lbl = _C_NEUTRAL, "Leicht teuer"
                     elif _pe_ref < 28: _peg_clr, _peg_lbl = "#ff8f00", "Teuer"
-                    else:              _peg_clr, _peg_lbl = "#ff5252", "Sehr teuer"
+                    else:              _peg_clr, _peg_lbl = _C_NEGATIVE, "Sehr teuer"
                     _peg_bar     = min(int((_pe_ref - 10) / 30 * 100), 100)
                     _peg_display = f"KGV {_pe_ref:.1f}x"
                     _peg_note    = (f"Kein EPS-Wachstum verfügbar — Bewertung via KGV. "
@@ -5570,25 +5585,25 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                 # KGV-Zeile: trailing + forward nebeneinander
                 _kgv_sub = ""
                 if _sp_trailing_pe:
-                    _kgv_sub += f'<span style="color:#546e7a;">KGV (trailing) </span><span style="color:#90a4ae;font-weight:600;">{_sp_trailing_pe:.1f}x</span>'
+                    _kgv_sub += f'<span style="color:{_C_TEXT_MUTED};">KGV (trailing) </span><span style="color:{_C_TEXT_MUTED2};font-weight:600;">{_sp_trailing_pe:.1f}x</span>'
                 if _sp_forward_pe:
-                    _kgv_sub += f'&nbsp;&nbsp;<span style="color:#546e7a;">Forward KGV </span><span style="color:#90a4ae;font-weight:600;">{_sp_forward_pe:.1f}x</span>'
+                    _kgv_sub += f'&nbsp;&nbsp;<span style="color:{_C_TEXT_MUTED};">Forward KGV </span><span style="color:{_C_TEXT_MUTED2};font-weight:600;">{_sp_forward_pe:.1f}x</span>'
 
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
-                    f'<span style="color:#b0bec5;">S&amp;P 500 Bewertung'
+                    f'<span style="color:{_C_TEXT_SEC};">S&amp;P 500 Bewertung'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
                     f'<span class="tt-box">PEG = KGV ÷ EPS-Wachstum% (fair hist. ~1,5–2,0x). Quellen: yfinance forward EPS + multpl.com YoY EPS. Ohne PEG-Daten: Fallback auf trailing KGV (hist. S&amp;P-Schnitt ~15–18x).</span></span></span>'
                     f'<span style="color:{_peg_clr};font-weight:700;">{_peg_display}</span></div>'
-                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="background:{_C_SURFACE};border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_peg_bar}%;height:5px;border-radius:4px;background:{_peg_clr};"></div></div>'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
                     f'<span>{"0x" if _sp_peg else "10x"}</span><span style="color:{_peg_clr};">{_peg_lbl}</span><span>{"5x" if _sp_peg else "40x"}</span></div>'
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'{"&lt;1,5x = günstig · 1,5–2,0x = fair · 2–3x = teuer · &gt;3x = sehr teuer · Ø ~1,8x" if _sp_peg else "&lt;15x = günstig · 15–18x = fair · 18–23x = leicht teuer · &gt;28x = sehr teuer"}</div>'
                     + (f'<div style="font-size:0.62rem;margin-top:4px;">{_kgv_sub}</div>' if _kgv_sub else '')
-                    + f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    + f'<div style="font-size:0.62rem;color:{_C_TEXT_MUTED};margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
                     f'<b>Einordnung:</b> {_peg_note}</div>'
                     f'</div>',
                     unsafe_allow_html=True)
@@ -5619,44 +5634,44 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             _scores.append(_norm_score(-_erp, -5, -2, 0, 2))
 
         _mv_score = round(sum(_scores) / len(_scores)) if _scores else 50
-        if _mv_score < 30:    _mv_clr, _mv_lbl = "#00e676", "Unterbewertet"
-        elif _mv_score < 45:  _mv_clr, _mv_lbl = "#69f0ae", "Günstig"
-        elif _mv_score < 57:  _mv_clr, _mv_lbl = "#ffd600", "Fair"
+        if _mv_score < 30:    _mv_clr, _mv_lbl = _C_POSITIVE, "Unterbewertet"
+        elif _mv_score < 45:  _mv_clr, _mv_lbl = _C_POSITIVE_SFT, "Günstig"
+        elif _mv_score < 57:  _mv_clr, _mv_lbl = _C_NEUTRAL, "Fair"
         elif _mv_score < 72:  _mv_clr, _mv_lbl = "#ff8f00", "Überbewertet"
-        else:                 _mv_clr, _mv_lbl = "#ff5252", "Stark überbewertet"
+        else:                 _mv_clr, _mv_lbl = _C_NEGATIVE, "Stark überbewertet"
 
         st.markdown(
             '<div style="margin-top:18px;margin-bottom:6px;font-size:0.82rem;'
-            'font-weight:600;color:#90a4ae;letter-spacing:.04em;">'
+            'font-weight:600;color:{_C_TEXT_MUTED2};letter-spacing:.04em;">'
             '📐 ERWEITERTE BEWERTUNGSMODELLE</div>',
             unsafe_allow_html=True)
 
         _col_a, _col_b, _col_c = st.columns(3)
 
         if _shiller:
-            if _shiller < 15:   _sc_clr, _sc_lbl = "#00e676", "Historisch günstig"
-            elif _shiller < 22: _sc_clr, _sc_lbl = "#69f0ae", "Unter Ø"
-            elif _shiller < 28: _sc_clr, _sc_lbl = "#ffd600", "Leicht erhöht"
+            if _shiller < 15:   _sc_clr, _sc_lbl = _C_POSITIVE, "Historisch günstig"
+            elif _shiller < 22: _sc_clr, _sc_lbl = _C_POSITIVE_SFT, "Unter Ø"
+            elif _shiller < 28: _sc_clr, _sc_lbl = _C_NEUTRAL, "Leicht erhöht"
             elif _shiller < 38: _sc_clr, _sc_lbl = "#ff8f00", "Hoch"
-            else:               _sc_clr, _sc_lbl = "#ff5252", "Extrem hoch"
+            else:               _sc_clr, _sc_lbl = _C_NEGATIVE, "Extrem hoch"
             _sc_bar = min(int((_shiller - 5) / 50 * 100), 100)
             with _col_a:
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
-                    f'<span style="color:#b0bec5;">Shiller CAPE'
+                    f'<span style="color:{_C_TEXT_SEC};">Shiller CAPE'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
                     f'<span class="tt-box">Shiller KGV = S&amp;P 500 Kurs ÷ inflationsbereinigter 10-Jahres-Ø-Gewinn. '
                     f'Campbell &amp; Shiller (1988). Hist. Ø ~17×, Dotcom-Hoch 44×. '
                     f'Starke Prognosekraft für 10–15-j. Realrenditen — kein Timing-Tool.</span></span></span>'
                     f'<span style="color:{_sc_clr};font-weight:700;">{_shiller:.1f}×</span></div>'
-                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="background:{_C_SURFACE};border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_sc_bar}%;height:5px;border-radius:4px;background:{_sc_clr};"></div></div>'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
                     f'<span>5×</span><span style="color:{_sc_clr};">{_sc_lbl}</span><span>55×</span></div>'
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'&lt;15× = günstig · 15–22× = fair · 22–28× = teuer · &gt;38× = Dotcom-Niveau</div>'
-                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<div style="font-size:0.62rem;color:{_C_TEXT_MUTED};margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
                     f'<b>Quelle:</b> multpl.com · Hist. Ø ~17×. '
                     f'Erw. 10-j. Realrendite bei {_shiller:.0f}×: '
                     f'{"1–3%" if _shiller > 35 else "3–5%" if _shiller > 28 else "5–7%" if _shiller > 20 else "7–10%"}.</div>'
@@ -5664,11 +5679,11 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                     unsafe_allow_html=True)
 
         if _erp is not None:
-            if _erp > 4.0:    _erp_clr, _erp_lbl = "#00e676", "Sehr attraktiv"
-            elif _erp > 2.0:  _erp_clr, _erp_lbl = "#69f0ae", "Attraktiv"
-            elif _erp > 0.5:  _erp_clr, _erp_lbl = "#ffd600", "Neutral"
+            if _erp > 4.0:    _erp_clr, _erp_lbl = _C_POSITIVE, "Sehr attraktiv"
+            elif _erp > 2.0:  _erp_clr, _erp_lbl = _C_POSITIVE_SFT, "Attraktiv"
+            elif _erp > 0.5:  _erp_clr, _erp_lbl = _C_NEUTRAL, "Neutral"
             elif _erp > -1.0: _erp_clr, _erp_lbl = "#ff8f00", "Teuer vs. Bonds"
-            else:             _erp_clr, _erp_lbl = "#ff5252", "TINA vorbei"
+            else:             _erp_clr, _erp_lbl = _C_NEGATIVE, "TINA vorbei"
             _erp_bar = min(max(int((_erp + 3) / 9 * 100), 2), 98)
             _fpe_disp = _sp_forward_pe or _sp_trailing_pe or 20
             _t10_disp = macro.get("macro", {}).get("🇺🇸 10J Rendite", {}).get("value", 0)
@@ -5676,47 +5691,47 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
-                    f'<span style="color:#b0bec5;">Equity Risk Premium'
+                    f'<span style="color:{_C_TEXT_SEC};">Equity Risk Premium'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
                     f'<span class="tt-box">ERP = Forward Earnings Yield (1/ForwardKGV×100) − 10J Treasury. '
                     f'Hist. fair ~3–4%. Negatives ERP: Staatsanleihen rentieren besser als Aktien. '
                     f'Einziges Modell das Zinsen direkt einbezieht.</span></span></span>'
                     f'<span style="color:{_erp_clr};font-weight:700;">{_erp:+.2f}%</span></div>'
-                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="background:{_C_SURFACE};border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_erp_bar}%;height:5px;border-radius:4px;background:{_erp_clr};"></div></div>'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
                     f'<span>−3%</span><span style="color:{_erp_clr};">{_erp_lbl}</span><span>+6%</span></div>'
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'&gt;4% = sehr attraktiv · 2–4% = fair · 0–2% = teuer · &lt;0% = Bonds besser</div>'
-                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<div style="font-size:0.62rem;color:{_C_TEXT_MUTED};margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
                     f'<b>Rechnung:</b> EY {100/_fpe_disp:.1f}% − 10J {_t10_disp:.1f}% = ERP {_erp:+.2f}%.</div>'
                     f'</div>',
                     unsafe_allow_html=True)
 
         if _tobins_q:
-            if _tobins_q < 2.0:   _tq_clr, _tq_lbl = "#00e676", "Günstig"
-            elif _tobins_q < 3.0: _tq_clr, _tq_lbl = "#69f0ae", "Fair"
-            elif _tobins_q < 4.5: _tq_clr, _tq_lbl = "#ffd600", "Erhöht"
+            if _tobins_q < 2.0:   _tq_clr, _tq_lbl = _C_POSITIVE, "Günstig"
+            elif _tobins_q < 3.0: _tq_clr, _tq_lbl = _C_POSITIVE_SFT, "Fair"
+            elif _tobins_q < 4.5: _tq_clr, _tq_lbl = _C_NEUTRAL, "Erhöht"
             elif _tobins_q < 6.0: _tq_clr, _tq_lbl = "#ff8f00", "Hoch"
-            else:                 _tq_clr, _tq_lbl = "#ff5252", "Sehr hoch"
+            else:                 _tq_clr, _tq_lbl = _C_NEGATIVE, "Sehr hoch"
             _tq_bar = min(int(_tobins_q / 8 * 100), 100)
             with _col_c:
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
-                    f'<span style="color:#b0bec5;">Tobin\'s Q (Proxy)'
+                    f'<span style="color:{_C_TEXT_SEC};">Tobin\'s Q (Proxy)'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
                     f'<span class="tt-box">Tobin\'s Q = Marktwert ÷ Wiederbeschaffungskosten. '
                     f'Nobel-Ökonom Tobin (1969): Q&gt;1 → Markt überbewertet Realkapital. '
                     f'Proxy: S&amp;P 500 P/B. Hist. Ø ~2,5–3,0×.</span></span></span>'
                     f'<span style="color:{_tq_clr};font-weight:700;">{_tobins_q:.1f}×</span></div>'
-                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="background:{_C_SURFACE};border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_tq_bar}%;height:5px;border-radius:4px;background:{_tq_clr};"></div></div>'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
                     f'<span>1×</span><span style="color:{_tq_clr};">{_tq_lbl}</span><span>8×</span></div>'
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'&lt;2× = günstig · 2–3× = fair · 3–4,5× = erhöht · &gt;6× = extrem</div>'
-                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<div style="font-size:0.62rem;color:{_C_TEXT_MUTED};margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
                     f'<b>Proxy:</b> S&amp;P 500 P/B {_tobins_q:.1f}× (multpl.com). {_tq_lbl}.</div>'
                     f'</div>',
                     unsafe_allow_html=True)
@@ -5724,11 +5739,11 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
         _col_d, _col_e, _col_f = st.columns(3)
 
         if _mcap_gnp:
-            if _mcap_gnp < 75:    _mg_clr, _mg_lbl = "#00e676", "Unterbewertet"
-            elif _mcap_gnp < 90:  _mg_clr, _mg_lbl = "#69f0ae", "Fair"
-            elif _mcap_gnp < 115: _mg_clr, _mg_lbl = "#ffd600", "Leicht teuer"
+            if _mcap_gnp < 75:    _mg_clr, _mg_lbl = _C_POSITIVE, "Unterbewertet"
+            elif _mcap_gnp < 90:  _mg_clr, _mg_lbl = _C_POSITIVE_SFT, "Fair"
+            elif _mcap_gnp < 115: _mg_clr, _mg_lbl = _C_NEUTRAL, "Leicht teuer"
             elif _mcap_gnp < 140: _mg_clr, _mg_lbl = "#ff8f00", "Teuer"
-            else:                 _mg_clr, _mg_lbl = "#ff5252", "Stark überbewertet"
+            else:                 _mg_clr, _mg_lbl = _C_NEGATIVE, "Stark überbewertet"
             _mg_bar = min(int(_mcap_gnp / 200 * 100), 100)
             with _col_d:
                 _bi_str = f'Buffett={str(int(_bi))}% (GDP) · ' if _bi else ""
@@ -5736,19 +5751,19 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
-                    f'<span style="color:#b0bec5;">Marktk. / GNP'
+                    f'<span style="color:{_C_TEXT_SEC};">Marktk. / GNP'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
                     f'<span class="tt-box">Wilshire 5000 ÷ GNP. GNP berücksichtigt Auslandsgewinne — '
                     f'robuster für global tätige S&amp;P-500-Konzerne (~50% int. Umsatz). '
                     f'Buffett-Indikator nutzt GDP. Hist. Ø ~80–100%.</span></span></span>'
                     f'<span style="color:{_mg_clr};font-weight:700;">{_mcap_gnp:.0f}%</span></div>'
-                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="background:{_C_SURFACE};border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_mg_bar}%;height:5px;border-radius:4px;background:{_mg_clr};"></div></div>'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
                     f'<span>0%</span><span style="color:{_mg_clr};">{_mg_lbl}</span><span>200%</span></div>'
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'&lt;75% = günstig · 75–90% = fair · 90–115% = leicht teuer · &gt;140% = Warnsignal</div>'
-                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<div style="font-size:0.62rem;color:{_C_TEXT_MUTED};margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
                     f'<b>vs. Buffett:</b> {_bi_str}GNP={_mcap_gnp:.0f}%. {_diff_str}</div>'
                     f'</div>',
                     unsafe_allow_html=True)
@@ -5756,29 +5771,29 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
         if _margin_adj:
             _ma_base = _sp_trailing_pe or _sp_pe or 0
             _cm = macro.get("corp_margin", 0) or 0
-            if _margin_adj < 15:   _ma_clr, _ma_lbl = "#00e676", "Günstig"
-            elif _margin_adj < 20: _ma_clr, _ma_lbl = "#69f0ae", "Fair"
-            elif _margin_adj < 28: _ma_clr, _ma_lbl = "#ffd600", "Erhöht"
+            if _margin_adj < 15:   _ma_clr, _ma_lbl = _C_POSITIVE, "Günstig"
+            elif _margin_adj < 20: _ma_clr, _ma_lbl = _C_POSITIVE_SFT, "Fair"
+            elif _margin_adj < 28: _ma_clr, _ma_lbl = _C_NEUTRAL, "Erhöht"
             elif _margin_adj < 38: _ma_clr, _ma_lbl = "#ff8f00", "Hoch"
-            else:                  _ma_clr, _ma_lbl = "#ff5252", "Sehr hoch"
+            else:                  _ma_clr, _ma_lbl = _C_NEGATIVE, "Sehr hoch"
             _ma_bar = min(int((_margin_adj - 5) / 50 * 100), 100)
             with _col_e:
                 st.markdown(
                     f'<div class="insight-box" style="padding:10px 14px 8px 14px;">'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
-                    f'<span style="color:#b0bec5;">Margin-adj. KGV'
+                    f'<span style="color:{_C_TEXT_SEC};">Margin-adj. KGV'
                     f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
                     f'<span class="tt-box">Hussman-Stil: Trailing KGV normalisiert für Gewinnmargen. '
                     f'Wenn Margen über hist. Ø (7,5%) liegen, sind Gewinne "aufgebläht". '
                     f'Formel: KGV × (aktuelle Marge / 7,5%).</span></span></span>'
                     f'<span style="color:{_ma_clr};font-weight:700;">{_margin_adj:.1f}×</span></div>'
-                    f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                    f'<div style="background:{_C_SURFACE};border-radius:4px;height:5px;margin-bottom:4px;">'
                     f'<div style="width:{_ma_bar}%;height:5px;border-radius:4px;background:{_ma_clr};"></div></div>'
                     f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
                     f'<span>5×</span><span style="color:{_ma_clr};">{_ma_lbl}</span><span>55×</span></div>'
                     f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                     f'&lt;15× = günstig · 15–20× = fair · 20–28× = erhöht · &gt;38× = extrem</div>'
-                    f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                    f'<div style="font-size:0.62rem;color:{_C_TEXT_MUTED};margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
                     f'<b>Basis:</b> KGV {_ma_base:.1f}× · Marge {_cm:.1f}% (Ø 7,5%) → adj. {_margin_adj:.1f}×. {_ma_lbl}.</div>'
                     f'</div>',
                     unsafe_allow_html=True)
@@ -5787,19 +5802,19 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             st.markdown(
                 f'<div class="insight-box" style="padding:10px 14px 8px 14px;border:1px solid {_mv_clr}30;">'
                 f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:6px;">'
-                f'<span style="color:#b0bec5;">Multivariate Composite'
+                f'<span style="color:{_C_TEXT_SEC};">Multivariate Composite'
                 f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
                 f'<span class="tt-box">Gleichgewichteter Score aller verfügbaren Modelle: '
                 f'Shiller CAPE, Tobin\'s Q, Buffett, MarktK./GNP, Margin-adj. KGV, ERP. '
                 f'50 = fair · &lt;30 = günstig · &gt;70 = überbewertet. Kein Timing-Tool.</span></span></span>'
                 f'<span style="color:{_mv_clr};font-weight:700;">{_mv_lbl}</span></div>'
-                f'<div style="background:#0d1526;border-radius:4px;height:5px;margin-bottom:4px;">'
+                f'<div style="background:{_C_SURFACE};border-radius:4px;height:5px;margin-bottom:4px;">'
                 f'<div style="width:{_mv_score}%;height:5px;border-radius:4px;background:{_mv_clr};"></div></div>'
                 f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
                 f'<span>0</span><span style="color:{_mv_clr};">Score {_mv_score}</span><span>100</span></div>'
                 f'<div style="font-size:0.62rem;color:#37474f;margin-top:4px;">'
                 f'&lt;30 = günstig · 30–45 = leicht günstig · 45–57 = fair · 57–72 = teuer · &gt;72 = sehr teuer</div>'
-                f'<div style="font-size:0.62rem;color:#546e7a;margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
+                f'<div style="font-size:0.62rem;color:{_C_TEXT_MUTED};margin-top:5px;border-top:1px solid #0d2340;padding-top:5px;">'
                 f'<b>Modelle:</b> {len(_scores)} von 6 aktiv. Ø-Signal: {_mv_lbl}.</div>'
                 f'</div>',
                 unsafe_allow_html=True)
@@ -5819,7 +5834,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
         _mods  = _em.get("modules", {})
         _rscore= _reg.get("score", 0)
         _rlbl  = _reg.get("label", "Neutral")
-        _rclr  = _reg.get("color", "#ffd600")
+        _rclr  = _reg.get("color", _C_NEUTRAL)
         _rmod  = _reg.get("modules", {})
 
         # ── Regime-Badge ──────────────────────────────────────────────
@@ -5827,9 +5842,9 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
         st.markdown(
             f'<div class="insight-box" style="padding:12px 16px 10px;">'
             f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
-            f'<span style="color:#b0bec5;font-size:0.82rem;font-weight:600;">🧭 Makro-Regime Score</span>'
+            f'<span style="color:{_C_TEXT_SEC};font-size:0.82rem;font-weight:600;">🧭 Makro-Regime Score</span>'
             f'<span style="color:{_rclr};font-size:1.2rem;font-weight:800;">{_rlbl}</span></div>'
-            f'<div style="background:#0d1526;border-radius:6px;height:8px;margin-bottom:6px;">'
+            f'<div style="background:{_C_SURFACE};border-radius:6px;height:8px;margin-bottom:6px;">'
             f'<div style="width:{_bar_pct}%;height:8px;border-radius:6px;background:linear-gradient(90deg,#ff5252,#ffd600,#00e676);"></div></div>'
             f'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#37474f;">'
             f'<span>Risk-Off</span><span style="color:{_rclr};font-weight:600;">Score: {_rscore:+.2f}</span><span>Risk-On</span></div>'
@@ -5847,10 +5862,10 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
         _mod_cols = st.columns(len(_mod_order))
         for _ci, _mk in enumerate(_mod_order):
             _ms = _rmod.get(_mk, 0)
-            _mc = "#00e676" if _ms > 0.3 else "#ff5252" if _ms < -0.3 else "#ffd600"
+            _mc = _C_POSITIVE if _ms > 0.3 else _C_NEGATIVE if _ms < -0.3 else _C_NEUTRAL
             _mod_cols[_ci].markdown(
                 f'<div class="metric-card" style="text-align:center;padding:8px 4px;">'
-                f'<div style="font-size:0.62rem;color:#546e7a;line-height:1.3;">{_mod_icons.get(_mk,"")}<br>{_mk}</div>'
+                f'<div style="font-size:0.62rem;color:{_C_TEXT_MUTED};line-height:1.3;">{_mod_icons.get(_mk,"")}<br>{_mk}</div>'
                 f'<div style="color:{_mc};font-size:0.9rem;font-weight:700;margin-top:3px;">{_ms:+.1f}</div>'
                 f'</div>', unsafe_allow_html=True)
 
@@ -5874,7 +5889,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             _fig_hm = go.Figure(go.Heatmap(
                 z=_z_clipped, x=_all_names, y=["Z-Score"],
                 text=_text_arr, texttemplate="%{text}",
-                colorscale=[[0,"#ff5252"],[0.5,"#ffd600"],[1,"#00e676"]],
+                colorscale=[[0,_C_NEGATIVE],[0.5,_C_NEUTRAL],[1,_C_POSITIVE]],
                 zmin=-3, zmax=3, showscale=True,
                 colorbar=dict(title="Z-Score", thickness=10, len=0.8,
                               tickvals=[-3,-1.5,0,1.5,3],
@@ -5936,10 +5951,10 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                     _cf = go.Figure()
                     if not _hy.empty:
                         _cf.add_trace(go.Scatter(x=_hy.index, y=_hy.values, name="HY OAS",
-                                                  line=dict(color="#ff5252", width=1.5)))
+                                                  line=dict(color=_C_NEGATIVE, width=1.5)))
                     if not _ig.empty:
                         _cf.add_trace(go.Scatter(x=_ig.index, y=_ig.values, name="IG OAS",
-                                                  line=dict(color="#ffd600", width=1.5), yaxis="y2"))
+                                                  line=dict(color=_C_NEUTRAL, width=1.5), yaxis="y2"))
                     _cf.update_layout(
                         template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(13,21,38,0.8)", height=220,
@@ -5948,9 +5963,9 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                         legend=dict(font=dict(size=8, color="#b0bec5"), bgcolor="rgba(0,0,0,0)"),
                         xaxis=dict(showgrid=False, tickfont=dict(size=8, color="#546e7a")),
                         yaxis=dict(showgrid=True, gridcolor="#1e2d45", ticksuffix="bp",
-                                   tickfont=dict(size=8, color="#ff5252")),
+                                   tickfont=dict(size=8, color=_C_NEGATIVE)),
                         yaxis2=dict(overlaying="y", side="right", ticksuffix="bp",
-                                    tickfont=dict(size=8, color="#ffd600"), showgrid=False),
+                                    tickfont=dict(size=8, color=_C_NEUTRAL), showgrid=False),
                     )
                     st.plotly_chart(_cf, use_container_width=True)
                 st.markdown('<div style="font-size:0.62rem;color:#455a64;">HY-Spread >600bp = erhöhtes Kreditrisiko. IG-Spreads weiten sich typisch vor HY.</div>', unsafe_allow_html=True)
@@ -5959,7 +5974,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             _dc1, _dc2 = st.columns(2)
             with _dc1:
                 _s = _mods.get("Finanzierung", {}).get("Chicago Fed FCI", {}).get("series", pd.Series(dtype=float))
-                _f = _sparkline(_s, "Chicago Fed FCI", "#69f0ae", ref_zero=True)
+                _f = _sparkline(_s, "Chicago Fed FCI", _C_POSITIVE_SFT, ref_zero=True)
                 if _f: st.plotly_chart(_f, use_container_width=True)
                 st.markdown('<div style="font-size:0.62rem;color:#455a64;">Negativ = lockere Finanzierungsbedingungen. Positiv = restriktiv (Druck auf Kredit & Aktien).</div>', unsafe_allow_html=True)
             with _dc2:
@@ -5984,8 +5999,8 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             _fc1, _fc2, _fc3 = st.columns(3)
             for _col, _mk, _ikey, _clr in [
                 (_fc1, "Faktoren", "Growth vs. Value",     "#64b5f6"),
-                (_fc2, "Faktoren", "Small vs. Large Cap",  "#69f0ae"),
-                (_fc3, "Faktoren", "Zyklisch vs. Defensiv","#ffd600"),
+                (_fc2, "Faktoren", "Small vs. Large Cap",  _C_POSITIVE_SFT),
+                (_fc3, "Faktoren", "Zyklisch vs. Defensiv",_C_NEUTRAL),
             ]:
                 _s = _mods.get(_mk, {}).get(_ikey, {}).get("series", pd.Series(dtype=float))
                 if not _s.empty:
@@ -5995,7 +6010,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             st.markdown('<div style="font-size:0.62rem;color:#455a64;">Indexiert auf 100 (Startpunkt = Beginn des 2-Jahres-Fensters). Steigt = erste Komponente outperformt.</div>', unsafe_allow_html=True)
 
         # ── Indikatoren-Detail Tabelle ────────────────────────────────
-        st.markdown("<div style='color:#546e7a;font-size:0.72rem;margin:8px 0 4px 0;'>📋 Alle Indikatoren</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin:8px 0 4px 0;'>📋 Alle Indikatoren</div>", unsafe_allow_html=True)
         _rows = []
         for _mk in _mod_order:
             for _iname, _iv in _mods.get(_mk, {}).items():
@@ -6018,34 +6033,34 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
 
     with _sh_col:
         if macro.get("sectors"):
-            st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>🗺️ Sektor-Performance (MTD)</div>",
+            st.markdown(f"<div style='color:{_C_TEXT_MUTED}; font-size:0.75rem; margin:10px 0 6px 0;'>🗺️ Sektor-Performance (MTD)</div>",
                         unsafe_allow_html=True)
             _secs = macro["sectors"]
             _sorted_secs = sorted(_secs.items(), key=lambda x: x[1], reverse=True)
             _heat_cols = st.columns(len(_sorted_secs))
             for col, (sname, pct) in zip(_heat_cols, _sorted_secs):
                 if pct >= 2:
-                    bg, clr = "rgba(0,230,118,0.15)", "#00e676"
+                    bg, clr = "rgba(0,230,118,0.15)", _C_POSITIVE
                 elif pct >= 0.5:
-                    bg, clr = "rgba(0,230,118,0.07)", "#69f0ae"
+                    bg, clr = "rgba(0,230,118,0.07)", _C_POSITIVE_SFT
                 elif pct >= -0.5:
                     bg, clr = "rgba(100,181,246,0.08)", "#90a4ae"
                 elif pct >= -2:
                     bg, clr = "rgba(255,82,82,0.07)", "#ff8a65"
                 else:
-                    bg, clr = "rgba(255,82,82,0.15)", "#ff5252"
+                    bg, clr = "rgba(255,82,82,0.15)", _C_NEGATIVE
                 arrow = "▲" if pct >= 0 else "▼"
                 col.markdown(f"""
                 <div style="background:{bg}; border:1px solid {clr}33; border-radius:6px;
                              text-align:center; padding:8px 4px;">
-                    <div style="font-size:0.62rem; color:#546e7a; line-height:1.2;">{sname}</div>
+                    <div style="font-size:0.62rem; color:{_C_TEXT_MUTED}; line-height:1.2;">{sname}</div>
                     <div style="color:{clr}; font-size:0.78rem; font-weight:700; margin-top:3px;">
                         {arrow}{abs(pct):.1f}%
                     </div>
                 </div>""", unsafe_allow_html=True)
 
     with _sent_col:
-        st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>😨 Markt-Sentiment</div>",
+        st.markdown(f"<div style='color:{_C_TEXT_MUTED}; font-size:0.75rem; margin:10px 0 6px 0;'>😨 Markt-Sentiment</div>",
                     unsafe_allow_html=True)
         _vix = macro.get("vix")
         _fg  = macro.get("fear_greed", {})
@@ -6053,33 +6068,33 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
         _has_sentiment = bool(_vix or _fg)
 
         if _vix:
-            _vix_clr = "#ff5252" if _vix > 25 else "#ffd600" if _vix > 18 else "#00e676"
+            _vix_clr = _C_NEGATIVE if _vix > 25 else _C_NEUTRAL if _vix > 18 else _C_POSITIVE
             _vix_lbl = "Hohe Volatilität" if _vix > 25 else "Moderat" if _vix > 18 else "Ruhig"
             _vix_pct = min(int(_vix / 50 * 100), 100)
             st.markdown(
                 f'<div class="insight-box" style="padding:10px 14px 6px 14px; margin-bottom:6px;">'
                 f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">'
-                f'<span style="color:#b0bec5;">VIX<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                f'<span style="color:{_C_TEXT_SEC};">VIX<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
                 f'<span class="tt-box">CBOE Volatilitätsindex. Misst erwartete S&P-500-Schwankungen (30 Tage). Unter 15 = ruhig · 15–25 = moderat · über 25 = Angst/Unsicherheit.</span></span></span>'
                 f'<span style="color:{_vix_clr};font-weight:700;">{_vix}</span></div>'
-                f'<div style="background:#0d1526;border-radius:4px;height:5px;">'
+                f'<div style="background:{_C_SURFACE};border-radius:4px;height:5px;">'
                 f'<div style="width:{_vix_pct}%;height:5px;border-radius:4px;background:{_vix_clr};"></div></div>'
-                f'<div style="font-size:0.68rem;color:#546e7a;margin-top:2px;">{_vix_lbl}</div>'
+                f'<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:2px;">{_vix_lbl}</div>'
                 f'</div>',
                 unsafe_allow_html=True)
 
         if _fg:
             _fs = _fg["score"]
             _fr = _fg.get("rating", "").replace("_", " ").title()
-            _fg_clr = "#ff5252" if _fs < 25 else "#ffd600" if _fs < 45 else \
-                      "#90a4ae" if _fs < 55 else "#ffd600" if _fs < 75 else "#00e676"
+            _fg_clr = _C_NEGATIVE if _fs < 25 else _C_NEUTRAL if _fs < 45 else \
+                      "#90a4ae" if _fs < 55 else _C_NEUTRAL if _fs < 75 else _C_POSITIVE
             st.markdown(
                 f'<div class="insight-box" style="padding:10px 14px 6px 14px; margin-bottom:6px;">'
                 f'<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">'
-                f'<span style="color:#b0bec5;">Sentiment-Score<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                f'<span style="color:{_C_TEXT_SEC};">Sentiment-Score<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
                 f'<span class="tt-box">Eigene Berechnung aus: VIX-Level (40%) + SPY 30-Tage-Momentum (35%) + SPY über 200-Tage-MA (25%). Kein CNN-Datenfeed.</span></span></span>'
                 f'<span style="color:{_fg_clr};font-weight:700;">{_fs} — {_fr}</span></div>'
-                f'<div style="background:#0d1526;border-radius:4px;height:5px;">'
+                f'<div style="background:{_C_SURFACE};border-radius:4px;height:5px;">'
                 f'<div style="width:{_fs}%;height:5px;border-radius:4px;background:{_fg_clr};"></div></div>'
                 f'</div>',
                 unsafe_allow_html=True)
@@ -6099,7 +6114,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             <span style='font-size:1.6rem;'>🌍</span>
             <div>
                 <div style='font-size:1.1rem;font-weight:700;color:#e3f2fd;'>Makroökonomische Lageanalyse</div>
-                <div style='color:#546e7a;font-size:0.77rem;margin-top:2px;'>
+                <div style='color:{_C_TEXT_MUTED};font-size:0.77rem;margin-top:2px;'>
                     Konjunkturzyklus · Zyklische Branchen · Unternehmensgewinne · Zinsumfeld · Anlageempfehlungen
                 </div>
             </div>
@@ -6291,13 +6306,13 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
 
     if headlines:
         for h in headlines:
-            src = f"<span style='color:#546e7a; font-size:0.72rem; margin-left:8px;'>{h['source']}</span>" if h['source'] else ""
+            src = f"<span style='color:{_C_TEXT_MUTED}; font-size:0.72rem; margin-left:8px;'>{h['source']}</span>" if h['source'] else ""
             st.markdown(f"""
             <div class="metric-card" style="padding:14px 18px;">
-                <div style="color:#eceff1; font-size:0.92rem; line-height:1.4;">📌 {h['title']}{src}</div>
+                <div style="color:{_C_TEXT_PRIMARY}; font-size:0.92rem; line-height:1.4;">📌 {h['title']}{src}</div>
             </div>""", unsafe_allow_html=True)
     else:
-        st.markdown('<div class="metric-card" style="color:#546e7a; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="metric-card" style="color:{_C_TEXT_MUTED}; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
 
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     st.stop()
@@ -6327,11 +6342,11 @@ elif st.session_state.get("show_stocks"):
 
         def _trend_bar(pos, accent):
             pos = max(0, min(100, pos or 50))
-            bar_clr = accent if pos > 62 else "#ffd600" if pos > 35 else "#ff5252"
+            bar_clr = accent if pos > 62 else _C_NEUTRAL if pos > 35 else _C_NEGATIVE
             return (f"<div style='margin-top:7px;'>"
                     f"<div style='display:flex;justify-content:space-between;"
                     f"font-size:0.63rem;color:#37474f;margin-bottom:2px;'>"
-                    f"<span>52W-Tief</span><span style='color:#546e7a;'>{pos:.0f}%</span>"
+                    f"<span>52W-Tief</span><span style='color:{_C_TEXT_MUTED};'>{pos:.0f}%</span>"
                     f"<span>52W-Hoch</span></div>"
                     f"<div style='background:#1e2d45;border-radius:4px;height:4px;'>"
                     f"<div style='background:{bar_clr};width:{pos}%;height:4px;"
@@ -6346,10 +6361,10 @@ elif st.session_state.get("show_stocks"):
               <div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>
                 <span style='color:{accent};font-size:1.02rem;font-weight:800;
                       letter-spacing:0.5px;'>{s["ticker"]}</span>
-                <span style='color:#b0bec5;font-size:0.82rem;font-weight:600;'>{price_str}</span>
+                <span style='color:{_C_TEXT_SEC};font-size:0.82rem;font-weight:600;'>{price_str}</span>
               </div>
-              <div style='color:#546e7a;font-size:0.72rem;margin-bottom:5px;'>{s["name"]}</div>
-              <div style='color:#90a4ae;font-size:0.78rem;line-height:1.45;margin-bottom:8px;'>{s["desc"]}</div>
+              <div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-bottom:5px;'>{s["name"]}</div>
+              <div style='color:{_C_TEXT_MUTED2};font-size:0.78rem;line-height:1.45;margin-bottom:8px;'>{s["desc"]}</div>
               <div style='line-height:2;'>{badges_html}</div>
               {extra_html}
               {_trend_bar(s["w52_pos"], accent)}
@@ -6366,8 +6381,8 @@ elif st.session_state.get("show_stocks"):
                 "🚀 Growth &amp; Momentum</div>",
                 unsafe_allow_html=True)
             for s in _gp:
-                b = (_badge("Rev▲", s["rev_growth"], "%", ".0f", "#00e676") +
-                     _badge("EPS▲", s["eps_growth"], "%", ".0f", "#69f0ae") +
+                b = (_badge("Rev▲", s["rev_growth"], "%", ".0f", _C_POSITIVE) +
+                     _badge("EPS▲", s["eps_growth"], "%", ".0f", _C_POSITIVE_SFT) +
                      _badge("FCF", s["fcf_yield"], "%", ".1f", "#40c4ff"))
                 st.markdown(_pick_card(s, "#00e5ff", b), unsafe_allow_html=True)
 
@@ -6423,12 +6438,12 @@ elif st.session_state.get("show_stocks"):
                 if s["warn_flags"]:
                     warn_html = (f"<div style='color:#ff5252;font-size:0.68rem;"
                                  f"margin-bottom:4px;'>🚨 {' · '.join(s['warn_flags'])}</div>")
-                b = (_badge("KUV", s["ps_ratio"], "x", ".1f", "#ff5252") +
+                b = (_badge("KUV", s["ps_ratio"], "x", ".1f", _C_NEGATIVE) +
                      _badge("KGV", s["pe_ratio"] if s["pe_ratio"] and s["pe_ratio"] < 999 else None, "x", ".0f", "#ff7043") +
-                     _badge("Short", s["short_float"] if s["short_float"] > 2 else None, "%", ".0f", "#ffd600"))
+                     _badge("Short", s["short_float"] if s["short_float"] > 2 else None, "%", ".0f", _C_NEUTRAL))
                 if s["analyst_up"] is not None and s["analyst_up"] < 0:
                     b += _badge("Upside", s["analyst_up"], "%", ".0f", "#ef9a9a")
-                st.markdown(_pick_card(s, "#ff5252", b, warn_html), unsafe_allow_html=True)
+                st.markdown(_pick_card(s, _C_NEGATIVE, b, warn_html), unsafe_allow_html=True)
 
         st.markdown(
             "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
@@ -6444,27 +6459,27 @@ elif st.session_state.get("show_stocks"):
             st.info("Aktuell keine Aktien mit Score ≥ 65 gefunden, die ≥ 8 % unter Fair Value handeln.")
         else:
             st.markdown(
-                "<div style='color:#546e7a;font-size:0.75rem;margin-bottom:8px;'>"
+                "<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-bottom:8px;'>"
                 f"<b>{len(_sc_picks)} Treffer</b> · Score ≥ 65 · Kurs ≥ 8 % unter geschätztem Fair Value · "
                 "Sortiert nach Score × Discount</div>",
                 unsafe_allow_html=True)
             for _sp in _sc_picks:
                 _sp_cur  = _sp["currency"]
                 _sp_disc = _sp["discount"]
-                _sp_disc_clr = "#00e676" if _sp_disc >= 15 else "#ffd600" if _sp_disc >= 10 else "#90a4ae"
-                _sp_score_clr = "#00e676" if _sp["score"] >= 80 else "#ffd600" if _sp["score"] >= 70 else "#90a4ae"
+                _sp_disc_clr = _C_POSITIVE if _sp_disc >= 15 else _C_NEUTRAL if _sp_disc >= 10 else "#90a4ae"
+                _sp_score_clr = _C_POSITIVE if _sp["score"] >= 80 else _C_NEUTRAL if _sp["score"] >= 70 else "#90a4ae"
                 st.markdown(f"""
                 <div class="metric-card" style="padding:10px 14px;margin-bottom:8px;">
                   <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
-                    <span style="color:#eceff1;font-size:0.95rem;font-weight:700;">{_sp['ticker']}</span>
+                    <span style="color:{_C_TEXT_PRIMARY};font-size:0.95rem;font-weight:700;">{_sp['ticker']}</span>
                     <span style="color:{_sp_score_clr};font-size:0.82rem;font-weight:700;">Score {_sp['score']}</span>
                   </div>
                   <div style="display:flex;align-items:baseline;justify-content:space-between;">
-                    <span style="color:#546e7a;font-size:0.72rem;">{_sp.get('sector','')}</span>
+                    <span style="color:{_C_TEXT_MUTED};font-size:0.72rem;">{_sp.get('sector','')}</span>
                     <span style="font-size:0.78rem;white-space:nowrap;">
-                      <span style="color:#b0bec5;">{_sp['price']:.2f} {_sp_cur}</span>
-                      <span style="color:#546e7a;margin:0 4px;">→ FV</span>
-                      <span style="color:#64b5f6;">{_sp['fv']:.2f}</span>
+                      <span style="color:{_C_TEXT_SEC};">{_sp['price']:.2f} {_sp_cur}</span>
+                      <span style="color:{_C_TEXT_MUTED};margin:0 4px;">→ FV</span>
+                      <span style="color:{_C_ACCENT};">{_sp['fv']:.2f}</span>
                       <span style="color:{_sp_disc_clr};font-weight:700;margin-left:6px;">-{_sp_disc:.1f}%</span>
                     </span>
                   </div>
@@ -6613,9 +6628,9 @@ elif st.session_state.get("show_stocks"):
                             f"padding:10px 13px;margin-bottom:8px;'>"
                             f"<div style='display:flex;justify-content:space-between;"
                             f"align-items:baseline;margin-bottom:2px;'>"
-                            f"<span style='color:#64b5f6;font-size:0.95rem;font-weight:800;"
+                            f"<span style='color:{_C_ACCENT};font-size:0.95rem;font-weight:800;"
                             f"letter-spacing:0.4px;'>{_tk}</span>"
-                            f"<span style='color:#546e7a;font-size:0.7rem;'>{_nm}</span>"
+                            f"<span style='color:{_C_TEXT_MUTED};font-size:0.7rem;'>{_nm}</span>"
                             f"</div>"
                             f"<div style='color:#78909c;font-size:0.73rem;line-height:1.4;'>{_ds}</div>"
                             f"</div>",
@@ -6632,25 +6647,25 @@ elif st.session_state.get("show_stocks"):
             _qtp = load_quality_highscore()
         if _qtp:
             st.markdown(
-                f"<div style='font-size:0.78rem;color:#90a4ae;margin-bottom:10px;'>"
+                f"<div style='font-size:0.78rem;color:{_C_TEXT_MUTED2};margin-bottom:10px;'>"
                 f"{len(_qtp)} Aktien mit Score ≥ 70 — sortiert nach Quality-Score</div>",
                 unsafe_allow_html=True)
             for _q in _qtp:
-                _sc_clr = "#00e676" if _q["score"] >= 90 else "#69f0ae" if _q["score"] >= 85 else "#ffd600" if _q["score"] >= 80 else "#ffa726"
+                _sc_clr = _C_POSITIVE if _q["score"] >= 90 else _C_POSITIVE_SFT if _q["score"] >= 85 else _C_NEUTRAL if _q["score"] >= 80 else "#ffa726"
                 st.markdown(
                     f'<div class="metric-card" style="padding:10px 14px;margin-bottom:6px;cursor:pointer;">'
                     f'<div style="display:flex;align-items:center;justify-content:space-between;">'
                     f'<div>'
-                    f'<span style="font-weight:700;color:#eceff1;">{_q["ticker"]}</span>'
-                    f'<span style="color:#546e7a;font-size:0.78rem;margin-left:8px;">{_q["name"]}</span>'
+                    f'<span style="font-weight:700;color:{_C_TEXT_PRIMARY};">{_q["ticker"]}</span>'
+                    f'<span style="color:{_C_TEXT_MUTED};font-size:0.78rem;margin-left:8px;">{_q["name"]}</span>'
                     f'</div>'
                     f'<span style="color:{_sc_clr};font-weight:700;font-size:1.0rem;">Score {_q["score"]}</span>'
                     f'</div>'
                     f'<div style="margin-top:5px;font-size:0.72rem;">'
-                    f'<span style="color:#546e7a;">Rev-Wachstum </span><span style="color:#90a4ae;">{_q["rev_growth"]:+.1f}%</span>'
-                    f'&nbsp;&nbsp;<span style="color:#546e7a;">Brutto-Marge </span><span style="color:#90a4ae;">{_q["gross_margin"]:.1f}%</span>'
-                    f'&nbsp;&nbsp;<span style="color:#546e7a;">FCF Yield </span><span style="color:#90a4ae;">{_q["fcf_yield"]:.1f}%</span>'
-                    f'&nbsp;&nbsp;<span style="color:#546e7a;">ROE </span><span style="color:#90a4ae;">{_q["roe"]:.1f}%</span>'
+                    f'<span style="color:{_C_TEXT_MUTED};">Rev-Wachstum </span><span style="color:{_C_TEXT_MUTED2};">{_q["rev_growth"]:+.1f}%</span>'
+                    f'&nbsp;&nbsp;<span style="color:{_C_TEXT_MUTED};">Brutto-Marge </span><span style="color:{_C_TEXT_MUTED2};">{_q["gross_margin"]:.1f}%</span>'
+                    f'&nbsp;&nbsp;<span style="color:{_C_TEXT_MUTED};">FCF Yield </span><span style="color:{_C_TEXT_MUTED2};">{_q["fcf_yield"]:.1f}%</span>'
+                    f'&nbsp;&nbsp;<span style="color:{_C_TEXT_MUTED};">ROE </span><span style="color:{_C_TEXT_MUTED2};">{_q["roe"]:.1f}%</span>'
                     f'</div></div>',
                     unsafe_allow_html=True)
                 if st.button(f"Analysieren → {_q['ticker']}", key=f"qtp_{_q['ticker']}", use_container_width=False):
@@ -6665,27 +6680,27 @@ elif st.session_state.get("show_stocks"):
             _dtp = load_daytrading_picks()
         if _dtp:
             st.markdown(
-                "<div style='font-size:0.78rem;color:#90a4ae;margin-bottom:10px;'>"
+                "<div style='font-size:0.78rem;color:{_C_TEXT_MUTED2};margin-bottom:10px;'>"
                 "Sortiert nach ATR% × 0,6 + Rel. Volumen × 0,4 — hohe Beweglichkeit priorisiert</div>",
                 unsafe_allow_html=True)
             for _d in _dtp:
                 _typ_clr = "#ff8f00" if _d["typ"] == "Leveraged ETF" else "#64b5f6" if _d["typ"] == "ETF" else "#a5d6a7"
-                _vol_clr = "#00e676" if _d["rel_vol"] > 1.5 else "#ffd600" if _d["rel_vol"] > 0.8 else "#ff5252"
+                _vol_clr = _C_POSITIVE if _d["rel_vol"] > 1.5 else _C_NEUTRAL if _d["rel_vol"] > 0.8 else _C_NEGATIVE
                 st.markdown(
                     f'<div class="metric-card" style="padding:10px 14px;margin-bottom:6px;">'
                     f'<div style="display:flex;align-items:center;justify-content:space-between;">'
                     f'<div>'
-                    f'<span style="font-weight:700;color:#eceff1;">{_d["ticker"]}</span>'
-                    f'<span style="color:#546e7a;font-size:0.76rem;margin-left:8px;">{_d["name"]}</span>'
+                    f'<span style="font-weight:700;color:{_C_TEXT_PRIMARY};">{_d["ticker"]}</span>'
+                    f'<span style="color:{_C_TEXT_MUTED};font-size:0.76rem;margin-left:8px;">{_d["name"]}</span>'
                     f'<span style="background:rgba(0,0,0,0.3);color:{_typ_clr};border-radius:3px;'
                     f'padding:1px 5px;font-size:0.65rem;margin-left:6px;">{_d["typ"]}</span>'
                     f'</div>'
-                    f'<span style="color:#90a4ae;font-weight:600;">${_d["price"]:.2f}</span>'
+                    f'<span style="color:{_C_TEXT_MUTED2};font-weight:600;">${_d["price"]:.2f}</span>'
                     f'</div>'
                     f'<div style="margin-top:5px;font-size:0.72rem;">'
-                    f'<span style="color:#546e7a;">ATR% </span><span style="color:#ff8f00;font-weight:600;">{_d["atr_pct"]:.1f}%</span>'
-                    f'&nbsp;&nbsp;<span style="color:#546e7a;">Rel. Vol </span><span style="color:{_vol_clr};font-weight:600;">{_d["rel_vol"]:.2f}×</span>'
-                    f'&nbsp;&nbsp;<span style="color:#546e7a;">Score </span><span style="color:#90a4ae;">{_d["score"]:.1f}</span>'
+                    f'<span style="color:{_C_TEXT_MUTED};">ATR% </span><span style="color:#ff8f00;font-weight:600;">{_d["atr_pct"]:.1f}%</span>'
+                    f'&nbsp;&nbsp;<span style="color:{_C_TEXT_MUTED};">Rel. Vol </span><span style="color:{_vol_clr};font-weight:600;">{_d["rel_vol"]:.2f}×</span>'
+                    f'&nbsp;&nbsp;<span style="color:{_C_TEXT_MUTED};">Score </span><span style="color:{_C_TEXT_MUTED2};">{_d["score"]:.1f}</span>'
                     f'</div></div>',
                     unsafe_allow_html=True)
                 if st.button(f"Chart → {_d['ticker']}", key=f"dtp_{_d['ticker']}", use_container_width=False):
@@ -6704,7 +6719,7 @@ elif st.session_state.get("show_stocks"):
             <span style='font-size:1.8rem;'>🤖</span>
             <div>
                 <div style='font-size:1.15rem;font-weight:700;color:#e3f2fd;'>KI-Investmentstrategie</div>
-                <div style='color:#546e7a;font-size:0.78rem;margin-top:2px;'>
+                <div style='color:{_C_TEXT_MUTED};font-size:0.78rem;margin-top:2px;'>
                     Als professioneller Langfristinvestor — Burggraben · Wachstum · Bewertung · Zukunft
                 </div>
             </div>
@@ -6828,7 +6843,7 @@ if st.session_state.get("show_portfolio"):
         st.markdown("""
         <div style="text-align:center; padding:48px 0 24px 0;">
             <div style="font-size:2rem; font-weight:800; color:#fff;">🔒 Portfolio</div>
-            <div style="color:#64b5f6; font-size:0.95rem; margin-top:8px;">
+            <div style="color:{_C_ACCENT}; font-size:0.95rem; margin-top:8px;">
                 Bitte Passwort eingeben
             </div>
         </div>
@@ -6849,7 +6864,7 @@ if st.session_state.get("show_portfolio"):
     st.markdown("""
     <div style="text-align:center; padding:32px 0 20px 0;">
         <div style="font-size:2.4rem; font-weight:800; color:#fff;">📁 Mein Portfolio</div>
-        <div style="color:#64b5f6; font-size:1rem; margin-top:8px;">
+        <div style="color:{_C_ACCENT}; font-size:1rem; margin-top:8px;">
             Finanzen.net Zero Orderhistorie hochladen → alle Positionen werden automatisch berechnet
         </div>
     </div>
@@ -6880,8 +6895,8 @@ if st.session_state.get("show_portfolio"):
     _sb_date_disp = st.session_state.get("portfolio_sb_date")
     if _sb_date_disp:
         st.markdown(
-            f"<div style='background:#0d1f35;border:1px solid #1a3a55;border-radius:6px;"
-            f"padding:6px 14px;font-size:0.82rem;color:#64b5f6;margin-bottom:8px;display:inline-block;'>"
+            f"<div style='background:{_C_CARD_BG};border:1px solid #1a3a55;border-radius:6px;"
+            f"padding:6px 14px;font-size:0.82rem;color:{_C_ACCENT};margin-bottom:8px;display:inline-block;'>"
             f"✓ Gespeichertes Portfolio (Stand: {_sb_date_disp})</div>",
             unsafe_allow_html=True)
 
@@ -7160,7 +7175,7 @@ if st.session_state.get("show_portfolio"):
         _isin_to_name = {r['ISIN']: r['name'] for _, r in df_port.iterrows()}
 
         _pnl_str  = f"{pnl_eur:+,.0f} ({pnl_pct:+.1f}%)" if pnl_eur is not None else "—"
-        _pnl_col  = "#00e676" if (pnl_eur or 0) >= 0 else "#ff5252"
+        _pnl_col  = _C_POSITIVE if (pnl_eur or 0) >= 0 else _C_NEGATIVE
         _cur_str  = f"€ {current_total:,.0f}" if current_total else "—"
         if _unpriced > 0:
             _unpriced_names = ', '.join(_isin_to_name.get(i, i)[:22] for i in _unpriced_isins[:4])
@@ -7172,25 +7187,25 @@ if st.session_state.get("show_portfolio"):
             _unpriced_note = ""
         st.markdown(f"""
         <div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:6px;'>
-          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
+          <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
             <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Positionen</div>
-            <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>{len(df_port)}</div>
-            <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>Aktien · ETFs · Krypto</div>
+            <div style='color:{_C_TEXT_PRIMARY};font-size:1.25rem;font-weight:700;margin-top:2px;'>{len(df_port)}</div>
+            <div style='color:{_C_TEXT_MUTED};font-size:0.62rem;margin-top:2px;'>Aktien · ETFs · Krypto</div>
           </div>
-          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
+          <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
             <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Einstandswert</div>
-            <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>€ {total_invested:,.0f}</div>
-            <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>Buchwert offener Positionen</div>
+            <div style='color:{_C_TEXT_PRIMARY};font-size:1.25rem;font-weight:700;margin-top:2px;'>€ {total_invested:,.0f}</div>
+            <div style='color:{_C_TEXT_MUTED};font-size:0.62rem;margin-top:2px;'>Buchwert offener Positionen</div>
           </div>
-          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
+          <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
             <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Aktueller Wert</div>
-            <div style='color:#eceff1;font-size:1.25rem;font-weight:700;margin-top:2px;'>{_cur_str}</div>
+            <div style='color:{_C_TEXT_PRIMARY};font-size:1.25rem;font-weight:700;margin-top:2px;'>{_cur_str}</div>
             {_unpriced_note}
           </div>
-          <div style='background:#0d1f35;border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
+          <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid #1a2740;min-width:0;'>
             <div style='color:#78909c;font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>P&L unreal.</div>
             <div style='color:{_pnl_col};font-size:1.05rem;font-weight:700;margin-top:2px;'>{_pnl_str}</div>
-            <div style='color:#546e7a;font-size:0.62rem;margin-top:2px;'>offene Positionen</div>
+            <div style='color:{_C_TEXT_MUTED};font-size:0.62rem;margin-top:2px;'>offene Positionen</div>
           </div>
         </div>
         """, unsafe_allow_html=True)
@@ -7406,9 +7421,9 @@ if st.session_state.get("show_portfolio"):
             # ── Aktien & ETFs ────────────────────────────────────────────
             if not stocks_etf.empty:
                 st.markdown("<div class='section-header'>📈 Aktien & ETFs</div>", unsafe_allow_html=True)
-                _RBADGE = {'strongbuy':('Strong Buy','#00e676'),'buy':('Kaufen','#00e676'),
-                              'hold':('Halten','#ffd600'),'sell':('Verkaufen','#ff5252'),
-                              'strongsell':('Strong Sell','#ff5252')}
+                _RBADGE = {'strongbuy':('Strong Buy',_C_POSITIVE),'buy':('Kaufen',_C_POSITIVE),
+                              'hold':('Halten',_C_NEUTRAL),'sell':('Verkaufen',_C_NEGATIVE),
+                              'strongsell':('Strong Sell',_C_NEGATIVE)}
                 for _, row in stocks_etf.iterrows():
                     tkr       = isin_map.get(row['ISIN'])
                     cur_price = prices.get(row['ISIN'])
@@ -7426,30 +7441,30 @@ if st.session_state.get("show_portfolio"):
                         _tgt_h = ''
                         if _tgt and cur_price and _qx.get('fx'):
                             _up = (_tgt * _qx['fx'] / cur_price - 1) * 100
-                            _uc = '#00e676' if _up >= 0 else '#ff5252'
+                            _uc = _C_POSITIVE if _up >= 0 else _C_NEGATIVE
                             _tgt_h = f"<span style='color:{_uc};font-size:0.62rem;margin-left:4px;'>KZ {_up:+.0f}%</span>"
                         _spark_h = (f"<div style='margin-top:3px;line-height:0;'>{_sparklines[tkr]}</div>"
                                     if tkr and tkr in _sparklines else '')
                         st.markdown(
-                            f"<div style='color:#eceff1;font-weight:600;font-size:0.93rem;'>{row['name'][:36]}{_badge_h}{_tgt_h}</div>"
-                            f"<div style='color:#546e7a;font-size:0.72rem;'>{row['ISIN']} · {row['wkn']}"
+                            f"<div style='color:{_C_TEXT_PRIMARY};font-weight:600;font-size:0.93rem;'>{row['name'][:36]}{_badge_h}{_tgt_h}</div>"
+                            f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;'>{row['ISIN']} · {row['wkn']}"
                             f"{' · '+tkr if tkr else ''}</div>{_spark_h}",
                             unsafe_allow_html=True)
                     with c2:
                         st.markdown(
                             f"<div style='color:#78909c;font-size:0.72rem;'>Anteile</div>"
-                            f"<div style='color:#eceff1;font-size:0.88rem;font-weight:600;'>{row['shares']:.4f}</div>",
+                            f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.88rem;font-weight:600;'>{row['shares']:.4f}</div>",
                             unsafe_allow_html=True)
                     with c3:
                         st.markdown(
                             f"<div style='color:#78909c;font-size:0.72rem;'>Ø Kurs</div>"
-                            f"<div style='color:#eceff1;font-size:0.88rem;font-weight:600;'>€ {row['avg_cost']:.2f}</div>",
+                            f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.88rem;font-weight:600;'>€ {row['avg_cost']:.2f}</div>",
                             unsafe_allow_html=True)
                     with c4:
                         if cur_price:
-                            _clr = '#00e676' if pnl_pos and pnl_pos >= 0 else '#ff5252'
+                            _clr = _C_POSITIVE if pnl_pos and pnl_pos >= 0 else _C_NEGATIVE
                             _dc  = _qx.get('day_chg_pct')
-                            _dc_h = (f"<span style='color:{'#00e676' if _dc>=0 else '#ff5252'};"
+                            _dc_h = (f"<span style='color:{_C_POSITIVE if _dc>=0 else _C_NEGATIVE};"
                                      f"font-size:0.68rem;'> {_dc:+.2f}%</span>") if _dc is not None else ''
                             _yh, _yl = _qx.get('year_high_eur'), _qx.get('year_low_eur')
                             _52h = ''
@@ -7466,12 +7481,12 @@ if st.session_state.get("show_portfolio"):
                                         f"</div></div></div>")
                             st.markdown(
                                 f"<div style='color:#78909c;font-size:0.72rem;'>Kurs · Heute · P&L</div>"
-                                f"<div style='color:#eceff1;font-size:0.88rem;font-weight:600;'>{'€ ' + (f'{cur_price:.4f}' if cur_price < 1 else f'{cur_price:,.2f}')}{_dc_h}</div>"
+                                f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.88rem;font-weight:600;'>{'€ ' + (f'{cur_price:.4f}' if cur_price < 1 else f'{cur_price:,.2f}')}{_dc_h}</div>"
                                 f"<div style='color:{_clr};font-size:0.8rem;font-weight:600;'>"
                                 f"{pnl_pos:+.1f}% (€ {cur_val - row['cost_basis']:+,.0f})</div>{_52h}",
                                 unsafe_allow_html=True)
                         else:
-                            st.markdown("<div style='color:#546e7a;font-size:0.8rem;margin-top:14px;'>kein Kurs</div>",
+                            st.markdown(f"<div style='color:{_C_TEXT_MUTED};font-size:0.8rem;margin-top:14px;'>kein Kurs</div>",
                                         unsafe_allow_html=True)
                     with c5:
                         if tkr:
@@ -7502,7 +7517,7 @@ if st.session_state.get("show_portfolio"):
                             st.markdown(
                                 f"<div style='display:flex;justify-content:space-between;padding:4px 2px;"
                                 f"border-bottom:1px solid #1a2740;'>"
-                                f"<span style='color:#eceff1;font-size:0.82rem;'>{_di['name']}</span>"
+                                f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;'>{_di['name']}</span>"
                                 f"<span style='color:#ffd600;font-size:0.82rem;font-weight:600;'>"
                                 f"€ {_di['eur']:,.0f}/Jahr{_ys}</span></div>",
                                 unsafe_allow_html=True)
@@ -7519,17 +7534,17 @@ if st.session_state.get("show_portfolio"):
                     _cpnl_pct = (_cpnl / row['cost_basis'] * 100) if (_cpnl is not None and row['cost_basis'] > 0) else None
                     _cv_str = f"€ {_cv:,.2f}" if _cv else "—"
                     _cpnl_str = f"{_cpnl:+,.2f} ({_cpnl_pct:+.1f}%)" if _cpnl is not None else "—"
-                    _cpnl_col = "#00e676" if (_cpnl or 0) >= 0 else "#ff5252"
+                    _cpnl_col = _C_POSITIVE if (_cpnl or 0) >= 0 else _C_NEGATIVE
                     _price_str = f"€ {_cp:,.4f}" if _cp else "kein Kurs"
                     st.markdown(
-                        f"<div style='background:#0d1f35;border-radius:8px;padding:10px 14px;"
+                        f"<div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 14px;"
                         f"border:1px solid #1a2740;margin-bottom:6px;display:flex;"
                         f"justify-content:space-between;align-items:center;'>"
-                        f"<div><div style='color:#eceff1;font-size:0.9rem;font-weight:600;'>₿ {row['name']}</div>"
-                        f"<div style='color:#546e7a;font-size:0.7rem;margin-top:2px;'>"
+                        f"<div><div style='color:{_C_TEXT_PRIMARY};font-size:0.9rem;font-weight:600;'>₿ {row['name']}</div>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.7rem;margin-top:2px;'>"
                         f"{row['ISIN']} · {row['shares']:.6f} Stk. · Ø {row['avg_cost']:.4f} · Kurs: {_price_str}</div></div>"
                         f"<div style='text-align:right;'>"
-                        f"<div style='color:#eceff1;font-size:0.95rem;font-weight:700;'>{_cv_str}</div>"
+                        f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.95rem;font-weight:700;'>{_cv_str}</div>"
                         f"<div style='color:{_cpnl_col};font-size:0.75rem;'>{_cpnl_str}</div>"
                         f"</div></div>",
                         unsafe_allow_html=True)
@@ -7688,7 +7703,7 @@ if st.session_state.get("show_portfolio"):
                 ]:
                     with _col_st:
                         st.markdown(
-                            f"<div style='text-align:center;color:#90a4ae;font-size:0.8rem;"
+                            f"<div style='text-align:center;color:{_C_TEXT_MUTED2};font-size:0.8rem;"
                             f"font-weight:600;letter-spacing:.08em;text-transform:uppercase;"
                             f"margin-bottom:4px;'>{_title}</div>", unsafe_allow_html=True)
                         _fig_d, _grp_d = _mk_donut(_grp_col, _cmap, _title)
@@ -7700,9 +7715,9 @@ if st.session_state.get("show_portfolio"):
                                 f"<div style='display:flex;justify-content:space-between;"
                                 f"align-items:center;padding:4px 2px;"
                                 f"border-bottom:1px solid #1a2740;'>"
-                                f"<span style='color:#eceff1;font-size:0.82rem;'>"
+                                f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;'>"
                                 f"<span style='color:{_clr};'>●</span> {_lbl}</span>"
-                                f"<span style='color:#90a4ae;font-size:0.82rem;font-weight:600;'>"
+                                f"<span style='color:{_C_TEXT_MUTED2};font-size:0.82rem;font-weight:600;'>"
                                 f"{_pct:.1f}%</span></div>",
                                 unsafe_allow_html=True)
 
@@ -7765,7 +7780,7 @@ if st.session_state.get("show_portfolio"):
 
                 _lta, _ltb = st.columns([1.1, 1])
                 with _lta:
-                    st.markdown("<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+                    st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.72rem;font-weight:600;"
                                 "letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;'>"
                                 "Länder</div>", unsafe_allow_html=True)
                     for _lc, _lv in _lt_sorted[:15]:
@@ -7775,15 +7790,15 @@ if st.session_state.get("show_portfolio"):
                         st.markdown(
                             f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
                             f"<span style='color:{_lclr};font-size:0.72rem;'>●</span>"
-                            f"<span style='color:#eceff1;font-size:0.76rem;flex:1;'>{_lc[:20]}</span>"
+                            f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.76rem;flex:1;'>{_lc[:20]}</span>"
                             f"<div style='background:#1a2740;border-radius:3px;width:60px;height:6px;'>"
                             f"<div style='background:{_lclr};width:{_lbar}%;height:6px;border-radius:3px;'>"
                             f"</div></div>"
-                            f"<span style='color:#90a4ae;font-size:0.76rem;font-weight:600;"
+                            f"<span style='color:{_C_TEXT_MUTED2};font-size:0.76rem;font-weight:600;"
                             f"min-width:38px;text-align:right;'>{_lpct:.1f}%</span></div>",
                             unsafe_allow_html=True)
                 with _ltb:
-                    st.markdown("<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+                    st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.72rem;font-weight:600;"
                                 "letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;'>"
                                 "Kontinente</div>", unsafe_allow_html=True)
                     for _co, _cv in _cont.items():
@@ -7793,7 +7808,7 @@ if st.session_state.get("show_portfolio"):
                             f"<div style='display:flex;justify-content:space-between;"
                             f"padding:3px 0;border-bottom:1px solid #1a2740;'>"
                             f"<span style='color:{_cclr};font-size:0.78rem;'>● {_co}</span>"
-                            f"<span style='color:#90a4ae;font-size:0.78rem;font-weight:600;'>"
+                            f"<span style='color:{_C_TEXT_MUTED2};font-size:0.78rem;font-weight:600;'>"
                             f"{_cpct:.1f}%</span></div>", unsafe_allow_html=True)
                     if len(_cont) > 1:
                         _cont_fig = go.Figure(go.Pie(
@@ -7831,9 +7846,9 @@ if st.session_state.get("show_portfolio"):
                 _ptotal = sum(v for v, _ in _pv.values()) or 1
                 _pshares = {nm: val / _ptotal * 100 for _, (val, nm) in _pv.items()}
                 _hhi = sum(s ** 2 for s in _pshares.values())
-                if   _hhi < 1500: _hhi_label, _hhi_col = "Gut diversifiziert ✓", "#00e676"
-                elif _hhi < 2500: _hhi_label, _hhi_col = "Moderat konzentriert", "#ffd600"
-                else:             _hhi_label, _hhi_col = "Hoch konzentriert ⚠️", "#ff5252"
+                if   _hhi < 1500: _hhi_label, _hhi_col = "Gut diversifiziert ✓", _C_POSITIVE
+                elif _hhi < 2500: _hhi_label, _hhi_col = "Moderat konzentriert", _C_NEUTRAL
+                else:             _hhi_label, _hhi_col = "Hoch konzentriert ⚠️", _C_NEGATIVE
                 _hc1, _hc2, _hc3 = st.columns(3)
                 _hc1.metric("HHI (Herfindahl-Index)", f"{_hhi:.0f}")
                 _hc2.metric("Bewertung", _hhi_label)
@@ -7845,14 +7860,14 @@ if st.session_state.get("show_portfolio"):
                     st.warning(f"⚠️ Hohe Einzelkonzentration (>20%): {', '.join(_warn_pos)}")
                 for _pn, _ps in _top10:
                     _bar_w = int(_ps * 4)
-                    _bar_c = "#ff5252" if _ps > 20 else "#42a5f5" if _ps > 10 else "#546e7a"
+                    _bar_c = _C_NEGATIVE if _ps > 20 else "#42a5f5" if _ps > 10 else "#546e7a"
                     st.markdown(
                         f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:5px;'>"
-                        f"<div style='color:#90a4ae;font-size:0.78rem;min-width:180px;'>{_pn}</div>"
+                        f"<div style='color:{_C_TEXT_MUTED2};font-size:0.78rem;min-width:180px;'>{_pn}</div>"
                         f"<div style='background:#1a2740;border-radius:3px;flex:1;height:8px;'>"
                         f"<div style='background:{_bar_c};width:{min(100,_bar_w)}%;height:8px;border-radius:3px;'>"
                         f"</div></div>"
-                        f"<div style='color:#eceff1;font-size:0.8rem;font-weight:600;min-width:40px;text-align:right;'>"
+                        f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.8rem;font-weight:600;min-width:40px;text-align:right;'>"
                         f"{_ps:.1f}%</div></div>",
                         unsafe_allow_html=True)
           except Exception as _e_alloc:
@@ -7896,10 +7911,10 @@ if st.session_state.get("show_portfolio"):
                     _years_str     = f"{_days // 365} J. {(_days % 365) // 30} M." if _days else "—"
 
                     def _kpi(label, value, color="#eceff1", sub=None):
-                        sub_html = f"<div style='color:#546e7a;font-size:0.72rem;margin-top:2px;'>{sub}</div>" if sub else ""
+                        sub_html = f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:2px;'>{sub}</div>" if sub else ""
                         return (f"<div style='background:#0d1a2e;border:1px solid #1e2d45;border-radius:10px;"
                                 f"padding:14px 16px;text-align:center;'>"
-                                f"<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+                                f"<div style='color:{_C_ACCENT};font-size:0.72rem;font-weight:600;"
                                 f"letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;'>{label}</div>"
                                 f"<div style='color:{color};font-size:1.4rem;font-weight:800;'>{value}</div>"
                                 f"{sub_html}</div>")
@@ -7907,15 +7922,15 @@ if st.session_state.get("show_portfolio"):
                     _k1, _k2, _k3, _k4 = st.columns(4)
                     with _k1:
                         _v = f"{_irr_pct:+.2f}% p.a." if _irr_pct is not None else "—"
-                        _c = "#00e676" if (_irr_pct or 0) >= 0 else "#ff5252"
+                        _c = _C_POSITIVE if (_irr_pct or 0) >= 0 else _C_NEGATIVE
                         st.markdown(_kpi("IZF (Zinsfuß)", _v, _c, "Interner Zinsfuß p.a."), unsafe_allow_html=True)
                     with _k2:
                         _v = f"{_simple_pct:+.1f}%" if _simple_pct is not None else "—"
-                        _c = "#00e676" if (_simple_pct or 0) >= 0 else "#ff5252"
+                        _c = _C_POSITIVE if (_simple_pct or 0) >= 0 else _C_NEGATIVE
                         st.markdown(_kpi("Gesamtrendite", _v, _c, "auf investiertes Kapital"), unsafe_allow_html=True)
                     with _k3:
                         _v = f"{_real_ret_pct:+.2f}% p.a." if _real_ret_pct is not None else "—"
-                        _c = "#00e676" if (_real_ret_pct or 0) >= 0 else "#ff5252"
+                        _c = _C_POSITIVE if (_real_ret_pct or 0) >= 0 else _C_NEGATIVE
                         st.markdown(_kpi("Realrendite", _v, _c, f"Fisher: (1+IZF)/(1+{_INFL}%)−1"), unsafe_allow_html=True)
                     with _k4:
                         st.markdown(_kpi("Anlagedauer", _years_str, "#eceff1",
@@ -7956,7 +7971,7 @@ if st.session_state.get("show_portfolio"):
                                     unsafe_allow_html=True)
                         _rp_total = _rpnl.get('total_pnl', 0.0)
                         _rp_sell  = _rpnl.get('total_sell_value', 0.0)
-                        _rp_clr   = "#00e676" if _rp_total >= 0 else "#ff5252"
+                        _rp_clr   = _C_POSITIVE if _rp_total >= 0 else _C_NEGATIVE
                         _rp1, _rp2 = st.columns(2)
                         with _rp1:
                             st.markdown(_kpi("Realisierter P&L",
@@ -7973,20 +7988,20 @@ if st.session_state.get("show_portfolio"):
                         if _rp_rows:
                             _rp_html = ("<table style='width:100%;border-collapse:collapse;"
                                         "font-size:0.82rem;'>"
-                                        "<tr style='color:#546e7a;text-transform:uppercase;"
+                                        "<tr style='color:{_C_TEXT_MUTED};text-transform:uppercase;"
                                         "font-size:0.68rem;letter-spacing:.06em;'>"
                                         "<th style='text-align:left;padding:4px 8px;'>Position</th>"
                                         "<th style='text-align:right;padding:4px 8px;'>Anteile verkauft</th>"
                                         "<th style='text-align:right;padding:4px 8px;'>Erlös</th>"
                                         "<th style='text-align:right;padding:4px 8px;'>P&amp;L</th></tr>")
                             for _rpr in _rp_rows[:10]:
-                                _pc = "#00e676" if _rpr['pnl'] >= 0 else "#ff5252"
+                                _pc = _C_POSITIVE if _rpr['pnl'] >= 0 else _C_NEGATIVE
                                 _sg = "+" if _rpr['pnl'] >= 0 else "−"
                                 _rp_html += (f"<tr style='border-top:1px solid #1a2740;'>"
-                                             f"<td style='padding:5px 8px;color:#eceff1;'>{_rpr['name']}</td>"
-                                             f"<td style='text-align:right;padding:5px 8px;color:#90a4ae;'>"
+                                             f"<td style='padding:5px 8px;color:{_C_TEXT_PRIMARY};'>{_rpr['name']}</td>"
+                                             f"<td style='text-align:right;padding:5px 8px;color:{_C_TEXT_MUTED2};'>"
                                              f"{_rpr['shares_sold']:.2f}</td>"
-                                             f"<td style='text-align:right;padding:5px 8px;color:#90a4ae;'>"
+                                             f"<td style='text-align:right;padding:5px 8px;color:{_C_TEXT_MUTED2};'>"
                                              f"€ {_rpr['sell_value']:,.0f}</td>"
                                              f"<td style='text-align:right;padding:5px 8px;color:{_pc};"
                                              f"font-weight:700;'>{_sg}€ {abs(_rpr['pnl']):,.0f}</td>"
@@ -8023,14 +8038,14 @@ if st.session_state.get("show_portfolio"):
 
                             def _tf_card(row):
                                 _is_pos = row['pnl_pct'] >= 0
-                                _clr  = "#00e676" if _is_pos else "#ff5252"
+                                _clr  = _C_POSITIVE if _is_pos else _C_NEGATIVE
                                 _bg   = "rgba(0,230,118,0.06)" if _is_pos else "rgba(255,82,82,0.06)"
                                 return (f"<div style='background:{_bg};border:1px solid #1e2d45;"
                                         f"border-radius:8px;padding:10px 14px;margin-bottom:6px;"
                                         f"display:flex;justify-content:space-between;align-items:center;'>"
-                                        f"<div><div style='color:#eceff1;font-size:0.88rem;font-weight:600;'>"
+                                        f"<div><div style='color:{_C_TEXT_PRIMARY};font-size:0.88rem;font-weight:600;'>"
                                         f"{row['name']}</div>"
-                                        f"<div style='color:#546e7a;font-size:0.74rem;'>€ {row['val']:,.0f}</div></div>"
+                                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.74rem;'>€ {row['val']:,.0f}</div></div>"
                                         f"<div style='text-align:right;'>"
                                         f"<div style='color:{_clr};font-size:1rem;font-weight:800;'>"
                                         f"{row['pnl_pct']:+.1f}%</div>"
@@ -8075,7 +8090,7 @@ if st.session_state.get("show_portfolio"):
                         _fig.add_trace(_go.Scatter(
                             x=_dates_p, y=_invested_p,
                             name="Investiert (kumuliert)",
-                            line=dict(color="#ffd600", width=2, dash="dot"),
+                            line=dict(color=_C_NEUTRAL, width=2, dash="dot"),
                             fill="tozeroy", fillcolor="rgba(255,214,0,0.07)"
                         ))
                         _fig.add_trace(_go.Scatter(
@@ -8090,9 +8105,9 @@ if st.session_state.get("show_portfolio"):
                                 x=[_dates_p[-1], _today_ts],
                                 y=[_pf_val_now, _pf_val_now],
                                 name="Mein Portfolio (aktuell)",
-                                line=dict(color="#00e676", width=2.5),
+                                line=dict(color=_C_POSITIVE, width=2.5),
                                 mode="lines+markers",
-                                marker=dict(size=[0, 10], color="#00e676"),
+                                marker=dict(size=[0, 10], color=_C_POSITIVE),
                             ))
                         _fig.update_layout(
                             template="plotly_dark", height=380,
@@ -8120,16 +8135,16 @@ if st.session_state.get("show_portfolio"):
                             _sc3.metric(f"Benchmark", f"€ {_bm_p[-1]:,.0f}",
                                         delta=f"{_bm_gain_pct:+.1f}% ({_bm_gain_eur:+,.0f} €)",
                                         delta_color="normal" if _bm_gain_eur >= 0 else "inverse")
-                            _alpha_color = "#00e676" if _alpha >= 0 else "#ff5252"
+                            _alpha_color = _C_POSITIVE if _alpha >= 0 else _C_NEGATIVE
                             _alpha_sign  = "+" if _alpha >= 0 else ""
                             st.markdown(
                                 f"<div style='background:#0d1a2e;border:1px solid #1e2d45;border-radius:10px;"
                                 f"padding:12px 16px;text-align:center;margin-top:8px;'>"
-                                f"<span style='color:#64b5f6;font-size:0.75rem;font-weight:600;"
+                                f"<span style='color:{_C_ACCENT};font-size:0.75rem;font-weight:600;"
                                 f"text-transform:uppercase;letter-spacing:.06em;'>Portfolio vs. Benchmark (Alpha)</span>"
                                 f"<div style='color:{_alpha_color};font-size:1.5rem;font-weight:800;"
                                 f"margin-top:4px;'>{_alpha_sign}{_alpha:.1f} Prozentpunkte</div>"
-                                f"<div style='color:#546e7a;font-size:0.72rem;margin-top:2px;'>"
+                                f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:2px;'>"
                                 f"{'Outperformance' if _alpha >= 0 else 'Underperformance'} gegenüber {bm_label}</div>"
                                 f"</div>",
                                 unsafe_allow_html=True)
@@ -8237,7 +8252,7 @@ if st.session_state.get("show_portfolio"):
                     # Quellentext
                     _src_parts = []
                     if _hd['direct'] > 0:
-                        _src_parts.append(f"<span style='color:#64b5f6;'>Direkt €{_hd['direct']:,.0f}</span>")
+                        _src_parts.append(f"<span style='color:{_C_ACCENT};'>Direkt €{_hd['direct']:,.0f}</span>")
                     for _sn, _sv in sorted(_hd['sources'].items(), key=lambda x: x[1], reverse=True)[:3]:
                         _src_parts.append(f"<span style='color:#78909c;'>{_sn[:22]} €{_sv:,.0f}</span>")
                     _src_html = " · ".join(_src_parts)
@@ -8246,9 +8261,9 @@ if st.session_state.get("show_portfolio"):
                         f"border-radius:6px;border-left:3px solid {_dclr};'>"
                         f"<div style='display:flex;justify-content:space-between;"
                         f"align-items:baseline;margin-bottom:3px;'>"
-                        f"<span style='color:#eceff1;font-size:0.82rem;font-weight:600;'>"
+                        f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:600;'>"
                         f"{_rk}. {str(_hd['name'])[:40]}</span>"
-                        f"<span style='color:#90a4ae;font-size:0.76rem;'>"
+                        f"<span style='color:{_C_TEXT_MUTED2};font-size:0.76rem;'>"
                         f"€{_hd['total']:,.0f} · {_pct:.2f}%</span></div>"
                         f"<div style='background:#1a2740;height:4px;border-radius:2px;margin-bottom:4px;'>"
                         f"<div style='background:{_dclr};width:{_bw}%;height:4px;"
@@ -8456,9 +8471,9 @@ GEOGRAFISCHE VERTEILUNG:
 
                 # Farb-Map für die Abschnitt-Karten
                 _kipa_colors = {
-                    "SCORE":      ("#ffd600", "#1a1600"),
-                    "STÄRKEN":    ("#00e676", "#001a0d"),
-                    "SCHWÄCHEN":  ("#ff5252", "#1a0000"),
+                    "SCORE":      (_C_NEUTRAL, "#1a1600"),
+                    "STÄRKEN":    (_C_POSITIVE, "#001a0d"),
+                    "SCHWÄCHEN":  (_C_NEGATIVE, "#1a0000"),
                     "ZUKUNFT":    ("#7c4dff", "#0d0020"),
                     "HANDLUNGS":  ("#00b0ff", "#001a2e"),
                     "FAZIT":      ("#64b5f6", "#071020"),
@@ -8489,7 +8504,7 @@ GEOGRAFISCHE VERTEILUNG:
                 st.markdown(
                     "<div style='background:#080f1e;border:1px solid #1a2740;border-radius:12px;"
                     "padding:20px 24px;margin-top:8px;'>"
-                    "<div style='color:#64b5f6;font-size:0.95rem;font-weight:700;margin-bottom:12px;'>"
+                    "<div style='color:{_C_ACCENT};font-size:0.95rem;font-weight:700;margin-bottom:12px;'>"
                     "Die KI analysiert folgende Bereiche:</div>"
                     "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;'>",
                     unsafe_allow_html=True)
@@ -8502,10 +8517,10 @@ GEOGRAFISCHE VERTEILUNG:
                     ("📊 Gesamtfazit", "MSCI-World-Vergleich & wichtigster Hebel"),
                 ]:
                     st.markdown(
-                        f"<div style='background:#0d1f35;border:1px solid #1a2740;"
+                        f"<div style='background:{_C_CARD_BG};border:1px solid #1a2740;"
                         f"border-radius:8px;padding:10px 12px;'>"
-                        f"<div style='color:#eceff1;font-size:0.85rem;font-weight:600;'>{_ap}</div>"
-                        f"<div style='color:#546e7a;font-size:0.75rem;margin-top:3px;'>{_ac}</div>"
+                        f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.85rem;font-weight:600;'>{_ap}</div>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-top:3px;'>{_ac}</div>"
                         f"</div>",
                         unsafe_allow_html=True)
                 st.markdown("</div></div>", unsafe_allow_html=True)
@@ -9205,7 +9220,7 @@ if st.session_state.get("show_etf_analyzer"):
     st.markdown("""
     <div style="text-align:center;padding:24px 0 14px 0;">
       <div style="font-size:2rem;font-weight:800;color:#fff;">🔎 ETF-Analyzer</div>
-      <div style="color:#64b5f6;font-size:0.88rem;margin-top:4px;">
+      <div style="color:{_C_ACCENT};font-size:0.88rem;margin-top:4px;">
         Ticker · ISIN · WKN · Name — Sektoren · Positionen · Benchmark
       </div>
     </div>""", unsafe_allow_html=True)
@@ -9232,7 +9247,7 @@ if st.session_state.get("show_etf_analyzer"):
             if len(_sug_hits) >= 6:
                 break
         if _sug_hits and _q_raw.upper() not in [h[0].upper() for h in _sug_hits]:
-            st.markdown("<div style='color:#546e7a;font-size:0.72rem;"
+            st.markdown(f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;"
                         "margin:6px 0 4px 0;'>Vorschläge:</div>", unsafe_allow_html=True)
             _sug_cols = st.columns(min(len(_sug_hits), 3))
             for _si, (_stk, _snm, _sisin, _swkn, _ster) in enumerate(_sug_hits):
@@ -9253,16 +9268,16 @@ if st.session_state.get("show_etf_analyzer"):
             _active = st.session_state["etf_ticker_input"].strip().upper() == _ptkr
             _border = f"2px solid {_pclr}" if _active else "1px solid #1a2740"
             st.markdown(
-                f"<div style='background:#0d1f35;border:{_border};border-radius:8px;"
+                f"<div style='background:{_C_CARD_BG};border:{_border};border-radius:8px;"
                 f"padding:8px 10px;margin-bottom:4px;'>"
                 f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:4px;'>"
                 f"<span style='background:{_pclr}22;color:{_pclr};border:1px solid {_pclr}55;"
                 f"border-radius:4px;padding:1px 6px;font-size:0.68rem;font-weight:700;'>{_pabb}</span>"
-                f"<span style='color:#eceff1;font-size:0.8rem;font-weight:600;'>{_ptkr}</span>"
+                f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.8rem;font-weight:600;'>{_ptkr}</span>"
                 f"</div>"
-                f"<div style='color:#90a4ae;font-size:0.72rem;white-space:nowrap;overflow:hidden;"
+                f"<div style='color:{_C_TEXT_MUTED2};font-size:0.72rem;white-space:nowrap;overflow:hidden;"
                 f"text-overflow:ellipsis;'>{_pnm}</div>"
-                f"<div style='color:#546e7a;font-size:0.65rem;margin-top:2px;'>ISIN {_pisin} · WKN {_pwkn}</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.65rem;margin-top:2px;'>ISIN {_pisin} · WKN {_pwkn}</div>"
                 f"</div>", unsafe_allow_html=True)
             if st.button("▶", key=f"_pop_{_ptkr}", use_container_width=True,
                          type="primary" if _active else "secondary"):
@@ -9329,7 +9344,7 @@ if st.session_state.get("show_etf_analyzer"):
     if any(x in _nl_tags for x in ['min vol', 'minimum vol', 'low vol', 'low volatil']):
         _factor_tags.append(('🛡 Low Vol', '#80cbc4', '#001a18'))
     if any(x in _nl_tags for x in ['dividend', 'high dividend', 'income', 'yield']):
-        _factor_tags.append(('💰 Dividenden', '#ffd600', '#1a1000'))
+        _factor_tags.append(('💰 Dividenden', _C_NEUTRAL, '#1a1000'))
     if any(x in _nl_tags for x in ['esg', ' sri', 'sustainable', 'socially responsible', 'climate', 'paris']):
         _factor_tags.append(('🌱 ESG/SRI', '#a5d6a7', '#001a05'))
     if any(x in _nl_tags for x in ['small cap', 'small-cap', 'smallcap', 'small company']):
@@ -9359,7 +9374,7 @@ if st.session_state.get("show_etf_analyzer"):
     _h1, _h2 = st.columns([5, 1])
     with _h1:
         _badge_html  = _issuer_badge(_im_key, _im_val)
-        _name_html   = (f"<div style='font-size:1.3rem;font-weight:800;color:#eceff1;"
+        _name_html   = (f"<div style='font-size:1.3rem;font-weight:800;color:{_C_TEXT_PRIMARY};"
                         f"line-height:1.3;margin-bottom:6px;'>{_ei.get('name','')}</div>")
         def _pill(txt, clr, bg):
             return (f"<span style='background:{bg};color:{clr};border:1px solid {clr}44;"
@@ -9368,7 +9383,7 @@ if st.session_state.get("show_etf_analyzer"):
         _pills = ""
         _pills += _pill(f"💱 {_ei.get('currency','EUR')}", '#64b5f6', '#0d2035')
         if _ei.get('distribution') and _ei['distribution'] != '—':
-            _dc = '#00e676' if 'Acc' in _ei['distribution'] else '#ffd600'
+            _dc = _C_POSITIVE if 'Acc' in _ei['distribution'] else _C_NEUTRAL
             _pills += _pill(_ei['distribution'], _dc, '#0d1a2e')
         if _ei.get('domicile') and _ei['domicile'] != '—':
             _pills += _pill(f"🏛 {_ei['domicile']}", '#90a4ae', '#1a2740')
@@ -9390,7 +9405,7 @@ if st.session_state.get("show_etf_analyzer"):
             _desc_exp   = st.session_state.get(_desc_key, False)
             _shown_txt  = (_desc_short + ' ' + _desc_rest) if (_desc_rest and _desc_exp) else _desc_short
             st.markdown(
-                f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
+                f"<div style='background:{_C_CARD_BG};border:1px solid #1a2740;border-radius:8px;"
                 f"padding:10px 14px;margin-top:4px;margin-bottom:2px;'>"
                 f"<div style='color:#78909c;font-size:0.65rem;text-transform:uppercase;"
                 f"letter-spacing:.08em;margin-bottom:5px;'>📋 Beschreibung</div>"
@@ -9418,10 +9433,10 @@ if st.session_state.get("show_etf_analyzer"):
             for _si, (_stkr, _snm) in enumerate(_sim):
                 with _sc[_si]:
                     st.markdown(
-                        f"<div style='background:#0d1f35;border:1px solid #1a2740;"
+                        f"<div style='background:{_C_CARD_BG};border:1px solid #1a2740;"
                         f"border-radius:8px;padding:10px;text-align:center;'>"
-                        f"<div style='color:#64b5f6;font-size:0.88rem;font-weight:700;'>{_stkr}</div>"
-                        f"<div style='color:#90a4ae;font-size:0.7rem;margin-top:3px;'>{_snm}</div>"
+                        f"<div style='color:{_C_ACCENT};font-size:0.88rem;font-weight:700;'>{_stkr}</div>"
+                        f"<div style='color:{_C_TEXT_MUTED2};font-size:0.7rem;margin-top:3px;'>{_snm}</div>"
                         f"</div>", unsafe_allow_html=True)
                     if st.button("Analysieren", key=f"sim_{_stkr}", use_container_width=True):
                         st.session_state["etf_ticker_input"] = _stkr
@@ -9431,15 +9446,15 @@ if st.session_state.get("show_etf_analyzer"):
     # ── Kennzahlen (CSS-Grid, 2×4) ────────────────────────────────────────
     st.markdown("<div class='section-header'>📊 Kennzahlen</div>", unsafe_allow_html=True)
     def _kc(lbl, val, sub="", color="#eceff1"):
-        _s = f"<div style='color:#546e7a;font-size:0.6rem;margin-top:2px;'>{sub}</div>" if sub else ""
-        return (f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
+        _s = f"<div style='color:{_C_TEXT_MUTED};font-size:0.6rem;margin-top:2px;'>{sub}</div>" if sub else ""
+        return (f"<div style='background:{_C_CARD_BG};border:1px solid #1a2740;border-radius:8px;"
                 f"padding:10px 8px;text-align:center;'>"
                 f"<div style='color:#78909c;font-size:0.62rem;text-transform:uppercase;"
                 f"letter-spacing:.05em;margin-bottom:4px;'>{lbl}</div>"
                 f"<div style='color:{color};font-size:1rem;font-weight:700;'>{val}</div>"
                 f"{_s}</div>")
     _g = "display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px;"
-    _rc = lambda v: "#00e676" if (v or 0) >= 0 else "#ff5252"
+    _rc = lambda v: _C_POSITIVE if (v or 0) >= 0 else _C_NEGATIVE
     _aum = (f"€ {_ei['aum']/1e9:.1f} Mrd" if (_ei.get('aum') or 0) > 1e9
             else f"€ {_ei['aum']/1e6:.0f} Mio" if _ei.get('aum') else "—")
     _ter = f"{_ei['ter']*100:.2f}%" if _ei.get('ter') else "—"
@@ -9595,24 +9610,24 @@ if st.session_state.get("show_etf_analyzer"):
     _score_pct = _score / _score_max * 100
 
     # Score-Farbe + Note
-    if   _score_pct >= 85: _sc, _grade, _verdict = '#00e676', 'A+', 'Ausgezeichnet'
-    elif _score_pct >= 75: _sc, _grade, _verdict = '#00e676', 'A',  'Sehr gut'
-    elif _score_pct >= 65: _sc, _grade, _verdict = '#69f0ae', 'B+', 'Gut'
-    elif _score_pct >= 55: _sc, _grade, _verdict = '#ffd600', 'B',  'Solide'
-    elif _score_pct >= 45: _sc, _grade, _verdict = '#ffd600', 'C',  'Durchschnittlich'
-    elif _score_pct >= 30: _sc, _grade, _verdict = '#ff5252', 'D',  'Schwach'
-    else:                   _sc, _grade, _verdict = '#ff5252', 'F',  'Ungenügend'
+    if   _score_pct >= 85: _sc, _grade, _verdict = _C_POSITIVE, 'A+', 'Ausgezeichnet'
+    elif _score_pct >= 75: _sc, _grade, _verdict = _C_POSITIVE, 'A',  'Sehr gut'
+    elif _score_pct >= 65: _sc, _grade, _verdict = _C_POSITIVE_SFT, 'B+', 'Gut'
+    elif _score_pct >= 55: _sc, _grade, _verdict = _C_NEUTRAL, 'B',  'Solide'
+    elif _score_pct >= 45: _sc, _grade, _verdict = _C_NEUTRAL, 'C',  'Durchschnittlich'
+    elif _score_pct >= 30: _sc, _grade, _verdict = _C_NEGATIVE, 'D',  'Schwach'
+    else:                   _sc, _grade, _verdict = _C_NEGATIVE, 'F',  'Ungenügend'
 
     _sa, _sb = st.columns([1, 2])
     with _sa:
         st.markdown(
-            f"<div style='background:#0d1f35;border:2px solid {_sc}44;border-radius:12px;"
+            f"<div style='background:{_C_CARD_BG};border:2px solid {_sc}44;border-radius:12px;"
             f"padding:20px 16px;text-align:center;'>"
             f"<div style='color:#78909c;font-size:0.68rem;text-transform:uppercase;"
             f"letter-spacing:.08em;margin-bottom:6px;'>Fundamentaler Score</div>"
             f"<div style='color:{_sc};font-size:3rem;font-weight:900;line-height:1;'>"
             f"{_score}</div>"
-            f"<div style='color:#546e7a;font-size:0.8rem;margin:4px 0;'>von {_score_max} Punkten</div>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.8rem;margin:4px 0;'>von {_score_max} Punkten</div>"
             f"<div style='background:{_sc}22;border:1px solid {_sc}55;border-radius:20px;"
             f"display:inline-block;padding:3px 14px;margin-top:6px;'>"
             f"<span style='color:{_sc};font-size:1.1rem;font-weight:800;'>{_grade}</span>"
@@ -9622,18 +9637,18 @@ if st.session_state.get("show_etf_analyzer"):
     with _sb:
         for _cn, _cp, _cm, _cl in _score_criteria:
             _bar_pct = int(_cp / _cm * 100)
-            _bar_clr = '#00e676' if _bar_pct >= 75 else '#ffd600' if _bar_pct >= 40 else '#ff5252'
+            _bar_clr = _C_POSITIVE if _bar_pct >= 75 else _C_NEUTRAL if _bar_pct >= 40 else _C_NEGATIVE
             st.markdown(
                 f"<div style='margin-bottom:8px;'>"
                 f"<div style='display:flex;justify-content:space-between;align-items:baseline;"
                 f"margin-bottom:3px;'>"
-                f"<span style='color:#eceff1;font-size:0.8rem;font-weight:600;'>{_cn}</span>"
+                f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.8rem;font-weight:600;'>{_cn}</span>"
                 f"<span style='color:{_bar_clr};font-size:0.78rem;font-weight:700;'>"
                 f"{_cp}/{_cm}</span></div>"
                 f"<div style='background:#1a2740;border-radius:4px;height:6px;'>"
                 f"<div style='background:{_bar_clr};width:{_bar_pct}%;height:6px;"
                 f"border-radius:4px;'></div></div>"
-                f"<div style='color:#546e7a;font-size:0.68rem;margin-top:2px;'>{_cl}</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-top:2px;'>{_cl}</div>"
                 f"</div>",
                 unsafe_allow_html=True)
     st.caption("Score basiert auf TER, Fondsvolumen, Fondsalter, Replikationsmethode und Streuung. "
@@ -9670,18 +9685,18 @@ if st.session_state.get("show_etf_analyzer"):
     # Verklumpungs-Farbe
     def _vklump_clr(pct):
         if pct is None: return '#78909c', '—'
-        if pct <= 20:   return '#00e676', f"{pct:.1f}% — Gut gestreut"
-        if pct <= 35:   return '#ffd600', f"{pct:.1f}% — Moderat"
-        return '#ff5252', f"{pct:.1f}% — Hoch konzentriert"
+        if pct <= 20:   return _C_POSITIVE, f"{pct:.1f}% — Gut gestreut"
+        if pct <= 35:   return _C_NEUTRAL, f"{pct:.1f}% — Moderat"
+        return _C_NEGATIVE, f"{pct:.1f}% — Hoch konzentriert"
     _vk_clr, _vk_lbl = _vklump_clr(_top10_pct)
 
     # KGV-Einschätzung
     def _kgv_clr(v):
         if v is None: return '#78909c'
         f = float(v)
-        if f <= 15:  return '#00e676'
-        if f <= 25:  return '#ffd600'
-        return '#ff5252'
+        if f <= 15:  return _C_POSITIVE
+        if f <= 25:  return _C_NEUTRAL
+        return _C_NEGATIVE
 
     _g4 = "display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;"
     st.markdown(
@@ -9691,7 +9706,7 @@ if st.session_state.get("show_etf_analyzer"):
         + _kc("P/S Ratio", _fmt_mult(_ksv), "Kurs-Umsatz")
         + _kc("3J Gewinnwachstum", _fmt_mult(_wachs, "%") if _wachs else "—",
               "Earnings Growth p.a.",
-              '#00e676' if (_wachs or 0) > 0 else '#ff5252')
+              _C_POSITIVE if (_wachs or 0) > 0 else _C_NEGATIVE)
         + "</div>"
         + f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;'>"
         + _kc("Verklumpung Top 10",
@@ -9739,9 +9754,9 @@ if st.session_state.get("show_etf_analyzer"):
                 st.markdown(
                     f"<div style='display:flex;justify-content:space-between;align-items:center;"
                     f"padding:3px 2px;border-bottom:1px solid #1a2740;'>"
-                    f"<span style='color:#eceff1;font-size:0.78rem;'><span style='color:{_sc2};'>●</span>"
+                    f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;'><span style='color:{_sc2};'>●</span>"
                     f" {_sl}</span>"
-                    f"<span style='color:#90a4ae;font-size:0.78rem;font-weight:600;'>{_sv:.1f}%</span>"
+                    f"<span style='color:{_C_TEXT_MUTED2};font-size:0.78rem;font-weight:600;'>{_sv:.1f}%</span>"
                     f"</div>", unsafe_allow_html=True)
         else:
             st.info("Keine Sektor-Daten verfügbar.")
@@ -9758,16 +9773,16 @@ if st.session_state.get("show_etf_analyzer"):
             for _hi, (_hn, _hw) in enumerate(zip(_names, _weights), 1):
                 _hwp = (_hw*100) if isinstance(_hw,float) and _hw <= 1 else (_hw if isinstance(_hw,(int,float)) else 0)
                 _bw  = min(int(_hwp*5), 100)
-                _bc  = "#1565c0" if _hwp < 5 else "#ffd600" if _hwp < 10 else "#ff5252"
+                _bc  = "#1565c0" if _hwp < 5 else _C_NEUTRAL if _hwp < 10 else _C_NEGATIVE
                 _lbl = str(_hn)[:26]
                 st.markdown(
                     f"<div style='display:flex;align-items:center;gap:7px;margin-bottom:5px;'>"
-                    f"<div style='color:#546e7a;font-size:0.68rem;min-width:18px;text-align:right;'>{_hi}.</div>"
-                    f"<div style='color:#eceff1;font-size:0.78rem;flex:1;white-space:nowrap;"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;min-width:18px;text-align:right;'>{_hi}.</div>"
+                    f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;flex:1;white-space:nowrap;"
                     f"overflow:hidden;text-overflow:ellipsis;'>{_lbl}</div>"
                     f"<div style='background:#1a2740;border-radius:3px;width:70px;height:6px;flex-shrink:0;'>"
                     f"<div style='background:{_bc};width:{_bw}%;height:6px;border-radius:3px;'></div></div>"
-                    f"<div style='color:#eceff1;font-size:0.75rem;font-weight:600;min-width:36px;"
+                    f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.75rem;font-weight:600;min-width:36px;"
                     f"text-align:right;'>{_hwp:.2f}%</div></div>",
                     unsafe_allow_html=True)
         else:
@@ -9826,7 +9841,7 @@ if st.session_state.get("show_etf_analyzer"):
         # Layout: Länderliste links | Kontinent-Donut rechts
         _ra, _rb = st.columns([1.1, 1])
         with _ra:
-            st.markdown("<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+            st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.72rem;font-weight:600;"
                         "letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;'>"
                         "Länder</div>", unsafe_allow_html=True)
             for _rk, _rv in list(_cw2.items()):
@@ -9835,14 +9850,14 @@ if st.session_state.get("show_etf_analyzer"):
                 st.markdown(
                     f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
                     f"<span style='color:{_rc2};font-size:0.72rem;'>●</span>"
-                    f"<span style='color:#eceff1;font-size:0.76rem;flex:1;'>{_rk[:20]}</span>"
+                    f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.76rem;flex:1;'>{_rk[:20]}</span>"
                     f"<div style='background:#1a2740;border-radius:3px;width:60px;height:6px;'>"
                     f"<div style='background:{_rc2};width:{_rbar}%;height:6px;border-radius:3px;'></div></div>"
-                    f"<span style='color:#90a4ae;font-size:0.75rem;min-width:38px;text-align:right;'>"
+                    f"<span style='color:{_C_TEXT_MUTED2};font-size:0.75rem;min-width:38px;text-align:right;'>"
                     f"{_rv:.1f}%</span></div>", unsafe_allow_html=True)
         with _rb:
             if len(_cont_totals) > 1:
-                st.markdown("<div style='color:#64b5f6;font-size:0.72rem;font-weight:600;"
+                st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.72rem;font-weight:600;"
                             "letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px;'>"
                             "Kontinente</div>", unsafe_allow_html=True)
                 _rf2 = go.Figure(go.Pie(
@@ -9863,7 +9878,7 @@ if st.session_state.get("show_etf_analyzer"):
                         f"<div style='display:flex;justify-content:space-between;"
                         f"padding:2px 0;border-bottom:1px solid #1a2740;'>"
                         f"<span style='color:{_cclr};font-size:0.74rem;'>● {_ck2}</span>"
-                        f"<span style='color:#90a4ae;font-size:0.74rem;font-weight:600;'>"
+                        f"<span style='color:{_C_TEXT_MUTED2};font-size:0.74rem;font-weight:600;'>"
                         f"{_cv2:.1f}%</span></div>", unsafe_allow_html=True)
             else:
                 # Einzelner Kontinent / einzelnes Land → einfache Karte
@@ -9902,9 +9917,9 @@ if st.session_state.get("show_etf_analyzer"):
         st.warning("Keine Vergleichsdaten verfügbar.")
     else:
         _fig = go.Figure()
-        _clrs_bm = {"#42a5f5":"ETF","#ffd600":"Benchmark"}
+        _clrs_bm = {"#42a5f5":"ETF",_C_NEUTRAL:"Benchmark"}
         _cols_av = [c for c in [_etf_tkr, _bm_tkr] if c in _cdf.columns]
-        _lclrs   = ["#42a5f5","#ffd600"]
+        _lclrs   = ["#42a5f5",_C_NEUTRAL]
         for _ci, _col in enumerate(_cols_av):
             _lbl = (_ei.get('name','')[:28] if _col == _etf_tkr
                     else _bm_sel.split("(")[0].strip())
@@ -9930,13 +9945,13 @@ if st.session_state.get("show_etf_analyzer"):
             _first = _cdf[_col].dropna().iloc[0] if not _cdf[_col].dropna().empty else 100
             _last  = _cdf[_col].dropna().iloc[-1] if not _cdf[_col].dropna().empty else 100
             _tot   = (_last/_first - 1)*100
-            _clr2  = "#00e676" if _tot >= 0 else "#ff5252"
+            _clr2  = _C_POSITIVE if _tot >= 0 else _C_NEGATIVE
             _rc_cols[_ci].markdown(
-                f"<div style='background:#0d1f35;border:1px solid #1a2740;border-radius:8px;"
+                f"<div style='background:{_C_CARD_BG};border:1px solid #1a2740;border-radius:8px;"
                 f"padding:12px;text-align:center;'>"
                 f"<div style='color:#78909c;font-size:0.68rem;'>{_lbl2}</div>"
                 f"<div style='color:{_clr2};font-size:1.3rem;font-weight:700;'>{_tot:+.1f}%</div>"
-                f"<div style='color:#546e7a;font-size:0.66rem;'>Gesamtrendite ({_per_sel})</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.66rem;'>Gesamtrendite ({_per_sel})</div>"
                 f"</div>", unsafe_allow_html=True)
 
     # ── KI-Analyse ────────────────────────────────────────────────────────
@@ -10053,7 +10068,7 @@ if st.session_state.get("show_etf_analyzer"):
                 'QUALITÄT & RISIKEN':        ('🛡', '#ef5350', '#1a0000'),
                 'PERFORMANCE-ANALYSE':       ('📊', '#ab47bc', '#150015'),
                 'PORTFOLIO-EIGNUNG':         ('🎯', '#26c6da', '#001a1d'),
-                'GESAMTURTEIL':              ('🏆', '#00e676', '#001a0a'),
+                'GESAMTURTEIL':              ('🏆', _C_POSITIVE, '#001a0a'),
             }
             # Abschnitte parsen
             _ki_raw = _etf_ki_text.strip()
@@ -10146,7 +10161,7 @@ with st.spinner(f"Lade Daten für {ticker}..."):
 
 if hist.empty or not yf_info:
     st.markdown(f"""
-    <div style="background:#0d1526; border:1px solid #ff5252; border-radius:14px; padding:32px 36px; margin:32px 0; text-align:center;">
+    <div style="background:{_C_SURFACE}; border:1px solid #ff5252; border-radius:14px; padding:32px 36px; margin:32px 0; text-align:center;">
         <div style="font-size:2.5rem; margin-bottom:12px;">🔍</div>
         <div style="color:#ff5252; font-size:1.3rem; font-weight:700; margin-bottom:10px;">Aktie nicht gefunden: <code>{ticker}</code></div>
         <div style="color:#78909c; font-size:0.9rem; line-height:1.7; margin-bottom:20px;">
@@ -10337,7 +10352,7 @@ if earnings_date_str:
             _ed_label = "📅 Earnings morgen"
         else:
             _ed_label = f"📅 Earnings in {earnings_days_until} Tagen"
-        _ed_txt_color = "#ff6f00" if earnings_days_until <= 7 else "#ffd600" if earnings_days_until <= 14 else "#00e676"
+        _ed_txt_color = "#ff6f00" if earnings_days_until <= 7 else _C_NEUTRAL if earnings_days_until <= 14 else _C_POSITIVE
         _ed_bg_color  = "#2d1800" if earnings_days_until <= 7 else "#2d2600" if earnings_days_until <= 14 else "#1a2e1a"
         _earnings_badge = (
             f'<span style="background:{_ed_bg_color}; color:{_ed_txt_color}; border-radius:6px;'
@@ -10354,7 +10369,7 @@ if earnings_date_str:
 _target_badge = ""
 if upside is not None and target_mean:
     _udir    = "+" if upside > 0 else ""
-    _ucolor  = "#00e676" if upside > 10 else "#ffd600" if upside > 0 else "#ff5252"
+    _ucolor  = _C_POSITIVE if upside > 10 else _C_NEUTRAL if upside > 0 else _C_NEGATIVE
     _ubg     = "#1a2e1a" if upside > 10 else "#2a2200" if upside > 0 else "#2d1a1a"
     _target_badge = (
         f'<span style="background:{_ubg}; color:{_ucolor}; border-radius:6px;'
@@ -10378,7 +10393,7 @@ _industry_h     = _he(industry)
 initials = "".join(w[0] for w in company_name.split()[:2]).upper() if company_name else ticker[:2]
 logo_html = f"""
 <div style="position:relative;height:52px;width:52px;margin-right:16px;flex-shrink:0;">
-    <div style="position:absolute;inset:0;background:#1a3a5c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#64b5f6;">{initials}</div>
+    <div style="position:absolute;inset:0;background:#1a3a5c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:{_C_ACCENT};">{initials}</div>
     <img src="{logo_url}" style="position:absolute;inset:0;height:52px;width:52px;border-radius:8px;background:#fff;padding:4px;object-fit:contain;"
          onerror="this.style.visibility='hidden'">
 </div>"""
@@ -10391,7 +10406,7 @@ st.markdown(f"""
             <div class="header-title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{_company_name_h}</div>
             <div class="header-sub">{ticker} · {_sector_h} · {_industry_h}</div>
             <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                <span style="background:#1a2744; color:#64b5f6; border-radius:6px; padding:3px 10px; font-size:0.8rem; font-weight:600;">{recommendation}</span>
+                <span style="background:#1a2744; color:{_C_ACCENT}; border-radius:6px; padding:3px 10px; font-size:0.8rem; font-weight:600;">{recommendation}</span>
                 {_earnings_badge}
                 {_target_badge}
             </div>
@@ -10496,9 +10511,9 @@ def mini_card(label, value, good, ok, fmt=".1f", suffix="", inverse=False, toolt
     if bench is not None and value is not None:
         _bdiff = value - bench
         _bdir  = "+" if _bdiff >= 0 else ""
-        _bc    = "#00e676" if _bdiff >= 0 else "#ff5252"
+        _bc    = _C_POSITIVE if _bdiff >= 0 else _C_NEGATIVE
         bench_html = (
-            f'<div style="margin-top:3px; font-size:0.67rem; color:#546e7a;">'
+            f'<div style="margin-top:3px; font-size:0.67rem; color:{_C_TEXT_MUTED};">'
             f'Sektor ∅ {bench:{fmt}}{suffix}'
             f' <span style="color:{_bc};">({_bdir}{_bdiff:{fmt}})</span>'
             f'</div>'
@@ -10547,19 +10562,19 @@ with st.expander("📊 Score-Breakdown — Warum dieser Score?", expanded=False)
             _icon, _pts, _rc = "➖", 0, "#546e7a"
             _val_str = "N/A"
         elif (_inv and _val <= _good) or (not _inv and _val >= _good):
-            _icon, _pts, _rc = "✅", _w, "#00e676"
+            _icon, _pts, _rc = "✅", _w, _C_POSITIVE
             _val_str = f"{_val:.1f}{_sfx}"
         elif (_inv and _val <= _ok) or (not _inv and _val >= _ok):
-            _icon, _pts, _rc = "🟡", _w // 2, "#ffd600"
+            _icon, _pts, _rc = "🟡", _w // 2, _C_NEUTRAL
             _val_str = f"{_val:.1f}{_sfx}"
         else:
-            _icon, _pts, _rc = "❌", 0, "#ff5252"
+            _icon, _pts, _rc = "❌", 0, _C_NEGATIVE
             _val_str = f"{_val:.1f}{_sfx}"
         _thresh_str = (f"≤{_good}{_sfx}" if _inv else f"≥{_good}{_sfx}")
         _bd_rows.append((_icon, _lbl, _val_str, _thresh_str, _pts, _w, _rc))
     _bd_html = (
         '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;">'
-        '<tr style="color:#546e7a;border-bottom:1px solid #1e3a5f;">'
+        '<tr style="color:{_C_TEXT_MUTED};border-bottom:1px solid #1e3a5f;">'
         '<th style="text-align:left;padding:4px 6px;"></th>'
         '<th style="text-align:left;padding:4px 6px;">Kriterium</th>'
         '<th style="text-align:right;padding:4px 6px;">Wert</th>'
@@ -10571,38 +10586,38 @@ with st.expander("📊 Score-Breakdown — Warum dieser Score?", expanded=False)
         _bd_html += (
             f'<tr style="border-bottom:1px solid #0d1526;">'
             f'<td style="padding:5px 6px;">{_icon}</td>'
-            f'<td style="padding:5px 6px;color:#eceff1;">{_lbl}</td>'
+            f'<td style="padding:5px 6px;color:{_C_TEXT_PRIMARY};">{_lbl}</td>'
             f'<td style="padding:5px 6px;text-align:right;color:{_rc};font-weight:600;">{_val_str}</td>'
-            f'<td style="padding:5px 6px;text-align:right;color:#546e7a;">{_thresh_str}</td>'
+            f'<td style="padding:5px 6px;text-align:right;color:{_C_TEXT_MUTED};">{_thresh_str}</td>'
             f'<td style="padding:5px 6px;text-align:right;color:{_rc};">{_pts}/{_w}</td>'
             f'</tr>'
         )
-    _bd_html += f'</table><div style="margin-top:8px;color:#546e7a;font-size:0.75rem;">Score = erzielte Punkte / max. Punkte × 100 — aktuell: {quality_score}/100</div>'
+    _bd_html += f'</table><div style="margin-top:8px;color:{_C_TEXT_MUTED};font-size:0.75rem;">Score = erzielte Punkte / max. Punkte × 100 — aktuell: {quality_score}/100</div>'
     st.markdown(_bd_html, unsafe_allow_html=True)
 
 # ==================== 52-WEEK BAR ====================
 if week52_pos is not None:
-    bar_color = "#00e676" if week52_pos > 70 else "#ffd600" if week52_pos > 30 else "#ff5252"
+    bar_color = _C_POSITIVE if week52_pos > 70 else _C_NEUTRAL if week52_pos > 30 else _C_NEGATIVE
     _dist_to_high_pct = ((week52_high - price) / price * 100) if week52_high and price else None
     if week52_pos >= 90:
         _52w_label, _52w_label_color = "Nahe Jahreshoch", "#ff6f00"
     elif week52_pos >= 70:
-        _52w_label, _52w_label_color = "Oberes Drittel", "#00e676"
+        _52w_label, _52w_label_color = "Oberes Drittel", _C_POSITIVE
     elif week52_pos >= 30:
-        _52w_label, _52w_label_color = "Mid-Range", "#ffd600"
+        _52w_label, _52w_label_color = "Mid-Range", _C_NEUTRAL
     elif week52_pos >= 10:
         _52w_label, _52w_label_color = "Unteres Drittel", "#ff7043"
     else:
-        _52w_label, _52w_label_color = "Nahe Jahrestief", "#ff5252"
+        _52w_label, _52w_label_color = "Nahe Jahrestief", _C_NEGATIVE
     _dist_html = (f' · <span style="color:#78909c;">noch {_dist_to_high_pct:.1f}% bis Jahreshoch</span>'
                   if _dist_to_high_pct and _dist_to_high_pct > 0.5 else "")
     st.markdown(f"""
-    <div style="background:#0d1526; border:1px solid #1e3a5f; border-radius:14px; padding:16px 22px; margin-bottom:20px;">
+    <div style="background:{_C_SURFACE}; border:1px solid #1e3a5f; border-radius:14px; padding:16px 22px; margin-bottom:20px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <span style="color:#78909c; font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px;">52-Wochen Range</span>
             <span style="font-size:0.82rem;">
                 <span style="color:{_52w_label_color}; font-weight:700;">{_52w_label}</span>
-                <span style="color:#64b5f6; font-weight:600;"> · {week52_pos:.0f}% vom Tief</span>
+                <span style="color:{_C_ACCENT}; font-weight:600;"> · {week52_pos:.0f}% vom Tief</span>
                 {_dist_html}
             </span>
         </div>
@@ -10613,9 +10628,9 @@ if week52_pos is not None:
             </div>
         </div>
         <div style="display:flex; justify-content:space-between; margin-top:8px;">
-            <span style="color:#546e7a; font-size:0.78rem;">{_cur_sym}{week52_low:.2f} Tief</span>
-            <span style="color:#eceff1; font-size:0.85rem; font-weight:600;">{_cur_sym}{price:.2f}</span>
-            <span style="color:#546e7a; font-size:0.78rem;">Hoch {_cur_sym}{week52_high:.2f}</span>
+            <span style="color:{_C_TEXT_MUTED}; font-size:0.78rem;">{_cur_sym}{week52_low:.2f} Tief</span>
+            <span style="color:{_C_TEXT_PRIMARY}; font-size:0.85rem; font-weight:600;">{_cur_sym}{price:.2f}</span>
+            <span style="color:{_C_TEXT_MUTED}; font-size:0.78rem;">Hoch {_cur_sym}{week52_high:.2f}</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -10650,8 +10665,8 @@ if st.session_state.get("show_wl_compare") and len(st.session_state.get("watchli
     # ── Vergleichs-Chart (5 Kernkennzahlen) ──
     _cmp_metrics = ["Bruttomarge", "Op. Marge", "Nettomarge", "Umsatzwachst.", "FCF Yield"]
     _cmp_keys    = ["gm",          "op_mg",     "net_mg",     "rev_gr",        "fcf_y"]
-    _cmp_colors  = ["#00e5ff", "#a78bfa", "#00e676", "#ffd600", "#ff9100",
-                    "#ff5252", "#64b5f6", "#69f0ae", "#ff80ab"]
+    _cmp_colors  = ["#00e5ff", "#a78bfa", _C_POSITIVE, _C_NEUTRAL, "#ff9100",
+                    _C_NEGATIVE, "#64b5f6", _C_POSITIVE_SFT, "#ff80ab"]
     _fig_wl = go.Figure()
     for _i, (_t, _d) in enumerate(_wl_data.items()):
         _fig_wl.add_trace(go.Bar(
@@ -10742,9 +10757,9 @@ if st.session_state.get("grok_analysis"):
         st.warning(_raw)
     else:
         _sections = {
-            "BULL CASE":        ("🟢", "#00e676"),
-            "BEAR CASE":        ("🔴", "#ff5252"),
-            "INVESTMENT THESE": ("💡", "#ffd600"),
+            "BULL CASE":        ("🟢", _C_POSITIVE),
+            "BEAR CASE":        ("🔴", _C_NEGATIVE),
+            "INVESTMENT THESE": ("💡", _C_NEUTRAL),
             "BEWERTUNG":        ("⚖️", "#64b5f6"),
             "KI-EINFLUSS":      ("🤖", "#ce93d8"),
             "ROT-FLAGS":        ("⚠️", "#ff8f00"),
@@ -10756,7 +10771,7 @@ if st.session_state.get("grok_analysis"):
             f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:14px;'>"
             f"<span style='font-size:1.4rem;'>🤖</span>"
             f"<div><div style='color:#a78bfa;font-size:1.0rem;font-weight:700;'>KI-Analyse · {company_name}</div>"
-            f"<div style='color:#546e7a;font-size:0.75rem;'>Powered by {_provider_label}</div>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;'>Powered by {_provider_label}</div>"
             f"</div></div>"
         ]
         _current_section = None
@@ -10925,19 +10940,19 @@ if len(hist_plot) >= 2:
 
     # DCF Fair Value Linie
     if dcf_fair_val and dcf_fair_val > 0:
-        fv_color = "#00e676" if dcf_fair_val > price else "#ff5252"
+        fv_color = _C_POSITIVE if dcf_fair_val > price else _C_NEGATIVE
         fig.add_hline(y=dcf_fair_val, line_dash="dot", line_color=fv_color, line_width=2,
                       annotation_text=f"DCF Fair Value {_cur_sym}{dcf_fair_val:.0f}",
                       annotation_font_color=fv_color, row=1, col=1)
 
     # Analyst target line
     if target_mean:
-        fig.add_hline(y=target_mean, line_dash="dot", line_color="#ffd600", line_width=1.5,
+        fig.add_hline(y=target_mean, line_dash="dot", line_color=_C_NEUTRAL, line_width=1.5,
                       annotation_text=f"Analyst Ziel ${target_mean:.0f}",
-                      annotation_font_color="#ffd600", row=1, col=1)
+                      annotation_font_color=_C_NEUTRAL, row=1, col=1)
 
     # Volume
-    colors_vol = ["#00e676" if c >= o else "#ff5252"
+    colors_vol = [_C_POSITIVE if c >= o else _C_NEGATIVE
                   for c, o in zip(hist_plot["Close"], hist_plot["Open"])]
     fig.add_trace(go.Bar(
         x=hist_plot.index, y=hist_plot["Volume"],
@@ -10975,11 +10990,11 @@ if len(hist_plot) >= 2:
                "deutlich unterbewertet (<-2σ)" if pos_sigma < -2 else \
                "fair bewertet (nahe Trend)"
 
-    dcf_text = f" | DCF Fair Value: <strong style='color:{'#00e676' if dcf_fair_val and dcf_fair_val > price else '#ff5252'}'>{_cur_sym}{dcf_fair_val:.2f}</strong>" if dcf_fair_val else ""
+    dcf_text = f" | DCF Fair Value: <strong style='color:{_C_POSITIVE if dcf_fair_val and dcf_fair_val > price else _C_NEGATIVE}'>{_cur_sym}{dcf_fair_val:.2f}</strong>" if dcf_fair_val else ""
     st.markdown(f"""
     <div class="insight-box">
         <strong>📊 Chart-Analyse:</strong> {ticker} notiert aktuell
-        <strong style="color:{'#ff5252' if pos_sigma > 1 else '#00e676' if pos_sigma < -1 else '#ffd600'}">
+        <strong style="color:{_C_NEGATIVE if pos_sigma > 1 else _C_POSITIVE if pos_sigma < -1 else _C_NEUTRAL}">
         {pos_sigma:+.1f}σ</strong> vom linearen Trend —
         {pos_text}. Der Fair-Value-Kanal (±2σ) liegt zwischen
         <strong>${lower2[-1]:.2f}</strong> und <strong>${upper2[-1]:.2f}</strong>{dcf_text}.
@@ -11018,7 +11033,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
     growth_clean = growth.dropna()
     labels_g = [str(d.year) if hasattr(d, "year") else str(d)[:4] for d in growth_clean.index]
     bar_colors = [color_pos if v >= 0 else color_neg for v in s.values]
-    line_colors = ["#00e676" if v >= 0 else "#ff5252" for v in growth_clean.values]
+    line_colors = [_C_POSITIVE if v >= 0 else _C_NEGATIVE for v in growth_clean.values]
 
     _note = f" · {len(labels_abs)} Jahre" + ("" if FMP_API_KEY else " (ohne FMP_API_KEY: max. 4–5 Jahre)")
     st.caption(f"**{title}** — {tkr}{_note}")
@@ -11026,7 +11041,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
     if metric == "price":
         fig = go.Figure(go.Bar(
             x=labels_abs, y=s.values,
-            marker_color=["#00e676" if v >= 0 else "#ff5252" for v in s.values],
+            marker_color=[_C_POSITIVE if v >= 0 else _C_NEGATIVE for v in s.values],
             text=[f"{v:+.1f}%" for v in s.values],
             textposition="outside", textfont=dict(size=12, color="#90a4ae"),
         ))
@@ -11051,10 +11066,10 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
     if len(growth_clean) >= 1:
         fig.add_trace(go.Scatter(
             x=labels_g, y=growth_clean.values, name="YoY Wachstum %",
-            mode="lines+markers+text", line=dict(color="#ffd600", width=2.5),
-            marker=dict(size=8, color=line_colors, line=dict(color="#ffd600", width=1.5)),
+            mode="lines+markers+text", line=dict(color=_C_NEUTRAL, width=2.5),
+            marker=dict(size=8, color=line_colors, line=dict(color=_C_NEUTRAL, width=1.5)),
             text=[f"{v:+.1f}%" for v in growth_clean.values],
-            textposition="top center", textfont=dict(size=10, color="#ffd600"),
+            textposition="top center", textfont=dict(size=10, color=_C_NEUTRAL),
         ), secondary_y=True)
     fig.add_hline(y=0, line_color="#1e3a5f", line_width=1, secondary_y=False)
     fig.update_layout(
@@ -11066,7 +11081,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
     )
     fig.update_yaxes(showgrid=True, gridcolor="#1e2d45", secondary_y=False)
     fig.update_yaxes(ticksuffix="%", showgrid=False, title_text="YoY Wachstum %",
-                     title_font=dict(color="#ffd600"), tickfont=dict(color="#ffd600"),
+                     title_font=dict(color=_C_NEUTRAL), tickfont=dict(color=_C_NEUTRAL),
                      secondary_y=True)
     st.plotly_chart(fig, use_container_width=True)
 
@@ -11172,7 +11187,7 @@ if _at == 0:
             if _div_streak:
                 _streak_years = _div_streak[1]
                 _streak_title = "Dividend King" if _streak_years >= 50 else "Dividend Aristocrat" if _streak_years >= 25 else "Wachstums-Dividende"
-                _streak_color = "#ffd600" if _streak_years >= 50 else "#00e676" if _streak_years >= 25 else "#64b5f6"
+                _streak_color = _C_NEUTRAL if _streak_years >= 50 else _C_POSITIVE if _streak_years >= 25 else "#64b5f6"
                 st.markdown(
                     f'<div class="metric-card">'
                     f'<div class="metric-label">Dividenden-Serie</div>'
@@ -11220,11 +11235,11 @@ if _at == 0:
             if _sv is None:
                 _colors.append("rgba(100,100,100,0.5)")
             elif _sv >= _bv * 1.1:
-                _colors.append("#00e676")
+                _colors.append(_C_POSITIVE)
             elif _sv >= _bv * 0.85:
-                _colors.append("#ffd600")
+                _colors.append(_C_NEUTRAL)
             else:
-                _colors.append("#ff5252")
+                _colors.append(_C_NEGATIVE)
 
         _fig_b = go.Figure()
         _fig_b.add_trace(go.Bar(
@@ -11294,7 +11309,7 @@ elif _at == 1:
                          use_container_width=True):
                 st.session_state["wachstum_expanded"] = (metric_key, ticker, title, cp, cn)
         elif fallback_msg:
-            st.markdown(f'<div class="insight-box" style="color:#546e7a;">{fallback_msg}</div>',
+            st.markdown(f'<div class="insight-box" style="color:{_C_TEXT_MUTED};">{fallback_msg}</div>',
                         unsafe_allow_html=True)
 
     # Growth sparkline (if hist available)
@@ -11304,7 +11319,7 @@ elif _at == 1:
             fig_g = go.Figure(go.Bar(
                 x=[str(y.year) for y in annual.index],
                 y=annual.values,
-                marker_color=["#00e676" if v >= 0 else "#ff5252" for v in annual.values],
+                marker_color=[_C_POSITIVE if v >= 0 else _C_NEGATIVE for v in annual.values],
                 text=[f"{v:.1f}%" for v in annual.values],
                 textposition="outside",
             ))
@@ -11321,7 +11336,7 @@ elif _at == 1:
             )
             st.plotly_chart(fig_g, use_container_width=True)
             if st.button("📊 Detailansicht", key="exp_price", use_container_width=False):
-                st.session_state["wachstum_expanded"] = ("price", ticker, "Jährliche Kursperformance", "#00e676", "#ff5252")
+                st.session_state["wachstum_expanded"] = ("price", ticker, "Jährliche Kursperformance", _C_POSITIVE, _C_NEGATIVE)
 
     # ── Jährliches Umsatz- & Gewinnwachstum ────────────────────────────
     st.markdown("<div class='section-header'>📊 Jährliches Fundamentalwachstum (5 Jahre)</div>",
@@ -11366,12 +11381,12 @@ elif _at == 1:
 
     _gc1, _gc2 = st.columns(2)
     with _gc1:
-        _show_chart(_bar_chart(a_rev, "Umsatzwachstum YoY", "#00e676", "#ff5252"),
-                    "revenue_growth", "Umsatzwachstum YoY", "#00e676", "#ff5252",
+        _show_chart(_bar_chart(a_rev, "Umsatzwachstum YoY", _C_POSITIVE, _C_NEGATIVE),
+                    "revenue_growth", "Umsatzwachstum YoY", _C_POSITIVE, _C_NEGATIVE,
                     "Keine Jahres-Umsatzdaten verfügbar.")
     with _gc2:
-        _show_chart(_bar_chart(a_net, "Nettogewinnwachstum YoY", "#00e676", "#ff5252"),
-                    "net_growth", "Nettogewinnwachstum YoY", "#00e676", "#ff5252",
+        _show_chart(_bar_chart(a_net, "Nettogewinnwachstum YoY", _C_POSITIVE, _C_NEGATIVE),
+                    "net_growth", "Nettogewinnwachstum YoY", _C_POSITIVE, _C_NEGATIVE,
                     "Keine Jahres-Gewinndaten verfügbar.")
 
     _gc3, _gc4 = st.columns(2)
@@ -11381,13 +11396,13 @@ elif _at == 1:
                     "revenue", "Umsatz absolut", "#1565c0", "#1565c0")
     with _gc4:
         if not a_eps.empty and len(a_eps) >= 2:
-            _show_chart(_bar_chart(a_eps, "EPS (Diluted) — Trend", "#00e5ff", "#ff5252",
+            _show_chart(_bar_chart(a_eps, "EPS (Diluted) — Trend", "#00e5ff", _C_NEGATIVE,
                                    is_growth=False, value_fmt=lambda v: f"{_cur_sym}{v:.2f}"),
-                        "eps", "EPS (Diluted)", "#00e5ff", "#ff5252")
+                        "eps", "EPS (Diluted)", "#00e5ff", _C_NEGATIVE)
         elif not a_net.empty:
-            _show_chart(_bar_chart(a_net, "Nettogewinn absolut", "#64b5f6", "#ff5252",
+            _show_chart(_bar_chart(a_net, "Nettogewinn absolut", "#64b5f6", _C_NEGATIVE,
                                    is_growth=False, value_fmt=lambda v: fmt_large(v)),
-                        "net", "Nettogewinn absolut", "#64b5f6", "#ff5252")
+                        "net", "Nettogewinn absolut", "#64b5f6", _C_NEGATIVE)
 
     _gc5, _gc6 = st.columns(2)
     with _gc5:
@@ -11396,8 +11411,8 @@ elif _at == 1:
                     "fcf", "Free Cash Flow absolut", "#26a69a", "#ef5350",
                     "Keine FCF-Daten verfügbar.")
     with _gc6:
-        _show_chart(_bar_chart(a_fcf, "Free Cash Flow Wachstum YoY", "#00e676", "#ff5252"),
-                    "fcf_growth", "FCF Wachstum YoY", "#00e676", "#ff5252")
+        _show_chart(_bar_chart(a_fcf, "Free Cash Flow Wachstum YoY", _C_POSITIVE, _C_NEGATIVE),
+                    "fcf_growth", "FCF Wachstum YoY", _C_POSITIVE, _C_NEGATIVE)
 
     # EBITDA-Zeile
     _gc7, _gc8 = st.columns(2)
@@ -11407,8 +11422,8 @@ elif _at == 1:
                     "ebitda", "EBITDA absolut", "#7986cb", "#ef5350",
                     "Keine EBITDA-Daten verfügbar.")
     with _gc8:
-        _show_chart(_bar_chart(a_ebitda, "EBITDA Wachstum YoY", "#00e676", "#ff5252"),
-                    "ebitda_growth", "EBITDA Wachstum YoY", "#00e676", "#ff5252")
+        _show_chart(_bar_chart(a_ebitda, "EBITDA Wachstum YoY", _C_POSITIVE, _C_NEGATIVE),
+                    "ebitda_growth", "EBITDA Wachstum YoY", _C_POSITIVE, _C_NEGATIVE)
 
     # ── Detailansicht (nach Charts, damit Scroll-Position passt) ──────────
     if _exp:
@@ -11428,15 +11443,15 @@ elif _at == 1:
                 st.rerun()
         with _tl:
             st.markdown(
-                f"<h4 style='color:#64b5f6;margin:4px 0;'>📊 {_exp_title} — Detailansicht</h4>",
+                f"<h4 style='color:{_C_ACCENT};margin:4px 0;'>📊 {_exp_title} — Detailansicht</h4>",
                 unsafe_allow_html=True)
         _render_expanded_chart(_exp_ticker, _exp_metric, _exp_title, _exp_cp, _exp_cn)
         st.markdown("---")
 
     # ── Segment-Aufschlüsselung ────────────────────────────────────────
     st.markdown("<div class='section-header'>🥧 Umsatz nach Segment</div>", unsafe_allow_html=True)
-    _seg_colors = ["#00e5ff","#a78bfa","#00e676","#ffd600","#ff5252",
-                   "#f59e0b","#64b5f6","#f48fb1","#69f0ae","#ce93d8",
+    _seg_colors = ["#00e5ff","#a78bfa",_C_POSITIVE,_C_NEUTRAL,_C_NEGATIVE,
+                   "#f59e0b","#64b5f6","#f48fb1",_C_POSITIVE_SFT,"#ce93d8",
                    "#4db6ac","#ef9a9a","#80cbc4","#ffcc80","#90a4ae"]
 
     def _seg_charts(entries: list, sublabel: str, expanded: bool = False):
@@ -11511,7 +11526,7 @@ elif _at == 1:
                     st.session_state["seg_expanded"] = None
             with _stl:
                 st.markdown(
-                    f"<h4 style='color:#64b5f6;margin:4px 0;'>🥧 {_seg_label} — alle {len(_seg_all)} Jahre</h4>",
+                    f"<h4 style='color:{_C_ACCENT};margin:4px 0;'>🥧 {_seg_label} — alle {len(_seg_all)} Jahre</h4>",
                     unsafe_allow_html=True,
                 )
             _seg_charts(_seg_all, _seg_label, expanded=True)
@@ -11537,11 +11552,11 @@ elif _at == 1:
         if _src_label:
             st.caption(f"Quelle: {_src_label}")
     elif SEC_API_KEY:
-        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Keine Segmentdaten gefunden — das Unternehmen rapportiert möglicherweise keine separaten Segmente in seinen XBRL-Filings.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="insight-box" style="color:{_C_TEXT_MUTED};">ℹ️ Keine Segmentdaten gefunden — das Unternehmen rapportiert möglicherweise keine separaten Segmente in seinen XBRL-Filings.</div>', unsafe_allow_html=True)
     elif FMP_API_KEY:
-        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ FMP Segmentdaten nicht verfügbar — FMP Paid Plan oder SEC_API_KEY benötigt.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="insight-box" style="color:{_C_TEXT_MUTED};">ℹ️ FMP Segmentdaten nicht verfügbar — FMP Paid Plan oder SEC_API_KEY benötigt.</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="insight-box" style="color:#546e7a;">ℹ️ Segmentdaten: SEC_API_KEY in Railway-Umgebungsvariablen setzen (sec-api.io).</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="insight-box" style="color:{_C_TEXT_MUTED};">ℹ️ Segmentdaten: SEC_API_KEY in Railway-Umgebungsvariablen setzen (sec-api.io).</div>', unsafe_allow_html=True)
 
 # ==================== TAB 2: PROGNOSE ====================
 elif _at == 2:
@@ -11593,7 +11608,7 @@ elif _at == 2:
             <div class="metric-value" style="color:{_rec_color};font-size:1.25rem;">{_rec_label}</div>
             <div style="background:#1e2d45;border-radius:4px;height:6px;margin:8px 0 4px 0;">
                 <div style="background:{_rec_color};width:{_score_pct:.0f}%;height:6px;border-radius:4px;"></div></div>
-            <div style="color:#546e7a;font-size:0.75rem;">{_n_anal} Analysten · Score {f"{float(_rec_mean):.1f}" if _rec_mean else "—"} / 5</div>
+            <div style="color:{_C_TEXT_MUTED};font-size:0.75rem;">{_n_anal} Analysten · Score {f"{float(_rec_mean):.1f}" if _rec_mean else "—"} / 5</div>
         </div>""", unsafe_allow_html=True)
     with c2:
         _up_color = "#26a69a" if (_upside and _upside > 10) else "#ffa726" if (_upside and _upside > 0) else "#ef5350"
@@ -11602,7 +11617,7 @@ elif _at == 2:
             <div class="metric-label">Ø Kursziel (Upside)</div>
             <div class="metric-value" style="color:{_up_color};">{f"{_cur_sym}{_t_mean:.2f}" if _t_mean else "—"}</div>
             <div style="color:{_up_color};font-size:0.9rem;font-weight:600;margin-top:4px;">{f"{_upside:+.1f}%" if _upside is not None else ""}</div>
-            <div style="color:#546e7a;font-size:0.75rem;">{f"Spanne: {_cur_sym}{_t_low:.0f}–{_cur_sym}{_t_high:.0f}" if (_t_low and _t_high) else ""}</div>
+            <div style="color:{_C_TEXT_MUTED};font-size:0.75rem;">{f"Spanne: {_cur_sym}{_t_low:.0f}–{_cur_sym}{_t_high:.0f}" if (_t_low and _t_high) else ""}</div>
         </div>""", unsafe_allow_html=True)
     with c3:
         _fpe_color = "#26a69a" if (_fwd_pe and _fwd_pe < 20) else "#ffa726" if (_fwd_pe and _fwd_pe < 35) else "#ef5350"
@@ -11610,8 +11625,8 @@ elif _at == 2:
         <div class="metric-card">
             <div class="metric-label">Forward KGV</div>
             <div class="metric-value" style="color:{_fpe_color};">{f"{_fwd_pe:.1f}×" if _fwd_pe else "—"}</div>
-            <div style="color:#546e7a;font-size:0.75rem;margin-top:4px;">Trailing KGV: {f"{trailing_pe:.1f}×" if trailing_pe else "—"}</div>
-            <div style="color:#546e7a;font-size:0.75rem;">Forward EPS: {f"{_cur_sym}{_fwd_eps:.2f}" if _fwd_eps else "—"}</div>
+            <div style="color:{_C_TEXT_MUTED};font-size:0.75rem;margin-top:4px;">Trailing KGV: {f"{trailing_pe:.1f}×" if trailing_pe else "—"}</div>
+            <div style="color:{_C_TEXT_MUTED};font-size:0.75rem;">Forward EPS: {f"{_cur_sym}{_fwd_eps:.2f}" if _fwd_eps else "—"}</div>
         </div>""", unsafe_allow_html=True)
     with c4:
         _br_color = "#26a69a" if (_beat_rate and _beat_rate >= 70) else "#ffa726" if (_beat_rate and _beat_rate >= 50) else "#ef5350"
@@ -11619,8 +11634,8 @@ elif _at == 2:
         <div class="metric-card">
             <div class="metric-label">EPS-Beat-Rate</div>
             <div class="metric-value" style="color:{_br_color};">{f"{_beat_rate:.0f}%" if _beat_rate else "—"}</div>
-            <div style="color:#546e7a;font-size:0.75rem;margin-top:4px;">{f"{_beats}/{_n_es} Quartale" if _n_es else "Keine Daten"}</div>
-            <div style="color:#546e7a;font-size:0.75rem;">{f"Ø Überraschung: {_avg_surp:+.1f}%" if _avg_surp is not None else ""}</div>
+            <div style="color:{_C_TEXT_MUTED};font-size:0.75rem;margin-top:4px;">{f"{_beats}/{_n_es} Quartale" if _n_es else "Keine Daten"}</div>
+            <div style="color:{_C_TEXT_MUTED};font-size:0.75rem;">{f"Ø Überraschung: {_avg_surp:+.1f}%" if _avg_surp is not None else ""}</div>
         </div>""", unsafe_allow_html=True)
 
     # ── ABSCHNITT 2: Kursziel-Spanne ─────────────────────────────────────────
@@ -11634,10 +11649,10 @@ elif _at == 2:
         _medp = _tp(_t_median) if _t_median else None
 
         st.markdown(f"""
-        <div style="background:#0d1526;border:1px solid #1e2d45;border-radius:14px;padding:22px 28px;margin:20px 0 6px 0;">
+        <div style="background:{_C_SURFACE};border:1px solid #1e2d45;border-radius:14px;padding:22px 28px;margin:20px 0 6px 0;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-                <span style="color:#b0bec5;font-weight:700;font-size:0.85rem;letter-spacing:0.05em;">KURSZIEL-SPANNE DER ANALYSTEN</span>
-                <span style="color:#546e7a;font-size:0.78rem;">{_n_anal} Analysten · {_currency}</span>
+                <span style="color:{_C_TEXT_SEC};font-weight:700;font-size:0.85rem;letter-spacing:0.05em;">KURSZIEL-SPANNE DER ANALYSTEN</span>
+                <span style="color:{_C_TEXT_MUTED};font-size:0.78rem;">{_n_anal} Analysten · {_currency}</span>
             </div>
             <div style="position:relative;height:14px;border-radius:7px;
                 background:linear-gradient(90deg,#ef5350 0%,#ffa726 35%,#26a69a 100%);margin-bottom:36px;">
@@ -11649,22 +11664,22 @@ elif _at == 2:
             <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
                 <div style="text-align:center;">
                     <div style="color:#ef5350;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_low:.2f}</div>
-                    <div style="color:#546e7a;font-size:0.7rem;">Bear-Ziel</div>
+                    <div style="color:{_C_TEXT_MUTED};font-size:0.7rem;">Bear-Ziel</div>
                     <div style="color:#ef5350;font-size:0.78rem;">{f"{_upside_low:+.0f}%" if _upside_low else ""}</div>
                 </div>
                 <div style="text-align:center;background:rgba(255,255,255,0.05);border-radius:8px;padding:4px 14px;">
-                    <div style="color:#eceff1;font-weight:700;font-size:1.0rem;">{_cur_sym}{price:.2f}</div>
-                    <div style="color:#90a4ae;font-size:0.7rem;">Kurs heute</div>
+                    <div style="color:{_C_TEXT_PRIMARY};font-weight:700;font-size:1.0rem;">{_cur_sym}{price:.2f}</div>
+                    <div style="color:{_C_TEXT_MUTED2};font-size:0.7rem;">Kurs heute</div>
                 </div>
-                {f'<div style="text-align:center;"><div style="color:#90caf9;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_median:.2f}</div><div style="color:#546e7a;font-size:0.7rem;">Median-Ziel</div></div>' if _t_median else ""}
+                {f'<div style="text-align:center;"><div style="color:#90caf9;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_median:.2f}</div><div style="color:{_C_TEXT_MUTED};font-size:0.7rem;">Median-Ziel</div></div>' if _t_median else ""}
                 <div style="text-align:center;">
                     <div style="color:#26a69a;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_mean:.2f}</div>
-                    <div style="color:#546e7a;font-size:0.7rem;">Ø Kursziel</div>
+                    <div style="color:{_C_TEXT_MUTED};font-size:0.7rem;">Ø Kursziel</div>
                     <div style="color:#26a69a;font-size:0.78rem;">{f"{_upside:+.0f}%" if _upside else ""}</div>
                 </div>
                 <div style="text-align:center;">
                     <div style="color:#26a69a;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_high:.2f}</div>
-                    <div style="color:#546e7a;font-size:0.7rem;">Bull-Ziel</div>
+                    <div style="color:{_C_TEXT_MUTED};font-size:0.7rem;">Bull-Ziel</div>
                     <div style="color:#26a69a;font-size:0.78rem;">{f"{_upside_high:+.0f}%" if _upside_high else ""}</div>
                 </div>
             </div>
@@ -11685,7 +11700,7 @@ elif _at == 2:
 
     if _years_sorted:
         st.markdown(
-            "<div style='color:#b0bec5;font-weight:700;font-size:0.88rem;"
+            "<div style='color:{_C_TEXT_SEC};font-weight:700;font-size:0.88rem;"
             "letter-spacing:0.05em;margin:26px 0 10px 0;'>JAHRES-PROGNOSEN IM ÜBERBLICK</div>",
             unsafe_allow_html=True)
 
@@ -11712,10 +11727,10 @@ elif _at == 2:
             _an_txt = f'<span style="color:#37474f;font-size:0.7rem">({_eps_an} An.)</span>' if _eps_an else ""
             _tbl_rows += f"""
             <tr style="border-bottom:1px solid #1a2744;">
-                <td style="padding:11px 14px;font-weight:700;color:#eceff1;white-space:nowrap;">{_yr}E&nbsp;{_an_txt}</td>
-                <td style="padding:11px 14px;text-align:right;color:#b0bec5;">{fmt_large(_rev_e) if _rev_e else "—"}</td>
+                <td style="padding:11px 14px;font-weight:700;color:{_C_TEXT_PRIMARY};white-space:nowrap;">{_yr}E&nbsp;{_an_txt}</td>
+                <td style="padding:11px 14px;text-align:right;color:{_C_TEXT_SEC};">{fmt_large(_rev_e) if _rev_e else "—"}</td>
                 <td style="padding:11px 14px;text-align:right;font-weight:600;color:{_gc(_rev_gr)};">{f"{_rev_gr:+.1f}%" if _rev_gr is not None else "—"}</td>
-                <td style="padding:11px 14px;text-align:right;color:#b0bec5;">{f"{_cur_sym}{_eps_e:.2f}" if _eps_e is not None else "—"}</td>
+                <td style="padding:11px 14px;text-align:right;color:{_C_TEXT_SEC};">{f"{_cur_sym}{_eps_e:.2f}" if _eps_e is not None else "—"}</td>
                 <td style="padding:11px 14px;text-align:right;font-weight:600;color:{_gc(_eps_gr)};">{f"{_eps_gr:+.1f}%" if _eps_gr is not None else "—"}</td>
                 <td style="padding:11px 14px;text-align:right;color:{_pec(_fpe_i)};">{f"{_fpe_i:.1f}×" if _fpe_i else "—"}</td>
                 <td style="padding:11px 14px;text-align:right;color:#78909c;">{f"{_fps_i:.1f}×" if _fps_i else "—"}</td>
@@ -11726,17 +11741,17 @@ elif _at == 2:
         st.markdown(f"""
         <div style="overflow-x:auto;margin-bottom:6px;">
         <table style="width:100%;border-collapse:collapse;font-size:0.84rem;
-            background:#0d1526;border-radius:12px;overflow:hidden;">
+            background:{_C_SURFACE};border-radius:12px;overflow:hidden;">
         <thead><tr style="background:#1a2744;">
-            <th style="padding:10px 14px;text-align:left;color:#546e7a;">Jahr</th>
-            <th style="padding:10px 14px;text-align:right;color:#546e7a;">Umsatz (E)</th>
-            <th style="padding:10px 14px;text-align:right;color:#546e7a;">Umsatz-Wachstum</th>
-            <th style="padding:10px 14px;text-align:right;color:#546e7a;">EPS (E)</th>
-            <th style="padding:10px 14px;text-align:right;color:#546e7a;">EPS-Wachstum</th>
-            <th style="padding:10px 14px;text-align:right;color:#546e7a;">Fwd. KGV</th>
-            <th style="padding:10px 14px;text-align:right;color:#546e7a;">Fwd. KUV</th>
+            <th style="padding:10px 14px;text-align:left;color:{_C_TEXT_MUTED};">Jahr</th>
+            <th style="padding:10px 14px;text-align:right;color:{_C_TEXT_MUTED};">Umsatz (E)</th>
+            <th style="padding:10px 14px;text-align:right;color:{_C_TEXT_MUTED};">Umsatz-Wachstum</th>
+            <th style="padding:10px 14px;text-align:right;color:{_C_TEXT_MUTED};">EPS (E)</th>
+            <th style="padding:10px 14px;text-align:right;color:{_C_TEXT_MUTED};">EPS-Wachstum</th>
+            <th style="padding:10px 14px;text-align:right;color:{_C_TEXT_MUTED};">Fwd. KGV</th>
+            <th style="padding:10px 14px;text-align:right;color:{_C_TEXT_MUTED};">Fwd. KUV</th>
         </tr></thead>
-        <tbody style="color:#eceff1;">{_tbl_rows}</tbody>
+        <tbody style="color:{_C_TEXT_PRIMARY};">{_tbl_rows}</tbody>
         </table>
         </div>
         <div style="color:#37474f;font-size:0.71rem;">
@@ -11744,7 +11759,7 @@ elif _at == 2:
         </div>""", unsafe_allow_html=True)
     elif not _eps_est and not _rev_est:
         st.markdown(
-            '<div class="insight-box" style="color:#546e7a;margin-top:16px;">'
+            '<div class="insight-box" style="color:{_C_TEXT_MUTED};margin-top:16px;">'
             'ℹ️ Keine Forward-Schätzungen verfügbar — FMP_API_KEY setzen oder Ticker hat keine Analystencoverage.</div>',
             unsafe_allow_html=True)
 
@@ -11813,7 +11828,7 @@ elif _at == 2:
     if earnings_surprises:
         _bi = "✅" if (_beat_rate and _beat_rate >= 70) else "⚠️" if (_beat_rate and _beat_rate >= 50) else "❌"
         st.markdown(
-            f"<div style='color:#b0bec5;font-weight:700;font-size:0.85rem;"
+            f"<div style='color:{_C_TEXT_SEC};font-weight:700;font-size:0.85rem;"
             f"letter-spacing:0.05em;margin:24px 0 10px 0;'>"
             f"EPS-ÜBERRASCHUNGEN — LETZTE {_n_es} QUARTALE&nbsp;&nbsp;"
             f"{f'{_bi} {_beats}/{_n_es} Beat ({_beat_rate:.0f}%)' if _beat_rate else ''}</div>",
@@ -11825,10 +11840,10 @@ elif _at == 2:
             _bw   = min(abs(_sval) * 2.5, 100)
             _surp_rows += f"""
             <tr style="border-bottom:1px solid #0d1526;">
-                <td style="padding:9px 12px;color:#90a4ae;">{_s['date']}</td>
-                <td style="padding:9px 12px;text-align:right;color:#546e7a;">
+                <td style="padding:9px 12px;color:{_C_TEXT_MUTED2};">{_s['date']}</td>
+                <td style="padding:9px 12px;text-align:right;color:{_C_TEXT_MUTED};">
                     {f"{_cur_sym}{_s['estimate']:.2f}" if _s.get("estimate") is not None else "—"}</td>
-                <td style="padding:9px 12px;text-align:right;color:#eceff1;font-weight:600;">
+                <td style="padding:9px 12px;text-align:right;color:{_C_TEXT_PRIMARY};font-weight:600;">
                     {_cur_sym}{_s['actual']:.2f}</td>
                 <td style="padding:9px 12px;">
                     <div style="display:flex;align-items:center;gap:6px;">
@@ -11845,15 +11860,15 @@ elif _at == 2:
         st.markdown(f"""
         <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:0.82rem;
-            background:#0d1526;border-radius:12px;overflow:hidden;">
+            background:{_C_SURFACE};border-radius:12px;overflow:hidden;">
         <thead><tr style="background:#1a2744;">
-            <th style="padding:9px 12px;text-align:left;color:#546e7a;">Quartal</th>
-            <th style="padding:9px 12px;text-align:right;color:#546e7a;">Schätzung</th>
-            <th style="padding:9px 12px;text-align:right;color:#546e7a;">Actual EPS</th>
-            <th style="padding:9px 12px;color:#546e7a;">Überraschung</th>
-            <th style="padding:9px 12px;text-align:center;color:#546e7a;">Ergebnis</th>
+            <th style="padding:9px 12px;text-align:left;color:{_C_TEXT_MUTED};">Quartal</th>
+            <th style="padding:9px 12px;text-align:right;color:{_C_TEXT_MUTED};">Schätzung</th>
+            <th style="padding:9px 12px;text-align:right;color:{_C_TEXT_MUTED};">Actual EPS</th>
+            <th style="padding:9px 12px;color:{_C_TEXT_MUTED};">Überraschung</th>
+            <th style="padding:9px 12px;text-align:center;color:{_C_TEXT_MUTED};">Ergebnis</th>
         </tr></thead>
-        <tbody style="color:#eceff1;">{_surp_rows}</tbody>
+        <tbody style="color:{_C_TEXT_PRIMARY};">{_surp_rows}</tbody>
         </table></div>""", unsafe_allow_html=True)
 
 elif _at == 3:
@@ -11904,7 +11919,7 @@ elif _at == 3:
             <div class="metric-sub">Handelbare Aktien</div>
         </div>""", unsafe_allow_html=True)
     with c3:
-        dil_color = "#ff5252" if dilution_pct and dilution_pct > 5 else "#ffd600" if dilution_pct and dilution_pct > 2 else "#00e676"
+        dil_color = _C_NEGATIVE if dilution_pct and dilution_pct > 5 else _C_NEUTRAL if dilution_pct and dilution_pct > 2 else _C_POSITIVE
         dil_str = f"+{dilution_pct:.1f}%" if dilution_pct and dilution_pct > 0 else (f"{dilution_pct:.1f}%" if dilution_pct else "N/A")
         dil_badge = f'<span style="color:{dil_color}; font-weight:700;">{dil_str}</span>' if dilution_pct else '<span class="metric-badge-gray">N/A</span>'
         st.markdown(f"""
@@ -11927,7 +11942,7 @@ elif _at == 3:
     c5, c6 = st.columns(2)
     with c5:
         ncp_str = f"${net_cash_per_share:.2f}" if net_cash_per_share is not None else "N/A"
-        ncp_color = "#00e676" if net_cash_per_share and net_cash_per_share > 0 else "#ff5252"
+        ncp_color = _C_POSITIVE if net_cash_per_share and net_cash_per_share > 0 else _C_NEGATIVE
         ncp_badge = f'<span style="color:{ncp_color}; font-weight:700;">{ncp_str}</span>'
         st.markdown(f"""
         <div class="metric-card">
@@ -11938,7 +11953,7 @@ elif _at == 3:
         </div>""", unsafe_allow_html=True)
     with c6:
         short_str = f"{short_pct_float*100:.1f}%" if short_pct_float else "N/A"
-        short_color = "#ff5252" if short_pct_float and short_pct_float > 0.15 else "#ffd600" if short_pct_float and short_pct_float > 0.07 else "#00e676"
+        short_color = _C_NEGATIVE if short_pct_float and short_pct_float > 0.15 else _C_NEUTRAL if short_pct_float and short_pct_float > 0.07 else _C_POSITIVE
         short_badge = f'<span style="color:{short_color}; font-weight:700;">{short_str}</span>' if short_pct_float else '<span class="metric-badge-gray">N/A</span>'
         st.markdown(f"""
         <div class="metric-card">
@@ -11955,7 +11970,7 @@ elif _at == 3:
             _sh_years = [pd.Timestamp(d).strftime("%Y") for d in _sh_ann.index]
             _sh_vals  = (_sh_ann.values / 1e9).tolist()
             _sh_delta = [0.0] + [(_sh_vals[i] - _sh_vals[i-1]) / abs(_sh_vals[i-1]) * 100 if _sh_vals[i-1] else 0 for i in range(1, len(_sh_vals))]
-            _sh_colors = ["#ff5252" if d > 0.5 else "#00e676" if d < -0.5 else "#ffd600" for d in _sh_delta]
+            _sh_colors = [_C_NEGATIVE if d > 0.5 else _C_POSITIVE if d < -0.5 else _C_NEUTRAL for d in _sh_delta]
             fig_sh = go.Figure(go.Bar(
                 x=_sh_years, y=_sh_vals,
                 marker_color=_sh_colors,
@@ -12033,17 +12048,17 @@ elif _at == 3:
         for _i, _es in enumerate(earnings_surprises[:4]):
             _col = _es_cols[_i]
             _v   = _es["verdict"]
-            _clr = "#00e676" if _v == "Beat" else "#ff5252" if _v == "Miss" else "#ffd600"
+            _clr = _C_POSITIVE if _v == "Beat" else _C_NEGATIVE if _v == "Miss" else _C_NEUTRAL
             _bg  = "rgba(0,230,118,0.08)" if _v == "Beat" else "rgba(255,82,82,0.08)" if _v == "Miss" else "rgba(255,214,0,0.08)"
             _icon = "✅" if _v == "Beat" else "❌" if _v == "Miss" else "➖"
             _surp_str = f"{_es['surp_pct']:+.1f}%"
             _col.markdown(f"""
             <div style='background:{_bg};border:1px solid {_clr}33;border-top:3px solid {_clr};
                  border-radius:12px;padding:12px 14px;text-align:center;'>
-              <div style='color:#546e7a;font-size:0.72rem;margin-bottom:4px;'>{_es["date"]}</div>
+              <div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-bottom:4px;'>{_es["date"]}</div>
               <div style='color:{_clr};font-size:1.1rem;font-weight:800;'>{_icon} {_v}</div>
-              <div style='color:#eceff1;font-size:0.88rem;font-weight:700;margin:4px 0;'>{_surp_str}</div>
-              <div style='color:#546e7a;font-size:0.7rem;'>
+              <div style='color:{_C_TEXT_PRIMARY};font-size:0.88rem;font-weight:700;margin:4px 0;'>{_surp_str}</div>
+              <div style='color:{_C_TEXT_MUTED};font-size:0.7rem;'>
                 {'Est: $' + f"{_es['estimate']:.2f} · " if _es['estimate'] is not None else ''}Act: ${_es["actual"]:.2f}
               </div>
             </div>""", unsafe_allow_html=True)
@@ -12052,7 +12067,7 @@ elif _at == 3:
         if len(earnings_surprises) > 1:
             _dates  = [e["date"]     for e in reversed(earnings_surprises)]
             _surps  = [e["surp_pct"] for e in reversed(earnings_surprises)]
-            _colors = ["#00e676" if s > 2 else "#ff5252" if s < -2 else "#ffd600" for s in _surps]
+            _colors = [_C_POSITIVE if s > 2 else _C_NEGATIVE if s < -2 else _C_NEUTRAL for s in _surps]
             _fig_es = go.Figure(go.Bar(
                 x=_dates, y=_surps,
                 marker_color=_colors,
@@ -12105,7 +12120,7 @@ elif _at == 3:
             _labels = [d.strftime("Q%q '%y") if hasattr(d, 'strftime') else str(d)[:7]
                        for d in q_rev.index]
             _rev_b  = [v/1e9 for v in q_rev.values]
-            _rev_cl = ["#00e676" if i == 0 or v >= _rev_b[i-1] else "#ff5252"
+            _rev_cl = [_C_POSITIVE if i == 0 or v >= _rev_b[i-1] else _C_NEGATIVE
                        for i, v in enumerate(_rev_b)]
             _qfig.add_trace(go.Bar(
                 x=_labels, y=_rev_b,
@@ -12117,7 +12132,7 @@ elif _at == 3:
             _labels2 = [d.strftime("Q%q '%y") if hasattr(d, 'strftime') else str(d)[:7]
                         for d in q_net.index]
             _net_b   = [v/1e9 for v in q_net.values]
-            _net_cl  = ["#00e676" if v >= 0 else "#ff5252" for v in _net_b]
+            _net_cl  = [_C_POSITIVE if v >= 0 else _C_NEGATIVE for v in _net_b]
             _qfig.add_trace(go.Bar(
                 x=_labels2, y=_net_b,
                 marker_color=_net_cl, name="Nettogewinn",
@@ -12137,7 +12152,7 @@ elif _at == 3:
                            zerolinecolor="#1e3a5f", ticksuffix="B")
         st.plotly_chart(_qfig, use_container_width=True)
     else:
-        st.markdown('<div class="metric-card" style="color:#546e7a;text-align:center;">'
+        st.markdown(f'<div class="metric-card" style="color:{_C_TEXT_MUTED};text-align:center;">'
                     'Quartalsdaten nicht verfügbar</div>', unsafe_allow_html=True)
 
     # ── CapEx & Goodwill ───────────────────────────────────────────────
@@ -12175,12 +12190,12 @@ elif _at == 3:
         if _fig_capex:
             st.plotly_chart(_fig_capex, use_container_width=True)
             st.markdown(
-                '<div style="font-size:0.68rem;color:#546e7a;margin-top:-8px;">'
+                '<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:-8px;">'
                 '⬆ Hohe CapEx = starke Investitionen (Hyperscaler, Industrie) · '
                 'Als % des Umsatzes oder FCF einordnen</div>',
                 unsafe_allow_html=True)
         else:
-            st.markdown('<div class="insight-box" style="color:#546e7a;">Keine CapEx-Daten verfügbar</div>',
+            st.markdown(f'<div class="insight-box" style="color:{_C_TEXT_MUTED};">Keine CapEx-Daten verfügbar</div>',
                         unsafe_allow_html=True)
 
     with _cx2:
@@ -12188,12 +12203,12 @@ elif _at == 3:
         if _fig_gw:
             st.plotly_chart(_fig_gw, use_container_width=True)
             st.markdown(
-                '<div style="font-size:0.68rem;color:#546e7a;margin-top:-8px;">'
+                '<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:-8px;">'
                 '⚠ Stark steigender Goodwill = viele Akquisitionen · '
                 'Abschreibungsrisiko (Impairment) beachten</div>',
                 unsafe_allow_html=True)
         else:
-            st.markdown('<div class="insight-box" style="color:#546e7a;">Keine Goodwill-Daten verfügbar</div>',
+            st.markdown(f'<div class="insight-box" style="color:{_C_TEXT_MUTED};">Keine Goodwill-Daten verfügbar</div>',
                         unsafe_allow_html=True)
 
     # CapEx als % des Umsatzes (nützlich für Hyperscaler-Vergleich)
@@ -12206,7 +12221,7 @@ elif _at == 3:
                               for d in _capex_pct.index]
                 _fig_cp = go.Figure(go.Bar(
                     x=_labels_cp, y=_capex_pct.values,
-                    marker_color=["#ff8f00" if v > 15 else "#ffd600" if v > 8 else "#64b5f6"
+                    marker_color=["#ff8f00" if v > 15 else _C_NEUTRAL if v > 8 else "#64b5f6"
                                   for v in _capex_pct.values],
                     text=[f"{v:.1f}%" for v in _capex_pct.values],
                     textposition="outside", textfont=dict(size=10, color="#90a4ae"),
@@ -12222,7 +12237,7 @@ elif _at == 3:
                 )
                 st.plotly_chart(_fig_cp, use_container_width=True)
                 st.markdown(
-                    '<div style="font-size:0.68rem;color:#546e7a;margin-top:-8px;">'
+                    '<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:-8px;">'
                     'Benchmark: Hyperscaler (AWS/Azure/GCP) >10% · Industrie 5–10% · '
                     'Software/Asset-light &lt;3%</div>',
                     unsafe_allow_html=True)
@@ -12258,7 +12273,7 @@ elif _at == 3:
                     _cv = [a_cash.get(d, None) for d in _idx]
                     _fig_dc.add_trace(go.Bar(
                         name="Cash & Äquivalente", x=_labels_dc, y=_cv,
-                        marker_color="#00e676",
+                        marker_color=_C_POSITIVE,
                         text=[fmt_large(v) if v else "" for v in _cv],
                         textposition="outside", textfont=dict(size=9, color="#90a4ae"),
                     ))
@@ -12276,7 +12291,7 @@ elif _at == 3:
                 )
                 st.plotly_chart(_fig_dc, use_container_width=True)
                 st.markdown(
-                    '<div style="font-size:0.68rem;color:#546e7a;margin-top:-8px;">'
+                    '<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:-8px;">'
                     '🔴 Hohe Schulden bei niedrigem Cash = Refinanzierungsrisiko · '
                     '🟢 Cash > Schulden = Nettocash-Position</div>',
                     unsafe_allow_html=True)
@@ -12289,7 +12304,7 @@ elif _at == 3:
                     _net_debt = (a_debt[_common] - a_cash[_common])
                     _labels_nd = [str(d.year) if hasattr(d, "year") else str(d)[:4]
                                   for d in _common]
-                    _colors_nd = ["#00e676" if v < 0 else "#ef5350" for v in _net_debt.values]
+                    _colors_nd = [_C_POSITIVE if v < 0 else "#ef5350" for v in _net_debt.values]
                     _fig_nd = go.Figure(go.Bar(
                         x=_labels_nd, y=_net_debt.values,
                         marker_color=_colors_nd,
@@ -12311,7 +12326,7 @@ elif _at == 3:
                     _nd_hint = ("🟢 Nettocash-Position" if _last_nd < 0
                                 else "🔴 Nettoverschuldet" if _last_nd > 0 else "")
                     st.markdown(
-                        f'<div style="font-size:0.68rem;color:#546e7a;margin-top:-8px;">'
+                        f'<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:-8px;">'
                         f'Negativ = mehr Cash als Schulden (gut) · {_nd_hint}</div>',
                         unsafe_allow_html=True)
             elif _has_debt:
@@ -12328,15 +12343,15 @@ elif _at == 3:
                 _de_cols = st.columns(len(_de_ratios))
                 for _di, ((_dk, _dv), _dcol) in enumerate(zip(_de_ratios.items(), _de_cols)):
                     _yr = str(_dk.year) if hasattr(_dk, "year") else str(_dk)[:4]
-                    _col_de = "#00e676" if _dv < 2 else "#ffd600" if _dv < 4 else "#ef5350"
+                    _col_de = _C_POSITIVE if _dv < 2 else _C_NEUTRAL if _dv < 4 else "#ef5350"
                     _dcol.markdown(
-                        f"<div style='text-align:center;padding:6px 4px;background:#0d1f35;"
+                        f"<div style='text-align:center;padding:6px 4px;background:{_C_CARD_BG};"
                         f"border-radius:6px;border:1px solid #1a2740;'>"
                         f"<div style='color:#78909c;font-size:0.65rem;'>{_yr}</div>"
                         f"<div style='color:{_col_de};font-size:1rem;font-weight:700;'>{_dv:.1f}×</div>"
                         f"</div>", unsafe_allow_html=True)
     else:
-        st.markdown('<div class="insight-box" style="color:#546e7a;">Keine Bilanzdaten für Verschuldung verfügbar</div>',
+        st.markdown(f'<div class="insight-box" style="color:{_C_TEXT_MUTED};">Keine Bilanzdaten für Verschuldung verfügbar</div>',
                     unsafe_allow_html=True)
 
 elif _at == 4:
@@ -12360,7 +12375,7 @@ elif _at == 4:
         st.markdown(mini_card(_dy_label2, dividend_yield, 3, 1, ".2f", "%", tooltip=_dy_tooltip2), unsafe_allow_html=True)
     with c3:
         pfcf_str = f"{price_to_fcf:.1f}x" if price_to_fcf else "N/A"
-        pfcf_color = "#00e676" if price_to_fcf and price_to_fcf < 20 else "#ffd600" if price_to_fcf and price_to_fcf < 35 else "#ff5252"
+        pfcf_color = _C_POSITIVE if price_to_fcf and price_to_fcf < 20 else _C_NEUTRAL if price_to_fcf and price_to_fcf < 35 else _C_NEGATIVE
         pfcf_badge = f'<span style="color:{pfcf_color}; font-weight:700;">{pfcf_str}</span>' if price_to_fcf else '<span class="metric-badge-gray">N/A</span>'
         st.markdown(f"""
         <div class="metric-card">
@@ -12371,7 +12386,7 @@ elif _at == 4:
         </div>""", unsafe_allow_html=True)
     with c4:
         tsy_str = f"{total_shareholder_yield:.1f}%" if total_shareholder_yield else "N/A"
-        tsy_color = "#00e676" if total_shareholder_yield and total_shareholder_yield > 5 else "#ffd600" if total_shareholder_yield and total_shareholder_yield > 2 else "#78909c"
+        tsy_color = _C_POSITIVE if total_shareholder_yield and total_shareholder_yield > 5 else _C_NEUTRAL if total_shareholder_yield and total_shareholder_yield > 2 else "#78909c"
         tsy_badge = f'<span style="color:{tsy_color}; font-weight:700;">{tsy_str}</span>' if total_shareholder_yield else '<span class="metric-badge-gray">N/A</span>'
         st.markdown(f"""
         <div class="metric-card">
@@ -12385,7 +12400,7 @@ elif _at == 4:
     if target_mean and price:
         st.markdown("<div class='section-header'>Analyst Konsensus</div>", unsafe_allow_html=True)
         upside_val = (target_mean - price) / price * 100
-        up_color = "#00e676" if upside_val > 0 else "#ff5252"
+        up_color = _C_POSITIVE if upside_val > 0 else _C_NEGATIVE
         st.markdown(f"""
         <div class="insight-box">
             <strong>Kursziel:</strong> ${target_mean:.2f} |
@@ -12412,7 +12427,7 @@ elif _at == 4:
                 <li>Liegt der Kurs <em>über</em> dem Bull-Szenario → Markt preist starkes Wachstum ein — Enttäuschungspotenzial hoch.</li>
                 <li>Die Berechnung steht und fällt mit den Annahmen (GIGO). Kleines Delta bei der Wachstumsrate = grosser Effekt auf den Endwert.</li>
             </ul>
-            <span style="color:#546e7a; font-size:0.78rem;">
+            <span style="color:{_C_TEXT_MUTED}; font-size:0.78rem;">
                 Akt. FCF: <strong>{fmt_large(fcf, _cur_sym) if fcf else "N/A"}</strong> ·
                 Rev. Growth: <strong>{f"{rev_growth:.1f}%" if rev_growth is not None else "N/A"}</strong> ·
                 Alle Werte in {_currency} · Keine Anlageberatung.
@@ -12424,7 +12439,7 @@ elif _at == 4:
             "🐻 Bear": {
                 "growth": max(2.0,  round(_rg * 0.35, 1)),
                 "terminal": 1.5, "discount": 11.0,
-                "accent": "#ff5252", "bg": "rgba(255,82,82,0.07)",
+                "accent": _C_NEGATIVE, "bg": "rgba(255,82,82,0.07)",
                 "label": "Konservativ",
             },
             "⚖️ Base": {
@@ -12436,7 +12451,7 @@ elif _at == 4:
             "🐂 Bull": {
                 "growth": max(10.0, round(min(_rg * 0.90, 35), 1)),
                 "terminal": 3.5, "discount":  9.0,
-                "accent": "#00e676", "bg": "rgba(0,230,118,0.07)",
+                "accent": _C_POSITIVE, "bg": "rgba(0,230,118,0.07)",
                 "label": "Optimistisch",
             },
         }
@@ -12450,7 +12465,7 @@ elif _at == 4:
             if _fv:
                 _mg = (_fv - price) / price * 100
                 _mg_label = f"{'▲' if _mg > 0 else '▼'} {abs(_mg):.1f}% {'Upside' if _mg > 0 else 'Downside'}"
-                _mg_clr   = _sc["accent"] if _mg > 0 else "#ff5252"
+                _mg_clr   = _sc["accent"] if _mg > 0 else _C_NEGATIVE
             else:
                 _mg_label, _mg_clr = "N/A", "#546e7a"
             _col.markdown(f"""
@@ -12461,7 +12476,7 @@ elif _at == 4:
                    text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;'>
                 {_name}</div>
               <div style='color:#78909c;font-size:0.7rem;margin-bottom:10px;'>{_sc["label"]}</div>
-              <div style='color:#eceff1;font-size:1.9rem;font-weight:800;'>
+              <div style='color:{_C_TEXT_PRIMARY};font-size:1.9rem;font-weight:800;'>
                 {"${:,.0f}".format(_fv) if _fv else "N/A"}</div>
               <div style='color:{_mg_clr};font-size:0.85rem;font-weight:600;margin:6px 0;'>
                 {_mg_label}</div>
@@ -12478,7 +12493,7 @@ elif _at == 4:
         if _fv_values and price:
             _bar_labels = list(_sc_vals.keys()) + ["📍 Kurs"]
             _bar_vals   = [v if v else 0 for v in _sc_vals.values()] + [price]
-            _bar_clrs   = [_scenarios[n]["accent"] for n in _sc_vals] + ["#ffd600"]
+            _bar_clrs   = [_scenarios[n]["accent"] for n in _sc_vals] + [_C_NEUTRAL]
             _fig_dcf = go.Figure(go.Bar(
                 x=_bar_labels, y=_bar_vals,
                 marker_color=_bar_clrs,
@@ -12486,10 +12501,10 @@ elif _at == 4:
                 textposition="outside",
                 textfont=dict(size=11, color="#90a4ae"),
             ))
-            _fig_dcf.add_hline(y=price, line_dash="dot", line_color="#ffd600",
+            _fig_dcf.add_hline(y=price, line_dash="dot", line_color=_C_NEUTRAL,
                                line_width=1.5,
                                annotation_text=f"Kurs {_cur_sym}{price:.0f}",
-                               annotation_font_color="#ffd600")
+                               annotation_font_color=_C_NEUTRAL)
             _fig_dcf.update_layout(
                 template="plotly_dark",
                 paper_bgcolor="rgba(0,0,0,0)",
@@ -12514,7 +12529,7 @@ elif _at == 4:
                 _dcf_interp_bg = "rgba(100,181,246,0.07)"
             st.markdown(
                 f'<div style="background:{_dcf_interp_bg};border-radius:10px;padding:10px 16px;'
-                f'font-size:0.83rem;color:#b0bec5;margin:-8px 0 12px 0;">{_dcf_interp}</div>',
+                f'font-size:0.83rem;color:{_C_TEXT_SEC};margin:-8px 0 12px 0;">{_dcf_interp}</div>',
                 unsafe_allow_html=True)
 
         # ── Manueller Rechner (aufklappbar) ────────────────────────────
@@ -12539,18 +12554,18 @@ elif _at == 4:
             fair_val = dcf_valuation(fcf, shares_outstanding, g_rate, t_rate, d_rate, yrs)
             if fair_val:
                 margin = (fair_val - price) / price * 100
-                m_color = "#00e676" if margin > 0 else "#ff5252"
+                m_color = _C_POSITIVE if margin > 0 else _C_NEGATIVE
                 m_label = "Margin of Safety" if margin > 0 else "Überbewertung"
                 st.markdown(f"""
                 <div style="background:linear-gradient(135deg,#0d2137,#0a1a2e);border:1px solid #1e3a5f;
                      border-radius:16px;padding:22px;margin-top:10px;text-align:center;">
                     <div style="color:#78909c;font-size:0.8rem;text-transform:uppercase;
                          letter-spacing:1px;margin-bottom:8px;">Eigenes Szenario</div>
-                    <div style="color:#eceff1;font-size:2.5rem;font-weight:800;">${fair_val:.2f}</div>
+                    <div style="color:{_C_TEXT_PRIMARY};font-size:2.5rem;font-weight:800;">${fair_val:.2f}</div>
                     <div style="color:{m_color};font-size:1rem;margin-top:6px;font-weight:600;">
                         {'▲' if margin > 0 else '▼'} {abs(margin):.1f}% {m_label}
                     </div>
-                    <div style="color:#546e7a;font-size:0.78rem;margin-top:6px;">
+                    <div style="color:{_C_TEXT_MUTED};font-size:0.78rem;margin-top:6px;">
                         Kurs: {_cur_sym}{price:.2f} | FCF: {fmt_large(fcf, _cur_sym)}
                     </div>
                 </div>""", unsafe_allow_html=True)
@@ -12635,7 +12650,7 @@ elif _at == 7:
 
         # ── Price ──────────────────────────────────────────────────────
         ema_periods = {"EMA 20": 20, "EMA 50": 50, "EMA 100": 100, "EMA 200": 200}
-        ema_colors  = {"EMA 20": "#ffd600", "EMA 50": "#00e5ff", "EMA 100": "#ff9100", "EMA 200": "#ef5350"}
+        ema_colors  = {"EMA 20": _C_NEUTRAL, "EMA 50": "#00e5ff", "EMA 100": "#ff9100", "EMA 200": "#ef5350"}
 
         if chart_type == "Candlestick":
             fig_ta.add_trace(go.Candlestick(
@@ -12643,8 +12658,8 @@ elif _at == 7:
                 open=chart_data["Open"], high=chart_data["High"],
                 low=chart_data["Low"],  close=close,
                 name=ticker,
-                increasing_line_color="#00e676", decreasing_line_color="#ff5252",
-                increasing_fillcolor="#00e676",  decreasing_fillcolor="#ff5252",
+                increasing_line_color=_C_POSITIVE, decreasing_line_color=_C_NEGATIVE,
+                increasing_fillcolor=_C_POSITIVE,  decreasing_fillcolor=_C_NEGATIVE,
             ), row=1, col=1)
         else:
             fig_ta.add_trace(go.Scatter(
@@ -12781,12 +12796,12 @@ elif _at == 7:
 
         # ── Analyst target ──────────────────────────────────────────────
         if target_mean:
-            fig_ta.add_hline(y=target_mean, line_dash="dot", line_color="#ffd600", line_width=1.5,
+            fig_ta.add_hline(y=target_mean, line_dash="dot", line_color=_C_NEUTRAL, line_width=1.5,
                              annotation_text=f"Analyst Ziel ${target_mean:.0f}",
-                             annotation_font_color="#ffd600", row=1, col=1)
+                             annotation_font_color=_C_NEUTRAL, row=1, col=1)
 
         # ── Volume ──────────────────────────────────────────────────────
-        vol_colors = ["#00e676" if c >= o else "#ff5252"
+        vol_colors = [_C_POSITIVE if c >= o else _C_NEGATIVE
                       for c, o in zip(close, chart_data["Open"])]
         fig_ta.add_trace(go.Bar(
             x=chart_data.index, y=chart_data["Volume"],
@@ -12808,7 +12823,7 @@ elif _at == 7:
         # ── MACD ────────────────────────────────────────────────────────
         if show_macd and macd_row:
             macd_line, signal_line, macd_hist = compute_macd(close)
-            hist_colors = ["#00e676" if v >= 0 else "#ff5252" for v in macd_hist]
+            hist_colors = [_C_POSITIVE if v >= 0 else _C_NEGATIVE for v in macd_hist]
             fig_ta.add_trace(go.Bar(
                 x=chart_data.index, y=macd_hist,
                 name="MACD Hist", marker_color=hist_colors, opacity=0.6, showlegend=False,
@@ -12819,7 +12834,7 @@ elif _at == 7:
             ), row=macd_row, col=1)
             fig_ta.add_trace(go.Scatter(
                 x=chart_data.index, y=signal_line,
-                name="Signal", line=dict(color="#ffd600", width=1.2), showlegend=False,
+                name="Signal", line=dict(color=_C_NEUTRAL, width=1.2), showlegend=False,
             ), row=macd_row, col=1)
 
         # ── Layout ──────────────────────────────────────────────────────
@@ -12977,10 +12992,10 @@ elif _at == 8:
                     val_str = f"${val:,.0f}" if isinstance(val, (int, float)) else str(val)
                     st.markdown(f"""
                     <div class="insider-row">
-                        <span style="color:#b0bec5;">{str(name)[:20]}</span>
+                        <span style="color:{_C_TEXT_SEC};">{str(name)[:20]}</span>
                         <span class="{tx_class}">{tx}</span>
-                        <span style="color:#64b5f6;">{val_str}</span>
-                        <span style="color:#546e7a;">{date}</span>
+                        <span style="color:{_C_ACCENT};">{val_str}</span>
+                        <span style="color:{_C_TEXT_MUTED};">{date}</span>
                     </div>
                     """, unsafe_allow_html=True)
             except Exception as e:
@@ -13058,7 +13073,7 @@ elif _at == 8:
     _om1, _om2, _om3, _om4 = st.columns(4)
     with _om1:
         _ins_str = f"{_ins_pct*100:.1f}%" if _ins_pct else "N/A"
-        _ins_clr = "#00e676" if _ins_pct and _ins_pct > 0.05 else "#ffd600" if _ins_pct else "#546e7a"
+        _ins_clr = _C_POSITIVE if _ins_pct and _ins_pct > 0.05 else _C_NEUTRAL if _ins_pct else "#546e7a"
         st.markdown(f"""<div class="metric-card" style="text-align:center;">
             <div class="metric-label">Insider-Ownership</div>
             <div class="metric-value" style="color:{_ins_clr};">{_ins_str}</div>
@@ -13072,7 +13087,7 @@ elif _at == 8:
             <div class="metric-sub">Fonds / ETFs</div>
         </div>""", unsafe_allow_html=True)
     with _om3:
-        _roic_clr = "#00e676" if roic_val and roic_val > 15 else "#ffd600" if roic_val and roic_val > 8 else "#ff5252" if roic_val else "#546e7a"
+        _roic_clr = _C_POSITIVE if roic_val and roic_val > 15 else _C_NEUTRAL if roic_val and roic_val > 8 else _C_NEGATIVE if roic_val else "#546e7a"
         st.markdown(f"""<div class="metric-card" style="text-align:center;">
             <div class="metric-label">ROIC</div>
             <div class="metric-value" style="color:{_roic_clr};">{f"{roic_val:.1f}%" if roic_val else "N/A"}</div>
@@ -13080,9 +13095,9 @@ elif _at == 8:
         </div>""", unsafe_allow_html=True)
     with _om4:
         _dil_str = f"{dilution_pct:+.1f}%" if dilution_pct is not None else "N/A"
-        _dil_clr = "#00e676" if dilution_pct is not None and dilution_pct < 0 else \
-                   "#ffd600" if dilution_pct is not None and dilution_pct < 3 else \
-                   "#ff5252" if dilution_pct is not None else "#546e7a"
+        _dil_clr = _C_POSITIVE if dilution_pct is not None and dilution_pct < 0 else \
+                   _C_NEUTRAL if dilution_pct is not None and dilution_pct < 3 else \
+                   _C_NEGATIVE if dilution_pct is not None else "#546e7a"
         st.markdown(f"""<div class="metric-card" style="text-align:center;">
             <div class="metric-label">Verwässerung (5J)</div>
             <div class="metric-value" style="color:{_dil_clr};">{_dil_str}</div>
@@ -13102,14 +13117,14 @@ elif _at == 8:
 
         _mc_cols = st.columns([3, 4, 1, 2])
         for hdr, col in zip(["Name", "Funktion", "Alter", "Vergütung"], _mc_cols):
-            col.markdown(f"<div style='color:#546e7a; font-size:0.72rem; font-weight:600; padding:4px 0;'>{hdr}</div>",
+            col.markdown(f"<div style='color:{_C_TEXT_MUTED}; font-size:0.72rem; font-weight:600; padding:4px 0;'>{hdr}</div>",
                          unsafe_allow_html=True)
         for _name, _title, _age_s, _pay_s in _mgmt_rows:
             c1, c2, c3, c4 = st.columns([3, 4, 1, 2])
-            c1.markdown(f"<div style='color:#eceff1; font-size:0.82rem; padding:3px 0;'>{_name}</div>", unsafe_allow_html=True)
-            c2.markdown(f"<div style='color:#90a4ae; font-size:0.78rem; padding:3px 0;'>{_title}</div>", unsafe_allow_html=True)
-            c3.markdown(f"<div style='color:#546e7a; font-size:0.78rem; padding:3px 0;'>{_age_s}</div>", unsafe_allow_html=True)
-            c4.markdown(f"<div style='color:#64b5f6; font-size:0.78rem; padding:3px 0;'>{_pay_s}</div>", unsafe_allow_html=True)
+            c1.markdown(f"<div style='color:{_C_TEXT_PRIMARY}; font-size:0.82rem; padding:3px 0;'>{_name}</div>", unsafe_allow_html=True)
+            c2.markdown(f"<div style='color:{_C_TEXT_MUTED2}; font-size:0.78rem; padding:3px 0;'>{_title}</div>", unsafe_allow_html=True)
+            c3.markdown(f"<div style='color:{_C_TEXT_MUTED}; font-size:0.78rem; padding:3px 0;'>{_age_s}</div>", unsafe_allow_html=True)
+            c4.markdown(f"<div style='color:{_C_ACCENT}; font-size:0.78rem; padding:3px 0;'>{_pay_s}</div>", unsafe_allow_html=True)
 
     st.markdown("""<div style='color:#37474f; font-size:0.72rem; margin-top:10px;'>
         ℹ️ Managementqualität lässt sich nicht allein aus Zahlen ableiten — Insider-Ownership >5% und
@@ -13136,10 +13151,10 @@ elif _at == 9:
                         st.markdown(f"""
                         <div class="metric-card" style="margin-bottom:10px;">
                             <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                                <span style="color:#64b5f6; font-size:0.75rem; font-weight:600;">{source}</span>
-                                <span style="color:#546e7a; font-size:0.72rem;">{pub_at}</span>
+                                <span style="color:{_C_ACCENT}; font-size:0.75rem; font-weight:600;">{source}</span>
+                                <span style="color:{_C_TEXT_MUTED}; font-size:0.72rem;">{pub_at}</span>
                             </div>
-                            <a href="{url_a}" target="_blank" style="color:#eceff1; font-size:0.9rem; font-weight:600; text-decoration:none; line-height:1.4;">
+                            <a href="{url_a}" target="_blank" style="color:{_C_TEXT_PRIMARY}; font-size:0.9rem; font-weight:600; text-decoration:none; line-height:1.4;">
                                 {title}
                             </a>
                             <div style="color:#78909c; font-size:0.78rem; margin-top:6px; line-height:1.4;">
@@ -13192,10 +13207,10 @@ elif _at == 9:
                     st.markdown(f"""
                     <div class="metric-card" style="margin-bottom:10px;">
                         <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                            <span style="color:#64b5f6; font-size:0.75rem; font-weight:600;">{p['publisher']}</span>
-                            <span style="color:#546e7a; font-size:0.72rem;">{p['pub_str']}</span>
+                            <span style="color:{_C_ACCENT}; font-size:0.75rem; font-weight:600;">{p['publisher']}</span>
+                            <span style="color:{_C_TEXT_MUTED}; font-size:0.72rem;">{p['pub_str']}</span>
                         </div>
-                        <a href="{p['link']}" target="_blank" style="color:#eceff1; font-size:0.9rem; font-weight:600; text-decoration:none; line-height:1.4;">
+                        <a href="{p['link']}" target="_blank" style="color:{_C_TEXT_PRIMARY}; font-size:0.9rem; font-weight:600; text-decoration:none; line-height:1.4;">
                             {p['title']}
                         </a>
                         {desc_html}
@@ -13232,7 +13247,7 @@ elif _at == 6:
         <div class="insight-box" style="height:100%; display:flex; align-items:center;">
             <div>
                 <strong style="color:{moat['moat_color']};">{moat['moat_icon']} {moat['moat_width']}</strong><br>
-                <span style="color:#b0bec5; font-size:0.9rem; line-height:1.6;">{moat['moat_desc']}</span>
+                <span style="color:{_C_TEXT_SEC}; font-size:0.9rem; line-height:1.6;">{moat['moat_desc']}</span>
             </div>
         </div>""", unsafe_allow_html=True)
 
@@ -13279,7 +13294,7 @@ elif _at == 6:
     if _website:
         _link_parts.append(
             f"<a href='{_website}' target='_blank' rel='noopener' "
-            f"style='color:#64b5f6;text-decoration:none;font-weight:600;font-size:0.85rem;"
+            f"style='color:{_C_ACCENT};text-decoration:none;font-weight:600;font-size:0.85rem;"
             f"background:rgba(100,181,246,0.1);padding:5px 12px;border-radius:8px;"
             f"border:1px solid rgba(100,181,246,0.25);white-space:nowrap;'>"
             f"🌐 Homepage</a>"
@@ -13318,9 +13333,9 @@ elif _at == 6:
         _sentences = _summary.replace("  ", " ").split(". ")
         _short = ". ".join(_sentences[:4]) + ("." if len(_sentences) > 4 else "")
         st.markdown(f"""
-        <div class="insight-box" style="line-height:1.7; color:#b0bec5; font-size:0.92rem;">
+        <div class="insight-box" style="line-height:1.7; color:{_C_TEXT_SEC}; font-size:0.92rem;">
             {_short}
-            {'<details style="margin-top:8px;"><summary style="color:#64b5f6;cursor:pointer;font-size:0.82rem;">Vollständige Beschreibung</summary><div style="margin-top:8px;">' + _summary + '</div></details>' if len(_sentences) > 4 else ''}
+            {'<details style="margin-top:8px;"><summary style="color:{_C_ACCENT};cursor:pointer;font-size:0.82rem;">Vollständige Beschreibung</summary><div style="margin-top:8px;">' + _summary + '</div></details>' if len(_sentences) > 4 else ''}
         </div>""", unsafe_allow_html=True)
 
     # ── Moat-Treiber ──────────────────────────────────────────────────
@@ -13331,7 +13346,7 @@ elif _at == 6:
             col.markdown(f"""
             <div class="metric-card" style="height:100%;">
                 <div style="font-size:1.1rem; font-weight:700; color:#00e5ff; margin-bottom:10px;">{title}</div>
-                <div style="color:#90a4ae; font-size:0.83rem; line-height:1.6;">{desc}</div>
+                <div style="color:{_C_TEXT_MUTED2}; font-size:0.83rem; line-height:1.6;">{desc}</div>
             </div>""", unsafe_allow_html=True)
         # Wenn mehr als 3 Treiber
         if len(moat["moat_types"]) > 3:
@@ -13340,7 +13355,7 @@ elif _at == 6:
                 col.markdown(f"""
                 <div class="metric-card">
                     <div style="font-size:1.1rem; font-weight:700; color:#00e5ff; margin-bottom:10px;">{title}</div>
-                    <div style="color:#90a4ae; font-size:0.83rem; line-height:1.6;">{desc}</div>
+                    <div style="color:{_C_TEXT_MUTED2}; font-size:0.83rem; line-height:1.6;">{desc}</div>
                 </div>""", unsafe_allow_html=True)
 
     # ── Qualitative Indikatoren ────────────────────────────────────────
@@ -13400,7 +13415,7 @@ elif _at == 6:
 
     st.markdown("""
     <div style="color:#37474f; font-size:0.75rem; margin-top:16px; padding:12px 16px;
-                background:#0a1628; border-radius:8px; border-left:3px solid #1e3a5f;">
+                background:{_C_CARD_BG}; border-radius:8px; border-left:3px solid #1e3a5f;">
         ⚠️ <em>Hinweis: Diese Einschätzung basiert auf quantitativen Finanzkennzahlen und Branchenheuristiken.
         Eine vollständige Moat-Analyse erfordert qualitative Recherche (Geschäftsberichte, Patente,
         Kundenbindung, Managementqualität). Keine Anlageberatung.</em>
@@ -13421,13 +13436,13 @@ elif _at == 5:
 
         # ── Score + Interpretation ──────────────────────────────────────
         if fs >= 8:
-            fs_color = "#00e676"; fs_label = "Starke Bilanzqualität 🏆"
+            fs_color = _C_POSITIVE; fs_label = "Starke Bilanzqualität 🏆"
             fs_text  = "Hohe operative Qualität und finanzielle Substanz. Die Fundamentaldaten stützen das Investment-Narrativ. Klassischer Buffett/Piotroski-Favorit."
         elif fs >= 6:
-            fs_color = "#69f0ae"; fs_label = "Solide Substanz ✅"
+            fs_color = _C_POSITIVE_SFT; fs_label = "Solide Substanz ✅"
             fs_text  = "Gute finanzielle Gesundheit mit einzelnen Schwächen. Unternehmen zeigt mehrheitlich positive Bilanzsignale."
         elif fs >= 4:
-            fs_color = "#ffd600"; fs_label = "Gemischte Signale ⚠️"
+            fs_color = _C_NEUTRAL; fs_label = "Gemischte Signale ⚠️"
             fs_text  = "Mehrere Kriterien nicht erfüllt. Sorgfältige Prüfung der Schwachstellen empfohlen bevor eine Investitionsentscheidung getroffen wird."
         elif fs >= 2:
             fs_color = "#ff9100"; fs_label = "Schwache Bilanzqualität 🔴"
@@ -13441,9 +13456,9 @@ elif _at == 5:
             st.markdown(f"""
             <div class="score-section">
                 <div class="score-title">Piotroski F-Score</div>
-                <div class="score-num" style="color:{fs_color};">{fs}<span style="font-size:1.5rem; color:#546e7a;">/{fa}</span></div>
+                <div class="score-num" style="color:{fs_color};">{fs}<span style="font-size:1.5rem; color:{_C_TEXT_MUTED};">/{fa}</span></div>
                 <div class="score-label">{fs_label}</div>
-                <div style="color:#546e7a; font-size:0.75rem; margin-top:8px;">
+                <div style="color:{_C_TEXT_MUTED}; font-size:0.75rem; margin-top:8px;">
                     Basis: GJ {fy_t} vs {fy_t1}
                 </div>
             </div>""", unsafe_allow_html=True)
@@ -13458,7 +13473,7 @@ elif _at == 5:
                 bar_segments += f'<div style="flex:1; height:28px; background:{seg_color}; border-radius:4px; margin:0 2px; display:flex; align-items:center; justify-content:center; font-size:0.72rem; font-weight:700; color:#000a;">{i}</div>'
             st.markdown(f"""
             <div style="display:flex; margin-bottom:16px; padding:8px 0;">{bar_segments}</div>
-            <div class="insight-box" style="font-size:0.88rem; line-height:1.6; color:#b0bec5;">{fs_text}</div>
+            <div class="insight-box" style="font-size:0.88rem; line-height:1.6; color:{_C_TEXT_SEC};">{fs_text}</div>
             """, unsafe_allow_html=True)
 
         # ── 3 Gruppen ──────────────────────────────────────────────────
@@ -13484,11 +13499,11 @@ elif _at == 5:
             for col, c in zip(cols, items):
                 if c["passed"] is True:
                     dot   = "✅"
-                    bdr   = "#00e676"
+                    bdr   = _C_POSITIVE
                     badge = '<span class="metric-badge-green">✓ Erfüllt</span>'
                 elif c["passed"] is False:
                     dot   = "❌"
-                    bdr   = "#ff5252"
+                    bdr   = _C_NEGATIVE
                     badge = '<span class="metric-badge-red">✗ Nicht erfüllt</span>'
                 else:
                     dot   = "⬜"
@@ -13498,7 +13513,7 @@ elif _at == 5:
                 col.markdown(f"""
                 <div class="metric-card" style="border-left:3px solid {bdr};">
                     <div class="metric-label">{c['name']}</div>
-                    <div style="font-size:1.15rem; font-weight:700; color:#eceff1; margin:8px 0;">{c['value']}</div>
+                    <div style="font-size:1.15rem; font-weight:700; color:{_C_TEXT_PRIMARY}; margin:8px 0;">{c['value']}</div>
                     <div>{badge}</div>
                     <div class="metric-sub" style="margin-top:8px; font-size:0.71rem; line-height:1.4;">{c['hint']}</div>
                 </div>""", unsafe_allow_html=True)
@@ -13519,7 +13534,7 @@ elif _at == 5:
 
         st.markdown("""
         <div style="color:#37474f; font-size:0.73rem; margin-top:12px; padding:10px 14px;
-                    background:#0a1628; border-radius:8px; border-left:3px solid #1e3a5f;">
+                    background:{_C_CARD_BG}; border-radius:8px; border-left:3px solid #1e3a5f;">
             ℹ️ <em>Der Piotroski F-Score wurde 2000 von Joseph Piotroski (Stanford) entwickelt.
             Er eignet sich besonders als Screening-Filter für Value-Investoren.
             Score 8–9: hohe Substanz · 4–7: gemischt · 0–3: Warnsignal.
@@ -13571,16 +13586,16 @@ st.markdown("""
 <div style="margin-top:60px; border-top:1px solid #1e2d45; padding:28px 0 16px 0;">
     <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:16px;">
         <div>
-            <div style="color:#64b5f6; font-size:1.0rem; font-weight:700; margin-bottom:4px;">📈 StocksMB</div>
+            <div style="color:{_C_ACCENT}; font-size:1.0rem; font-weight:700; margin-bottom:4px;">📈 StocksMB</div>
             <div style="color:#37474f; font-size:0.75rem;">Aktienanalyse Tool · v7</div>
         </div>
         <div style="color:#37474f; font-size:0.75rem; line-height:1.6; max-width:480px; text-align:right;">
-            Datenquellen: <span style="color:#546e7a;">Yahoo Finance (yFinance) · Financial Modeling Prep (FMP)</span>
+            Datenquellen: <span style="color:{_C_TEXT_MUTED};">Yahoo Finance (yFinance) · Financial Modeling Prep (FMP)</span>
         </div>
     </div>
-    <div style="background:#0d1526; border:1px solid #1e2d45; border-radius:10px; padding:14px 18px;">
+    <div style="background:{_C_SURFACE}; border:1px solid #1e2d45; border-radius:10px; padding:14px 18px;">
         <div style="color:#ff8f00; font-size:0.75rem; font-weight:700; margin-bottom:6px; text-transform:uppercase; letter-spacing:1px;">⚠️ Disclaimer — Keine Anlageberatung</div>
-        <div style="color:#546e7a; font-size:0.75rem; line-height:1.6;">
+        <div style="color:{_C_TEXT_MUTED}; font-size:0.75rem; line-height:1.6;">
             Alle Inhalte auf StocksMB dienen ausschließlich zu Informations- und Bildungszwecken. Die dargestellten Kennzahlen, Analysen, KI-Einschätzungen und Bewertungsmodelle stellen <strong style="color:#78909c;">keine Anlageberatung, Kaufempfehlung oder Aufforderung zum Handel</strong> dar.
             Investitionen in Wertpapiere sind mit Risiken verbunden — der Wert einer Anlage kann steigen oder fallen. Vergangene Wertentwicklungen sind kein verlässlicher Indikator für zukünftige Ergebnisse.
             Bitte konsultiere einen zugelassenen Finanzberater, bevor du Anlageentscheidungen triffst. Alle Daten werden ohne Gewähr bereitgestellt.
