@@ -6103,10 +6103,9 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
 
         _buff_line = ""
         if _mbuff:
-            _bv = _mbuff.get("value")
-            _bl = _mbuff.get("label", "")
+            _bv = _mbuff if isinstance(_mbuff, (int, float)) else _mbuff.get("value")
             if _bv:
-                _buff_line = f"- Buffett-Indikator (Marktkapitalisierung/BIP): {_bv:.0f}% — {_bl}"
+                _buff_line = f"- Buffett-Indikator (Marktkapitalisierung/BIP): {_bv:.0f}%"
 
         _secs_line = ""
         if _msecs:
