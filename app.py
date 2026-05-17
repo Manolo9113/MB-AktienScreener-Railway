@@ -799,6 +799,24 @@ def sb_remove_ticker(access_token: str, ticker: str):
     except Exception:
         pass
 
+def _wl_load_file() -> list[dict]:
+    import json as _json
+    _path = "/data/watchlist.json" if os.path.isdir("/data") else "/tmp/watchlist.json"
+    try:
+        with open(_path) as _f:
+            return _json.load(_f)
+    except Exception:
+        return []
+
+def _wl_save_file(watchlist: list[dict]) -> None:
+    import json as _json
+    _path = "/data/watchlist.json" if os.path.isdir("/data") else "/tmp/watchlist.json"
+    try:
+        with open(_path, "w") as _f:
+            _json.dump(watchlist, _f)
+    except Exception:
+        pass
+
 def _portfolio_file_path() -> str:
     """Gibt den Pfad zur gespeicherten Portfolio-CSV zurück.
     Railway Volume: /data (persistent). Fallback: /tmp (nur für lokale Entwicklung)."""
@@ -3961,15 +3979,12 @@ if "grok_chat" not in st.session_state:
 if "grok_chat_ctx" not in st.session_state:
     st.session_state["grok_chat_ctx"] = ""
 if "watchlist" not in st.session_state:
-    st.session_state["watchlist"] = []
+    _wl_pw_required = bool(os.getenv("PORTFOLIO_PASSWORD", ""))
+    st.session_state["watchlist"] = [] if _wl_pw_required else _wl_load_file()
+if "wl_unlocked" not in st.session_state:
+    st.session_state["wl_unlocked"] = not bool(os.getenv("PORTFOLIO_PASSWORD", ""))
 if "show_wl_compare" not in st.session_state:
     st.session_state["show_wl_compare"] = False
-if "sb_user" not in st.session_state:
-    st.session_state["sb_user"] = None
-if "sb_access_token" not in st.session_state:
-    st.session_state["sb_access_token"] = ""
-if "sb_auth_msg" not in st.session_state:
-    st.session_state["sb_auth_msg"] = ""
 if "wachstum_expanded" not in st.session_state:
     st.session_state["wachstum_expanded"] = None
 if "seg_expanded" not in st.session_state:
@@ -5184,62 +5199,28 @@ with st.sidebar:
     show_dcf = st.toggle("DCF Rechner", value=True)
 
     # ── Konto ──────────────────────────────────────────────────────────
-    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-header'>🔐 Konto</div>", unsafe_allow_html=True)
-    _sb_user = st.session_state.get("sb_user")
-    if _sb_user:
-        st.markdown(
-            f"<div style='color:#64b5f6;font-size:0.78rem;padding:4px 0 6px 0;"
-            f"word-break:break-all;'>👤 {_sb_user.get('email','')}</div>",
-            unsafe_allow_html=True)
-        if st.button("Abmelden", use_container_width=True, key="sb_logout"):
-            st.session_state["sb_user"] = None
-            st.session_state["sb_access_token"] = ""
-            st.session_state["sb_auth_msg"] = ""
-            st.session_state["watchlist"] = []
-            st.rerun()
-    else:
-        _auth_tab_login, _auth_tab_reg = st.tabs(["Anmelden", "Registrieren"])
-        with _auth_tab_login:
-            _li_email = st.text_input("E-Mail", key="li_email", label_visibility="collapsed",
-                                       placeholder="E-Mail")
-            _li_pw    = st.text_input("Passwort", key="li_pw", type="password",
-                                       label_visibility="collapsed", placeholder="Passwort")
-            if st.button("Anmelden", use_container_width=True, key="li_btn"):
-                with st.spinner("…"):
-                    _data, _err = sb_login(_li_email.strip(), _li_pw)
-                if _err:
-                    st.session_state["sb_auth_msg"] = f"❌ {_err}"
-                else:
-                    st.session_state["sb_user"] = _data.get("user") or {}
-                    st.session_state["sb_user"]["email"] = (_data.get("user") or {}).get("email", _li_email.strip())
-                    st.session_state["sb_access_token"] = _data["access_token"]
-                    st.session_state["sb_auth_msg"] = "✅ Angemeldet"
-                    _loaded = sb_load_watchlist(_data["access_token"])
-                    if _loaded:
-                        _existing = {w["ticker"] for w in st.session_state["watchlist"]}
-                        for _w in _loaded:
-                            if _w["ticker"] not in _existing:
-                                st.session_state["watchlist"].append(_w)
-                    st.rerun()
-        with _auth_tab_reg:
-            _rg_email = st.text_input("E-Mail", key="rg_email", label_visibility="collapsed",
-                                       placeholder="E-Mail")
-            _rg_pw    = st.text_input("Passwort", key="rg_pw", type="password",
-                                       label_visibility="collapsed", placeholder="Passwort (min. 6 Zeichen)")
-            if st.button("Registrieren", use_container_width=True, key="rg_btn"):
-                with st.spinner("…"):
-                    _data, _err = sb_register(_rg_email.strip(), _rg_pw)
-                if _err:
-                    st.session_state["sb_auth_msg"] = f"❌ {_err}"
-                else:
-                    st.session_state["sb_auth_msg"] = "✅ Konto erstellt — bitte anmelden."
-        if st.session_state.get("sb_auth_msg"):
-            _msg_clr = "#00e676" if st.session_state["sb_auth_msg"].startswith("✅") else "#ff5252"
+    _wl_pw = os.getenv("PORTFOLIO_PASSWORD", "")
+    if _wl_pw:
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-header'>🔐 Konto</div>", unsafe_allow_html=True)
+        if st.session_state.get("wl_unlocked"):
             st.markdown(
-                f"<div style='font-size:0.75rem;color:{_msg_clr};padding:4px 0;'>"
-                f"{st.session_state['sb_auth_msg']}</div>",
+                "<div style='color:#64b5f6;font-size:0.78rem;padding:4px 0 6px 0;'>🔓 Angemeldet</div>",
                 unsafe_allow_html=True)
+            if st.button("Abmelden", use_container_width=True, key="wl_logout"):
+                st.session_state["wl_unlocked"] = False
+                st.session_state["watchlist"] = []
+                st.rerun()
+        else:
+            _pw_inp = st.text_input("Passwort", type="password", key="wl_pw_inp",
+                                     label_visibility="collapsed", placeholder="Passwort eingeben…")
+            if st.button("Entsperren", use_container_width=True, key="wl_unlock_btn"):
+                if _pw_inp == _wl_pw:
+                    st.session_state["wl_unlocked"] = True
+                    st.session_state["watchlist"] = _wl_load_file()
+                    st.rerun()
+                else:
+                    st.error("Falsches Passwort.")
 
     # ── Watchlist ──────────────────────────────────────────────────────
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
@@ -5257,7 +5238,7 @@ with st.sidebar:
                 if st.button("✕", key=f"wl_del_{_w['ticker']}", help="Entfernen"):
                     st.session_state["watchlist"] = [
                         x for x in st.session_state["watchlist"] if x["ticker"] != _w["ticker"]]
-                    sb_remove_ticker(st.session_state.get("sb_access_token", ""), _w["ticker"])
+                    _wl_save_file(st.session_state["watchlist"])
                     st.rerun()
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         _cmp_lbl = "📊 Vergleich ausblenden" if st.session_state["show_wl_compare"] else "📊 Vergleich anzeigen"
@@ -10439,13 +10420,12 @@ with _wl_b1:
     if _in_wl:
         if st.button("✅ Gemerkt", key="wl_rm", help="Aus Watchlist entfernen"):
             st.session_state["watchlist"] = [w for w in _wl_curr if w["ticker"] != ticker]
-            sb_remove_ticker(st.session_state.get("sb_access_token", ""), ticker)
+            _wl_save_file(st.session_state["watchlist"])
             st.rerun()
     else:
         if st.button("⭐ Merken", key="wl_add", help="Zur Watchlist hinzufügen"):
             st.session_state["watchlist"] = _wl_curr + [{"ticker": ticker, "name": company_name}]
-            _uid = (st.session_state.get("sb_user") or {}).get("id", "")
-            sb_add_ticker(st.session_state.get("sb_access_token", ""), _uid, ticker, company_name)
+            _wl_save_file(st.session_state["watchlist"])
             st.rerun()
 with _wl_b2:
     if st.button("🔄 Aktualisieren", key="refresh_data",
