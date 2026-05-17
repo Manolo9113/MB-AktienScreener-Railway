@@ -5129,15 +5129,7 @@ with st.sidebar:
 
     # ── Hell/Dunkel-Toggle ────────────────────────────────────────────
     _lm = st.session_state.get("light_mode", False)
-    _lm_label = "🌙 Dunkel-Modus" if _lm else "☀️ Hell-Modus"
-    if st.toggle(_lm_label, value=_lm, key="toggle_light_mode_top"):
-        if not _lm:
-            st.session_state["light_mode"] = True
-            st.rerun()
-    else:
-        if _lm:
-            st.session_state["light_mode"] = False
-            st.rerun()
+    st.toggle("🌙 Dunkel-Modus" if _lm else "☀️ Hell-Modus", key="light_mode")
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
