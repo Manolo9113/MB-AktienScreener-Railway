@@ -6731,7 +6731,7 @@ elif st.session_state.get("show_stocks"):
                 val_str = f"{value}{suffix}"
             return (f"<span style='background:rgba(100,181,246,0.1);color:{color};"
                     f"border-radius:5px;padding:2px 7px;font-size:0.71rem;"
-                    f"font-weight:600;margin-right:4px;white-space:nowrap;'>"
+                    f"font-weight:600;white-space:nowrap;'>"
                     f"{label}&thinsp;{val_str}</span>")
 
         def _mc_card(s, accent, badges_html):
@@ -6749,7 +6749,7 @@ elif st.session_state.get("show_stocks"):
               </div>
               <div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-bottom:5px;'>{s["name"]}</div>
               <div style='color:{_C_TEXT_MUTED2};font-size:0.78rem;line-height:1.45;margin-bottom:8px;'>{s["desc"]}</div>
-              <div style='line-height:2;'>{badges_html}</div>
+              <div style='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;'>{badges_html}</div>
               {_trend_bar(s["w52_pos"], accent)}
             </div>"""
 
