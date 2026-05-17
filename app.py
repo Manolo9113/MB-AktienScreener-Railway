@@ -5969,7 +5969,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
         _mrlab  = _mreg.get("label", "Neutral")
         _mmods  = _mreg.get("modules", {})
 
-        def _fmt(v, decimals=1, suffix=""):
+        def _mfmt(v, decimals=1, suffix=""):
             return f"{v:.{decimals}f}{suffix}" if v is not None else "n/v"
 
         _buff_line = ""
@@ -5999,28 +5999,28 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
         _usr_maki = f"""Analysiere die aktuelle makroökonomische Lage anhand dieser aktuellen Datenpunkte:
 
 **GELDPOLITIK & ZINSEN:**
-- Fed Funds Rate: {_fmt(_mfed)}%
-- EZB Einlagesatz: {_fmt(_mecb)}%
-- US 10J Staatsanleihe: {_fmt(_m10y)}%
-- Equity Risk Premium (ERP): {_fmt(_merp)}%
+- Fed Funds Rate: {_mfmt(_mfed)}%
+- EZB Einlagesatz: {_mfmt(_mecb)}%
+- US 10J Staatsanleihe: {_mfmt(_m10y)}%
+- Equity Risk Premium (ERP): {_mfmt(_merp)}%
 
 **INFLATION:**
-- US CPI (YoY): {_fmt(_mcpi)}%  |  US Kernrate: {_fmt(_mcore)}%
-- Eurozone HICP (YoY): {_fmt(_mezinf)}%  |  Japan CPI: {_fmt(_mjpinf)}%
+- US CPI (YoY): {_mfmt(_mcpi)}%  |  US Kernrate: {_mfmt(_mcore)}%
+- Eurozone HICP (YoY): {_mfmt(_mezinf)}%  |  Japan CPI: {_mfmt(_mjpinf)}%
 
 **KONJUNKTUR & ARBEIT:**
-- US Arbeitslosenquote: {_fmt(_munem)}%
-- Unternehmensgewinnmarge (S&P 500, % des BIP): {_fmt(_mcmarg)}%
+- US Arbeitslosenquote: {_mfmt(_munem)}%
+- Unternehmensgewinnmarge (S&P 500, % des BIP): {_mfmt(_mcmarg)}%
 {_buff_line}
 
 **AKTIENMARKT-BEWERTUNG:**
-- S&P 500 Trailing KGV: {_fmt(_mspe)}x  |  Forward KGV: {_fmt(_msfpe)}x
-- Shiller CAPE: {_fmt(_mcape)}x  |  PEG-Ratio: {_fmt(_mspeg)}
-- Erwartetes Gewinnwachstum (S&P 500): {_fmt(_mseg)}%
+- S&P 500 Trailing KGV: {_mfmt(_mspe)}x  |  Forward KGV: {_mfmt(_msfpe)}x
+- Shiller CAPE: {_mfmt(_mcape)}x  |  PEG-Ratio: {_mfmt(_mspeg)}
+- Erwartetes Gewinnwachstum (S&P 500): {_mfmt(_mseg)}%
 
 **MARKTSENTIMENT:**
-- VIX (Volatilität): {_fmt(_mvix)}
-- Fear & Greed Score: {_fmt(_mfgsco, 0)} — {_mfgrat}
+- VIX (Volatilität): {_mfmt(_mvix)}
+- Fear & Greed Score: {_mfmt(_mfgsco, 0)} — {_mfgrat}
 - {_secs_line}
 
 **MAKRO-REGIME (z-Score-gewichtet, eigene Berechnungen):**
@@ -7061,6 +7061,8 @@ if st.session_state.get("show_portfolio"):
                     )
                     for _ck in [_alloc_cache_key, f"spark_{_alloc_cache_key}"]:
                         st.session_state.pop(_ck, None)
+                    st.session_state["show_portfolio"] = True
+                    st.session_state["show_landing"] = False
                     st.rerun()
 
             with _pf_col2:
@@ -7093,6 +7095,8 @@ if st.session_state.get("show_portfolio"):
                         )
                         for _ck in [_prices_cache_key, _alloc_cache_key, f"spark_{_alloc_cache_key}"]:
                             st.session_state.pop(_ck, None)
+                        st.session_state["show_portfolio"] = True
+                        st.session_state["show_landing"] = False
                         st.rerun()
                 else:
                     st.success("Alle Positionen haben einen Kurs.")
@@ -7191,13 +7195,13 @@ if st.session_state.get("show_portfolio"):
         # ── Performance-Daten aus Disk-Cache wiederherstellen (/data überlebt Deploys) ──
         _irr_ck = f"irr_{_csv_key}"
         if _irr_ck not in st.session_state:
-            _irr_disk = _pf_disk_load(f"irr_{_csv_key}")
+            _irr_disk = _pf_disk_load(f"irr_{_csv_key}", max_age_hours=168)
             if _irr_disk is not None:
                 st.session_state[_irr_ck] = _irr_disk
         for _bmt in ("SXR8.DE", "VWCE.DE", "EQQQ.DE", "EXS1.DE"):
             _bmt_k = f"bm_{_csv_key}_{_bmt}"
             if _bmt_k not in st.session_state:
-                _bmt_disk = _pf_disk_load(f"bm_{_csv_key}_{_bmt}")
+                _bmt_disk = _pf_disk_load(f"bm_{_csv_key}_{_bmt}", max_age_hours=168)
                 if _bmt_disk is not None:
                     st.session_state[_bmt_k] = _bmt_disk
 
