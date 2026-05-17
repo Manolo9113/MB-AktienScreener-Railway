@@ -6935,6 +6935,18 @@ if st.session_state.get("show_portfolio"):
         _sec_loaded_key = f"sec_loaded_{_alloc_cache_key}"
         _hb_cache_key   = f"hb_{_alloc_cache_key}"
 
+        # ── Render-Diagnose ────────────────────────────────────────────────
+        _dbg_rc = st.session_state.get("_dbg_rc", 0) + 1
+        st.session_state["_dbg_rc"] = _dbg_rc
+        _dbg_irr = "✓" if f"irr_{_csv_key}" in st.session_state else "✗"
+        _dbg_bm  = "✓" if any(k.startswith(f"bm_{_csv_key}_") for k in st.session_state) else "✗"
+        _dbg_sec = "✓" if st.session_state.get(_sec_loaded_key) else "✗"
+        _dbg_hb  = "✓" if _hb_cache_key in st.session_state else "✗"
+        st.caption(
+            f"🔄 Render #{_dbg_rc} · prices={len(prices)} · "
+            f"irr={_dbg_irr} · bm={_dbg_bm} · sec={_dbg_sec} · hb={_dbg_hb}"
+        )
+
         with tab_pos:
           try:
             # Sparklines: nur anzeigen wenn bereits im Session-/Prozess-Cache, niemals auto-laden.
