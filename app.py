@@ -2655,6 +2655,47 @@ def load_macro_data() -> dict:
         jp_yoy = (jp_cpi[0] / jp_cpi[12] - 1) * 100
         out["macro"]["🇯🇵 Inflation"] = {"value": round(jp_yoy, 1), "unit": "%"}
 
+    # ── BIP-Wachstum YoY (quarterly FRED/OECD series) ───────────────────
+    out["gdp"] = {}
+    for _gname, _gsid in [
+        ("🇺🇸 USA",         "GDPC1"),
+        ("🇪🇺 Eurozone",    "NAEXKP01EZQ189S"),
+        ("🇩🇪 Deutschland", "NAEXKP01DEQ189S"),
+        ("🇨🇳 China",       "CHNGDPNQDSMEI"),
+        ("🇯🇵 Japan",       "NAEXKP01JPQ189S"),
+        ("🇬🇧 UK",          "NAEXKP01GBQ189S"),
+        ("🇮🇳 Indien",      "INDGDPNQDSMEI"),
+    ]:
+        try:
+            _gv = _fred_last(_gsid, 5)
+            if len(_gv) >= 5 and _gv[4]:
+                out["gdp"][_gname] = round((_gv[0] / _gv[4] - 1) * 100, 1)
+        except Exception:
+            pass
+
+    # ── Misery Index (Arbeitslosigkeit + Inflation) ──────────────────────
+    out["misery"] = {}
+    _us_unemp_v = out["macro"].get("🇺🇸 Arbeitslosigkeit", {}).get("value")
+    _us_infl_v  = out["macro"].get("🇺🇸 Inflation",        {}).get("value")
+    if _us_unemp_v is not None and _us_infl_v is not None:
+        out["misery"]["🇺🇸 USA"] = round(_us_unemp_v + _us_infl_v, 1)
+
+    _ez_unemp_raw = _fred_last("LRHUTTTTEZM156S")
+    if _ez_unemp_raw:
+        out["ez_unemployment"] = round(_ez_unemp_raw[0], 1)
+        _ez_infl_v = out["macro"].get("🇪🇺 Inflation", {}).get("value")
+        if _ez_infl_v is not None:
+            out["misery"]["🇪🇺 Eurozone"] = round(_ez_unemp_raw[0] + _ez_infl_v, 1)
+
+    # ── Konjunkturindikatoren ────────────────────────────────────────────
+    _umcs = _fred_last("UMCSENT")
+    if _umcs:
+        out["consumer_sentiment"] = round(_umcs[0], 1)
+
+    _t10y2y = _fred_last("T10Y2Y")
+    if _t10y2y is not None and len(_t10y2y):
+        out["yield_curve"] = round(_t10y2y[0], 2)
+
     # ── Buffett-Indikator: Wilshire 5000 / US GDP ────────────────────
     # Wilshire 5000 Full Cap Index-Level ≈ Gesamtmarktkapitalisierung USA in Mrd. USD
     # GDP (FRED) ebenfalls in Mrd. USD → direkt vergleichbar
@@ -5321,6 +5362,70 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                 </div>
             </div>""", unsafe_allow_html=True)
 
+    # ── BIP-Wachstum ──────────────────────────────────────────────────
+    _gdp_data = macro.get("gdp", {})
+    if _gdp_data:
+        st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>📈 BIP-Wachstum (YoY, aktuellstes Quartal)</div>",
+                    unsafe_allow_html=True)
+        _gdp_cols = st.columns(len(_gdp_data))
+        for _gc, (_glab, _gval) in zip(_gdp_cols, _gdp_data.items()):
+            _gc_clr = "#00e676" if _gval > 2.5 else "#69f0ae" if _gval > 1.0 else \
+                      "#ffd600" if _gval >= 0 else "#ff5252"
+            _gc.markdown(f"""
+            <div class="metric-card" style="text-align:center; padding:10px 6px;">
+                <div class="metric-label" style="font-size:0.68rem; line-height:1.3;">{_glab}</div>
+                <div style="color:{_gc_clr}; font-size:1.0rem; font-weight:700; margin:4px 0;">
+                    {_gval:+.1f}%
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+    # ── Misery Index + Yield Curve + Consumer Sentiment ───────────────
+    _misery      = macro.get("misery", {})
+    _yc          = macro.get("yield_curve")
+    _cs          = macro.get("consumer_sentiment")
+    _ez_unemp_d  = macro.get("ez_unemployment")
+    _konjunktur_items = []
+    for _ml, _mv in _misery.items():
+        _konjunktur_items.append(("misery", _ml, _mv))
+    if _yc is not None:
+        _konjunktur_items.append(("yc", "📉 Zinsstruktur (10J-2J)", _yc))
+    if _cs is not None:
+        _konjunktur_items.append(("cs", "🛒 Konsumklima (Michigan)", _cs))
+    if _ez_unemp_d is not None:
+        _konjunktur_items.append(("ez_u", "🇪🇺 Arbeitslosigkeit", _ez_unemp_d))
+
+    if _konjunktur_items:
+        st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>🌡️ Konjunkturindikatoren</div>",
+                    unsafe_allow_html=True)
+        _kj_cols = st.columns(len(_konjunktur_items))
+        for _kc, (_ktype, _klabel, _kval) in zip(_kj_cols, _konjunktur_items):
+            if _ktype == "misery":
+                _kc_clr = "#ff5252" if _kval > 14 else "#ffd600" if _kval > 10 else "#00e676"
+                _kc_tip = "Misery Index = Arbeitslosenquote + Inflationsrate. Historischer US-Schnitt: ~8–10 %. Über 12 = belastend für Konsumenten."
+                _k_unit, _kdisp = "%", f"{_kval:.1f}%"
+                _disp_label = f"🌡️ Misery {_klabel}"
+            elif _ktype == "yc":
+                _kc_clr = "#ff5252" if _kval < 0 else "#ffd600" if _kval < 0.3 else "#00e676"
+                _kc_tip = "Zinskurve: 10-Jahres-Rendite minus 2-Jahres-Rendite (USA). Negativ = invertiert = historisch zuverlässiger Rezessionsindikator (mit 6–18 Monaten Vorlauf)."
+                _kdisp, _disp_label = f"{_kval:+.2f}%", _klabel
+            elif _ktype == "cs":
+                _kc_clr = "#00e676" if _kval > 80 else "#ffd600" if _kval > 65 else "#ff5252"
+                _kc_tip = "University of Michigan Consumer Sentiment Index. Historischer Schnitt: ~86. Unter 65 = ausgeprägte Konsumzurückhaltung."
+                _kdisp, _disp_label = f"{_kval:.0f}", _klabel
+            else:  # ez_u
+                _kc_clr = "#ff5252" if _kval > 8 else "#ffd600" if _kval > 6.5 else "#00e676"
+                _kc_tip = "Eurozone Arbeitslosenquote (ILO, saisonbereinigt). Historisch niedrig unter 7 %, historisch hoch über 10 %."
+                _kdisp, _disp_label = f"{_kval:.1f}%", _klabel
+            _tip_html = (f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                         f'<span class="tt-box">{_kc_tip}</span></span>')
+            _kc.markdown(f"""
+            <div class="metric-card" style="text-align:center; padding:10px 6px;">
+                <div class="metric-label" style="font-size:0.68rem; line-height:1.3;">{_disp_label}{_tip_html}</div>
+                <div style="color:{_kc_clr}; font-size:1.0rem; font-weight:700; margin:4px 0;">
+                    {_kdisp}
+                </div>
+            </div>""", unsafe_allow_html=True)
+
     # ── Buffett-Indikator & S&P 500 PEG ──────────────────────────────
     _bi             = macro.get("buffett")
     _sp_peg         = macro.get("sp500_peg")
@@ -5987,6 +6092,11 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
         _mrsco  = _mreg.get("score", 0)
         _mrlab  = _mreg.get("label", "Neutral")
         _mmods  = _mreg.get("modules", {})
+        _mgdp   = macro.get("gdp", {})
+        _mmisery= macro.get("misery", {})
+        _myc    = macro.get("yield_curve")
+        _mcs    = macro.get("consumer_sentiment")
+        _mez_u  = macro.get("ez_unemployment")
 
         def _mfmt(v, decimals=1, suffix=""):
             return f"{v:.{decimals}f}{suffix}" if v is not None else "n/v"
@@ -6027,8 +6137,14 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
 - US CPI (YoY): {_mfmt(_mcpi)}%  |  US Kernrate: {_mfmt(_mcore)}%
 - Eurozone HICP (YoY): {_mfmt(_mezinf)}%  |  Japan CPI: {_mfmt(_mjpinf)}%
 
+**BIP-WACHSTUM (YoY, aktuellstes Quartal):**
+{chr(10).join(f"- {k}: {v:+.1f}%" for k, v in _mgdp.items()) if _mgdp else "- Daten nicht verfügbar"}
+
 **KONJUNKTUR & ARBEIT:**
-- US Arbeitslosenquote: {_mfmt(_munem)}%
+- US Arbeitslosenquote: {_mfmt(_munem)}%  |  EZ Arbeitslosenquote: {_mfmt(_mez_u)}%
+- US Misery Index: {_mfmt(_mmisery.get("🇺🇸 USA"))}%  |  EZ Misery Index: {_mfmt(_mmisery.get("🇪🇺 Eurozone"))}%
+- Zinskurve USA (10J-2J): {_mfmt(_myc, 2)}% {"⚠️ Invertiert" if _myc is not None and _myc < 0 else ""}
+- Michigan Consumer Sentiment: {_mfmt(_mcs, 0)}
 - Unternehmensgewinnmarge (S&P 500, % des BIP): {_mfmt(_mcmarg)}%
 {_buff_line}
 
