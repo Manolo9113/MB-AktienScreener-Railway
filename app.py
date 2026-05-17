@@ -2655,12 +2655,9 @@ def load_macro_data() -> dict:
         jp_yoy = (jp_cpi[0] / jp_cpi[12] - 1) * 100
         out["macro"]["🇯🇵 Inflation"] = {"value": round(jp_yoy, 1), "unit": "%"}
 
-    # ── BIP-Wachstum YoY (quarterly FRED/OECD series) ───────────────────
+    # ── BIP-Wachstum YoY — parallel fetch ───────────────────────────────
     out["gdp"] = {}
-    # Series: (label, primary_id, fallback_id_or_None)
-    # Quarterly series need n=5 for YoY; monthly series need n=13.
-    # We fetch 13 values and use [0]/[12] if available, else [0]/[4] for quarterly.
-    for _gname, _gsid, _gsid2 in [
+    _gdp_specs = [
         ("🇺🇸 USA",         "GDPC1",              None),
         ("🇪🇺 Eurozone",    "CLVMEURSCAB1GQEA19", "NAEXKP01EZQ189S"),
         ("🇩🇪 Deutschland", "CLVMDEAM195S",        "NAEXKP01DEQ189S"),
@@ -2668,17 +2665,33 @@ def load_macro_data() -> dict:
         ("🇯🇵 Japan",       "CLVMJPAM195S",        "NAEXKP01JPQ189S"),
         ("🇬🇧 UK",          "CLVMGBAM195S",        "NAEXKP01GBQ189S"),
         ("🇮🇳 Indien",      "INDGDPNQDSMEI",       None),
-    ]:
+    ]
+
+    def _fetch_gdp_yoy(spec):
+        gname, gsid, gsid2 = spec
         try:
-            _gv = _fred_last(_gsid, 13)
-            if not _gv and _gsid2:
-                _gv = _fred_last(_gsid2, 13)
-            if len(_gv) >= 13 and _gv[12]:
-                out["gdp"][_gname] = round((_gv[0] / _gv[12] - 1) * 100, 1)
-            elif len(_gv) >= 5 and _gv[4]:
-                out["gdp"][_gname] = round((_gv[0] / _gv[4] - 1) * 100, 1)
+            gv = _fred_last(gsid, 13)
+            if not gv and gsid2:
+                gv = _fred_last(gsid2, 13)
+            if len(gv) >= 13 and gv[12]:
+                return gname, round((gv[0] / gv[12] - 1) * 100, 1)
+            if len(gv) >= 5 and gv[4]:
+                return gname, round((gv[0] / gv[4] - 1) * 100, 1)
         except Exception:
             pass
+        return gname, None
+
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=4) as _gdp_ex:
+            for _gname, _gval in _gdp_ex.map(_fetch_gdp_yoy, _gdp_specs):
+                if _gval is not None:
+                    out["gdp"][_gname] = _gval
+    except Exception:
+        for _spec in _gdp_specs:
+            _gname, _gval = _fetch_gdp_yoy(_spec)
+            if _gval is not None:
+                out["gdp"][_gname] = _gval
 
     # ── Misery Index (Arbeitslosigkeit + Inflation) ──────────────────────
     out["misery"] = {}
@@ -5300,11 +5313,11 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
 
     # ── Makro-Dashboard ───────────────────────────────────────────────
     st.markdown("<div class='section-header'>📊 Makro-Dashboard</div>", unsafe_allow_html=True)
-    macro = _pf_disk_load("macro_basic_v3", max_age_hours=24)
+    macro = _pf_disk_load("macro_basic_v4", max_age_hours=24)
     if macro is None:
         with st.spinner("Lade Makrodaten…"):
             macro = load_macro_data()
-        _pf_disk_save("macro_basic_v3", macro)
+        _pf_disk_save("macro_basic_v4", macro)
 
     _FX_TIPS = {
         "EUR/USD": "Euro zu US-Dollar. Steigt der Wert, wird der Euro stärker (gut für europäische Importeure, schlecht für Exporteure).",
@@ -5370,64 +5383,73 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             </div>""", unsafe_allow_html=True)
 
     # ── BIP-Wachstum ──────────────────────────────────────────────────
+    _gdp_specs_ui = ["🇺🇸 USA", "🇪🇺 Eurozone", "🇩🇪 Deutschland", "🇨🇳 China", "🇯🇵 Japan", "🇬🇧 UK", "🇮🇳 Indien"]
     _gdp_data = macro.get("gdp", {})
-    if _gdp_data:
-        st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>📈 BIP-Wachstum (YoY, aktuellstes Quartal)</div>",
-                    unsafe_allow_html=True)
-        _gdp_cols = st.columns(len(_gdp_data))
-        for _gc, (_glab, _gval) in zip(_gdp_cols, _gdp_data.items()):
+    st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>📈 BIP-Wachstum (YoY, aktuellstes Quartal)</div>",
+                unsafe_allow_html=True)
+    _gdp_cols = st.columns(len(_gdp_specs_ui))
+    for _gc, _glab in zip(_gdp_cols, _gdp_specs_ui):
+        _gval = _gdp_data.get(_glab)
+        if _gval is not None:
             _gc_clr = "#00e676" if _gval > 2.5 else "#69f0ae" if _gval > 1.0 else \
                       "#ffd600" if _gval >= 0 else "#ff5252"
-            _gc.markdown(f"""
-            <div class="metric-card" style="text-align:center; padding:10px 6px;">
-                <div class="metric-label" style="font-size:0.68rem; line-height:1.3;">{_glab}</div>
-                <div style="color:{_gc_clr}; font-size:1.0rem; font-weight:700; margin:4px 0;">
-                    {_gval:+.1f}%
-                </div>
-            </div>""", unsafe_allow_html=True)
+            _gdisp = f"{_gval:+.1f}%"
+        else:
+            _gc_clr, _gdisp = "#37474f", "…"
+        _gc.markdown(f"""
+        <div class="metric-card" style="text-align:center; padding:10px 6px;">
+            <div class="metric-label" style="font-size:0.68rem; line-height:1.3;">{_glab}</div>
+            <div style="color:{_gc_clr}; font-size:1.0rem; font-weight:700; margin:4px 0;">
+                {_gdisp}
+            </div>
+        </div>""", unsafe_allow_html=True)
 
     # ── Misery Index + Yield Curve + Consumer Sentiment ───────────────
     _misery      = macro.get("misery", {})
     _yc          = macro.get("yield_curve")
     _cs          = macro.get("consumer_sentiment")
     _ez_unemp_d  = macro.get("ez_unemployment")
-    _konjunktur_items = []
-    for _ml, _mv in _misery.items():
-        _konjunktur_items.append(("misery", _ml, _mv))
-    if _yc is not None:
-        _konjunktur_items.append(("yc", "📉 Zinsstruktur (10J-2J)", _yc))
-    if _cs is not None:
-        _konjunktur_items.append(("cs", "🛒 Konsumklima (Michigan)", _cs))
-    if _ez_unemp_d is not None:
-        _konjunktur_items.append(("ez_u", "🇪🇺 Arbeitslosigkeit", _ez_unemp_d))
+    _konjunktur_specs = [
+        ("misery", "🌡️ Misery 🇺🇸 USA",         _misery.get("🇺🇸 USA")),
+        ("misery", "🌡️ Misery 🇪🇺 Eurozone",    _misery.get("🇪🇺 Eurozone")),
+        ("yc",     "📉 Zinsstruktur (10J-2J)",    _yc),
+        ("cs",     "🛒 Konsumklima (Michigan)",   _cs),
+        ("ez_u",   "🇪🇺 Arbeitslosigkeit",        _ez_unemp_d),
+    ]
 
-    if _konjunktur_items:
+    if True:  # always show section
         st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>🌡️ Konjunkturindikatoren</div>",
                     unsafe_allow_html=True)
-        _kj_cols = st.columns(len(_konjunktur_items))
-        for _kc, (_ktype, _klabel, _kval) in zip(_kj_cols, _konjunktur_items):
-            if _ktype == "misery":
+        st.markdown("<div style='color:#546e7a; font-size:0.75rem; margin:10px 0 6px 0;'>🌡️ Konjunkturindikatoren</div>",
+                    unsafe_allow_html=True)
+        _kj_cols = st.columns(len(_konjunktur_specs))
+        _kj_tips = {
+            "misery": "Misery Index = Arbeitslosenquote + Inflationsrate. Historischer US-Schnitt: ~8–10 %. Über 12 = belastend für Konsumenten.",
+            "yc":     "Zinskurve: 10J-Rendite minus 2J-Rendite (USA). Negativ = invertiert = historisch zuverlässiger Rezessionsindikator (6–18 Monate Vorlauf).",
+            "cs":     "University of Michigan Consumer Sentiment Index. Historischer Schnitt: ~86. Unter 65 = ausgeprägte Konsumzurückhaltung.",
+            "ez_u":   "Eurozone Arbeitslosenquote (ILO, saisonbereinigt). Historisch niedrig unter 7 %, historisch hoch über 10 %.",
+        }
+        for _kc, (_ktype, _klabel, _kval) in zip(_kj_cols, _konjunktur_specs):
+            _kc_tip = _kj_tips.get(_ktype, "")
+            _tip_html = (f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                         f'<span class="tt-box">{_kc_tip}</span></span>') if _kc_tip else ""
+            if _kval is None:
+                _kc_clr, _kdisp = "#37474f", "…"
+            elif _ktype == "misery":
                 _kc_clr = "#ff5252" if _kval > 14 else "#ffd600" if _kval > 10 else "#00e676"
-                _kc_tip = "Misery Index = Arbeitslosenquote + Inflationsrate. Historischer US-Schnitt: ~8–10 %. Über 12 = belastend für Konsumenten."
-                _k_unit, _kdisp = "%", f"{_kval:.1f}%"
-                _disp_label = f"🌡️ Misery {_klabel}"
+                _kdisp = f"{_kval:.1f}%"
             elif _ktype == "yc":
                 _kc_clr = "#ff5252" if _kval < 0 else "#ffd600" if _kval < 0.3 else "#00e676"
-                _kc_tip = "Zinskurve: 10-Jahres-Rendite minus 2-Jahres-Rendite (USA). Negativ = invertiert = historisch zuverlässiger Rezessionsindikator (mit 6–18 Monaten Vorlauf)."
-                _kdisp, _disp_label = f"{_kval:+.2f}%", _klabel
+                _kdisp = f"{_kval:+.2f}%"
             elif _ktype == "cs":
                 _kc_clr = "#00e676" if _kval > 80 else "#ffd600" if _kval > 65 else "#ff5252"
-                _kc_tip = "University of Michigan Consumer Sentiment Index. Historischer Schnitt: ~86. Unter 65 = ausgeprägte Konsumzurückhaltung."
-                _kdisp, _disp_label = f"{_kval:.0f}", _klabel
-            else:  # ez_u
+                _kdisp = f"{_kval:.0f}"
+            else:
                 _kc_clr = "#ff5252" if _kval > 8 else "#ffd600" if _kval > 6.5 else "#00e676"
-                _kc_tip = "Eurozone Arbeitslosenquote (ILO, saisonbereinigt). Historisch niedrig unter 7 %, historisch hoch über 10 %."
-                _kdisp, _disp_label = f"{_kval:.1f}%", _klabel
-            _tip_html = (f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
-                         f'<span class="tt-box">{_kc_tip}</span></span>')
+                _kdisp = f"{_kval:.1f}%"
             _kc.markdown(f"""
             <div class="metric-card" style="text-align:center; padding:10px 6px;">
-                <div class="metric-label" style="font-size:0.68rem; line-height:1.3;">{_disp_label}{_tip_html}</div>
+                <div class="metric-label" style="font-size:0.68rem; line-height:1.3;">{_klabel}{_tip_html}</div>
                 <div style="color:{_kc_clr}; font-size:1.0rem; font-weight:700; margin:4px 0;">
                     {_kdisp}
                 </div>
