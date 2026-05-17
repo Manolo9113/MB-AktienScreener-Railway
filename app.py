@@ -3483,7 +3483,14 @@ _MIDCAP_POOL = {
     "STEP":        "StepStone Group – Alternative-Asset-Manager mit schnell wachsendem AUM",
     "MGPI":        "MGP Ingredients – Whiskey-Destillerie: Lagerbestände als Burggraben, stabiler FCF",
     "CRVL":        "CorVel Corp – Workers-Comp-Kostenmanagement, nischendominierende Softwareplattform",
-    "RATIONAL.DE": "Rational AG – Kombi-Dämpfer-Quasi-Monopol für Profiküchen, 25 %+ Nettomarge",
+    # ── EU Mid-Caps (AEX + XETRA MDAX = beste yFinance-Abdeckung) ────────
+    "RATIONAL.DE": "Rational AG – Kombi-Dämpfer-Quasi-Monopol für Profiküchen, 25 %+ Nettomarge (DE)",
+    "BESI.AS":     "BE Semiconductor – Halbleiter-Packaging-Equipment, >40 % Nettomarge, AEX (NL)",
+    "IMCD.AS":     "IMCD Group – Spezialchemie-Distribution, stabiles Wachstum, Asset-Light (NL)",
+    "AALB.AS":     "Aalberts Industries – Flow-Control & Wärmetechnik für Industrie & Bau (NL)",
+    "AIXA.DE":     "Aixtron SE – Depositionsanlagen für Leistungshalbleiter & LEDs, MDAX (DE)",
+    "PUM.DE":      "Puma SE – Sportartikel mit globalem Vertriebsnetz, attraktive Bewertung (DE)",
+    "GTT.PA":      "GTT – LNG-Containment-Quasi-Monopol, >50 % Nettomarge, Euronext Paris (FR)",
 }
 
 # ── Small-Cap Pool — profitabel, Nischenführer, positiver FCF Pflicht ─────────
@@ -3857,20 +3864,39 @@ def load_small_mid_picks() -> tuple[list[dict], list[dict]]:
                 week52h    = info.get("fiftyTwoWeekHigh") or price
                 week52l    = info.get("fiftyTwoWeekLow") or price
                 w52_pos    = ((price - week52l) / (week52h - week52l) * 100) if week52h > week52l else 50
-                # Quality score: rewards FCF yield, margins, growth, low debt
+                # Value factor: PEG = fwd_PE / rev_growth_% (< 1.5 = günstig)
+                rg_pct = rg * 100
+                peg = (fwd_pe / rg_pct) if (fwd_pe and fwd_pe > 0 and rg_pct > 2) else None
+                # P/FCF als Fallback-Value-Metrik
+                pfcf = mktcap / fcf if fcf > 0 else None
+                # Value-Bonus: Belohnt günstiges PEG, bestraft überteuerte Bewertung
+                value_adj = 0
+                if peg is not None:
+                    if peg < 1.0:   value_adj = 15
+                    elif peg < 1.5: value_adj = 10
+                    elif peg < 2.0: value_adj =  5
+                    elif peg > 4.0: value_adj = -10
+                    elif peg > 3.0: value_adj =  -5
+                elif pfcf is not None:
+                    if pfcf < 15:   value_adj = 10
+                    elif pfcf < 25: value_adj =  5
+                    elif pfcf > 40: value_adj =  -5
+                # Combined quality + value score
                 q_score = (
                     fcf_yield * 4
                     + gm * 100 * 0.3
                     + rg * 100 * 0.5
                     + max(0, roe) * 0.2
                     + max(0, 100 - de) * 0.05
+                    + value_adj
                 )
                 results.append({
                     "ticker": t, "name": info.get("shortName") or t, "desc": desc,
                     "price": price, "fwd_pe": fwd_pe, "fcf_yield": fcf_yield,
-                    "rev_growth": rg * 100, "gross_margin": gm * 100,
+                    "rev_growth": rg_pct, "gross_margin": gm * 100,
                     "op_margin": om, "roe": roe, "w52_pos": w52_pos,
                     "mktcap": mktcap, "q_score": q_score,
+                    "peg": peg, "pfcf": pfcf,
                 })
             except Exception:
                 pass
@@ -6739,10 +6765,22 @@ elif st.session_state.get("show_stocks"):
             if not _mp:
                 st.info("Aktuell keine Mid-Caps, die alle Qualitätshürden erfüllen.")
             for s in _mp:
+                # PEG badge: grün < 1.5, gelb 1.5–2.5, rot > 2.5
+                _peg = s.get("peg")
+                _pfcf = s.get("pfcf")
+                if _peg is not None:
+                    _peg_clr = "#69f0ae" if _peg < 1.5 else _C_NEUTRAL if _peg < 2.5 else _C_NEGATIVE
+                    _val_badge = _mc_badge("PEG", _peg, "", ".2f", _peg_clr)
+                elif _pfcf is not None:
+                    _pfc_clr = "#69f0ae" if _pfcf < 20 else _C_NEUTRAL if _pfcf < 35 else _C_NEGATIVE
+                    _val_badge = _mc_badge("P/FCF", _pfcf, "x", ".0f", _pfc_clr)
+                else:
+                    _val_badge = ""
                 b = (_mc_badge("Rev▲", s["rev_growth"], "%", ".0f", _C_POSITIVE) +
                      _mc_badge("GM", s["gross_margin"], "%", ".0f", "#34d399") +
                      _mc_badge("FCF", s["fcf_yield"], "%", ".1f", "#40c4ff") +
-                     _mc_badge("ROE", s["roe"] if s["roe"] > 0 else None, "%", ".0f", "#a5d6a7"))
+                     _mc_badge("ROE", s["roe"] if s["roe"] > 0 else None, "%", ".0f", "#a5d6a7") +
+                     _val_badge)
                 st.markdown(_mc_card(s, "#34d399", b), unsafe_allow_html=True)
 
         with _col_sml:
@@ -6755,10 +6793,20 @@ elif st.session_state.get("show_stocks"):
             if not _sp:
                 st.info("Aktuell keine Small-Caps, die alle Qualitätshürden erfüllen.")
             for s in _sp:
+                _peg = s.get("peg")
+                _pfcf = s.get("pfcf")
+                if _peg is not None:
+                    _peg_clr = "#69f0ae" if _peg < 1.5 else _C_NEUTRAL if _peg < 2.5 else _C_NEGATIVE
+                    _val_badge = _mc_badge("PEG", _peg, "", ".2f", _peg_clr)
+                elif _pfcf is not None:
+                    _pfc_clr = "#69f0ae" if _pfcf < 20 else _C_NEUTRAL if _pfcf < 35 else _C_NEGATIVE
+                    _val_badge = _mc_badge("P/FCF", _pfcf, "x", ".0f", _pfc_clr)
+                else:
+                    _val_badge = ""
                 b = (_mc_badge("Rev▲", s["rev_growth"], "%", ".0f", _C_POSITIVE) +
                      _mc_badge("GM", s["gross_margin"], "%", ".0f", "#fb923c") +
                      _mc_badge("FCF", s["fcf_yield"], "%", ".1f", "#fbbf24") +
-                     _mc_badge("KGV", s["fwd_pe"] if s["fwd_pe"] and s["fwd_pe"] < 60 else None, "x", ".1f", "#fdba74"))
+                     _val_badge)
                 st.markdown(_mc_card(s, "#fb923c", b), unsafe_allow_html=True)
 
         st.markdown(
