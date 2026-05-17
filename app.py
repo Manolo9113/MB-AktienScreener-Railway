@@ -7413,9 +7413,22 @@ if st.session_state.get("show_portfolio"):
             if not _csv_bytes:
                 st.info("📂 Lade zuerst deine Orderhistorie-CSV hoch, um die Performance zu berechnen.")
             else:
+                _perf_load_key = f"perf_load_{_csv_key}"
+                _irr_cache_key = f"irr_{_csv_key}"
+                if _irr_cache_key in st.session_state:
+                    st.session_state[_perf_load_key] = True
+                if not st.session_state.get(_perf_load_key):
+                    st.info(
+                        "Berechnet IZF, Gesamtrendite, Steuer-Schätzung und Benchmark-Vergleich. "
+                        "Lädt ~15 Sek., danach für diese Sitzung gespeichert."
+                    )
+                    if st.button("📈 Performance laden", type="primary",
+                                 key="btn_perf_load", use_container_width=True):
+                        st.session_state[_perf_load_key] = True
+                        st.rerun()
+                if st.session_state.get(_perf_load_key):
                 # ── Rendite-Kennzahlen ────────────────────────────────────
                     _cur_val_perf = current_total or 0.0
-                    _irr_cache_key = f"irr_{_csv_key}"
                     if _irr_cache_key not in st.session_state:
                         with st.spinner("Renditekennzahlen werden berechnet…"):
                             _irr_res = _calc_portfolio_irr(_csv_bytes, _cur_val_perf)
