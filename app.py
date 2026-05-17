@@ -457,157 +457,204 @@ st.markdown("""
 # ==================== LIGHT MODE CSS ====================
 if st.session_state.get("light_mode"):
     st.markdown("""<style>
-    /* ── Kernhintergründe ──────────────────────────────── */
-    .stApp,
+    /* ═══════════════════════════════════════════════════════
+       SCHRITT 1: Streamlit CSS-Variablen überschreiben
+       → betrifft Buttons, Expander, alle nativen Widgets
+    ═══════════════════════════════════════════════════════ */
+    :root, [data-theme], .stApp {
+        --background-color:           #f8fafc !important;
+        --secondary-background-color: #f1f5f9 !important;
+        --text-color:                 #1e293b !important;
+        --primary-color:              #2563eb !important;
+        --font:                       sans-serif;
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       SCHRITT 2: Kern-Hintergründe
+    ═══════════════════════════════════════════════════════ */
+    .stApp, body, html,
     div[data-testid="stAppViewContainer"],
     section[data-testid="stMain"],
-    .main,
-    .main .block-container { background: #f8fafc !important; }
-
-    /* ── Sidebar ────────────────────────────────────────── */
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg,#ffffff 0%,#f0f5ff 100%) !important;
-        border-right: 1px solid #e2e8f0 !important;
-        box-shadow: 2px 0 12px rgba(0,0,0,0.05) !important;
+    .main, .main .block-container,
+    div[data-testid="stVerticalBlock"] {
+        background-color: #f8fafc !important;
+        background: #f8fafc !important;
     }
-    section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] p,
-    section[data-testid="stSidebar"] span,
-    section[data-testid="stSidebar"] div { color: #1e293b !important; }
+
+    /* ═══════════════════════════════════════════════════════
+       SCHRITT 3: Sidebar
+    ═══════════════════════════════════════════════════════ */
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] > div {
+        background: #ffffff !important;
+        border-right: 1px solid #e2e8f0 !important;
+        box-shadow: 2px 0 16px rgba(0,0,0,0.06) !important;
+    }
+    section[data-testid="stSidebar"] * { color: #1e293b !important; }
     section[data-testid="stSidebar"] .section-header {
         color: #1d4ed8 !important; border-bottom-color: #e2e8f0 !important; }
-    section[data-testid="stSidebar"] input {
-        background: #fff !important; border-color: #e2e8f0 !important;
-        color: #0f172a !important; box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important; }
 
-    /* ── Sidebar-Buttons (Schnellauswahl + Navigation) ── */
-    section[data-testid="stSidebar"] div[data-testid="stButton"] > button,
-    section[data-testid="stSidebar"] button {
+    /* ═══════════════════════════════════════════════════════
+       SCHRITT 4: Alle Buttons (native Streamlit)
+    ═══════════════════════════════════════════════════════ */
+    button,
+    .stButton > button,
+    div[data-testid="stButton"] > button,
+    button[data-testid="baseButton-secondary"],
+    button[kind="secondary"] {
         background: #ffffff !important;
+        background-color: #ffffff !important;
         color: #1e40af !important;
         border: 1.5px solid #bfdbfe !important;
         box-shadow: 0 1px 4px rgba(37,99,235,0.10) !important;
         font-weight: 600 !important;
-        border-radius: 8px !important;
     }
-    section[data-testid="stSidebar"] div[data-testid="stButton"] > button:hover,
-    section[data-testid="stSidebar"] button:hover {
+    button:hover,
+    .stButton > button:hover,
+    div[data-testid="stButton"] > button:hover {
         background: #eff6ff !important;
+        background-color: #eff6ff !important;
         border-color: #93c5fd !important;
         color: #1d4ed8 !important;
     }
+    button[data-testid="baseButton-primary"],
+    button[kind="primary"] {
+        background: linear-gradient(135deg, #1d4ed8, #2563eb) !important;
+        background-color: #2563eb !important;
+        color: #ffffff !important;
+        border: none !important;
+        box-shadow: 0 2px 10px rgba(37,99,235,0.35) !important;
+    }
 
-    /* ── CSS-Klassen ────────────────────────────────────── */
-    .header-wrap, .metric-card, .score-section {
+    /* ═══════════════════════════════════════════════════════
+       SCHRITT 5: Expander (beide Streamlit-Varianten)
+    ═══════════════════════════════════════════════════════ */
+    .streamlit-expanderHeader,
+    div[data-testid="stExpander"] > details > summary,
+    details summary {
+        background: #eef2ff !important;
+        background-color: #eef2ff !important;
+        color: #1d4ed8 !important;
+        border-radius: 10px !important;
+        border: 1px solid #c7d2fe !important;
+    }
+    details[open] > summary,
+    div[data-testid="stExpander"] > details[open] > summary {
+        border-radius: 10px 10px 0 0 !important;
+    }
+    .streamlit-expanderContent,
+    div[data-testid="stExpander"] > details > div,
+    details > div {
+        background: #f8fafc !important;
+        border: 1px solid #e2e8f0 !important;
+        border-top: none !important;
+        border-radius: 0 0 10px 10px !important;
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       SCHRITT 6: CSS-Klassen (eigene Karten)
+    ═══════════════════════════════════════════════════════ */
+    .header-wrap {
+        background: linear-gradient(135deg, #eff6ff, #f0f9ff) !important;
+        border-color: #bfdbfe !important;
+        box-shadow: 0 2px 16px rgba(37,99,235,0.08) !important;
+    }
+    .metric-card {
         background: #ffffff !important;
         border-color: #e2e8f0 !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04) !important; }
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04) !important;
+    }
+    .score-section {
+        background: linear-gradient(135deg, #eff6ff, #f0f9ff) !important;
+        border-color: #bfdbfe !important;
+        box-shadow: 0 4px 24px rgba(37,99,235,0.10) !important;
+    }
     .header-title { color: #0f172a !important; }
     .header-sub   { color: #1d4ed8 !important; }
     .metric-label { color: #64748b !important; }
     .metric-value { color: #0f172a !important; }
     .metric-sub   { color: #94a3b8 !important; }
+    .score-title  { color: #2563eb !important; }
     .section-header { color: #1d4ed8 !important; border-bottom-color: #e2e8f0 !important; }
     .insight-box  { background: #eff6ff !important; border-left-color: #2563eb !important; color: #1e3a5f !important; }
     .grok-box     { background: #faf5ff !important; border-color: #c4b5fd !important; }
+    .insider-buy  { color: #15803d !important; }
+    .insider-sell { color: #dc2626 !important; }
+    .metric-badge-green  { background: rgba(22,163,74,0.12) !important; color: #15803d !important; }
+    .metric-badge-yellow { background: rgba(217,119,6,0.12) !important; color: #b45309 !important; }
+    .metric-badge-red    { background: rgba(220,38,38,0.12) !important; color: #dc2626 !important; }
+    .metric-badge-gray   { background: rgba(100,116,139,0.12) !important; color: #64748b !important; }
 
-    /* ── Inline dunkle Hintergründe → weiß ─────────────── */
+    /* ═══════════════════════════════════════════════════════
+       SCHRITT 7: Inline dunkle Hintergründe → weiß
+    ═══════════════════════════════════════════════════════ */
     div[style*="#0d1f35"], div[style*="#0d1f3c"], div[style*="#0a1628"],
     div[style*="#080f1e"], div[style*="#0d1526"], div[style*="#071020"],
     div[style*="#001a2e"], div[style*="#0d2035"], div[style*="#0d1a2e"],
     div[style*="#1a2740"], div[style*="#132040"], div[style*="#080d18"],
     div[style*="#0a1421"], div[style*="#0d2340"], div[style*="#0d1f38"],
     div[style*="#1a2744"], div[style*="#1e2d45"], div[style*="#1a3a5c"],
-    div[style*="#1a2e1a"], div[style*="#0a1a35"], div[style*="#0d2040"],
-    div[style*="#0a1732"], div[style*="#0e1c36"], div[style*="#162032"],
-    div[style*="#1e3a5f"], div[style*="#152035"], div[style*="#1a304a"],
-    div[style*="#060e1e"], div[style*="#0b1120"] {
+    div[style*="#0a1a35"], div[style*="#0d2040"], div[style*="#0a1732"],
+    div[style*="#0e1c36"], div[style*="#162032"], div[style*="#1e3a5f"],
+    div[style*="#152035"], div[style*="#1a304a"], div[style*="#060e1e"] {
         background: #ffffff !important;
-        border-color: #e2e8f0 !important; }
+        border-color: #e2e8f0 !important;
+    }
+    span[style*="#0d1f3c"], span[style*="#0a1628"], span[style*="#1a2744"] {
+        background: #eef2ff !important; color: #1e3a5f !important;
+    }
 
-    /* ── Span / Badge mit dunklen Hintergründen ─────────── */
-    span[style*="#0d1f3c"], span[style*="#0a1628"], span[style*="#1a2744"],
-    span[style*="#1e2d45"], span[style*="#0d1526"] {
-        background: #eff6ff !important; color: #1e3a5f !important; }
-
-    /* ── Kindelemente in umgewandelten Karten ────────────── */
-    div[style*="#0d1f35"] *, div[style*="#0d1f3c"] *, div[style*="#0a1628"] *,
-    div[style*="#1a2744"] *, div[style*="#1e2d45"] * {
-        color: #1e293b !important; border-color: #e2e8f0 !important; }
-
-    /* ── Neonfarben → klare Finanzfarben ────────────────── */
-    *[style*="color:#00e676"], *[style*="color: #00e676"] { color: #16a34a !important; }
-    *[style*="color:#69f0ae"], *[style*="color: #69f0ae"] { color: #22c55e !important; }
-    *[style*="color:#ff5252"], *[style*="color: #ff5252"] { color: #dc2626 !important; }
-    *[style*="color:#ffd600"], *[style*="color: #ffd600"] { color: #d97706 !important; }
-    *[style*="color:#ffb300"], *[style*="color: #ffb300"] { color: #d97706 !important; }
-    *[style*="color:#00e5ff"], *[style*="color: #00e5ff"] { color: #0284c7 !important; }
-
-    /* ── Inline Textfarben ───────────────────────────────── */
-    *[style*="color:#eceff1"], *[style*="color: #eceff1"] { color: #0f172a !important; }
-    *[style*="color:#e3f2fd"], *[style*="color: #e3f2fd"] { color: #1e40af !important; }
-    *[style*="color:#cfd8dc"], *[style*="color: #cfd8dc"] { color: #334155 !important; }
-    *[style*="color:#b0bec5"], *[style*="color: #b0bec5"] { color: #475569 !important; }
-    *[style*="color:#90a4ae"], *[style*="color: #90a4ae"] { color: #64748b !important; }
-    *[style*="color:#78909c"], *[style*="color: #78909c"] { color: #475569 !important; }
-    *[style*="color:#546e7a"], *[style*="color: #546e7a"] { color: #64748b !important; }
-    *[style*="color:#37474f"], *[style*="color: #37474f"] { color: #94a3b8 !important; }
-    *[style*="color:#64b5f6"], *[style*="color: #64b5f6"] { color: #2563eb !important; }
-    *[style*="color:#42a5f5"], *[style*="color: #42a5f5"] { color: #2563eb !important; }
-
-    /* ── Streamlit-Natives ──────────────────────────────── */
+    /* ═══════════════════════════════════════════════════════
+       SCHRITT 8: Text & Farben
+    ═══════════════════════════════════════════════════════ */
+    p, span, div, label, li, td, th { color: #1e293b; }
     div[data-testid="stMarkdownContainer"] p { color: #334155 !important; }
     div[data-testid="stMetricValue"]  { color: #0f172a !important; }
     div[data-testid="stMetricLabel"]  { color: #64748b !important; }
-    .stCaption, small                 { color: #94a3b8 !important; }
-    hr                                { border-color: #e2e8f0 !important; }
+    .stCaption, small, .caption-text  { color: #64748b !important; }
+    hr { border-color: #e2e8f0 !important; }
+    a  { color: #2563eb !important; }
 
-    /* ── Eingabefelder ──────────────────────────────────── */
-    .stTextInput input {
-        background: #fff !important; border-color: #e2e8f0 !important;
-        color: #0f172a !important; box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important; }
-
-    /* ── Tabs ───────────────────────────────────────────── */
-    .stTabs [data-baseweb="tab-list"] {
-        background: #f1f5f9 !important; border-color: #e2e8f0 !important; }
-    .stTabs [data-baseweb="tab"]    { color: #64748b !important; }
-    .stTabs [aria-selected="true"]  { background: #2563eb !important; color: #fff !important; }
-
-    /* ── Expander ───────────────────────────────────────── */
-    details summary { background: #f1f5f9 !important; color: #1d4ed8 !important; border-radius: 8px; }
-    details[open] summary { border-radius: 8px 8px 0 0; }
-    details > div { background: #f8fafc !important; border: 1px solid #e2e8f0 !important; }
-
-    /* ── Alle Buttons (global) ──────────────────────────── */
-    div[data-testid="stButton"] > button {
+    /* ═══════════════════════════════════════════════════════
+       SCHRITT 9: Eingabefelder & Selects
+    ═══════════════════════════════════════════════════════ */
+    input, textarea,
+    .stTextInput input,
+    .stTextInput > div > div > input {
         background: #ffffff !important;
-        color: #1e40af !important;
-        border: 1.5px solid #bfdbfe !important;
-        box-shadow: 0 1px 3px rgba(37,99,235,0.08) !important;
-        font-weight: 500 !important;
+        background-color: #ffffff !important;
+        border-color: #c7d2fe !important;
+        color: #0f172a !important;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;
     }
-    div[data-testid="stButton"] > button:hover {
-        background: #eff6ff !important;
-        border-color: #93c5fd !important;
-        color: #1d4ed8 !important;
-    }
-    div[data-testid="stButton"] > button[kind="primary"],
-    button[data-testid="baseButton-primary"] {
-        background: linear-gradient(135deg,#1d4ed8,#2563eb) !important;
-        color: #fff !important; border: none !important;
-        box-shadow: 0 2px 8px rgba(37,99,235,0.30) !important; }
-
-    /* ── Select / Multiselect ───────────────────────────── */
     div[data-baseweb="select"] > div,
     div[data-baseweb="popover"] {
-        background: #fff !important; color: #0f172a !important;
-        border-color: #e2e8f0 !important; }
+        background: #ffffff !important;
+        color: #0f172a !important;
+        border-color: #e2e8f0 !important;
+    }
 
-    /* ── Fortschrittsbalken ─────────────────────────────── */
+    /* ═══════════════════════════════════════════════════════
+       SCHRITT 10: Tabs
+    ═══════════════════════════════════════════════════════ */
+    .stTabs [data-baseweb="tab-list"] {
+        background: #f1f5f9 !important; border-color: #e2e8f0 !important; }
+    .stTabs [data-baseweb="tab"]    { color: #64748b !important; background: transparent !important; }
+    .stTabs [aria-selected="true"]  { background: #2563eb !important; color: #fff !important; }
+
+    /* ═══════════════════════════════════════════════════════
+       SCHRITT 11: Fortschritt & Toggle
+    ═══════════════════════════════════════════════════════ */
     div[data-testid="stProgressBar"] > div { background-color: #bfdbfe !important; }
-
-    /* ── Toggle-Label ───────────────────────────────────── */
     label[data-testid="stWidgetLabel"] p { color: #334155 !important; }
+
+    /* ═══════════════════════════════════════════════════════
+       SCHRITT 12: Tooltips anpassen
+    ═══════════════════════════════════════════════════════ */
+    .tt .tt-box {
+        background: #1e293b !important; color: #f1f5f9 !important;
+        border-color: #334155 !important;
+    }
     </style>""", unsafe_allow_html=True)
 
 
