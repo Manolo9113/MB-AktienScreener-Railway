@@ -7126,26 +7126,39 @@ if st.session_state.get("show_portfolio"):
 
         with tab_alloc:
           try:
-            # ── Sektor-Daten für alle Positionen (lazy, einmalig, gespeichert auf Disk) ──
+            # ── Sektor-Daten für alle Positionen (auf Knopfdruck, einmalig gecacht) ──
+            _sec_load_btn_key = f"sec_load_btn_{_alloc_cache_key}"
             if not st.session_state.get(_sec_loaded_key) and not stocks_etf.empty:
                 _sec_miss2 = [(isin_map.get(r['ISIN']), r['ISIN'])
                               for _, r in stocks_etf.iterrows()
                               if r['ISIN'] not in _alloc_infos and isin_map.get(r['ISIN'])]
                 if _sec_miss2:
-                    _sprog2 = st.progress(0, f"Sektordaten: 0 / {len(_sec_miss2)}…")
-                    _new_sc: dict = {}
-                    for _sii2, (_stk2, _sisin2) in enumerate(_sec_miss2, 1):
-                        _inf_s = _get_ticker_info_cached(_stk2)
-                        _alloc_infos[_sisin2] = _inf_s
-                        _new_sc[_sisin2] = {k: _inf_s.get(k, '') for k in
-                                            ('quote_type', 'sector', 'recommendation')}
-                        _sprog2.progress(_sii2 / len(_sec_miss2),
-                                         f"Sektordaten: {_sii2} / {len(_sec_miss2)}…")
-                    _sprog2.empty()
-                    st.session_state[_alloc_cache_key] = _alloc_infos
-                    _disk_sec_cache.update(_new_sc)
-                    _save_isin_sector_cache(_disk_sec_cache)
-                st.session_state[_sec_loaded_key] = True
+                    if not st.session_state.get(_sec_load_btn_key):
+                        st.info(
+                            f"Sektordaten für {len(_sec_miss2)} Positionen fehlen noch. "
+                            "Lädt ~15–60 Sek., danach für diese Sitzung gespeichert."
+                        )
+                        if st.button("📊 Sektordaten laden", type="primary",
+                                     key="btn_sec_load", use_container_width=True):
+                            st.session_state[_sec_load_btn_key] = True
+                            st.rerun()
+                    if st.session_state.get(_sec_load_btn_key):
+                        _sprog2 = st.progress(0, f"Sektordaten: 0 / {len(_sec_miss2)}…")
+                        _new_sc: dict = {}
+                        for _sii2, (_stk2, _sisin2) in enumerate(_sec_miss2, 1):
+                            _inf_s = _get_ticker_info_cached(_stk2)
+                            _alloc_infos[_sisin2] = _inf_s
+                            _new_sc[_sisin2] = {k: _inf_s.get(k, '') for k in
+                                                ('quote_type', 'sector', 'recommendation')}
+                            _sprog2.progress(_sii2 / len(_sec_miss2),
+                                             f"Sektordaten: {_sii2} / {len(_sec_miss2)}…")
+                        _sprog2.empty()
+                        st.session_state[_alloc_cache_key] = _alloc_infos
+                        _disk_sec_cache.update(_new_sc)
+                        _save_isin_sector_cache(_disk_sec_cache)
+                        st.session_state[_sec_loaded_key] = True
+                else:
+                    st.session_state[_sec_loaded_key] = True
 
             if stocks_etf.empty and crypto.empty:
                 st.info("Keine Positionsdaten vorhanden.")
@@ -7943,7 +7956,7 @@ GEOGRAFISCHE VERTEILUNG:
                     _kipa_txt, _kipa_mdl = _try_gemini(
                         [{"role": "system", "content": _sys_kipa},
                          {"role": "user",   "content": _usr_kipa}],
-                        max_tokens=5000, temperature=0.55, api_key=GEMINI_API_KEY,
+                        max_tokens=8192, temperature=0.55, api_key=GEMINI_API_KEY,
                     )
                 if _kipa_txt:
                     st.session_state[_kipa_pk] = _kipa_txt
