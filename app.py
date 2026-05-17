@@ -6895,8 +6895,10 @@ if st.session_state.get("show_portfolio"):
                     st.session_state.get("portfolio_manual_prices", {}),
                     _saved_shr,
                 )
-                for _ck in [_prices_cache_key, _alloc_cache_key, f"spark_{_alloc_cache_key}"]:
-                    st.session_state.pop(_ck, None)
+                # Kurs- und Sektorcaches bleiben erhalten – Stückzahlen ändern sie nicht.
+                # Explizite Navigation-Guards verhindern den Landing-Page-Redirect nach rerun().
+                st.session_state["show_portfolio"] = True
+                st.session_state["show_landing"] = False
                 st.rerun()
 
         tab_pos, tab_alloc, tab_perf, tab_holdings, tab_ki = st.tabs(
