@@ -2657,18 +2657,25 @@ def load_macro_data() -> dict:
 
     # ── BIP-Wachstum YoY (quarterly FRED/OECD series) ───────────────────
     out["gdp"] = {}
-    for _gname, _gsid in [
-        ("🇺🇸 USA",         "GDPC1"),
-        ("🇪🇺 Eurozone",    "NAEXKP01EZQ189S"),
-        ("🇩🇪 Deutschland", "NAEXKP01DEQ189S"),
-        ("🇨🇳 China",       "CHNGDPNQDSMEI"),
-        ("🇯🇵 Japan",       "NAEXKP01JPQ189S"),
-        ("🇬🇧 UK",          "NAEXKP01GBQ189S"),
-        ("🇮🇳 Indien",      "INDGDPNQDSMEI"),
+    # Series: (label, primary_id, fallback_id_or_None)
+    # Quarterly series need n=5 for YoY; monthly series need n=13.
+    # We fetch 13 values and use [0]/[12] if available, else [0]/[4] for quarterly.
+    for _gname, _gsid, _gsid2 in [
+        ("🇺🇸 USA",         "GDPC1",              None),
+        ("🇪🇺 Eurozone",    "CLVMEURSCAB1GQEA19", "NAEXKP01EZQ189S"),
+        ("🇩🇪 Deutschland", "CLVMDEAM195S",        "NAEXKP01DEQ189S"),
+        ("🇨🇳 China",       "CHNGDPNQDSMEI",       None),
+        ("🇯🇵 Japan",       "CLVMJPAM195S",        "NAEXKP01JPQ189S"),
+        ("🇬🇧 UK",          "CLVMGBAM195S",        "NAEXKP01GBQ189S"),
+        ("🇮🇳 Indien",      "INDGDPNQDSMEI",       None),
     ]:
         try:
-            _gv = _fred_last(_gsid, 5)
-            if len(_gv) >= 5 and _gv[4]:
+            _gv = _fred_last(_gsid, 13)
+            if not _gv and _gsid2:
+                _gv = _fred_last(_gsid2, 13)
+            if len(_gv) >= 13 and _gv[12]:
+                out["gdp"][_gname] = round((_gv[0] / _gv[12] - 1) * 100, 1)
+            elif len(_gv) >= 5 and _gv[4]:
                 out["gdp"][_gname] = round((_gv[0] / _gv[4] - 1) * 100, 1)
         except Exception:
             pass
@@ -5293,11 +5300,11 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
 
     # ── Makro-Dashboard ───────────────────────────────────────────────
     st.markdown("<div class='section-header'>📊 Makro-Dashboard</div>", unsafe_allow_html=True)
-    macro = _pf_disk_load("macro_basic_v2", max_age_hours=24)
+    macro = _pf_disk_load("macro_basic_v3", max_age_hours=24)
     if macro is None:
         with st.spinner("Lade Makrodaten…"):
             macro = load_macro_data()
-        _pf_disk_save("macro_basic_v2", macro)
+        _pf_disk_save("macro_basic_v3", macro)
 
     _FX_TIPS = {
         "EUR/USD": "Euro zu US-Dollar. Steigt der Wert, wird der Euro stärker (gut für europäische Importeure, schlecht für Exporteure).",
@@ -6109,9 +6116,13 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
 
         _secs_line = ""
         if _msecs:
-            _sec_sorted = sorted(_msecs.items(), key=lambda x: x[1].get("mtd", 0), reverse=True)
+            _sec_sorted = sorted(
+                _msecs.items(),
+                key=lambda x: (x[1] if isinstance(x[1], (int, float)) else x[1].get("mtd", 0)),
+                reverse=True)
             _secs_line = "Sektorperformance (MTD): " + ", ".join(
-                f"{s} {d.get('mtd', 0):+.1f}%" for s, d in _sec_sorted[:6])
+                f"{s} {(d if isinstance(d, (int, float)) else d.get('mtd', 0)):+.1f}%"
+                for s, d in _sec_sorted[:6])
 
         _mmod_str = " · ".join(f"{k} {v:+.2f}" for k, v in _mmods.items()) if _mmods else "n/v"
 
