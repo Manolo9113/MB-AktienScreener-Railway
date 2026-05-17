@@ -5293,11 +5293,11 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
 
     # ── Makro-Dashboard ───────────────────────────────────────────────
     st.markdown("<div class='section-header'>📊 Makro-Dashboard</div>", unsafe_allow_html=True)
-    macro = _pf_disk_load("macro_basic", max_age_hours=24)
+    macro = _pf_disk_load("macro_basic_v2", max_age_hours=24)
     if macro is None:
         with st.spinner("Lade Makrodaten…"):
             macro = load_macro_data()
-        _pf_disk_save("macro_basic", macro)
+        _pf_disk_save("macro_basic_v2", macro)
 
     _FX_TIPS = {
         "EUR/USD": "Euro zu US-Dollar. Steigt der Wert, wird der Euro stärker (gut für europäische Importeure, schlecht für Exporteure).",
