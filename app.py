@@ -3541,6 +3541,45 @@ _SMALLCAP_POOL = {
     "VU.PA":   "VusionGroup – Elektronische Regaletiketten für Einzelhandel, hohes Wachstum (FR)",
 }
 
+# ── Moat / Hidden Champions Pool ─────────────────────────────────────────────
+# Format: ticker → (beschreibung, moat_typ)
+# Moat-Typen: "Switching Costs" | "Network Effects" | "Pricing Power" |
+#             "Nischenmonopol" | "Intangible Assets" | "Cost Advantage"
+_MOAT_POOL = {
+    # ── US Nischenmonopolisten & Hidden Champions ─────────────────────────
+    "MSCI":  ("MSCI – Finanzindex-Infrastruktur, Kunden wechseln nie weg, >85 % GM",            "Switching Costs"),
+    "FDS":   ("FactSet – Finanzdata-Terminal, tief in Workflows integriert, >55 % GM",           "Switching Costs"),
+    "VRSK":  ("Verisk Analytics – Versicherungsdaten-Monopol, regulatorisch unverzichtbar",      "Nischenmonopol"),
+    "CPRT":  ("Copart – Fahrzeugauktions-Netzwerk, je mehr Käufer/Verkäufer desto stärker",      "Network Effects"),
+    "TDG":   ("TransDigm – Luft-/Raumfahrt-Aftermarket-Teile, kaum Zertifizierungs-Alternativen","Pricing Power"),
+    "TYL":   ("Tyler Technologies – Behörden-Software, Austausch kostet Jahre & Millionen",      "Switching Costs"),
+    "VEEV":  ("Veeva Systems – Life-Science-SaaS, Branchenstandard, kaum Alternativen",          "Switching Costs"),
+    "BR":    ("Broadridge Financial – Proxy-Voting-Infrastruktur, gesetzlich vorgeschrieben",     "Nischenmonopol"),
+    "MORN":  ("Morningstar – Investmentresearch & Ratings, Marke + Daten = starker Moat",        "Intangible Assets"),
+    "JKHY":  ("Jack Henry & Associates – Community-Banking-Software, extrem hohe Retention",     "Switching Costs"),
+    "IT":    ("Gartner – IT-Forschung & Advisory, C-Level-Entscheider zahlen jährlich",          "Intangible Assets"),
+    "ENTG":  ("Entegris – Reinraum-Materialien für Halbleiter, qualitativer Flaschenhals",        "Nischenmonopol"),
+    "CBOE":  ("Cboe Global Markets – Options-Börse, Netzwerkeffekte + regulatorische Hürden",    "Network Effects"),
+    "WSO":   ("Watsco – HVAC-Distribution, größtes Netzwerk in Nordamerika, hohe Retention",     "Cost Advantage"),
+    "RLI":   ("RLI Corp – Spezialversicherung, 30+ Jahre positive Underwriting-Rendite",         "Intangible Assets"),
+    "BAH":   ("Booz Allen Hamilton – Regierungs-IT & Sicherheits-Clearances, kaum Konkurrenz",   "Switching Costs"),
+    # ── EU Hidden Champions ───────────────────────────────────────────────
+    "HLMA.L":       ("Halma PLC – Sicherheitstechnik-Konglomerat, serieller Nischen-Acquirer (UK)",   "Nischenmonopol"),
+    "DPLM.L":       ("Diploma PLC – Mehrwert-Distribution für Industrie & Life Science (UK)",         "Switching Costs"),
+    "ADDTECH-B.ST": ("Addtech AB – Technologie-Distributor, 200+ Nischentöchter (SE)",               "Cost Advantage"),
+    "LIFCO-B.ST":   ("Lifco AB – Nischen-Konglomerat: Zahntechnik, Demolition, Software (SE)",        "Nischenmonopol"),
+    "INDT.ST":      ("Indutrade AB – Technische Komponenten-Distribution, 200+ Marken (SE)",          "Cost Advantage"),
+    "SXS.L":        ("Spectris PLC – Präzisions-Messtechnik für Forschung & Industrie (UK)",          "Pricing Power"),
+    "RSW.L":        ("Renishaw PLC – Hochpräzisions-Messtechnik, Weltmarktführer (UK)",               "Nischenmonopol"),
+    "EQT.ST":       ("EQT AB – Private-Equity-Manager mit wachsendem AUM & Gebührenstream (SE)",      "Intangible Assets"),
+    # ── Japan Hidden Champions ────────────────────────────────────────────
+    "6861.T": ("Keyence – Sensoren & Automatisierung, ~55 % Betriebsmarge, Direktvertrieb",      "Pricing Power"),
+    "7309.T": ("Shimano – Fahrradkomponenten-Quasi-Monopol, >90 % Marktanteil im Top-Segment",   "Nischenmonopol"),
+    "6273.T": ("SMC Corp – Pneumatik-Weltmarktführer, tief in Industrieanlagen integriert",       "Switching Costs"),
+    "7741.T": ("Hoya Corp – Optische Komponenten & Halbleiter-Masken, Doppel-Nischenmonopol",    "Nischenmonopol"),
+    "6146.T": ("Disco Corp – Präzisions-Schneidwerkzeuge für Chips, kein vergleichbarer Anbieter","Nischenmonopol"),
+}
+
 
 def _safe_div_yield(info: dict, price: float) -> float:
     """Berechnet Dividend Yield sauber aus trailingAnnualDividendRate / price."""
@@ -3935,6 +3974,76 @@ def load_small_mid_picks() -> tuple[list[dict], list[dict]]:
     mid_results.sort(key=lambda x: x["q_score"], reverse=True)
     small_results.sort(key=lambda x: x["q_score"], reverse=True)
     return mid_results[:8], small_results[:8]
+
+
+@st.cache_data(ttl=43200, show_spinner=False)
+def load_moat_picks() -> list[dict]:
+    """
+    Lädt Moat/Hidden-Champion-Kandidaten mit qualitätsorientiertem Filter.
+    Filter: FCF > 0, EPS > 0, Bruttomarge > 40%, ROE > 15%, D/E < 300.
+    Score gewichtet stark auf ROE + Margen (Moat-Qualitäts-Proxy).
+    """
+    results = []
+    for t, (desc, moat_type) in _MOAT_POOL.items():
+        try:
+            info      = yf.Ticker(t).info
+            price     = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+            if not price or price < 2:
+                continue
+            fcf       = info.get("freeCashflow") or 0
+            mktcap    = info.get("marketCap") or 1
+            gm        = info.get("grossMargins") or 0
+            om        = info.get("operatingMargins") or 0
+            rg        = info.get("revenueGrowth") or 0
+            de        = info.get("debtToEquity") or 0
+            roe       = (info.get("returnOnEquity") or 0) * 100
+            eps       = info.get("trailingEps") or 0
+            fwd_pe    = info.get("forwardPE")
+            # Quality gate — moat-focused
+            if fcf <= 0:          continue
+            if eps <= 0:          continue
+            if gm < 0.40:         continue
+            if roe < 15:          continue
+            if de > 300:          continue
+            fcf_yield = fcf / mktcap * 100
+            week52h   = info.get("fiftyTwoWeekHigh") or price
+            week52l   = info.get("fiftyTwoWeekLow") or price
+            w52_pos   = ((price - week52l) / (week52h - week52l) * 100) if week52h > week52l else 50
+            # Value factor
+            rg_pct    = rg * 100
+            peg       = (fwd_pe / rg_pct) if (fwd_pe and fwd_pe > 0 and rg_pct > 2) else None
+            pfcf      = mktcap / fcf if fcf > 0 else None
+            value_adj = 0
+            if peg is not None:
+                if peg < 1.5:   value_adj = 10
+                elif peg < 2.5: value_adj =  5
+                elif peg > 5.0: value_adj = -5
+            elif pfcf is not None:
+                if pfcf < 25:   value_adj =  8
+                elif pfcf > 50: value_adj = -5
+            # Moat score: ROE + Margen dominieren
+            q_score = (
+                max(0, roe) * 0.6          # ROE ist der wichtigste Moat-Indikator
+                + gm  * 100 * 0.35
+                + om  * 100 * 0.25
+                + fcf_yield * 2.0
+                + rg_pct * 0.2
+                + max(0, 100 - min(de, 100)) * 0.03
+                + value_adj
+            )
+            results.append({
+                "ticker": t, "name": info.get("shortName") or t, "desc": desc,
+                "moat_type": moat_type,
+                "price": price, "fwd_pe": fwd_pe, "fcf_yield": fcf_yield,
+                "gross_margin": gm * 100, "op_margin": om * 100,
+                "roe": roe, "rev_growth": rg_pct,
+                "w52_pos": w52_pos, "mktcap": mktcap,
+                "q_score": q_score, "peg": peg, "pfcf": pfcf,
+            })
+        except Exception:
+            pass
+    results.sort(key=lambda x: x["q_score"], reverse=True)
+    return results[:12]
 
 
 # ==================== KI ANALYSE (Grok + Gemini Fallback) ====================
@@ -6854,6 +6963,115 @@ elif st.session_state.get("show_stocks"):
         st.markdown(
             "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
             "⚠️ Keine Anlageberatung · Mid/Small-Caps = höheres Risiko · Daten via Yahoo Finance</div>",
+            unsafe_allow_html=True)
+
+    # ── Moat / Hidden Champions ────────────────────────────────────────────
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    with st.expander("🏰  Moat & Hidden Champions — Burggraben-Qualität weltweit  (12h Cache)", expanded=False):
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-bottom:14px;line-height:1.6;'>"
+            "Unternehmen mit <b>dauerhaftem Wettbewerbsvorteil</b>: Switching Costs, Netzwerkeffekte, "
+            "Preissetzungsmacht oder Nischenmonopol. Filter: <b>ROE &gt; 15 %</b>, "
+            "<b>Bruttomarge &gt; 40 %</b>, <b>FCF &amp; EPS positiv</b>. "
+            "Sortiert nach Moat-Score (ROE + Margen gewichtet).</div>",
+            unsafe_allow_html=True)
+        with st.spinner("Lade Moat-Kandidaten…"):
+            _moat_picks = load_moat_picks()
+
+        _MOAT_TYPE_COLORS = {
+            "Switching Costs":  "#7c3aed",
+            "Network Effects":  "#0284c7",
+            "Pricing Power":    "#b45309",
+            "Nischenmonopol":   "#047857",
+            "Intangible Assets":"#be185d",
+            "Cost Advantage":   "#0f766e",
+        }
+        _MOAT_TYPE_ICONS = {
+            "Switching Costs":  "🔒",
+            "Network Effects":  "🕸️",
+            "Pricing Power":    "💎",
+            "Nischenmonopol":   "👑",
+            "Intangible Assets":"📊",
+            "Cost Advantage":   "⚙️",
+        }
+
+        def _moat_card(s):
+            accent     = "#e2b04a"
+            cap_str    = f"{s['mktcap']/1e9:.1f} Mrd."
+            price_str  = f"{s['price']:,.2f}"
+            mt         = s["moat_type"]
+            mt_clr     = _MOAT_TYPE_COLORS.get(mt, "#546e7a")
+            mt_icon    = _MOAT_TYPE_ICONS.get(mt, "🏰")
+            peg        = s.get("peg")
+            pfcf       = s.get("pfcf")
+            if peg is not None:
+                _peg_clr  = "#69f0ae" if peg < 1.5 else _C_NEUTRAL if peg < 2.5 else _C_NEGATIVE
+                _val_b    = (f"<span style='background:rgba(100,181,246,0.1);color:{_peg_clr};"
+                             f"border-radius:5px;padding:2px 7px;font-size:0.71rem;"
+                             f"font-weight:600;white-space:nowrap;'>PEG&thinsp;{peg:.2f}</span>")
+            elif pfcf is not None:
+                _pfc_clr  = "#69f0ae" if pfcf < 25 else _C_NEUTRAL if pfcf < 50 else _C_NEGATIVE
+                _val_b    = (f"<span style='background:rgba(100,181,246,0.1);color:{_pfc_clr};"
+                             f"border-radius:5px;padding:2px 7px;font-size:0.71rem;"
+                             f"font-weight:600;white-space:nowrap;'>P/FCF&thinsp;{pfcf:.0f}x</span>")
+            else:
+                _val_b    = ""
+            def _b(label, val, suffix="", fmt=".0f", clr="#64b5f6"):
+                if val is None or val == 0: return ""
+                try:    vs = f"{val:{fmt}}{suffix}"
+                except: vs = f"{val}{suffix}"
+                return (f"<span style='background:rgba(100,181,246,0.1);color:{clr};"
+                        f"border-radius:5px;padding:2px 7px;font-size:0.71rem;"
+                        f"font-weight:600;white-space:nowrap;'>{label}&thinsp;{vs}</span>")
+            badges = (
+                f"<span style='background:{mt_clr}22;color:{mt_clr};border-radius:5px;"
+                f"padding:2px 9px;font-size:0.72rem;font-weight:700;white-space:nowrap;'>"
+                f"{mt_icon} {mt}</span> "
+                + _b("GM",  s["gross_margin"], "%", ".0f", "#e2b04a")
+                + _b("ROE", s["roe"] if s["roe"] > 0 else None, "%", ".0f", "#a78bfa")
+                + _b("FCF", s["fcf_yield"], "%", ".1f", "#40c4ff")
+                + _b("Rev▲",s["rev_growth"] if s["rev_growth"] > 0 else None, "%", ".0f", _C_POSITIVE)
+                + _val_b
+            )
+            pos = max(0, min(100, s["w52_pos"] or 50))
+            bar_clr = accent if pos > 62 else _C_NEUTRAL if pos > 35 else _C_NEGATIVE
+            trend = (f"<div style='margin-top:7px;'>"
+                     f"<div style='display:flex;justify-content:space-between;"
+                     f"font-size:0.63rem;color:{_C_TEXT_MUTED};margin-bottom:2px;'>"
+                     f"<span>52W-Tief</span><span>{pos:.0f}%</span><span>52W-Hoch</span></div>"
+                     f"<div style='background:{_C_BORDER};border-radius:4px;height:4px;'>"
+                     f"<div style='background:{bar_clr};width:{pos}%;height:4px;border-radius:4px;'>"
+                     f"</div></div></div>")
+            return f"""
+            <div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};
+                 border-left:3px solid {accent};border-radius:12px 12px 0 0;
+                 padding:13px 15px 10px 15px;margin-bottom:0;'>
+              <div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>
+                <span style='color:{accent};font-size:1.02rem;font-weight:800;'>{s["ticker"]}</span>
+                <span style='color:{_C_TEXT_MUTED};font-size:0.74rem;'>{cap_str}</span>
+              </div>
+              <div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-bottom:5px;'>{s["name"]}</div>
+              <div style='color:{_C_TEXT_MUTED2};font-size:0.78rem;line-height:1.45;margin-bottom:8px;'>{s["desc"]}</div>
+              <div style='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;'>{badges}</div>
+              {trend}
+            </div>"""
+
+        if not _moat_picks:
+            st.info("Aktuell keine Moat-Kandidaten, die alle Qualitätshürden erfüllen.")
+        else:
+            _mc1, _mc2 = st.columns(2)
+            for _mi, _ms in enumerate(_moat_picks):
+                with (_mc1 if _mi % 2 == 0 else _mc2):
+                    st.markdown(_moat_card(_ms), unsafe_allow_html=True)
+                    if st.button(f"🔍 {_ms['ticker']} analysieren",
+                                 key=f"moat_go_{_ms['ticker']}", use_container_width=True):
+                        _go_to_ticker(_ms["ticker"])
+                        st.rerun()
+                    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+        st.markdown(
+            "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
+            "⚠️ Keine Anlageberatung · Burggraben ≠ Kursgarantie · Daten via Yahoo Finance</div>",
             unsafe_allow_html=True)
 
     # ── Qualitäts-Screener ─────────────────────────────────────────────
