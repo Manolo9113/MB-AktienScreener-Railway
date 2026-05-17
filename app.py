@@ -8007,10 +8007,13 @@ if st.session_state.get("show_portfolio"):
         if _disk_sec_cache:
             st.session_state[_alloc_cache_key] = _alloc_infos
 
-        # ── Top-10 Analyst-Daten (nur fehlende Positionen — meist aus Disk-Cache) ─
+        # ── Top-10 Analyst-Daten (fehlende oder market_cap-lose Positionen) ─
         _ai_isins_needed = [(isin_map.get(i), i)
                             for i in stocks_etf.nlargest(10, 'cost_basis')['ISIN']
-                            if isin_map.get(i) and i not in _alloc_infos]
+                            if isin_map.get(i) and (
+                                i not in _alloc_infos
+                                or _alloc_infos[i].get('market_cap') is None
+                            )]
         if _ai_isins_needed:
             _aprog = st.progress(0, f"Analyst-Daten: 0 / {len(_ai_isins_needed)}…")
             for _aii, (_at, _ai) in enumerate(_ai_isins_needed, 1):
@@ -8018,6 +8021,7 @@ if st.session_state.get("show_portfolio"):
                 _alloc_infos[_ai] = _inf_r
                 _disk_sec_cache[_ai] = {k: _inf_r.get(k, '') for k in
                                         ('quote_type', 'sector', 'recommendation')}
+                _disk_sec_cache[_ai]['market_cap'] = _inf_r.get('market_cap')
                 _disk_sec_dirty = True
                 _aprog.progress(_aii / len(_ai_isins_needed),
                                 f"Analyst-Daten: {_aii} / {len(_ai_isins_needed)}…")
@@ -8237,39 +8241,30 @@ if st.session_state.get("show_portfolio"):
 
         with tab_alloc:
           try:
-            # ── Sektor-Daten für alle Positionen (auf Knopfdruck, einmalig gecacht) ──
-            _sec_load_btn_key = f"sec_load_btn_{_alloc_cache_key}"
+            # ── Sektor-Daten für alle Positionen (automatisch, einmalig gecacht) ──
             if not st.session_state.get(_sec_loaded_key) and not stocks_etf.empty:
                 _sec_miss2 = [(isin_map.get(r['ISIN']), r['ISIN'])
                               for _, r in stocks_etf.iterrows()
-                              if r['ISIN'] not in _alloc_infos and isin_map.get(r['ISIN'])]
+                              if isin_map.get(r['ISIN']) and (
+                                  r['ISIN'] not in _alloc_infos
+                                  or _alloc_infos[r['ISIN']].get('market_cap') is None
+                              )]
                 if _sec_miss2:
-                    if not st.session_state.get(_sec_load_btn_key):
-                        st.info(
-                            f"Sektordaten für {len(_sec_miss2)} Positionen fehlen noch. "
-                            "Lädt ~15–60 Sek., danach für diese Sitzung gespeichert."
-                        )
-                        if st.button("📊 Sektordaten laden", type="primary",
-                                     key="btn_sec_load", use_container_width=True):
-                            st.session_state[_sec_load_btn_key] = True
-                            st.rerun()
-                    if st.session_state.get(_sec_load_btn_key):
-                        _sprog2 = st.progress(0, f"Sektordaten: 0 / {len(_sec_miss2)}…")
-                        _new_sc: dict = {}
-                        for _sii2, (_stk2, _sisin2) in enumerate(_sec_miss2, 1):
-                            _inf_s = _get_ticker_info_cached(_stk2)
-                            _alloc_infos[_sisin2] = _inf_s
-                            _new_sc[_sisin2] = {k: _inf_s.get(k, '') for k in
-                                                ('quote_type', 'sector', 'recommendation')}
-                            _sprog2.progress(_sii2 / len(_sec_miss2),
-                                             f"Sektordaten: {_sii2} / {len(_sec_miss2)}…")
-                        _sprog2.empty()
-                        st.session_state[_alloc_cache_key] = _alloc_infos
-                        _disk_sec_cache.update(_new_sc)
-                        _save_isin_sector_cache(_disk_sec_cache)
-                        st.session_state[_sec_loaded_key] = True
-                else:
-                    st.session_state[_sec_loaded_key] = True
+                    _sprog2 = st.progress(0, f"Sektordaten: 0 / {len(_sec_miss2)}…")
+                    _new_sc: dict = {}
+                    for _sii2, (_stk2, _sisin2) in enumerate(_sec_miss2, 1):
+                        _inf_s = _get_ticker_info_cached(_stk2)
+                        _alloc_infos[_sisin2] = _inf_s
+                        _new_sc[_sisin2] = {k: _inf_s.get(k, '') for k in
+                                            ('quote_type', 'sector', 'recommendation')}
+                        _new_sc[_sisin2]['market_cap'] = _inf_s.get('market_cap')
+                        _sprog2.progress(_sii2 / len(_sec_miss2),
+                                         f"Sektordaten: {_sii2} / {len(_sec_miss2)}…")
+                    _sprog2.empty()
+                    st.session_state[_alloc_cache_key] = _alloc_infos
+                    _disk_sec_cache.update(_new_sc)
+                    _save_isin_sector_cache(_disk_sec_cache)
+                st.session_state[_sec_loaded_key] = True
 
             if stocks_etf.empty and crypto.empty:
                 st.info("Keine Positionsdaten vorhanden.")
@@ -8437,10 +8432,9 @@ if st.session_state.get("show_portfolio"):
                                 f"font-weight:600;'>{_mpct:.1f}%</span></div>",
                                 unsafe_allow_html=True)
                         if _mc_covered < _tot * 0.5:
-                            st.caption("⚠️ Marktkapitalisierung fehlt für viele Positionen. "
-                                       "→ 'Sektordaten laden' klicken um Daten zu ergänzen.")
+                            st.caption("⚠️ Marktkapitalisierung wird beim nächsten Seitenaufruf ergänzt.")
                 else:
-                    st.caption("Marktkapitalisierungsdaten werden beim nächsten 'Sektordaten laden' ergänzt.")
+                    st.caption("Marktkapitalisierungsdaten werden automatisch ergänzt.")
 
                 # ── ETF Look-Through: echte Länder-/Kontinentexposition ───────
                 st.markdown("<div class='section-header'>🌍 Geographische Exposition (Look-Through)</div>",
