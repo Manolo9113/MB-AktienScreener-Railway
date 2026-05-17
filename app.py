@@ -6072,6 +6072,22 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
                 st.caption(f"Stand: {_maki_time} · {_maki_model} · Gültig 24h")
             st.markdown(_maki_result)
 
+    # ── Marktschlagzeilen ────────────────────────────────────────────────
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>📰 Aktuelle Marktschlagzeilen</div>", unsafe_allow_html=True)
+    with st.spinner("Lade Nachrichten…"):
+        headlines = load_market_news()
+
+    if headlines:
+        for h in headlines:
+            src = f"<span style='color:#546e7a; font-size:0.72rem; margin-left:8px;'>{h['source']}</span>" if h['source'] else ""
+            st.markdown(f"""
+            <div class="metric-card" style="padding:14px 18px;">
+                <div style="color:#eceff1; font-size:0.92rem; line-height:1.4;">📌 {h['title']}{src}</div>
+            </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="metric-card" style="color:#546e7a; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
+
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     st.stop()
 
@@ -6227,26 +6243,19 @@ elif st.session_state.get("show_stocks"):
                 _sp_disc_clr = "#00e676" if _sp_disc >= 15 else "#ffd600" if _sp_disc >= 10 else "#90a4ae"
                 _sp_score_clr = "#00e676" if _sp["score"] >= 80 else "#ffd600" if _sp["score"] >= 70 else "#90a4ae"
                 st.markdown(f"""
-                <div class="metric-card" style="padding:10px 14px;margin-bottom:8px;display:flex;
-                     align-items:center;justify-content:space-between;gap:8px;">
-                  <div style="min-width:52px;">
-                    <div style="color:#eceff1;font-size:0.95rem;font-weight:700;">{_sp['ticker']}</div>
-                    <div style="color:#546e7a;font-size:0.68rem;">{_sp.get('sector','')}</div>
+                <div class="metric-card" style="padding:10px 14px;margin-bottom:8px;">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px;">
+                    <span style="color:#eceff1;font-size:0.95rem;font-weight:700;">{_sp['ticker']}</span>
+                    <span style="color:{_sp_score_clr};font-size:0.82rem;font-weight:700;">Score {_sp['score']}</span>
                   </div>
-                  <div style="flex:1;min-width:0;">
-                    <div style="color:#90a4ae;font-size:0.78rem;white-space:nowrap;overflow:hidden;
-                         text-overflow:ellipsis;">{_sp['name']}</div>
-                  </div>
-                  <div style="text-align:right;white-space:nowrap;">
-                    <span style="color:{_sp_score_clr};font-size:0.82rem;font-weight:700;">
-                      Score {_sp['score']}</span>
-                    <span style="color:#546e7a;font-size:0.78rem;margin:0 6px;">·</span>
-                    <span style="color:#b0bec5;font-size:0.78rem;">
-                      {_sp['price']:.2f} {_sp_cur}</span>
-                    <span style="color:#546e7a;font-size:0.78rem;margin:0 4px;">→ FV</span>
-                    <span style="color:#64b5f6;font-size:0.78rem;">{_sp['fv']:.2f}</span>
-                    <span style="color:{_sp_disc_clr};font-size:0.82rem;font-weight:700;margin-left:8px;">
-                      -{_sp_disc:.1f}%</span>
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;">
+                    <span style="color:#546e7a;font-size:0.72rem;">{_sp.get('sector','')}</span>
+                    <span style="font-size:0.78rem;white-space:nowrap;">
+                      <span style="color:#b0bec5;">{_sp['price']:.2f} {_sp_cur}</span>
+                      <span style="color:#546e7a;margin:0 4px;">→ FV</span>
+                      <span style="color:#64b5f6;">{_sp['fv']:.2f}</span>
+                      <span style="color:{_sp_disc_clr};font-weight:700;margin-left:6px;">-{_sp_disc:.1f}%</span>
+                    </span>
                   </div>
                 </div>""", unsafe_allow_html=True)
         st.markdown(
@@ -6406,22 +6415,6 @@ elif st.session_state.get("show_stocks"):
                             _go_to_ticker(_tk)
                             st.rerun()
 
-    # ── Schlagzeilen ──
-    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-header'>📰 Aktuelle Marktschlagzeilen</div>", unsafe_allow_html=True)
-    with st.spinner("Lade Nachrichten…"):
-        headlines = load_market_news()
-
-    if headlines:
-        for h in headlines:
-            src = f"<span style='color:#546e7a; font-size:0.72rem; margin-left:8px;'>{h['source']}</span>" if h['source'] else ""
-            st.markdown(f"""
-            <div class="metric-card" style="padding:14px 18px;">
-                <div style="color:#eceff1; font-size:0.92rem; line-height:1.4;">📌 {h['title']}{src}</div>
-            </div>""", unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="metric-card" style="color:#546e7a; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
-
     # ── Quality Top-Picks (Score ≥ 70, täglich aktualisiert) ──────────
     with st.expander("⭐ Quality Top-Picks — Score ≥ 70 (täglich aktualisiert)", expanded=False):
         with st.spinner("Berechne Quality-Scores…"):
@@ -6489,19 +6482,6 @@ elif st.session_state.get("show_stocks"):
                     st.rerun()
         else:
             st.info("Daytrading-Daten werden geladen…")
-
-    # ── Schnellauswahl auf Landing ──
-    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-header'>⚡ Beliebte Aktien</div>", unsafe_allow_html=True)
-    popular = [
-        ("AAPL","Apple"), ("MSFT","Microsoft"), ("NVDA","NVIDIA"), ("AMZN","Amazon"),
-        ("GOOGL","Alphabet"), ("META","Meta"), ("TSLA","Tesla"), ("SAP","SAP"),
-    ]
-    pop_cols = st.columns(len(popular))
-    for col, (t, name) in zip(pop_cols, popular):
-        if col.button(f"**{t}**\n{name}", use_container_width=True, key=f"lp_{t}"):
-            _go_to_ticker(t)
-            st.rerun()
 
     # ── KI-Investmentstrategie ─────────────────────────────────────────────────
     st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
