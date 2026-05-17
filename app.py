@@ -4484,12 +4484,50 @@ def _get_eur_fx_rate(from_currency: str) -> float:
     """Wechselkurs: 1 from_currency = X EUR (gecacht 1h). Mehrere Fallbacks."""
     if from_currency in ('EUR', ''):
         return 1.0
+
+    # Plausible Bandbreiten: 1 Einheit dieser Währung in EUR
+    _sane = {
+        'JPY': (0.003,  0.012),   # ~0.0063
+        'USD': (0.70,   1.30),
+        'GBP': (1.00,   1.60),
+        'CHF': (0.85,   1.50),
+        'KRW': (0.0004, 0.0012),
+        'CNY': (0.10,   0.20),
+        'HKD': (0.08,   0.17),
+        'CAD': (0.55,   0.85),
+        'AUD': (0.45,   0.80),
+        'SEK': (0.06,   0.12),
+        'NOK': (0.06,   0.12),
+        'DKK': (0.12,   0.16),
+        'SGD': (0.55,   0.85),
+        'TWD': (0.020,  0.045),
+        'INR': (0.007,  0.016),
+        'BRL': (0.12,   0.25),
+        'TRY': (0.018,  0.050),
+        'MXN': (0.032,  0.065),
+        'ZAR': (0.035,  0.075),
+        'ILS': (0.18,   0.35),
+    }
+
+    def _validate(rate, ccy):
+        """Gibt korrekten Rate zurück oder None; erkennt invertierte Rückgabe automatisch."""
+        if not rate or rate <= 0:
+            return None
+        lo, hi = _sane.get(ccy, (1e-9, 1e6))
+        if lo <= rate <= hi:
+            return float(rate)
+        inv = 1.0 / rate
+        if lo <= inv <= hi:
+            return float(inv)
+        return None
+
     # Versuch 1: direkte yFinance FX-Rate XXXEUR=X
     try:
         fi = yf.Ticker(f"{from_currency}EUR=X").fast_info
         rate = getattr(fi, 'last_price', None)
-        if rate and float(rate) > 0:
-            return float(rate)
+        validated = _validate(rate, from_currency)
+        if validated:
+            return validated
     except Exception:
         pass
     # Versuch 2: Inverse via EURXXX=X (z.B. EURKRW=X → 1/rate)
@@ -4497,7 +4535,9 @@ def _get_eur_fx_rate(from_currency: str) -> float:
         fi2 = yf.Ticker(f"EUR{from_currency}=X").fast_info
         rate2 = getattr(fi2, 'last_price', None)
         if rate2 and float(rate2) > 0:
-            return 1.0 / float(rate2)
+            validated2 = _validate(1.0 / float(rate2), from_currency)
+            if validated2:
+                return validated2
     except Exception:
         pass
     # Versuch 3: FMP FX-Rate
@@ -4508,8 +4548,9 @@ def _get_eur_fx_rate(from_currency: str) -> float:
                 params={'apikey': FMP_API_KEY}, timeout=5)
             if _fr.ok and _fr.json():
                 _rate = _fr.json()[0].get('bid') or _fr.json()[0].get('ask')
-                if _rate and float(_rate) > 0:
-                    return float(_rate)
+                validated3 = _validate(_rate, from_currency)
+                if validated3:
+                    return validated3
         except Exception:
             pass
     # Fallback: Näherungswerte (werden täglich selten gebraucht, nur bei API-Ausfall)
@@ -4541,7 +4582,16 @@ def _portfolio_quote_ext(ticker: str) -> dict:
                 if currency == 'GBp' or (currency == 'GBP' and t.endswith('.L') and price > 500):
                     price /= 100.0
                     currency = 'GBP'
+                # Harte Korrektur: .T-Ticker sind immer JPY, egal was yFinance meldet
+                if t.endswith('.T') and currency != 'JPY':
+                    currency = 'JPY'
                 fx = _get_eur_fx_rate(currency) if currency != 'EUR' else 1.0
+                # Plausibilitäts-Check: Einzelkurs > €50.000 ist fast immer ein FX-Bug
+                if fx != 1.0 and price * fx > 50_000:
+                    fx_fallback = _get_eur_fx_rate.__wrapped__(currency) if hasattr(_get_eur_fx_rate, '__wrapped__') else None
+                    # Nochmals mit 1/fx versuchen
+                    if price / fx < 50_000:
+                        fx = 1.0 / fx
                 y_high  = getattr(fi, 'year_high', None)
                 y_low   = getattr(fi, 'year_low', None)
                 day_chg = getattr(fi, 'regular_market_change_percent', None)
