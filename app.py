@@ -13251,6 +13251,45 @@ elif _at == 6:
             <div class="metric-sub">Total Revenue</div>
         </div>""", unsafe_allow_html=True)
 
+    # ── Externe Links: Homepage + Geschäftsbericht ──────────────────────
+    _link_parts = []
+    if _website:
+        _link_parts.append(
+            f"<a href='{_website}' target='_blank' rel='noopener' "
+            f"style='color:#64b5f6;text-decoration:none;font-weight:600;font-size:0.85rem;"
+            f"background:rgba(100,181,246,0.1);padding:5px 12px;border-radius:8px;"
+            f"border:1px solid rgba(100,181,246,0.25);white-space:nowrap;'>"
+            f"🌐 Homepage</a>"
+        )
+        _ir_url = _website.rstrip("/") + "/investor-relations"
+        _link_parts.append(
+            f"<a href='{_ir_url}' target='_blank' rel='noopener' "
+            f"style='color:#69f0ae;text-decoration:none;font-weight:600;font-size:0.85rem;"
+            f"background:rgba(105,240,174,0.1);padding:5px 12px;border-radius:8px;"
+            f"border:1px solid rgba(105,240,174,0.25);white-space:nowrap;'>"
+            f"📊 Investor Relations</a>"
+        )
+    _exchange = yf_info.get("exchange", "") or ""
+    _is_us = _exchange.upper() in ("NYQ", "NMS", "NGM", "NCM", "ASE", "PCX", "NYS", "NASDAQ", "NYSE")
+    if _is_us:
+        _cik = _sec_cik(ticker)
+        if _cik:
+            _edgar_url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={_cik}&type=10-K&dateb=&owner=include&count=5"
+            _link_parts.append(
+                f"<a href='{_edgar_url}' target='_blank' rel='noopener' "
+                f"style='color:#ffd600;text-decoration:none;font-weight:600;font-size:0.85rem;"
+                f"background:rgba(255,214,0,0.1);padding:5px 12px;border-radius:8px;"
+                f"border:1px solid rgba(255,214,0,0.25);white-space:nowrap;'>"
+                f"📄 SEC Jahresberichte (10-K)</a>"
+            )
+    if _link_parts:
+        st.markdown(
+            "<div style='display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px 0;'>"
+            + "".join(_link_parts)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+
     if _summary:
         # Kürze auf ~4 Sätze
         _sentences = _summary.replace("  ", " ").split(". ")
