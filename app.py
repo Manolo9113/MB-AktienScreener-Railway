@@ -6430,18 +6430,18 @@ elif st.session_state.get("show_stocks"):
             bar_clr = accent if pos > 62 else _C_NEUTRAL if pos > 35 else _C_NEGATIVE
             return (f"<div style='margin-top:7px;'>"
                     f"<div style='display:flex;justify-content:space-between;"
-                    f"font-size:0.63rem;color:#37474f;margin-bottom:2px;'>"
+                    f"font-size:0.63rem;color:{_C_TEXT_MUTED};margin-bottom:2px;'>"
                     f"<span>52W-Tief</span><span style='color:{_C_TEXT_MUTED};'>{pos:.0f}%</span>"
                     f"<span>52W-Hoch</span></div>"
-                    f"<div style='background:#1e2d45;border-radius:4px;height:4px;'>"
+                    f"<div style='background:{_C_BORDER};border-radius:4px;height:4px;'>"
                     f"<div style='background:{bar_clr};width:{pos}%;height:4px;"
                     f"border-radius:4px;transition:width 0.4s;'></div></div></div>")
 
         def _pick_card(s, accent, badges_html, extra_html=""):
             price_str = f"${s['price']:,.2f}" if s['price'] else "—"
             return f"""
-            <div style='background:linear-gradient(135deg,#0d1f3c,#0a1628);
-                 border:1px solid #1e3a5f;border-left:3px solid {accent};
+            <div style='background:{_C_CARD_BG};
+                 border:1px solid {_C_BORDER};border-left:3px solid {accent};
                  border-radius:12px;padding:13px 15px;margin-bottom:10px;'>
               <div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>
                 <span style='color:{accent};font-size:1.02rem;font-weight:800;
@@ -6796,20 +6796,21 @@ elif st.session_state.get("show_stocks"):
 
     # ── KI-Investmentstrategie ─────────────────────────────────────────────────
     st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
-    st.markdown("""
-    <div style='background:linear-gradient(135deg,#0a1a35 0%,#0d2040 100%);
-    border:1px solid #1a3a6c;border-radius:16px;padding:22px 26px 16px 26px;margin-bottom:16px;
-    box-shadow:0 4px 32px rgba(0,80,200,0.12);'>
+    st.markdown(f"""
+    <div style='background:{_C_CARD_BG};
+    border:1px solid {_C_BORDER};border-left:4px solid {_C_ACCENT};border-radius:16px;
+    padding:22px 26px 16px 26px;margin-bottom:16px;
+    box-shadow:0 4px 20px rgba(0,80,200,0.08);'>
         <div style='display:flex;align-items:center;gap:12px;margin-bottom:8px;'>
             <span style='font-size:1.8rem;'>🤖</span>
             <div>
-                <div style='font-size:1.15rem;font-weight:700;color:#e3f2fd;'>KI-Investmentstrategie</div>
-                <div style='color:{_C_TEXT_MUTED};font-size:0.78rem;margin-top:2px;'>
+                <div style='font-size:1.15rem;font-weight:700;color:{_C_TEXT_PRIMARY};'>KI-Investmentstrategie</div>
+                <div style='color:{_C_ACCENT};font-size:0.78rem;margin-top:2px;'>
                     Als professioneller Langfristinvestor — Burggraben · Wachstum · Bewertung · Zukunft
                 </div>
             </div>
         </div>
-        <div style='color:#78909c;font-size:0.8rem;border-top:1px solid #1a3a5c;padding-top:10px;margin-top:4px;'>
+        <div style='color:{_C_TEXT_MUTED};font-size:0.8rem;border-top:1px solid {_C_BORDER};padding-top:10px;margin-top:4px;'>
             Die KI wählt Aktien, die den breiten Markt (MSCI World) langfristig übertreffen sollen —
             basierend auf dauerhaften Wettbewerbsvorteilen, Wachstumspotenzial und fairer Bewertung.
             Kein Anlageberatung.
@@ -7995,13 +7996,14 @@ if st.session_state.get("show_portfolio"):
                     _real_ret_pct  = ((1 + _irr_pct/100) / (1 + _INFL/100) - 1) * 100 if _irr_pct is not None else None
                     _years_str     = f"{_days // 365} J. {(_days % 365) // 30} M." if _days else "—"
 
-                    def _kpi(label, value, color="#eceff1", sub=None):
+                    def _kpi(label, value, color=None, sub=None):
+                        _val_clr = color or _C_TEXT_PRIMARY
                         sub_html = f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:2px;'>{sub}</div>" if sub else ""
-                        return (f"<div style='background:#0d1a2e;border:1px solid #1e2d45;border-radius:10px;"
+                        return (f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
                                 f"padding:14px 16px;text-align:center;'>"
                                 f"<div style='color:{_C_ACCENT};font-size:0.72rem;font-weight:600;"
                                 f"letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;'>{label}</div>"
-                                f"<div style='color:{color};font-size:1.4rem;font-weight:800;'>{value}</div>"
+                                f"<div style='color:{_val_clr};font-size:1.4rem;font-weight:800;'>{value}</div>"
                                 f"{sub_html}</div>")
 
                     _k1, _k2, _k3, _k4 = st.columns(4)
@@ -8018,7 +8020,7 @@ if st.session_state.get("show_portfolio"):
                         _c = _C_POSITIVE if (_real_ret_pct or 0) >= 0 else _C_NEGATIVE
                         st.markdown(_kpi("Realrendite", _v, _c, f"Fisher: (1+IZF)/(1+{_INFL}%)−1"), unsafe_allow_html=True)
                     with _k4:
-                        st.markdown(_kpi("Anlagedauer", _years_str, "#eceff1",
+                        st.markdown(_kpi("Anlagedauer", _years_str, _C_TEXT_PRIMARY,
                                          f"€ {_invested_total:,.0f} investiert" if _invested_total else None),
                                     unsafe_allow_html=True)
 
@@ -8342,15 +8344,15 @@ if st.session_state.get("show_portfolio"):
                         _src_parts.append(f"<span style='color:#78909c;'>{_sn[:22]} €{_sv:,.0f}</span>")
                     _src_html = " · ".join(_src_parts)
                     st.markdown(
-                        f"<div style='margin-bottom:7px;padding:7px 10px;background:#0d1f38;"
-                        f"border-radius:6px;border-left:3px solid {_dclr};'>"
+                        f"<div style='margin-bottom:7px;padding:7px 10px;background:{_C_CARD_BG};"
+                        f"border-radius:6px;border-left:3px solid {_dclr};border:1px solid {_C_BORDER};'>"
                         f"<div style='display:flex;justify-content:space-between;"
                         f"align-items:baseline;margin-bottom:3px;'>"
                         f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:600;'>"
                         f"{_rk}. {str(_hd['name'])[:40]}</span>"
                         f"<span style='color:{_C_TEXT_MUTED2};font-size:0.76rem;'>"
                         f"€{_hd['total']:,.0f} · {_pct:.2f}%</span></div>"
-                        f"<div style='background:#1a2740;height:4px;border-radius:2px;margin-bottom:4px;'>"
+                        f"<div style='background:{_C_BORDER};height:4px;border-radius:2px;margin-bottom:4px;'>"
                         f"<div style='background:{_dclr};width:{_bw}%;height:4px;"
                         f"border-radius:2px;'></div></div>"
                         f"<div style='font-size:0.68rem;'>{_src_html}</div>"
