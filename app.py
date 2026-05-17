@@ -10235,15 +10235,28 @@ if st.session_state.get("show_etf_analyzer"):
                         _kiwp = (_kiw * 100) if isinstance(_kiw, float) and _kiw <= 1 else _kiw
                         _ki_rows.append(f"  - {_kin}: {float(_kiwp):.1f}%")
                 _ki_top = '\n'.join(_ki_rows)
-            # Sektor-Gewichtung
+            # Sektor-Gewichtung (yFinance liefert 0-1-Brüche → *100 für Prozent)
             _ki_sw = ''
+            _ki_SM = {'technology':'IT & Tech','financial_services':'Finanzen',
+                      'healthcare':'Gesundheit','consumer_cyclical':'Zyklischer Konsum',
+                      'industrials':'Industrie','communication_services':'Telekommunikation',
+                      'consumer_defensive':'Basis-Konsum','energy':'Energie',
+                      'basic_materials':'Rohstoffe','real_estate':'Immobilien','utilities':'Versorger'}
             if _sw:
-                _sw_sorted = sorted(_sw.items(), key=lambda x: x[1], reverse=True)
-                _ki_sw = '\n'.join(f"  - {s}: {w:.1f}%" for s, w in _sw_sorted[:8])
-            # Länder-Gewichtung
+                _sw_pct = sorted(
+                    [(_ki_SM.get(s, s), w * 100 if w <= 1.0 else w) for s, w in _sw.items() if w and w > 0],
+                    key=lambda x: x[1], reverse=True
+                )
+                # Plausibilitäts-Check: Gesamtsumme muss >50% sein, sonst Daten verwerfen
+                _sw_total = sum(w for _, w in _sw_pct)
+                if _sw_total > 50:
+                    _ki_sw = '\n'.join(f"  - {s}: {w:.1f}%" for s, w in _sw_pct[:8])
+            # Länder-Gewichtung (kommt bereits als Prozent oder 0-1 — normalisieren)
             _ki_cw = ''
             if _cw:
-                _cw_sorted = sorted(_cw.items(), key=lambda x: x[1], reverse=True)
+                _cw_vals = list(_cw.items())
+                _cw_scale = 100 if max((v for _, v in _cw_vals), default=1) <= 1.0 else 1
+                _cw_sorted = sorted([(c, v * _cw_scale) for c, v in _cw_vals], key=lambda x: x[1], reverse=True)
                 _ki_cw = '\n'.join(f"  - {c}: {w:.1f}%" for c, w in _cw_sorted[:8])
             # Bewertungskennzahlen der Positionen (KGV, KBV etc.) — aus _eq_vals (ETF equity_holdings)
             _ki_valuation = ''
@@ -10276,8 +10289,12 @@ if st.session_state.get("show_etf_analyzer"):
                 "PORTFOLIO-EIGNUNG\n"
                 "GESAMTURTEIL\n\n"
                 "Wichtig: Beziehe dich auf konkrete Zahlen aus den Datenpunkten. "
+                "Wenn Sektor- oder Ländergewichtungen fehlen, nutze dein Wissen über den "
+                "zugrundeliegenden Index (z.B. MSCI World, S&P 500) für die Analyse — "
+                "weise kurz darauf hin dass Live-Daten nicht verfügbar waren. "
                 "Sei kritisch wenn TER hoch, Konzentration groß oder Strategie im aktuellen "
-                "Marktumfeld nachteilig ist."
+                "Marktumfeld nachteilig ist. Kommentiere niemals Datenpunkte als 'fehlerhaft' — "
+                "falls Daten fehlen, ergänze sie aus deinem Indexwissen."
             )
             _usr_etf = (
                 f"ETF: {_ki_name} ({_etf_tkr})\n"
