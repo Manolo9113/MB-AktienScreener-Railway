@@ -824,6 +824,28 @@ def _save_isin_sector_cache(cache: dict) -> None:
     except Exception:
         pass
 
+def _pf_disk_save(cache_name: str, data) -> None:
+    """Speichert berechnete Portfolio-Daten auf Railway Volume /data (überlebt Deploys)."""
+    try:
+        import os, pickle
+        path = os.path.join("/data" if os.path.isdir("/data") else "/tmp", f"pf_{cache_name}.pkl")
+        with open(path, "wb") as f:
+            pickle.dump(data, f)
+    except Exception:
+        pass
+
+def _pf_disk_load(cache_name: str):
+    """Lädt gecachte Portfolio-Daten von Railway Volume /data. Gibt None zurück wenn nicht vorhanden."""
+    try:
+        import os, pickle
+        path = os.path.join("/data" if os.path.isdir("/data") else "/tmp", f"pf_{cache_name}.pkl")
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                return pickle.load(f)
+    except Exception:
+        pass
+    return None
+
 # ==================== CACHE ====================
 @st.cache_data(ttl=3600)
 def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
@@ -6935,6 +6957,19 @@ if st.session_state.get("show_portfolio"):
         _sec_loaded_key = f"sec_loaded_{_alloc_cache_key}"
         _hb_cache_key   = f"hb_{_alloc_cache_key}"
 
+        # ── Performance-Daten aus Disk-Cache wiederherstellen (/data überlebt Deploys) ──
+        _irr_ck = f"irr_{_csv_key}"
+        if _irr_ck not in st.session_state:
+            _irr_disk = _pf_disk_load(f"irr_{_csv_key}")
+            if _irr_disk is not None:
+                st.session_state[_irr_ck] = _irr_disk
+        for _bmt in ("SXR8.DE", "VWCE.DE", "EQQQ.DE", "EXS1.DE"):
+            _bmt_k = f"bm_{_csv_key}_{_bmt}"
+            if _bmt_k not in st.session_state:
+                _bmt_disk = _pf_disk_load(f"bm_{_csv_key}_{_bmt}")
+                if _bmt_disk is not None:
+                    st.session_state[_bmt_k] = _bmt_disk
+
         # ── Render-Diagnose ────────────────────────────────────────────────
         _dbg_rc = st.session_state.get("_dbg_rc", 0) + 1
         st.session_state["_dbg_rc"] = _dbg_rc
@@ -7420,7 +7455,8 @@ if st.session_state.get("show_portfolio"):
                 if not st.session_state.get(_perf_load_key):
                     st.info(
                         "Berechnet IZF, Gesamtrendite, Steuer-Schätzung und Benchmark-Vergleich. "
-                        "Lädt ~15 Sek., danach für diese Sitzung gespeichert."
+                        "Lädt ~15 Sek. — danach dauerhaft gespeichert (auch nach Deploys), "
+                        "bis du eine neue CSV hochlädst."
                     )
                     if st.button("📈 Performance laden", type="primary",
                                  key="btn_perf_load", use_container_width=True):
@@ -7433,6 +7469,7 @@ if st.session_state.get("show_portfolio"):
                         with st.spinner("Renditekennzahlen werden berechnet…"):
                             _irr_res = _calc_portfolio_irr(_csv_bytes, _cur_val_perf)
                         st.session_state[_irr_cache_key] = _irr_res
+                        _pf_disk_save(f"irr_{_csv_key}", _irr_res)
                     _irr, _simple_ret, _days, _invested_total = st.session_state[_irr_cache_key]
 
                     _INFL = 2.2
@@ -7610,6 +7647,7 @@ if st.session_state.get("show_portfolio"):
                     if _bm_cache_key not in st.session_state:
                         with st.spinner("Benchmark-Daten werden geladen…"):
                             st.session_state[_bm_cache_key] = _build_performance(_csv_bytes, bm_ticker)
+                        _pf_disk_save(f"bm_{_csv_key}_{bm_ticker}", st.session_state[_bm_cache_key])
                     _perf = st.session_state[_bm_cache_key]
                     if _perf is None:
                         st.warning("Benchmark-Berechnung nicht möglich — CSV benötigt eine Datums-Spalte.")
