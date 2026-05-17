@@ -3606,9 +3606,16 @@ def _call_gemini(api_key: str, model: str,
         candidate = data["candidates"][0]
         text = candidate["content"]["parts"][0]["text"]
         if candidate.get("finishReason") == "MAX_TOKENS":
-            text += "\n\n⚠️ *(Antwort wurde durch Token-Limit abgeschnitten — bitte erneut versuchen)*"
+            raise _TruncatedError(text)
         return text
     raise ValueError(f"Modell '{model}' in v1beta und v1 nicht gefunden")
+
+
+class _TruncatedError(Exception):
+    """Raised when Gemini returns MAX_TOKENS. Carries the partial text."""
+    def __init__(self, partial: str):
+        self.partial = partial
+        super().__init__("MAX_TOKENS")
 
 
 def _try_gemini(messages: list, max_tokens: int,
@@ -3616,6 +3623,7 @@ def _try_gemini(messages: list, max_tokens: int,
     """
     Versucht alle verfügbaren Gemini-Modelle (via ListModels + Fallback-Liste).
     Gibt (text, model_name) bei Erfolg oder ("", alle_fehler) zurück.
+    Bei Token-Limit: einmaliger Retry mit erhöhtem Limit (bis 8192).
     """
     models = _discover_gemini_models(api_key) or _GEMINI_MODELS
     errors = []
@@ -3623,6 +3631,17 @@ def _try_gemini(messages: list, max_tokens: int,
         try:
             text = _call_gemini(api_key, model, messages, max_tokens, temperature)
             return text, model
+        except _TruncatedError as trunc:
+            retry_limit = min(8192, int(max_tokens * 1.8))
+            if retry_limit > max_tokens:
+                try:
+                    text = _call_gemini(api_key, model, messages, retry_limit, temperature)
+                    return text, model
+                except _TruncatedError as trunc2:
+                    return trunc2.partial, model
+                except Exception:
+                    pass
+            return trunc.partial, model
         except Exception as e:
             errors.append(f"{model}: {str(e)[:120]}")
     return "", " | ".join(errors) if errors else "Keine Modelle verfügbar"
@@ -6048,7 +6067,7 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
 
         with st.spinner("🌍 KI analysiert Konjunktur, Sektoren und Zinsen…"):
             _maki_txt, _maki_mdl = call_ki_api(
-                _sys_maki, _usr_maki, GEMINI_API_KEY, max_tokens=4500
+                _sys_maki, _usr_maki, GEMINI_API_KEY, max_tokens=8000
             )
         if _maki_txt and not _maki_txt.startswith("⚠️"):
             import datetime as _maki_dt
@@ -6563,7 +6582,7 @@ elif st.session_state.get("show_stocks"):
             _ki_txt, _ki_mdl = _try_gemini(
                 [{"role": "system", "content": _sys_ki},
                  {"role": "user",   "content": _usr_ki}],
-                max_tokens=4500, temperature=0.65, api_key=GEMINI_API_KEY
+                max_tokens=8000, temperature=0.65, api_key=GEMINI_API_KEY
             )
         if _ki_txt:
             import datetime as _kidt
