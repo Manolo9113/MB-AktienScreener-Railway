@@ -492,24 +492,41 @@ if st.session_state.get("light_mode"):
     .insight-box  { background: #eff6ff !important; border-left-color: #2563eb !important; color: #1e3a5f !important; }
     .grok-box     { background: #faf5ff !important; border-color: #c4b5fd !important; }
 
-    /* ── Inline dark backgrounds via Attribut-Selektor ── */
+    /* ── Inline dark backgrounds ─────────────────────── */
     div[style*="#0d1f35"], div[style*="#0d1f3c"], div[style*="#0a1628"],
     div[style*="#080f1e"], div[style*="#0d1526"], div[style*="#071020"],
     div[style*="#001a2e"], div[style*="#0d2035"], div[style*="#0d1a2e"],
     div[style*="#1a2740"], div[style*="#132040"], div[style*="#080d18"],
-    div[style*="#0a1421"], div[style*="#0d2340"] {
+    div[style*="#0a1421"], div[style*="#0d2340"], div[style*="#0d1f38"],
+    div[style*="#1a2744"], div[style*="#1e2d45"], div[style*="#1a3a5c"],
+    div[style*="#1a2e1a"], div[style*="#0a1a35"], div[style*="#0d2040"],
+    div[style*="#0a1732"], div[style*="#0e1c36"], div[style*="#162032"],
+    div[style*="#1e3a5f"], div[style*="#152035"], div[style*="#1a304a"] {
         background: #ffffff !important;
         border-color: #dde3ee !important; }
 
-    /* ── Inline dark text-Farben ───────────────────────── */
+    /* ── Span / any element with dark backgrounds ────── */
+    span[style*="#0d1f3c"], span[style*="#0a1628"], span[style*="#1a2744"],
+    span[style*="#1e2d45"], span[style*="#0d1526"] {
+        background: #e8f0fe !important; color: #1e3a5f !important; }
+
+    /* ── Dark text inside light cards ───────────────── */
+    div[style*="#0d1f35"] *, div[style*="#0d1f3c"] *, div[style*="#0a1628"] *,
+    div[style*="#1a2744"] *, div[style*="#1e2d45"] * {
+        color: #1e293b !important; border-color: #dde3ee !important; }
+
+    /* ── Inline text colors ──────────────────────────── */
     *[style*="color:#eceff1"], *[style*="color: #eceff1"] { color: #0f172a !important; }
+    *[style*="color:#e3f2fd"], *[style*="color: #e3f2fd"] { color: #1e40af !important; }
     *[style*="color:#cfd8dc"], *[style*="color: #cfd8dc"] { color: #334155 !important; }
     *[style*="color:#b0bec5"], *[style*="color: #b0bec5"] { color: #475569 !important; }
     *[style*="color:#90a4ae"], *[style*="color: #90a4ae"] { color: #64748b !important; }
-    *[style*="color:#78909c"], *[style*="color: #78909c"] { color: #64748b !important; }
-    *[style*="color:#546e7a"], *[style*="color: #546e7a"] { color: #94a3b8 !important; }
+    *[style*="color:#78909c"], *[style*="color: #78909c"] { color: #475569 !important; }
+    *[style*="color:#546e7a"], *[style*="color: #546e7a"] { color: #64748b !important; }
+    *[style*="color:#37474f"], *[style*="color: #37474f"] { color: #94a3b8 !important; }
     *[style*="color:#64b5f6"], *[style*="color: #64b5f6"] { color: #2563eb !important; }
     *[style*="color:#42a5f5"], *[style*="color: #42a5f5"] { color: #2563eb !important; }
+    *[style*="color:#00e5ff"], *[style*="color: #00e5ff"] { color: #0369a1 !important; }
 
     /* ── Streamlit native ──────────────────────────────── */
     div[data-testid="stMarkdownContainer"] p { color: #334155 !important; }
@@ -5037,7 +5054,19 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    # ── Hell/Dunkel-Toggle ────────────────────────────────────────────
+    _lm = st.session_state.get("light_mode", False)
+    _lm_label = "🌙 Dunkel-Modus" if _lm else "☀️ Hell-Modus"
+    if st.toggle(_lm_label, value=_lm, key="toggle_light_mode_top"):
+        if not _lm:
+            st.session_state["light_mode"] = True
+            st.rerun()
+    else:
+        if _lm:
+            st.session_state["light_mode"] = False
+            st.rerun()
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # Smarte Suche mit Autofill
     search_raw = st.text_input(
@@ -5107,15 +5136,6 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("<div class='section-header'>⚙️ Einstellungen</div>", unsafe_allow_html=True)
-    _lm = st.session_state.get("light_mode", False)
-    if st.toggle("☀️ Hell-Modus", value=_lm, key="toggle_light_mode"):
-        if not _lm:
-            st.session_state["light_mode"] = True
-            st.rerun()
-    else:
-        if _lm:
-            st.session_state["light_mode"] = False
-            st.rerun()
     show_peers = st.toggle("Peer-Vergleich anzeigen", value=True)
     show_insider = st.toggle("Insider-Transaktionen", value=True)
     show_dcf = st.toggle("DCF Rechner", value=True)
@@ -7352,17 +7372,7 @@ if st.session_state.get("show_portfolio"):
                 if _bmt_disk is not None:
                     st.session_state[_bmt_k] = _bmt_disk
 
-        # ── Render-Diagnose ────────────────────────────────────────────────
-        _dbg_rc = st.session_state.get("_dbg_rc", 0) + 1
-        st.session_state["_dbg_rc"] = _dbg_rc
-        _dbg_irr = "✓" if f"irr_{_csv_key}" in st.session_state else "✗"
-        _dbg_bm  = "✓" if any(k.startswith(f"bm_{_csv_key}_") for k in st.session_state) else "✗"
-        _dbg_sec = "✓" if st.session_state.get(_sec_loaded_key) else "✗"
-        _dbg_hb  = "✓" if _hb_cache_key in st.session_state else "✗"
-        st.caption(
-            f"🔄 Render #{_dbg_rc} · prices={len(prices)} · "
-            f"irr={_dbg_irr} · bm={_dbg_bm} · sec={_dbg_sec} · hb={_dbg_hb}"
-        )
+        # (debug counter removed)
 
         with tab_pos:
           try:
