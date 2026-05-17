@@ -3491,27 +3491,54 @@ _MIDCAP_POOL = {
     "AIXA.DE":     "Aixtron SE – Depositionsanlagen für Leistungshalbleiter & LEDs, MDAX (DE)",
     "PUM.DE":      "Puma SE – Sportartikel mit globalem Vertriebsnetz, attraktive Bewertung (DE)",
     "GTT.PA":      "GTT – LNG-Containment-Quasi-Monopol, >50 % Nettomarge, Euronext Paris (FR)",
-    # ── Neue Kandidaten ───────────────────────────────────────────────────
-    "DOCS":        "Doximity – führende Digital-Plattform für US-Ärzte, ~90 % Bruttomarge, FCF-stark",
-    "APPF":        "AppFolio – SaaS für Immobilienverwaltung, ~64 % GM, >20 % Wachstum, quasi schuldenfrei",
-    "XMTR":        "Xometry – KI-gestützter Marketplace für On-Demand-Fertigung, ~25–36 % Umsatzwachstum",
+    # ── US Mid-Caps ───────────────────────────────────────────────────────
+    "DOCS":  "Doximity – führende Digital-Plattform für US-Ärzte, ~90 % Bruttomarge, FCF-stark",
+    "APPF":  "AppFolio – SaaS für Immobilienverwaltung, ~64 % GM, >20 % Wachstum, quasi schuldenfrei",
+    "XMTR":  "Xometry – KI-Marketplace für On-Demand-Fertigung, ~25–36 % Umsatzwachstum",
+    "QLYS":  "Qualys – Cloud-Sicherheits- & Compliance-Plattform, ~80 % GM, hoher FCF, kein Debt",
+    "BSY":   "Bentley Systems – Infrastruktur-Engineering-Software, ~74 % GM, wiederkehrende Erlöse",
+    "VRNS":  "Varonis Systems – Datensicherheitsplattform, SaaS-Transition mit steigendem ARR",
+    "YOU":   "Clear Secure – Biometrische Identitätsverifikation (Flughäfen), Asset-Light, hoher FCF",
+    "FFIV":  "F5 – Application-Delivery & Multi-Cloud-Sicherheit, ~80 % GM, profitabel",
+    "ROP":   "Roper Technologies – Software-Konglomerat mit serialem Asset-Light M&A, >80 % GM",
+    "DOCN":  "DigitalOcean – Cloud-Infrastruktur für KMU & Startups, wachsende Entwicklerbasis",
+    "EXLS":  "ExlService Holdings – Datenanalyse & BPO für Versicherungen, ~34 % GM, profitabel",
+    # ── EU Mid-Caps ───────────────────────────────────────────────────────
+    "NEM.DE":  "Nemetschek – AEC-Software-Plattform, >80 % wiederkehrende Erlöse, MDAX (DE)",
+    "BC8.DE":  "Bechtle AG – IT-Systemhaus & Cloud-Services, profitabel, MDAX (DE)",
+    "REY.MI":  "Reply SpA – IT-Beratung & digitale Transformation, hohe Margen, Euronext Milan (IT)",
+    "KAR.ST":  "Karnov Group – Rechts-/Regulierungsinformationen, SaaS-Modell, Nasdaq Stockholm (SE)",
+    "VACN.SW": "VAT Group – Vakuumventile für Halbleiterfertigung, ~70 % GM, Swiss Exchange (CH)",
 }
 
-# ── Small-Cap Pool — profitabel, Nischenführer, positiver FCF Pflicht ─────────
+# ── Small-Cap Pool — profitabel, Nischenführer, pos. FCF + EPS Pflicht ────────
 _SMALLCAP_POOL = {
-    "OSIS":  "OSI Systems – Sicherheitsinspektions-Systeme für Behörden & Flughäfen weltweit",
-    "CASS":  "Cass Information Systems – B2B-Zahlungsverarbeitung mit 40 Jahren Profitabilität",
-    "DORM":  "Dorman Products – Automotive-Aftermarket-Nischenteile, profitabel und schuldenarm",
-    "HLIO":  "Helios Technologies – Hydraulik & Steuerungstechnik für Mobilmaschinen weltweit",
-    "STC":   "Stewart Info Services – Titelversicherung mit stabiler Immobilienmarktposition",
-    "UFPT":  "UFP Technologies – Spezialverpackung für Medizintechnik und Luft-/Raumfahrt",
-    "MGRC":  "McGrath RentCorp – Modulare Raummietlösungen für Schulen und Unternehmen, FCF-stark",
-    "LMAT":  "LeMaitre Vascular – Chirurgische Geräte für Gefäßchirurgie, echtes Nischenmonopol",
-    "KFRC":  "Kforce Inc – Tech- & Finance-Personalvermittlung mit positiver FCF-Bilanz",
-    "PRDO":  "Perdoceo Education – Online-Bildung mit hohen Margen, null Langfristschulden",
-    "TBBK":  "The Bancorp – Fintech-Bank mit führender Prepaid-Karten-Infrastruktur",
-    "HRMY":  "Harmony Biosciences – Neurologisches Pharma, profitabel mit wachsender Pipeline",
-    "CENTA": "Central Garden & Pet – Haustier-/Gartenbedarf mit führenden Markenportfolios",
+    # ── US Small-Caps ─────────────────────────────────────────────────────
+    "OSIS":   "OSI Systems – Sicherheitsinspektionssysteme für Behörden & Flughäfen weltweit",
+    "CASS":   "Cass Information Systems – B2B-Zahlungsverarbeitung, 40 Jahre Profitabilität",
+    "DORM":   "Dorman Products – Automotive-Aftermarket-Nischenteile, profitabel und schuldenarm",
+    "HLIO":   "Helios Technologies – Hydraulik & Steuerungstechnik für Mobilmaschinen weltweit",
+    "STC":    "Stewart Info Services – Titelversicherung mit stabiler Immobilienmarktposition",
+    "UFPT":   "UFP Technologies – Spezialverpackung für Medizintechnik und Luft-/Raumfahrt",
+    "MGRC":   "McGrath RentCorp – Modulare Raummietlösungen für Schulen und Unternehmen",
+    "LMAT":   "LeMaitre Vascular – Chirurgische Geräte für Gefäßchirurgie, Nischenmonopol",
+    "KFRC":   "Kforce Inc – Tech- & Finance-Personalvermittlung mit positiver FCF-Bilanz",
+    "PRDO":   "Perdoceo Education – Online-Bildung mit hohen Margen, null Langfristschulden",
+    "TBBK":   "The Bancorp – Fintech-Bank mit führender Prepaid-Karten-Infrastruktur",
+    "HRMY":   "Harmony Biosciences – Neurologisches Pharma, profitabel mit wachsender Pipeline",
+    "CENTA":  "Central Garden & Pet – Haustier-/Gartenbedarf mit führenden Markenportfolios",
+    "OOMA":   "Ooma – Cloud-Kommunikation für KMU, wiederkehrende Abonnement-Erlöse",
+    "WEAV":   "Weave Communications – Kommunikationsplattform für Arztpraxen & KMU, hohe NRR",
+    "YEXT":   "Yext – KI-gestützte digitale Präsenzplattform, SaaS-Modell, verbesserter FCF",
+    "PRCH":   "Porch Group – Hausdienstleistungs-Marketplace & InsurTech, starkes Wachstum",
+    "SPT":    "Sprout Social – Social-Media-Management-Plattform, >70 % GM, Enterprise-Fokus",
+    # ── EU Small-Caps ─────────────────────────────────────────────────────
+    "LSS.PA":  "Lectra – CAD/CAM-Systeme für Mode & Automotive, Nischenführer (FR)",
+    "PDX.ST":  "Paradox Interactive – Strategy-Games-Publisher mit loyaler Community (SE)",
+    "MIPS.ST": "MIPS AB – Hirnschutz-Lizenztechnologie für Helme, Asset-Light-Modell (SE)",
+    "XFAB.PA": "X-FAB – Analog/Mixed-Signal-Foundry für Automotive & MedTech (BE/FR)",
+    "KSB3.DE": "KSB SE Vorzüge – Pumpen & Armaturen, starke Marktstellung, SDAX (DE)",
+    "VU.PA":   "VusionGroup – Elektronische Regaletiketten für Einzelhandel, hohes Wachstum (FR)",
 }
 
 
