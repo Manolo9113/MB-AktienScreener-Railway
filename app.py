@@ -458,41 +458,40 @@ st.markdown("""
 if st.session_state.get("light_mode"):
     st.markdown("""<style>
     /* ═══════════════════════════════════════════════════════
-       SCHRITT 1: Streamlit CSS-Variablen überschreiben
-       → betrifft Buttons, Expander, alle nativen Widgets
+       SCHRITT 1: Streamlit CSS-Variablen
     ═══════════════════════════════════════════════════════ */
     :root, [data-theme], .stApp {
-        --background-color:           #f8fafc !important;
-        --secondary-background-color: #f1f5f9 !important;
-        --text-color:                 #1e293b !important;
-        --primary-color:              #2563eb !important;
+        --background-color:           #faf8f5 !important;
+        --secondary-background-color: #f5f2ee !important;
+        --text-color:                 #111827 !important;
+        --primary-color:              #1a56db !important;
         --font:                       sans-serif;
     }
 
     /* ═══════════════════════════════════════════════════════
-       SCHRITT 2: Kern-Hintergründe
+       SCHRITT 2: Kern-Hintergründe (warmes Creme-Weiß)
     ═══════════════════════════════════════════════════════ */
     .stApp, body, html,
     div[data-testid="stAppViewContainer"],
     section[data-testid="stMain"],
     .main, .main .block-container,
     div[data-testid="stVerticalBlock"] {
-        background-color: #f8fafc !important;
-        background: #f8fafc !important;
+        background-color: #faf8f5 !important;
+        background: #faf8f5 !important;
     }
 
     /* ═══════════════════════════════════════════════════════
-       SCHRITT 3: Sidebar
+       SCHRITT 3: Sidebar (warmes Leinen)
     ═══════════════════════════════════════════════════════ */
     section[data-testid="stSidebar"],
     section[data-testid="stSidebar"] > div {
-        background: #ffffff !important;
-        border-right: 1px solid #e2e8f0 !important;
-        box-shadow: 2px 0 16px rgba(0,0,0,0.06) !important;
+        background: #f0ede8 !important;
+        border-right: 1px solid #e2d9cc !important;
+        box-shadow: 2px 0 16px rgba(0,0,0,0.07) !important;
     }
-    section[data-testid="stSidebar"] * { color: #1e293b !important; }
+    section[data-testid="stSidebar"] * { color: #111827 !important; }
     section[data-testid="stSidebar"] .section-header {
-        color: #1d4ed8 !important; border-bottom-color: #e2e8f0 !important; }
+        color: #1a56db !important; border-bottom-color: #e2d9cc !important; }
 
     /* ═══════════════════════════════════════════════════════
        SCHRITT 4: Alle Buttons — korrekte Streamlit-Selektoren
@@ -568,41 +567,68 @@ if st.session_state.get("light_mode"):
     }
 
     /* ═══════════════════════════════════════════════════════
-       SCHRITT 6: CSS-Klassen (eigene Karten)
+       SCHRITT 6: CSS-Klassen (eigene Karten) — Creme-Palette
     ═══════════════════════════════════════════════════════ */
     .header-wrap {
-        background: linear-gradient(135deg, #eff6ff, #f0f9ff) !important;
-        border-color: #bfdbfe !important;
-        box-shadow: 0 2px 16px rgba(37,99,235,0.08) !important;
+        background: linear-gradient(135deg, #ffffff, #faf6f1) !important;
+        border-color: #e2d9cc !important;
+        box-shadow: 0 2px 20px rgba(0,0,0,0.07) !important;
     }
     .metric-card {
         background: #ffffff !important;
-        border-color: #e2e8f0 !important;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04) !important;
+        border-color: #e8e3da !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.04) !important;
     }
     .score-section {
-        background: linear-gradient(135deg, #eff6ff, #f0f9ff) !important;
-        border-color: #bfdbfe !important;
-        box-shadow: 0 4px 24px rgba(37,99,235,0.10) !important;
+        background: linear-gradient(135deg, #ffffff, #f8f5f0) !important;
+        border-color: #e2d9cc !important;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.08) !important;
     }
-    .header-title { color: #0f172a !important; }
-    .header-sub   { color: #1d4ed8 !important; }
-    .metric-label { color: #64748b !important; }
-    .metric-value { color: #0f172a !important; }
-    .metric-sub   { color: #94a3b8 !important; }
-    .score-title  { color: #2563eb !important; }
-    .section-header { color: #1d4ed8 !important; border-bottom-color: #e2e8f0 !important; }
-    .insight-box  { background: #eff6ff !important; border-left-color: #2563eb !important; color: #1e3a5f !important; }
-    .grok-box     { background: #faf5ff !important; border-color: #c4b5fd !important; }
+    .header-title { color: #111827 !important; }
+    .header-sub   { color: #1a56db !important; }
+    .metric-label { color: #6b7280 !important; }
+    .metric-value { color: #111827 !important; }
+    .metric-sub   { color: #9ca3af !important; }
+    .score-title  { color: #1a56db !important; }
+    .section-header { color: #111827 !important; border-bottom-color: #e2d9cc !important;
+                      font-weight: 700 !important; letter-spacing: 2px !important; }
+    .insight-box  { background: #f0f4ff !important; border-left-color: #1a56db !important; color: #1e3a5f !important; }
+    .grok-box     { background: #fdf8ff !important; border-color: #d8b4fe !important; }
+    .grok-box h4  { color: #7c3aed !important; }
+    .grok-box p, .grok-box ul, .grok-box li { color: #374151 !important; }
+    .grok-section-title { color: #1a56db !important; border-bottom-color: #e2d9cc !important; }
     .insider-buy  { color: #15803d !important; }
-    .insider-sell { color: #dc2626 !important; }
-    .metric-badge-green  { background: rgba(22,163,74,0.12) !important; color: #15803d !important; }
-    .metric-badge-yellow { background: rgba(217,119,6,0.12) !important; color: #b45309 !important; }
-    .metric-badge-red    { background: rgba(220,38,38,0.12) !important; color: #dc2626 !important; }
-    .metric-badge-gray   { background: rgba(100,116,139,0.12) !important; color: #64748b !important; }
+    .insider-sell { color: #b91c1c !important; }
+    .metric-badge-green  { background: rgba(21,128,61,0.10) !important; color: #15803d !important; }
+    .metric-badge-yellow { background: rgba(180,83,9,0.10) !important;  color: #b45309 !important; }
+    .metric-badge-red    { background: rgba(185,28,28,0.10) !important; color: #b91c1c !important; }
+    .metric-badge-gray   { background: rgba(107,114,128,0.10) !important; color: #6b7280 !important; }
 
     /* ═══════════════════════════════════════════════════════
-       SCHRITT 7: Inline dunkle Hintergründe → weiß
+       TABELLEN
+    ═══════════════════════════════════════════════════════ */
+    table, .stDataFrame table,
+    div[data-testid="stDataFrame"] table {
+        background: #ffffff !important;
+        border-color: #e2d9cc !important;
+    }
+    th, thead th {
+        background: #f0ede8 !important;
+        color: #111827 !important;
+        border-color: #e2d9cc !important;
+        font-weight: 700 !important;
+    }
+    td, tbody td {
+        background: #ffffff !important;
+        color: #111827 !important;
+        border-color: #ede8e0 !important;
+    }
+    tr:nth-child(even) td { background: #faf8f5 !important; }
+    tr:hover td { background: #f5f2ee !important; }
+    tbody[style*="color:#eceff1"] { color: #111827 !important; }
+
+    /* ═══════════════════════════════════════════════════════
+       SCHRITT 7: Inline dunkle Hintergründe → Creme-Weiß
     ═══════════════════════════════════════════════════════ */
     div[style*="#0d1f35"], div[style*="#0d1f3c"], div[style*="#0a1628"],
     div[style*="#080f1e"], div[style*="#0d1526"], div[style*="#071020"],
@@ -614,22 +640,22 @@ if st.session_state.get("light_mode"):
     div[style*="#0e1c36"], div[style*="#162032"], div[style*="#1e3a5f"],
     div[style*="#152035"], div[style*="#1a304a"], div[style*="#060e1e"] {
         background: #ffffff !important;
-        border-color: #e2e8f0 !important;
+        border-color: #e2d9cc !important;
     }
     span[style*="#0d1f3c"], span[style*="#0a1628"], span[style*="#1a2744"] {
-        background: #eef2ff !important; color: #1e3a5f !important;
+        background: #f0ede8 !important; color: #1a56db !important;
     }
 
     /* ═══════════════════════════════════════════════════════
        SCHRITT 8: Text & Farben
     ═══════════════════════════════════════════════════════ */
-    p, span, div, label, li, td, th { color: #1e293b; }
-    div[data-testid="stMarkdownContainer"] p { color: #334155 !important; }
-    div[data-testid="stMetricValue"]  { color: #0f172a !important; }
-    div[data-testid="stMetricLabel"]  { color: #64748b !important; }
-    .stCaption, small, .caption-text  { color: #64748b !important; }
-    hr { border-color: #e2e8f0 !important; }
-    a  { color: #2563eb !important; }
+    p, span, div, label, li { color: #111827; }
+    div[data-testid="stMarkdownContainer"] p { color: #374151 !important; }
+    div[data-testid="stMetricValue"]  { color: #111827 !important; }
+    div[data-testid="stMetricLabel"]  { color: #6b7280 !important; }
+    .stCaption, small, .caption-text  { color: #6b7280 !important; }
+    hr { border-color: #e2d9cc !important; }
+    a  { color: #1a56db !important; }
 
     /* ═══════════════════════════════════════════════════════
        SCHRITT 9: Eingabefelder & Selects
@@ -639,24 +665,24 @@ if st.session_state.get("light_mode"):
     .stTextInput > div > div > input {
         background: #ffffff !important;
         background-color: #ffffff !important;
-        border-color: #c7d2fe !important;
-        color: #0f172a !important;
+        border-color: #d1c9be !important;
+        color: #111827 !important;
         box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;
     }
     div[data-baseweb="select"] > div,
     div[data-baseweb="popover"] {
         background: #ffffff !important;
-        color: #0f172a !important;
-        border-color: #e2e8f0 !important;
+        color: #111827 !important;
+        border-color: #e2d9cc !important;
     }
 
     /* ═══════════════════════════════════════════════════════
        SCHRITT 10: Tabs
     ═══════════════════════════════════════════════════════ */
     .stTabs [data-baseweb="tab-list"] {
-        background: #f1f5f9 !important; border-color: #e2e8f0 !important; }
-    .stTabs [data-baseweb="tab"]    { color: #64748b !important; background: transparent !important; }
-    .stTabs [aria-selected="true"]  { background: #2563eb !important; color: #fff !important; }
+        background: #f0ede8 !important; border-color: #e2d9cc !important; }
+    .stTabs [data-baseweb="tab"]    { color: #6b7280 !important; background: transparent !important; }
+    .stTabs [aria-selected="true"]  { background: #1a56db !important; color: #fff !important; }
 
     /* ═══════════════════════════════════════════════════════
        SCHRITT 11: Fortschritt & Toggle
@@ -676,18 +702,21 @@ if st.session_state.get("light_mode"):
 
 # ── Farbpalette (Light/Dark) ──────────────────────────────────────────
 _lm = st.session_state.get("light_mode", False)
-_C_TEXT_PRIMARY = "#0f172a" if _lm else "#eceff1"
-_C_TEXT_SEC     = "#475569" if _lm else "#b0bec5"
-_C_TEXT_MUTED   = "#64748b" if _lm else "#546e7a"
-_C_TEXT_MUTED2  = "#94a3b8" if _lm else "#90a4ae"
-_C_ACCENT       = "#2563eb" if _lm else "#64b5f6"
-_C_POSITIVE     = "#16a34a" if _lm else "#00e676"
-_C_POSITIVE_SFT = "#22c55e" if _lm else "#69f0ae"
-_C_NEGATIVE     = "#dc2626" if _lm else "#ff5252"
-_C_NEUTRAL      = "#d97706" if _lm else "#ffd600"
+_C_TEXT_PRIMARY = "#111827" if _lm else "#eceff1"
+_C_TEXT_SEC     = "#374151" if _lm else "#b0bec5"
+_C_TEXT_MUTED   = "#6b7280" if _lm else "#546e7a"
+_C_TEXT_MUTED2  = "#9ca3af" if _lm else "#90a4ae"
+_C_ACCENT       = "#1a56db" if _lm else "#64b5f6"
+_C_POSITIVE     = "#15803d" if _lm else "#00e676"
+_C_POSITIVE_SFT = "#16a34a" if _lm else "#69f0ae"
+_C_NEGATIVE     = "#b91c1c" if _lm else "#ff5252"
+_C_NEUTRAL      = "#b45309" if _lm else "#ffd600"
 _C_CARD_BG      = "#ffffff" if _lm else "#0d1f35"
-_C_SURFACE      = "#f1f5f9" if _lm else "#0d1526"
-_C_BORDER       = "#e2e8f0" if _lm else "#1a2744"
+_C_SURFACE      = "#f5f2ee" if _lm else "#0d1526"
+_C_BORDER       = "#e2d9cc" if _lm else "#1a2744"
+_C_CHART_THEME  = "plotly_white" if _lm else "plotly_dark"
+_C_CHART_BG     = "#ffffff"      if _lm else "#0a1628"
+_C_CHART_PAPER  = "#faf8f5"      if _lm else "rgba(0,0,0,0)"
 # ==================== QUOTES ====================
 _QUOTES = [
     ("Der Preis ist, was du bezahlst. Wert ist, was du bekommst.", "Warren Buffett"),
@@ -5952,7 +5981,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                               tickfont=dict(color="#b0bec5", size=9)),
             ))
             _fig_hm.update_layout(
-                template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
                 plot_bgcolor="rgba(13,21,38,0.8)",
                 height=120, margin=dict(l=60, r=20, t=10, b=60),
                 xaxis=dict(tickangle=-35, tickfont=dict(size=9, color="#90a4ae")),
@@ -5982,7 +6011,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             if ref_zero:
                 fig.add_hline(y=0, line=dict(color="#37474f", width=1, dash="dot"))
             fig.update_layout(
-                template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
                 plot_bgcolor="rgba(13,21,38,0.8)", height=height,
                 margin=dict(l=0, r=0, t=22, b=0), showlegend=False,
                 title=dict(text=title, font=dict(color="#64b5f6", size=11)),
@@ -6011,7 +6040,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                         _cf.add_trace(go.Scatter(x=_ig.index, y=_ig.values, name="IG OAS",
                                                   line=dict(color=_C_NEUTRAL, width=1.5), yaxis="y2"))
                     _cf.update_layout(
-                        template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                        template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
                         plot_bgcolor="rgba(13,21,38,0.8)", height=220,
                         margin=dict(l=0, r=40, t=22, b=0),
                         title=dict(text="Kredit-Spreads (bp)", font=dict(color="#64b5f6", size=11)),
@@ -7640,7 +7669,7 @@ if st.session_state.get("show_portfolio"):
                     marker=dict(colors=_dn_clrs, line=dict(color='#0a1628', width=2)),
                 ))
                 _dn_fig.update_layout(
-                    template='plotly_dark', paper_bgcolor='#0a1628', plot_bgcolor='#0a1628',
+                    template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG, plot_bgcolor=_C_CHART_BG,
                     showlegend=False, margin=dict(t=20, b=10, l=10, r=10), height=340,
                     annotations=[dict(
                         text=f"<b>Portfolio</b><br>€ {_dn_total:,.0f}",
@@ -7744,7 +7773,7 @@ if st.session_state.get("show_portfolio"):
                         hovertemplate='<b>%{label}</b><br>€ %{value:,.0f} · %{percent}<extra></extra>',
                     ))
                     _fig.update_layout(
-                        template='plotly_dark', paper_bgcolor='#0a1628', plot_bgcolor='#0a1628',
+                        template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG, plot_bgcolor=_C_CHART_BG,
                         showlegend=False, height=240,
                         margin=dict(l=5, r=5, t=5, b=5),
                     )
@@ -7877,8 +7906,8 @@ if st.session_state.get("show_portfolio"):
                             hovertemplate='<b>%{label}</b><br>%{percent}<extra></extra>',
                         ))
                         _cont_fig.update_layout(
-                            template='plotly_dark', paper_bgcolor='#0a1628',
-                            plot_bgcolor='#0a1628', showlegend=False, height=200,
+                            template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG,
+                            plot_bgcolor=_C_CHART_BG, showlegend=False, height=200,
                             margin=dict(l=5, r=5, t=10, b=5))
                         st.plotly_chart(_cont_fig, use_container_width=True)
 
@@ -8165,8 +8194,8 @@ if st.session_state.get("show_portfolio"):
                                 marker=dict(size=[0, 10], color=_C_POSITIVE),
                             ))
                         _fig.update_layout(
-                            template="plotly_dark", height=380,
-                            paper_bgcolor="#0a1628", plot_bgcolor="#0a1628",
+                            template=_C_CHART_THEME, height=380,
+                            paper_bgcolor=_C_CHART_BG, plot_bgcolor=_C_CHART_BG,
                             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
                             margin=dict(l=10, r=10, t=36, b=10),
                             xaxis=dict(showgrid=False, title=""),
@@ -9800,8 +9829,8 @@ if st.session_state.get("show_etf_analyzer"):
                             line=dict(color='#0a1628',width=2)),
                 textinfo='none',
                 hovertemplate='<b>%{label}</b><br>%{value:.1f}%<extra></extra>'))
-            _sf.update_layout(template='plotly_dark',paper_bgcolor='#0a1628',
-                              plot_bgcolor='#0a1628',showlegend=False,height=240,
+            _sf.update_layout(template=_C_CHART_THEME,paper_bgcolor=_C_CHART_BG,
+                              plot_bgcolor=_C_CHART_BG,showlegend=False,height=240,
                               margin=dict(l=5,r=5,t=5,b=5))
             st.plotly_chart(_sf, use_container_width=True)
             for _sl, _sv in list(_sw2.items())[:10]:
@@ -9923,8 +9952,8 @@ if st.session_state.get("show_etf_analyzer"):
                                 line=dict(color='#0a1628', width=2)),
                     textinfo='none',
                     hovertemplate='<b>%{label}</b><br>%{value:.1f}%<extra></extra>'))
-                _rf2.update_layout(template='plotly_dark', paper_bgcolor='#0a1628',
-                                   plot_bgcolor='#0a1628', showlegend=False, height=210,
+                _rf2.update_layout(template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG,
+                                   plot_bgcolor=_C_CHART_BG, showlegend=False, height=210,
                                    margin=dict(l=5, r=5, t=5, b=5))
                 st.plotly_chart(_rf2, use_container_width=True)
                 for _ck2, _cv2 in list(_cont_totals.items())[:6]:
@@ -9945,8 +9974,8 @@ if st.session_state.get("show_etf_analyzer"):
                                 line=dict(color='#0a1628', width=2)),
                     textinfo='none',
                     hovertemplate='<b>%{label}</b><br>%{value:.1f}%<extra></extra>'))
-                _rfm.update_layout(template='plotly_dark', paper_bgcolor='#0a1628',
-                                   plot_bgcolor='#0a1628', showlegend=False, height=210,
+                _rfm.update_layout(template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG,
+                                   plot_bgcolor=_C_CHART_BG, showlegend=False, height=210,
                                    margin=dict(l=5, r=5, t=5, b=5))
                 st.plotly_chart(_rfm, use_container_width=True)
 
@@ -9984,7 +10013,7 @@ if st.session_state.get("show_etf_analyzer"):
                 line=dict(color=_lclrs[_ci%2], width=2),
                 hovertemplate=f'<b>{_lbl}</b><br>%{{x|%d.%m.%Y}}<br>%{{y:.1f}}<extra></extra>'))
         _fig.update_layout(
-            template='plotly_dark', paper_bgcolor='#0a1628', plot_bgcolor='#0a1628',
+            template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG, plot_bgcolor=_C_CHART_BG,
             height=340, margin=dict(l=10,r=10,t=10,b=10),
             legend=dict(orientation='h',yanchor='bottom',y=1.01,xanchor='right',x=1),
             xaxis=dict(showgrid=False,color='#546e7a'),
@@ -10734,8 +10763,8 @@ if st.session_state.get("show_wl_compare") and len(st.session_state.get("watchli
             textfont=dict(size=10),
         ))
     _fig_wl.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="rgba(0,0,0,0)",
+        template=_C_CHART_THEME,
+        paper_bgcolor=_C_CHART_PAPER,
         plot_bgcolor="rgba(13,21,38,0.8)",
         height=320,
         margin=dict(l=0, r=0, t=10, b=0),
@@ -11016,8 +11045,8 @@ if len(hist_plot) >= 2:
     ), row=2, col=1)
 
     fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="rgba(0,0,0,0)",
+        template=_C_CHART_THEME,
+        paper_bgcolor=_C_CHART_PAPER,
         plot_bgcolor="rgba(13,21,38,0.8)",
         height=580,
         legend=dict(
@@ -11102,7 +11131,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
         ))
         fig.add_hline(y=0, line_color="#1e3a5f", line_width=1)
         fig.update_layout(
-            template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+            template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
             plot_bgcolor="rgba(13,21,38,0.8)", height=420,
             margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
             yaxis=dict(ticksuffix="%", showgrid=True, gridcolor="#1e2d45"),
@@ -11128,7 +11157,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
         ), secondary_y=True)
     fig.add_hline(y=0, line_color="#1e3a5f", line_width=1, secondary_y=False)
     fig.update_layout(
-        template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+        template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
         plot_bgcolor="rgba(13,21,38,0.8)", height=460,
         margin=dict(l=10, r=60, t=30, b=10),
         legend=dict(orientation="h", y=1.08, font=dict(size=11), bgcolor="rgba(0,0,0,0)"),
@@ -11319,8 +11348,8 @@ if _at == 0:
             textfont=dict(size=11, color="#64b5f6"),
         ))
         _fig_b.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="rgba(0,0,0,0)",
+            template=_C_CHART_THEME,
+            paper_bgcolor=_C_CHART_PAPER,
             plot_bgcolor="rgba(13,21,38,0.8)",
             height=340,
             margin=dict(l=0, r=90, t=10, b=0),
@@ -11379,8 +11408,8 @@ elif _at == 1:
                 textposition="outside",
             ))
             fig_g.update_layout(
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
+                template=_C_CHART_THEME,
+                paper_bgcolor=_C_CHART_PAPER,
                 plot_bgcolor="rgba(13,21,38,0.8)",
                 height=280,
                 margin=dict(l=0, r=0, t=20, b=0),
@@ -11421,8 +11450,8 @@ elif _at == 1:
         ))
         fig.add_hline(y=0, line_color="#1e3a5f", line_width=1)
         fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="rgba(0,0,0,0)",
+            template=_C_CHART_THEME,
+            paper_bgcolor=_C_CHART_PAPER,
             plot_bgcolor="rgba(13,21,38,0.8)",
             height=240,
             margin=dict(l=0, r=0, t=30, b=0),
@@ -11535,7 +11564,7 @@ elif _at == 1:
                 customdata=[fmt_large(segs[n]) for n in all_names],
             ))
             fig_donut.update_layout(
-                template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
                 height=chart_h, margin=dict(l=0, r=0, t=10, b=0),
                 showlegend=True, legend=dict(font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
                 annotations=[dict(text=fmt_large(total), x=0.5, y=0.5,
@@ -11554,8 +11583,8 @@ elif _at == 1:
                         hovertemplate=f"<b>{seg_name}</b><br>%{{y:,.0f}}<extra></extra>",
                     ))
                 fig_stk.update_layout(
-                    barmode="stack", template="plotly_dark",
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(13,21,38,0.8)",
+                    barmode="stack", template=_C_CHART_THEME,
+                    paper_bgcolor=_C_CHART_PAPER, plot_bgcolor="rgba(13,21,38,0.8)",
                     height=chart_h, margin=dict(l=0, r=0, t=10, b=10),
                     legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)",
                                 orientation="h", yanchor="bottom", y=1.02),
@@ -12035,8 +12064,8 @@ elif _at == 3:
             ))
             fig_sh.update_layout(
                 title=dict(text="Aktienanzahl (Diluted) — Jahresverlauf", font=dict(size=12, color="#90a4ae"), x=0),
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
+                template=_C_CHART_THEME,
+                paper_bgcolor=_C_CHART_PAPER,
                 plot_bgcolor="rgba(13,21,38,0.8)",
                 height=220,
                 margin=dict(l=0, r=0, t=30, b=0),
@@ -12132,8 +12161,8 @@ elif _at == 3:
             ))
             _fig_es.add_hline(y=0, line_color="#1e3a5f", line_width=1)
             _fig_es.update_layout(
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
+                template=_C_CHART_THEME,
+                paper_bgcolor=_C_CHART_PAPER,
                 plot_bgcolor="rgba(13,21,38,0.8)",
                 height=200,
                 margin=dict(l=0, r=0, t=10, b=0),
@@ -12195,8 +12224,8 @@ elif _at == 3:
                 textposition="outside", textfont=dict(size=9, color="#90a4ae"),
             ), row=1, col=2)
         _qfig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="rgba(0,0,0,0)",
+            template=_C_CHART_THEME,
+            paper_bgcolor=_C_CHART_PAPER,
             plot_bgcolor="rgba(13,21,38,0.8)",
             height=300,
             showlegend=False,
@@ -12228,7 +12257,7 @@ elif _at == 3:
             textfont=dict(size=10, color="#90a4ae"),
         ))
         fig.update_layout(
-            template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+            template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
             plot_bgcolor="rgba(13,21,38,0.8)", height=260,
             margin=dict(l=0, r=0, t=30, b=0), showlegend=False,
             yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False),
@@ -12282,7 +12311,7 @@ elif _at == 3:
                     textposition="outside", textfont=dict(size=10, color="#90a4ae"),
                 ))
                 _fig_cp.update_layout(
-                    template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                    template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
                     plot_bgcolor="rgba(13,21,38,0.8)", height=220,
                     margin=dict(l=0, r=0, t=30, b=0), showlegend=False,
                     yaxis=dict(showgrid=True, gridcolor="#1e2d45", ticksuffix="%"),
@@ -12333,7 +12362,7 @@ elif _at == 3:
                         textposition="outside", textfont=dict(size=9, color="#90a4ae"),
                     ))
                 _fig_dc.update_layout(
-                    template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                    template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
                     plot_bgcolor="rgba(13,21,38,0.8)", height=280,
                     margin=dict(l=0, r=0, t=30, b=0),
                     barmode="group",
@@ -12368,7 +12397,7 @@ elif _at == 3:
                     ))
                     _fig_nd.add_hline(y=0, line_color="#546e7a", line_width=1)
                     _fig_nd.update_layout(
-                        template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
+                        template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
                         plot_bgcolor="rgba(13,21,38,0.8)", height=280,
                         margin=dict(l=0, r=0, t=30, b=0), showlegend=False,
                         yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False),
@@ -12561,8 +12590,8 @@ elif _at == 4:
                                annotation_text=f"Kurs {_cur_sym}{price:.0f}",
                                annotation_font_color=_C_NEUTRAL)
             _fig_dcf.update_layout(
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
+                template=_C_CHART_THEME,
+                paper_bgcolor=_C_CHART_PAPER,
                 plot_bgcolor="rgba(13,21,38,0.8)",
                 height=260, showlegend=False,
                 margin=dict(l=0, r=0, t=30, b=0),
@@ -12922,8 +12951,8 @@ elif _at == 7:
         _rangebreaks = [dict(bounds=["sat", "mon"])] if chart_mode == "Täglich (5J)" else []
 
         fig_ta.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="rgba(0,0,0,0)",
+            template=_C_CHART_THEME,
+            paper_bgcolor=_C_CHART_PAPER,
             plot_bgcolor="rgba(13,21,38,0.8)",
             height=_height,
             legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
