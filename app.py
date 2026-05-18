@@ -7538,8 +7538,11 @@ def _load_ex_div_earnings(ticker: str) -> dict:
         try:
             divs = t_obj.dividends
             if divs is not None and not divs.empty:
-                cutoff = pd.Timestamp.today() - pd.DateOffset(months=24)
-                divs   = divs[divs.index >= cutoff]
+                cutoff = pd.Timestamp.now(tz='UTC') - pd.DateOffset(months=24)
+                # Align timezone: make cutoff naive if index is naive, aware if aware
+                if divs.index.tz is None:
+                    cutoff = cutoff.tz_localize(None)
+                divs = divs[divs.index >= cutoff]
                 for dt, amt in divs.items():
                     ym = dt.strftime('%Y-%m')
                     div_monthly[ym] = div_monthly.get(ym, 0.0) + float(amt)
