@@ -8244,10 +8244,9 @@ if st.session_state.get("show_portfolio"):
                     _hm_cols = st.columns(3)
                     for _hi, _hitem in enumerate(_hm_items):
                         _p = _hitem['pos']
-                        if _p >= 66:   _hbg, _htxt = "#1b5e2088", _C_POSITIVE
-                        elif _p >= 33: _hbg, _htxt = "#e65100" + "55", _C_NEUTRAL
-                        else:          _hbg, _htxt = "#b71c1c88", _C_NEGATIVE
-                        _hfill = min(int(_p), 100)
+                        if _p >= 66:   _htxt = _C_POSITIVE
+                        elif _p >= 33: _htxt = _C_NEUTRAL
+                        else:          _htxt = _C_NEGATIVE
                         with _hm_cols[_hi % 3]:
                             st.markdown(
                                 f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
@@ -8260,7 +8259,7 @@ if st.session_state.get("show_portfolio"):
                                 f"{_p:.0f}%</span></div>"
                                 f"<div style='background:#1a2740;border-radius:3px;height:5px;"
                                 f"margin-top:4px;'>"
-                                f"<div style='background:{_htxt};width:{_hfill}%;height:5px;"
+                                f"<div style='background:{_htxt};width:{int(_p)}%;height:5px;"
                                 f"border-radius:3px;'></div></div>"
                                 f"<div style='display:flex;justify-content:space-between;"
                                 f"color:{_C_TEXT_MUTED};font-size:0.62rem;margin-top:2px;'>"
@@ -9417,10 +9416,12 @@ GEOGRAFISCHE VERTEILUNG:
                     unsafe_allow_html=True)
                 _dov_rows.sort(key=lambda x: x['deur_y'], reverse=True)
                 for _dr in _dov_rows:
-                    _exd_clr = (_C_POSITIVE if (_dr['ex_days'] or 999) < 30
-                                else _C_NEUTRAL if (_dr['ex_days'] or 999) < 90
+                    _ed = _dr['ex_days']
+                    _exd_clr = (_C_POSITIVE if _ed is not None and _ed < 30
+                                else _C_NEUTRAL if _ed is not None and _ed < 90
                                 else _C_TEXT_MUTED)
-                    _exd_tag = ""
+                    _exd_tag    = ""
+                    _yield_s    = f"Rendite {_dr['yield']:.2f}%" if _dr['yield'] is not None else "—"
                     if _dr['ex_days'] is not None and 0 <= _dr['ex_days'] <= 30:
                         _exd_tag = (f"<span style='background:{_C_POSITIVE}22;color:{_C_POSITIVE};"
                                     f"font-size:0.65rem;padding:1px 6px;border-radius:4px;"
@@ -9435,8 +9436,7 @@ GEOGRAFISCHE VERTEILUNG:
                         f"<span style='color:{_C_TEXT_MUTED};font-size:0.78rem;"
                         f"min-width:60px;text-align:right;'>YoC {_dr['yoc']:.2f}%</span>"
                         f"<span style='color:{_C_TEXT_MUTED};font-size:0.78rem;"
-                        f"min-width:60px;text-align:right;'>"
-                        f"Rendite {_dr['yield']:.2f}%</span>"
+                        f"min-width:60px;text-align:right;'>{_yield_s}</span>"
                         f"<span style='color:{_exd_clr};font-size:0.76rem;min-width:90px;"
                         f"text-align:right;'>{_exd_tag}Ex-Div: {_dr['ex_div']}</span></div>",
                         unsafe_allow_html=True)
@@ -9446,15 +9446,15 @@ GEOGRAFISCHE VERTEILUNG:
                 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
                 st.markdown("<div class='section-header'>📅 Monatliche Prognose</div>",
                             unsafe_allow_html=True)
-                _monthly = {m: _dov_total / 12 for m in range(1, 13)}
-                _month_names = ["Jan","Feb","Mär","Apr","Mai","Jun",
-                                "Jul","Aug","Sep","Okt","Nov","Dez"]
+                _monthly_val  = round(_dov_total / 12, 2)
+                _month_names  = ["Jan","Feb","Mär","Apr","Mai","Jun",
+                                 "Jul","Aug","Sep","Okt","Nov","Dez"]
                 _mfig = go.Figure(go.Bar(
                     x=_month_names,
-                    y=[round(_monthly[m], 2) for m in range(1, 13)],
+                    y=[_monthly_val] * 12,
                     marker_color=["#ffd600" if m == _today.month else "#42a5f5"
                                   for m in range(1, 13)],
-                    text=[f"€{v:,.0f}" for v in _monthly.values()],
+                    text=[f"€{_monthly_val:,.0f}"] * 12,
                     textposition="outside",
                 ))
                 _mfig.update_layout(
@@ -9473,12 +9473,12 @@ GEOGRAFISCHE VERTEILUNG:
             st.markdown("<div class='section-header'>📆 Earnings-Kalender</div>",
                         unsafe_allow_html=True)
             _earn_rows = []
-            _earn_checked = []
+            _earn_checked: set = set()
             for _, _er in stocks_etf.iterrows():
                 _etkr = isin_map.get(_er['ISIN'], '')
                 if not _etkr or _er['ISIN'] in _earn_checked:
                     continue
-                _earn_checked.append(_er['ISIN'])
+                _earn_checked.add(_er['ISIN'])
                 _ecal = _load_ex_div_earnings(_etkr)
                 _ets  = _ecal.get('earnings_ts')
                 if not _ets:
@@ -9604,10 +9604,10 @@ GEOGRAFISCHE VERTEILUNG:
                     return _cov.loc['p', 'b'] / _cov.loc['b', 'b'] if _cov.loc['b', 'b'] != 0 else None
 
                 # ── Portfolio-KPIs ────────────────────────────────────
+                _bm_rets = _bm_s.pct_change().dropna() if _bm_s is not None else None
                 if _port_returns is not None and len(_port_returns) > 30:
                     _pf_vol   = _port_returns.std() * (252 ** 0.5) * 100
                     _pf_sharpe = _sharpe(_port_returns)
-                    _bm_rets   = _bm_s.pct_change().dropna() if _bm_s is not None else None
                     _pf_beta   = _beta(_port_returns, _bm_rets)
                     _pf_ret_1y = (_port_returns + 1).prod() - 1
                     _pf_cum    = (1 + _port_returns).cumprod()
@@ -9668,8 +9668,6 @@ GEOGRAFISCHE VERTEILUNG:
                 st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
                 st.markdown("<div class='section-header'>📋 Risiko je Position</div>",
                             unsafe_allow_html=True)
-                _bm_rets_pos = (_bm_s.pct_change().dropna()
-                                if _bm_s is not None else None)
                 _pos_risk_rows = []
                 for _, _prr in stocks_etf.iterrows():
                     _ptkr = isin_map.get(_prr['ISIN'])
@@ -9678,7 +9676,7 @@ GEOGRAFISCHE VERTEILUNG:
                     _ph    = _rd[_ptkr]
                     _pr    = _ph.pct_change().dropna()
                     _pvol  = _pr.std() * (252 ** 0.5) * 100
-                    _pbeta = _beta(_pr, _bm_rets_pos)
+                    _pbeta = _beta(_pr, _bm_rets)
                     _pmdd  = _max_dd(_ph)
                     _psh   = _sharpe(_pr)
                     _pos_risk_rows.append({
