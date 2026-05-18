@@ -7527,25 +7527,36 @@ elif st.session_state.get("show_stocks"):
 @st.cache_data(ttl=43200, show_spinner=False)
 def _load_ex_div_earnings(ticker: str) -> dict:
     try:
+        import concurrent.futures as _cfe
         t_obj = yf.Ticker(ticker)
-        info  = t_obj.info
+        # Fetch info with 4s timeout
+        with _cfe.ThreadPoolExecutor(max_workers=1) as _ex:
+            _fut = _ex.submit(lambda: t_obj.info)
+            try:
+                info = _fut.result(timeout=4.0)
+            except _cfe.TimeoutError:
+                return {}
         ts = info.get('earningsTimestamp')
         if not ts:
             ed = info.get('earningsDate')
             ts = ed[0] if isinstance(ed, list) and ed else ed
-        # Historical dividends per share — last 24 months grouped by YYYY-MM
+        # Historical dividends per share — last 24 months, also with timeout
         div_monthly: dict = {}
         try:
-            divs = t_obj.dividends
-            if divs is not None and not divs.empty:
-                cutoff = pd.Timestamp.now(tz='UTC') - pd.DateOffset(months=24)
-                # Align timezone: make cutoff naive if index is naive, aware if aware
-                if divs.index.tz is None:
-                    cutoff = cutoff.tz_localize(None)
-                divs = divs[divs.index >= cutoff]
-                for dt, amt in divs.items():
-                    ym = dt.strftime('%Y-%m')
-                    div_monthly[ym] = div_monthly.get(ym, 0.0) + float(amt)
+            with _cfe.ThreadPoolExecutor(max_workers=1) as _exd:
+                _futd = _exd.submit(lambda: t_obj.dividends)
+                try:
+                    divs = _futd.result(timeout=3.0)
+                    if divs is not None and not divs.empty:
+                        cutoff = pd.Timestamp.now(tz='UTC') - pd.DateOffset(months=24)
+                        if divs.index.tz is None:
+                            cutoff = cutoff.tz_localize(None)
+                        divs = divs[divs.index >= cutoff]
+                        for dt, amt in divs.items():
+                            ym = dt.strftime('%Y-%m')
+                            div_monthly[ym] = div_monthly.get(ym, 0.0) + float(amt)
+                except _cfe.TimeoutError:
+                    pass
         except Exception:
             pass
         return {
@@ -9901,6 +9912,45 @@ GEOGRAFISCHE VERTEILUNG:
                     _rkpi(_rk4, "Max Drawdown",  _pf_mdd,          "{:.1f}%", _C_NEGATIVE)
                     _rkpi(_rk5, "Beta (MSCI W)", _pf_beta,         "{:.2f}",
                           _C_POSITIVE if (_pf_beta or 1) < 0.9 else _C_NEUTRAL if (_pf_beta or 1) < 1.1 else _C_NEGATIVE)
+
+                    # ── KPI-Erklärungen ───────────────────────────────────
+                    with st.expander("ℹ️ Was bedeuten diese Kennzahlen?", expanded=False):
+                        def _kpi_card(title, value_desc, good, bad, note=""):
+                            st.markdown(
+                                f"<div style='background:{_C_CARD_BG};border-left:3px solid {_C_ACCENT};"
+                                f"border-radius:6px;padding:10px 12px;margin-bottom:8px;'>"
+                                f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:700;"
+                                f"margin-bottom:4px;'>{title}</div>"
+                                f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;'>{value_desc}</div>"
+                                f"<div style='margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;'>"
+                                f"<span style='background:{_C_POSITIVE}22;color:{_C_POSITIVE};"
+                                f"font-size:0.70rem;padding:2px 7px;border-radius:4px;'>✓ {good}</span>"
+                                f"<span style='background:{_C_NEGATIVE}22;color:{_C_NEGATIVE};"
+                                f"font-size:0.70rem;padding:2px 7px;border-radius:4px;'>✗ {bad}</span>"
+                                f"</div>"
+                                + (f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;"
+                                   f"margin-top:5px;font-style:italic;'>{note}</div>" if note else "")
+                                + "</div>",
+                                unsafe_allow_html=True)
+                        _kpi_card("📈 Rendite 1 Jahr",
+                            "Gesamtrendite deines Portfolios in den letzten 12 Monaten, basierend auf dem gewichteten Kursverlauf aller Positionen.",
+                            "Positiv (> 0%)", "Negativ (< 0%)")
+                        _kpi_card("🌊 Volatilität",
+                            "Wie stark schwanken deine Positionen im Durchschnitt pro Jahr? Berechnet als annualisierte Standardabweichung der Tagesrenditen.",
+                            "< 15% (defensiv)", "> 30% (spekulativ)",
+                            "Ein gemischtes Portfolio typischerweise 12–20% Vola.")
+                        _kpi_card("⚖️ Sharpe Ratio",
+                            "Rendite je Risikoeinheit. Zeigt ob die erzielte Rendite den eingegangenen Schwankungen gerecht wird. Risikofreier Zins: 3% p.a.",
+                            "> 1,0 (sehr gut)", "< 0,5 (schlechtes Verhältnis)",
+                            "Eine Sharpe von 1,5 bedeutet: du bekommst 1,5% Überrendite pro 1% Volatilität.")
+                        _kpi_card("📉 Max. Drawdown",
+                            "Größter Wertverlust vom Höchststand zum Tiefststand innerhalb des Betrachtungszeitraums (1J). Zeigt das schlimmste Szenario.",
+                            "> -10% (gering)", "< -30% (hoch)",
+                            "Der MSCI World hatte im Corona-Crash 2020 einen Drawdown von ca. -34%.")
+                        _kpi_card("🔗 Beta (vs. MSCI World)",
+                            "Misst wie stark dein Portfolio auf Marktbewegungen reagiert. Beta = 1: bewegst du dich wie der MSCI World. Beta = 1,5: +50% Ausschlag.",
+                            "< 0,9 (defensiver als Markt)", "> 1,3 (aggressiver als Markt)",
+                            "Krypto-lastige Portfolios haben oft Beta > 1,5, defensive Dividendenportfolios < 0,8.")
                     st.caption("Benchmark: SXR8.DE (iShares MSCI World). Risikofreier Zinssatz: 3% p.a.")
 
                     # ── Portfolio-Rendite-Chart ───────────────────────
@@ -9953,49 +10003,57 @@ GEOGRAFISCHE VERTEILUNG:
                     })
                 if _pos_risk_rows:
                     _pos_risk_rows.sort(key=lambda x: x['vol'], reverse=True)
-                    _prt_hdr = (
-                        f"<div style='display:grid;grid-template-columns:1fr 70px 60px 70px 70px;"
-                        f"gap:4px;padding:4px 6px;border-bottom:1px solid {_C_BORDER};'>"
-                        f"<span style='color:{_C_ACCENT};font-size:0.68rem;font-weight:600;"
-                        f"text-transform:uppercase;'>Position</span>"
-                        f"<span style='color:{_C_ACCENT};font-size:0.68rem;font-weight:600;"
-                        f"text-align:right;'>Vola</span>"
-                        f"<span style='color:{_C_ACCENT};font-size:0.68rem;font-weight:600;"
-                        f"text-align:right;'>Beta</span>"
-                        f"<span style='color:{_C_ACCENT};font-size:0.68rem;font-weight:600;"
-                        f"text-align:right;'>Max-DD</span>"
-                        f"<span style='color:{_C_ACCENT};font-size:0.68rem;font-weight:600;"
-                        f"text-align:right;'>Sharpe</span></div>"
-                    )
-                    st.markdown(_prt_hdr, unsafe_allow_html=True)
+                    # Build entire table as one HTML block to avoid column truncation on mobile
+                    _tbl_rows = ""
                     for _prw in _pos_risk_rows:
-                        _vc    = _C_NEGATIVE if (_prw['vol'] or 0) > 35 else _C_NEUTRAL if (_prw['vol'] or 0) > 20 else _C_POSITIVE
-                        _bc    = (_C_NEGATIVE if (_prw['beta'] or 1) > 1.3
-                                  else _C_NEUTRAL if (_prw['beta'] or 1) > 0.9
-                                  else _C_POSITIVE)
-                        _sc    = (_C_POSITIVE if (_prw['sharpe'] or 0) > 1
-                                  else _C_NEUTRAL if (_prw['sharpe'] or 0) > 0.5
-                                  else _C_NEGATIVE)
-                        _pbeta_s  = "—" if _prw['beta']   is None else f"{_prw['beta']:.2f}"
+                        _vc = (_C_NEGATIVE if (_prw['vol'] or 0) > 35
+                               else _C_NEUTRAL if (_prw['vol'] or 0) > 20 else _C_POSITIVE)
+                        _bc = (_C_NEGATIVE if (_prw['beta'] or 1) > 1.3
+                               else _C_NEUTRAL if (_prw['beta'] or 1) > 0.9 else _C_POSITIVE)
+                        _sc = (_C_POSITIVE if (_prw['sharpe'] or 0) > 1
+                               else _C_NEUTRAL if (_prw['sharpe'] or 0) > 0.5 else _C_NEGATIVE)
+                        _pbeta_s   = "—" if _prw['beta']   is None else f"{_prw['beta']:.2f}"
                         _psharpe_s = "—" if _prw['sharpe'] is None else f"{_prw['sharpe']:.2f}"
+                        _tbl_rows += (
+                            f"<div style='padding:8px 4px;border-bottom:1px solid {_C_BORDER};'>"
+                            f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.80rem;"
+                            f"font-weight:600;margin-bottom:5px;white-space:nowrap;"
+                            f"overflow:hidden;text-overflow:ellipsis;'>{_prw['name']}</div>"
+                            f"<div style='display:grid;grid-template-columns:1fr 1fr 1fr 1fr;"
+                            f"gap:4px;'>"
+                            f"<div><div style='color:{_C_TEXT_MUTED};font-size:0.62rem;"
+                            f"text-transform:uppercase;'>Vola</div>"
+                            f"<div style='color:{_vc};font-size:0.82rem;font-weight:700;'>"
+                            f"{_prw['vol']:.1f}%</div></div>"
+                            f"<div><div style='color:{_C_TEXT_MUTED};font-size:0.62rem;"
+                            f"text-transform:uppercase;'>Beta</div>"
+                            f"<div style='color:{_bc};font-size:0.82rem;font-weight:700;'>"
+                            f"{_pbeta_s}</div></div>"
+                            f"<div><div style='color:{_C_TEXT_MUTED};font-size:0.62rem;"
+                            f"text-transform:uppercase;'>Max-DD</div>"
+                            f"<div style='color:{_C_NEGATIVE};font-size:0.82rem;font-weight:700;'>"
+                            f"{_prw['mdd']:.1f}%</div></div>"
+                            f"<div><div style='color:{_C_TEXT_MUTED};font-size:0.62rem;"
+                            f"text-transform:uppercase;'>Sharpe</div>"
+                            f"<div style='color:{_sc};font-size:0.82rem;font-weight:700;'>"
+                            f"{_psharpe_s}</div></div>"
+                            f"</div></div>"
+                        )
+                    st.markdown(_tbl_rows, unsafe_allow_html=True)
+                    with st.expander("ℹ️ Was bedeuten Vola, Beta, Max-DD, Sharpe?", expanded=False):
                         st.markdown(
-                            f"<div style='display:grid;grid-template-columns:1fr 70px 60px 70px 70px;"
-                            f"gap:4px;padding:6px 6px;border-bottom:1px solid {_C_BORDER};'>"
-                            f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;'>"
-                            f"{_prw['name']}</span>"
-                            f"<span style='color:{_vc};font-size:0.78rem;font-weight:600;"
-                            f"text-align:right;'>{_prw['vol']:.1f}%</span>"
-                            f"<span style='color:{_bc};font-size:0.78rem;font-weight:600;"
-                            f"text-align:right;'>{_pbeta_s}</span>"
-                            f"<span style='color:{_C_NEGATIVE};font-size:0.78rem;font-weight:600;"
-                            f"text-align:right;'>{_prw['mdd']:.1f}%</span>"
-                            f"<span style='color:{_sc};font-size:0.78rem;font-weight:600;"
-                            f"text-align:right;'>{_psharpe_s}</span>"
-                            f"</div>",
+                            f"<div style='font-size:0.80rem;color:{_C_TEXT_MUTED};line-height:1.6;'>"
+                            f"<b style='color:{_C_TEXT_PRIMARY};'>🌊 Vola (Volatilität)</b><br>"
+                            f"Annualisierte Kursschwankung. &lt;15% = defensiv, &gt;30% = spekulativ.<br><br>"
+                            f"<b style='color:{_C_TEXT_PRIMARY};'>🔗 Beta</b><br>"
+                            f"Marktkorrelation vs. MSCI World. Beta 1,5 = schwankt 50% stärker als der Markt. "
+                            f"&lt;0,9 = defensiver, &gt;1,3 = aggressiver.<br><br>"
+                            f"<b style='color:{_C_TEXT_PRIMARY};'>📉 Max-DD (Max. Drawdown)</b><br>"
+                            f"Größter Verlust vom Hochpunkt innerhalb 1J. Zeigt das Worst-Case-Szenario.<br><br>"
+                            f"<b style='color:{_C_TEXT_PRIMARY};'>⚖️ Sharpe Ratio</b><br>"
+                            f"Rendite pro Risikoeinheit (Benchmark: 3% risikofreier Zins). "
+                            f"&gt;1,0 = sehr gut, &lt;0,5 = Risiko lohnt sich kaum.</div>",
                             unsafe_allow_html=True)
-                    st.caption("Vola = annualisierte Volatilität (1J). "
-                               "Beta vs. MSCI World (SXR8.DE). "
-                               "Sharpe: Risikofreier Zins 3% p.a. | Nur Einzelaktien, keine ETFs.")
                 else:
                     st.info("Keine Einzelaktienpositionen für Risikoberechnung gefunden. "
                             "ETFs werden aus der Einzeltitelanalyse ausgeschlossen — "
