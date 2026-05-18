@@ -9369,12 +9369,30 @@ GEOGRAFISCHE VERTEILUNG:
           try:
             import datetime as _divdt
             _today = _divdt.date.today()
+            _div_load_key = f"div_loaded_{_csv_key}"
 
-            # ── Dividenden-Übersicht ──────────────────────────────────
-            st.markdown("<div class='section-header'>💰 Dividenden-Übersicht</div>",
-                        unsafe_allow_html=True)
-            _dov_rows = []
-            for _, _dor in stocks_etf.iterrows():
+            if not st.session_state.get(_div_load_key):
+                st.info("Lädt Ex-Dividenden-Termine und Earnings-Kalender für deine Positionen. "
+                        "~5–20 Sek. je nach Portfolio-Größe — danach in dieser Sitzung gecacht.")
+                if st.button("💰 Dividenden & Earnings laden", type="primary",
+                             key="btn_div_load", use_container_width=True):
+                    st.session_state[_div_load_key] = True
+                    st.rerun()
+
+            if st.session_state.get(_div_load_key):
+              _div_c1, _div_c2 = st.columns([5, 1])
+              with _div_c2:
+                if st.button("🔄 Neu", key="btn_div_reload", use_container_width=True,
+                             help="Daten aktualisieren"):
+                    _load_ex_div_earnings.clear()
+                    st.session_state.pop(_div_load_key, None)
+                    st.rerun()
+
+              # ── Dividenden-Übersicht ──────────────────────────────────
+              st.markdown("<div class='section-header'>💰 Dividenden-Übersicht</div>",
+                          unsafe_allow_html=True)
+              _dov_rows = []
+              for _, _dor in stocks_etf.iterrows():
                 _dinf   = _alloc_infos.get(_dor['ISIN'], {})
                 _drate  = float(_dinf.get('div_rate_native') or 0)
                 if _drate <= 0:
@@ -9404,133 +9422,133 @@ GEOGRAFISCHE VERTEILUNG:
                     'yoc': _dyoc, 'yield': _dyield,
                     'ex_div': _exd_str, 'ex_days': _exd_days,
                 })
-            if not _dov_rows:
-                st.info("Keine dividendenzahlenden Positionen im Portfolio.")
-            else:
-                _dov_total = sum(r['deur_y'] for r in _dov_rows)
-                st.markdown(
-                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
-                    f"border-radius:10px;padding:14px 18px;margin-bottom:14px;'>"
-                    f"<div style='color:{_C_ACCENT};font-size:0.72rem;font-weight:600;"
-                    f"text-transform:uppercase;letter-spacing:.06em;'>Gesamt / Jahr</div>"
-                    f"<div style='color:#ffd600;font-size:1.6rem;font-weight:800;'>"
-                    f"€ {_dov_total:,.0f}</div>"
-                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.8rem;'>"
-                    f"≈ € {_dov_total/12:,.0f} / Monat</div></div>",
-                    unsafe_allow_html=True)
-                _dov_rows.sort(key=lambda x: x['deur_y'], reverse=True)
-                for _dr in _dov_rows:
-                    _ed = _dr['ex_days']
-                    _exd_clr = (_C_POSITIVE if _ed is not None and _ed < 30
-                                else _C_NEUTRAL if _ed is not None and _ed < 90
-                                else _C_TEXT_MUTED)
-                    _exd_tag    = ""
-                    _yield_s    = f"Rendite {_dr['yield']:.2f}%" if _dr['yield'] is not None else "—"
-                    if _dr['ex_days'] is not None and 0 <= _dr['ex_days'] <= 30:
-                        _exd_tag = (f"<span style='background:{_C_POSITIVE}22;color:{_C_POSITIVE};"
-                                    f"font-size:0.65rem;padding:1px 6px;border-radius:4px;"
-                                    f"font-weight:700;'>in {_dr['ex_days']}d</span> ")
-                    st.markdown(
-                        f"<div style='display:flex;align-items:center;gap:6px;padding:7px 4px;"
-                        f"border-bottom:1px solid {_C_BORDER};flex-wrap:wrap;'>"
-                        f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;flex:1;"
-                        f"min-width:140px;'>{_dr['name']}</span>"
-                        f"<span style='color:#ffd600;font-size:0.82rem;font-weight:700;"
-                        f"min-width:80px;text-align:right;'>€ {_dr['deur_y']:,.0f}/J</span>"
-                        f"<span style='color:{_C_TEXT_MUTED};font-size:0.78rem;"
-                        f"min-width:60px;text-align:right;'>YoC {_dr['yoc']:.2f}%</span>"
-                        f"<span style='color:{_C_TEXT_MUTED};font-size:0.78rem;"
-                        f"min-width:60px;text-align:right;'>{_yield_s}</span>"
-                        f"<span style='color:{_exd_clr};font-size:0.76rem;min-width:90px;"
-                        f"text-align:right;'>{_exd_tag}Ex-Div: {_dr['ex_div']}</span></div>",
-                        unsafe_allow_html=True)
-                st.caption("Quelle: trailingAnnualDividendRate (yFinance). Schätzung, nicht garantiert.")
+              if not _dov_rows:
+                  st.info("Keine dividendenzahlenden Positionen im Portfolio.")
+              else:
+                  _dov_total = sum(r['deur_y'] for r in _dov_rows)
+                  st.markdown(
+                      f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                      f"border-radius:10px;padding:14px 18px;margin-bottom:14px;'>"
+                      f"<div style='color:{_C_ACCENT};font-size:0.72rem;font-weight:600;"
+                      f"text-transform:uppercase;letter-spacing:.06em;'>Gesamt / Jahr</div>"
+                      f"<div style='color:#ffd600;font-size:1.6rem;font-weight:800;'>"
+                      f"€ {_dov_total:,.0f}</div>"
+                      f"<div style='color:{_C_TEXT_MUTED};font-size:0.8rem;'>"
+                      f"≈ € {_dov_total/12:,.0f} / Monat</div></div>",
+                      unsafe_allow_html=True)
+                  _dov_rows.sort(key=lambda x: x['deur_y'], reverse=True)
+                  for _dr in _dov_rows:
+                      _ed = _dr['ex_days']
+                      _exd_clr = (_C_POSITIVE if _ed is not None and _ed < 30
+                                  else _C_NEUTRAL if _ed is not None and _ed < 90
+                                  else _C_TEXT_MUTED)
+                      _exd_tag    = ""
+                      _yield_s    = f"Rendite {_dr['yield']:.2f}%" if _dr['yield'] is not None else "—"
+                      if _dr['ex_days'] is not None and 0 <= _dr['ex_days'] <= 30:
+                          _exd_tag = (f"<span style='background:{_C_POSITIVE}22;color:{_C_POSITIVE};"
+                                      f"font-size:0.65rem;padding:1px 6px;border-radius:4px;"
+                                      f"font-weight:700;'>in {_dr['ex_days']}d</span> ")
+                      st.markdown(
+                          f"<div style='display:flex;align-items:center;gap:6px;padding:7px 4px;"
+                          f"border-bottom:1px solid {_C_BORDER};flex-wrap:wrap;'>"
+                          f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;flex:1;"
+                          f"min-width:140px;'>{_dr['name']}</span>"
+                          f"<span style='color:#ffd600;font-size:0.82rem;font-weight:700;"
+                          f"min-width:80px;text-align:right;'>€ {_dr['deur_y']:,.0f}/J</span>"
+                          f"<span style='color:{_C_TEXT_MUTED};font-size:0.78rem;"
+                          f"min-width:60px;text-align:right;'>YoC {_dr['yoc']:.2f}%</span>"
+                          f"<span style='color:{_C_TEXT_MUTED};font-size:0.78rem;"
+                          f"min-width:60px;text-align:right;'>{_yield_s}</span>"
+                          f"<span style='color:{_exd_clr};font-size:0.76rem;min-width:90px;"
+                          f"text-align:right;'>{_exd_tag}Ex-Div: {_dr['ex_div']}</span></div>",
+                          unsafe_allow_html=True)
+                  st.caption("Quelle: trailingAnnualDividendRate (yFinance). Schätzung, nicht garantiert.")
 
-                # ── Monatliche Prognose ───────────────────────────────
-                st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-                st.markdown("<div class='section-header'>📅 Monatliche Prognose</div>",
-                            unsafe_allow_html=True)
-                _monthly_val  = round(_dov_total / 12, 2)
-                _month_names  = ["Jan","Feb","Mär","Apr","Mai","Jun",
-                                 "Jul","Aug","Sep","Okt","Nov","Dez"]
-                _mfig = go.Figure(go.Bar(
-                    x=_month_names,
-                    y=[_monthly_val] * 12,
-                    marker_color=["#ffd600" if m == _today.month else "#42a5f5"
-                                  for m in range(1, 13)],
-                    text=[f"€{_monthly_val:,.0f}"] * 12,
-                    textposition="outside",
-                ))
-                _mfig.update_layout(
-                    template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG,
-                    plot_bgcolor=_C_CHART_BG, showlegend=False,
-                    height=220, margin=dict(l=5, r=5, t=10, b=5),
-                    yaxis=dict(showticklabels=False, showgrid=False),
-                    xaxis=dict(tickfont=dict(size=11)),
-                )
-                st.plotly_chart(_mfig, use_container_width=True)
-                st.caption("Gleichmäßige Verteilung — individuelle Zahlungsrhythmen (quartalsweise etc.) "
-                           "werden von yFinance nicht immer gemeldet.")
+                  # ── Monatliche Prognose ───────────────────────────────
+                  st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+                  st.markdown("<div class='section-header'>📅 Monatliche Prognose</div>",
+                              unsafe_allow_html=True)
+                  _monthly_val  = round(_dov_total / 12, 2)
+                  _month_names  = ["Jan","Feb","Mär","Apr","Mai","Jun",
+                                   "Jul","Aug","Sep","Okt","Nov","Dez"]
+                  _mfig = go.Figure(go.Bar(
+                      x=_month_names,
+                      y=[_monthly_val] * 12,
+                      marker_color=["#ffd600" if m == _today.month else "#42a5f5"
+                                    for m in range(1, 13)],
+                      text=[f"€{_monthly_val:,.0f}"] * 12,
+                      textposition="outside",
+                  ))
+                  _mfig.update_layout(
+                      template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG,
+                      plot_bgcolor=_C_CHART_BG, showlegend=False,
+                      height=220, margin=dict(l=5, r=5, t=10, b=5),
+                      yaxis=dict(showticklabels=False, showgrid=False),
+                      xaxis=dict(tickfont=dict(size=11)),
+                  )
+                  st.plotly_chart(_mfig, use_container_width=True)
+                  st.caption("Gleichmäßige Verteilung — individuelle Zahlungsrhythmen (quartalsweise etc.) "
+                             "werden von yFinance nicht immer gemeldet.")
 
-            # ── Earnings-Kalender ─────────────────────────────────────
-            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-header'>📆 Earnings-Kalender</div>",
-                        unsafe_allow_html=True)
-            _earn_rows = []
-            _earn_checked: set = set()
-            for _, _er in stocks_etf.iterrows():
-                _etkr = isin_map.get(_er['ISIN'], '')
-                if not _etkr or _er['ISIN'] in _earn_checked:
-                    continue
-                _earn_checked.add(_er['ISIN'])
-                _ecal = _load_ex_div_earnings(_etkr)
-                _ets  = _ecal.get('earnings_ts')
-                if not _ets:
-                    continue
-                try:
-                    _ed = _divdt.date.fromtimestamp(int(_ets))
-                    _days_to = (_ed - _today).days
-                    if -7 < _days_to <= 90:
-                        _earn_rows.append({
-                            'name': _er['name'][:32], 'ticker': _etkr,
-                            'date': _ed, 'days': _days_to,
-                        })
-                except Exception:
-                    pass
-            if not _earn_rows:
-                st.info("Keine bekannten Earnings-Termine für deine Positionen.")
-            else:
-                _earn_rows.sort(key=lambda x: x['date'])
-                for _ear in _earn_rows[:15]:
-                    _dstr = _ear['date'].strftime("%d.%m.%Y")
-                    _ddelta = _ear['days']
-                    if _ddelta < 0:
-                        _dtag = f"vor {-_ddelta}d"
-                        _dc = _C_TEXT_MUTED
-                    elif _ddelta == 0:
-                        _dtag = "Heute!"
-                        _dc = _C_POSITIVE
-                    elif _ddelta <= 7:
-                        _dtag = f"in {_ddelta}d"
-                        _dc = _C_NEGATIVE
-                    elif _ddelta <= 30:
-                        _dtag = f"in {_ddelta}d"
-                        _dc = _C_NEUTRAL
-                    else:
-                        _dtag = f"in {_ddelta}d"
-                        _dc = _C_TEXT_MUTED
-                    st.markdown(
-                        f"<div style='display:flex;align-items:center;gap:10px;padding:7px 4px;"
-                        f"border-bottom:1px solid {_C_BORDER};'>"
-                        f"<span style='color:{_dc};font-size:0.82rem;font-weight:700;"
-                        f"min-width:70px;'>{_dstr}</span>"
-                        f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;flex:1;'>"
-                        f"{_ear['name']}</span>"
-                        f"<span style='color:{_C_TEXT_MUTED};font-size:0.74rem;'>"
-                        f"{_ear['ticker']}</span>"
-                        f"<span style='background:{_dc}22;color:{_dc};font-size:0.72rem;"
-                        f"padding:2px 8px;border-radius:5px;font-weight:600;'>{_dtag}</span></div>",
-                        unsafe_allow_html=True)
+              # ── Earnings-Kalender ─────────────────────────────────────
+              st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+              st.markdown("<div class='section-header'>📆 Earnings-Kalender</div>",
+                          unsafe_allow_html=True)
+              _earn_rows = []
+              _earn_checked: set = set()
+              for _, _er in stocks_etf.iterrows():
+                  _etkr = isin_map.get(_er['ISIN'], '')
+                  if not _etkr or _er['ISIN'] in _earn_checked:
+                      continue
+                  _earn_checked.add(_er['ISIN'])
+                  _ecal = _load_ex_div_earnings(_etkr)
+                  _ets  = _ecal.get('earnings_ts')
+                  if not _ets:
+                      continue
+                  try:
+                      _ed = _divdt.date.fromtimestamp(int(_ets))
+                      _days_to = (_ed - _today).days
+                      if -7 < _days_to <= 90:
+                          _earn_rows.append({
+                              'name': _er['name'][:32], 'ticker': _etkr,
+                              'date': _ed, 'days': _days_to,
+                          })
+                  except Exception:
+                      pass
+              if not _earn_rows:
+                  st.info("Keine bekannten Earnings-Termine für deine Positionen.")
+              else:
+                  _earn_rows.sort(key=lambda x: x['date'])
+                  for _ear in _earn_rows[:15]:
+                      _dstr = _ear['date'].strftime("%d.%m.%Y")
+                      _ddelta = _ear['days']
+                      if _ddelta < 0:
+                          _dtag = f"vor {-_ddelta}d"
+                          _dc = _C_TEXT_MUTED
+                      elif _ddelta == 0:
+                          _dtag = "Heute!"
+                          _dc = _C_POSITIVE
+                      elif _ddelta <= 7:
+                          _dtag = f"in {_ddelta}d"
+                          _dc = _C_NEGATIVE
+                      elif _ddelta <= 30:
+                          _dtag = f"in {_ddelta}d"
+                          _dc = _C_NEUTRAL
+                      else:
+                          _dtag = f"in {_ddelta}d"
+                          _dc = _C_TEXT_MUTED
+                      st.markdown(
+                          f"<div style='display:flex;align-items:center;gap:10px;padding:7px 4px;"
+                          f"border-bottom:1px solid {_C_BORDER};'>"
+                          f"<span style='color:{_dc};font-size:0.82rem;font-weight:700;"
+                          f"min-width:70px;'>{_dstr}</span>"
+                          f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;flex:1;'>"
+                          f"{_ear['name']}</span>"
+                          f"<span style='color:{_C_TEXT_MUTED};font-size:0.74rem;'>"
+                          f"{_ear['ticker']}</span>"
+                          f"<span style='background:{_dc}22;color:{_dc};font-size:0.72rem;"
+                          f"padding:2px 8px;border-radius:5px;font-weight:600;'>{_dtag}</span></div>",
+                          unsafe_allow_html=True)
 
           except Exception as _e_div:
               st.error(f"Fehler im Dividenden-Tab: {_e_div}")
