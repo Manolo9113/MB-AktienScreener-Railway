@@ -5851,7 +5851,33 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                 else:
                     st.warning("Kein Ergebnis. Bitte Ticker oder Firmenname prüfen.")
 
-    st.markdown("<div style='height:36px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # ── Sektor-Heatmap ───────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🌡️ S&P 500 Sektoren — Heute</div>", unsafe_allow_html=True)
+    _sec_perf = _load_sector_perf()
+    if _sec_perf:
+        _hm_cols = st.columns(4)
+        for _hi, _sp in enumerate(_sec_perf):
+            _p = _sp['pct']
+            if _p >= 1.5:    _tile_bg, _tile_txt = "#1b3a2a", _C_POSITIVE
+            elif _p >= 0.3:  _tile_bg, _tile_txt = "#163020", "#66bb6a"
+            elif _p >= -0.3: _tile_bg, _tile_txt = "#1a2433", _C_TEXT_MUTED
+            elif _p >= -1.5: _tile_bg, _tile_txt = "#3a1a1a", "#ef9a9a"
+            else:             _tile_bg, _tile_txt = "#2a1010", _C_NEGATIVE
+            _sign = "+" if _p >= 0 else ""
+            with _hm_cols[_hi % 4]:
+                st.markdown(
+                    f"<div style='background:{_tile_bg};border:1px solid {_C_BORDER};"
+                    f"border-radius:8px;padding:10px 8px;margin-bottom:8px;text-align:center;'>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.66rem;margin-bottom:4px;"
+                    f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{_sp['name']}</div>"
+                    f"<div style='color:{_tile_txt};font-size:1.05rem;font-weight:800;'>"
+                    f"{_sign}{_p:.2f}%</div></div>",
+                    unsafe_allow_html=True)
+    st.caption("S&P 500 Sektor-ETFs (XLK, XLF …). Verzögert ~15 Min.")
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
     # ── Marktüberblick ──
     st.markdown("<div class='section-header'>🌍 Marktüberblick</div>", unsafe_allow_html=True)
@@ -6801,32 +6827,6 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
             if _maki_time:
                 st.caption(f"Stand: {_maki_time} · {_maki_model} · Gültig 24h")
             st.markdown(_maki_result)
-
-    # ── Sektor-Heatmap ───────────────────────────────────────────────────
-    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-header'>🌡️ S&P 500 Sektoren — Heute</div>", unsafe_allow_html=True)
-    _sec_perf = _load_sector_perf()
-    if _sec_perf:
-        # 4-column tile grid
-        _hm_cols = st.columns(4)
-        for _hi, _sp in enumerate(_sec_perf):
-            _p = _sp['pct']
-            if _p >= 1.5:    _tile_bg, _tile_txt = "#1b3a2a", _C_POSITIVE
-            elif _p >= 0.3:  _tile_bg, _tile_txt = "#163020", "#66bb6a"
-            elif _p >= -0.3: _tile_bg, _tile_txt = "#1a2433", _C_TEXT_MUTED
-            elif _p >= -1.5: _tile_bg, _tile_txt = "#3a1a1a", "#ef9a9a"
-            else:             _tile_bg, _tile_txt = "#2a1010", _C_NEGATIVE
-            _sign = "+" if _p >= 0 else ""
-            with _hm_cols[_hi % 4]:
-                st.markdown(
-                    f"<div style='background:{_tile_bg};border:1px solid {_C_BORDER};"
-                    f"border-radius:8px;padding:10px 8px;margin-bottom:8px;text-align:center;'>"
-                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.66rem;margin-bottom:4px;"
-                    f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{_sp['name']}</div>"
-                    f"<div style='color:{_tile_txt};font-size:1.05rem;font-weight:800;'>"
-                    f"{_sign}{_p:.2f}%</div></div>",
-                    unsafe_allow_html=True)
-    st.caption("Quelle: S&P 500 Sektor-ETFs (XLK, XLF, …). Verzögert ~15 Min.")
 
     # ── Marktschlagzeilen ────────────────────────────────────────────────
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
