@@ -3509,6 +3509,37 @@ def _load_treemap_data() -> dict:
         return {}
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _load_seasonal_data(sym: str) -> dict:
+    """Historische Monatsrenditen (20 Jahre) für Saisonalitäts-Analyse."""
+    try:
+        raw = yf.download(sym, period="20y", interval="1mo",
+                          auto_adjust=True, progress=False)
+        if raw.empty:
+            return {}
+        close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else raw["Close"]
+        close = close.dropna()
+        rets = close.pct_change().dropna() * 100
+        month_names = ["Jan","Feb","Mär","Apr","Mai","Jun",
+                       "Jul","Aug","Sep","Okt","Nov","Dez"]
+        result = []
+        for m in range(1, 13):
+            vals = rets[rets.index.month == m]
+            if vals.empty:
+                continue
+            result.append({
+                "month":    m,
+                "name":     month_names[m - 1],
+                "avg":      float(vals.mean()),
+                "median":   float(vals.median()),
+                "win_rate": float((vals > 0).mean() * 100),
+                "count":    int(len(vals)),
+            })
+        return {"rows": result, "years": int(len(rets) / 12)}
+    except Exception:
+        return {}
+
+
 # ==================== STOCK PICKS ====================
 _GROWTH_POOL = {
     "NVDA":  "KI-Chip-Marktführer mit explosivem Datencenter-Wachstum",
@@ -7060,6 +7091,80 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
         st.caption("🔴 Hohe Marktrelevanz · 🟡 Mittel · ⚪ Niedrig · Termine können sich verschieben.")
     else:
         st.info("Keine bevorstehenden Termine im Kalender.")
+
+    # ── A2: Saisonale Muster ─────────────────────────────────────────────
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>📆 Saisonale Muster</div>", unsafe_allow_html=True)
+    _sea_idx_map = {
+        "S&P 500":  "^GSPC",
+        "NASDAQ":   "^IXIC",
+        "DAX":      "^GDAXI",
+        "MSCI World (URTH)": "URTH",
+    }
+    _sea_sel = st.radio("Index", list(_sea_idx_map.keys()),
+                        horizontal=True, key="sea_idx",
+                        label_visibility="collapsed")
+    _sea_data = _load_seasonal_data(_sea_idx_map[_sea_sel])
+    if _sea_data and _sea_data.get("rows"):
+        _sea_rows  = _sea_data["rows"]
+        _sea_years = _sea_data["years"]
+        _cur_month = pd.Timestamp.today().month
+        _sea_names  = [r["name"]     for r in _sea_rows]
+        _sea_avgs   = [r["avg"]      for r in _sea_rows]
+        _sea_wins   = [r["win_rate"] for r in _sea_rows]
+        _sea_months = [r["month"]    for r in _sea_rows]
+        _bar_colors = []
+        for _i, (_avg, _m) in enumerate(zip(_sea_avgs, _sea_months)):
+            if _m == _cur_month:
+                _bar_colors.append(_C_ACCENT)
+            elif _avg >= 0:
+                _bar_colors.append(_C_POSITIVE)
+            else:
+                _bar_colors.append(_C_NEGATIVE)
+
+        _sea_fig = go.Figure()
+        _sea_fig.add_trace(go.Bar(
+            x=_sea_names, y=_sea_avgs,
+            marker_color=_bar_colors,
+            name="Ø Monatsrendite",
+            text=[f"{v:+.1f}%" for v in _sea_avgs],
+            textposition="outside",
+            textfont=dict(size=10, color=_C_TEXT_PRIMARY),
+        ))
+        _sea_fig.add_hline(y=0, line_color=_C_BORDER, line_width=1)
+        _sea_fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=_C_TEXT_PRIMARY, size=11),
+            xaxis=dict(gridcolor=_C_BORDER, zeroline=False),
+            yaxis=dict(gridcolor=_C_BORDER, zeroline=False,
+                       ticksuffix="%", title="Ø Rendite"),
+            margin=dict(t=30, b=10, l=50, r=10),
+            height=270,
+            showlegend=False,
+        )
+        st.plotly_chart(_sea_fig, use_container_width=True,
+                        config={"displayModeBar": False})
+
+        _sea_cols = st.columns(12)
+        for _i, _r in enumerate(_sea_rows):
+            _wr = _r["win_rate"]
+            _is_cur = _r["month"] == _cur_month
+            _wr_clr = _C_POSITIVE if _wr >= 60 else (_C_NEGATIVE if _wr < 45 else _C_TEXT_MUTED)
+            _border = f"2px solid {_C_ACCENT}" if _is_cur else f"1px solid {_C_BORDER}"
+            _sea_cols[_i].markdown(
+                f"<div style='background:{_C_CARD_BG};border:{_border};border-radius:6px;"
+                f"padding:5px 3px;text-align:center;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.60rem;'>{_r['name']}</div>"
+                f"<div style='color:{_wr_clr};font-size:0.72rem;font-weight:700;'>{_wr:.0f}%</div>"
+                f"</div>", unsafe_allow_html=True)
+        st.caption(
+            f"Gewinnrate (Monate mit positiver Rendite) · "
+            f"Basis: ~{_sea_years} Jahre Daten · "
+            f"{_C_ACCENT[0] if False else '🔵'} = aktueller Monat · "
+            f"Historische Muster ≠ Garantie.")
+    else:
+        st.info("Saisonale Daten werden geladen…")
 
     # ── Marktschlagzeilen ────────────────────────────────────────────────
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
