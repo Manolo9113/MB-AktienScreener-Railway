@@ -5526,6 +5526,67 @@ def _calc_realized_pnl(csv_bytes: bytes) -> dict:
             'positions': positions, 'no_cost_isins': no_cost_isins}
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _calc_received_dividends(csv_bytes: bytes) -> dict:
+    """Tatsächlich erhaltene Dividenden + Ausschüttungen aus der CSV-Orderhistorie."""
+    df = None
+    for enc in ['utf-8-sig', 'utf-8', 'latin-1']:
+        try:
+            df = pd.read_csv(io.BytesIO(csv_bytes), sep=';', decimal=',', encoding=enc, dtype=str)
+            break
+        except Exception:
+            continue
+    if df is None or df.empty:
+        return {}
+    df.columns = df.columns.str.strip()
+    date_col = None
+    for c in ['Datum', 'Ausführungsdatum', 'Ausführung Datum', 'Handelsdatum', 'Datum/Uhrzeit', 'Date']:
+        if c in df.columns:
+            date_col = c
+            break
+    if not date_col or 'Richtung' not in df.columns or 'Wert' not in df.columns:
+        return {}
+    _div_types = ['Dividende', 'Ausschüttung', 'Zinsen']
+    if 'Status' in df.columns:
+        df = df[df['Status'] == 'ausgeführt'].copy()
+    df = df[df['Richtung'].isin(_div_types)].copy()
+    if df.empty:
+        return {}
+    df['_date'] = pd.to_datetime(df[date_col].astype(str).str[:10], dayfirst=True, errors='coerce')
+    df = df.dropna(subset=['_date'])
+    df['_wert'] = pd.to_numeric(
+        df['Wert'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
+        errors='coerce'
+    ).fillna(0.0).abs()
+    if df.empty:
+        return {}
+    today = pd.Timestamp.today().normalize()
+    ytd_start = pd.Timestamp(today.year, 1, 1)
+    rows, by_isin, monthly = [], {}, {}
+    tot_1m = tot_ytd = tot_1y = tot_all = 0.0
+    for _, row in df.iterrows():
+        d, v = row['_date'], row['_wert']
+        isin = str(row.get('ISIN', '') or '')
+        name = str(row.get('Name', '') or isin)[:32]
+        days_ago = (today - d).days
+        rows.append({'date': d, 'isin': isin, 'name': name, 'amount': v,
+                     'type': str(row.get('Richtung', ''))})
+        tot_all += v
+        if days_ago <= 30:   tot_1m  += v
+        if d >= ytd_start:   tot_ytd += v
+        if days_ago <= 365:  tot_1y  += v
+        ym = d.strftime('%Y-%m')
+        monthly[ym] = monthly.get(ym, 0.0) + v
+        if days_ago <= 365:
+            by_isin[isin] = by_isin.get(isin, 0.0) + v
+    rows.sort(key=lambda x: x['date'], reverse=True)
+    return {
+        'rows': rows, 'by_isin': by_isin, 'monthly': monthly,
+        'total_1m': tot_1m, 'total_ytd': tot_ytd,
+        'total_1y': tot_1y, 'total_all': tot_all,
+    }
+
+
 # ==================== SIDEBAR ====================
 with st.sidebar:
     st.markdown("""
@@ -9370,12 +9431,86 @@ GEOGRAFISCHE VERTEILUNG:
           try:
             import datetime as _divdt
             _today = _divdt.date.today()
+
+            # ── Erhaltene Dividenden (aus CSV, kein API-Call) ─────────────
+            st.markdown("<div class='section-header'>💵 Erhaltene Dividenden</div>",
+                        unsafe_allow_html=True)
+            _rxd = _calc_received_dividends(_csv_b)
+            if not _rxd:
+                st.info("Keine Dividenden-/Ausschüttungsbuchungen in der CSV gefunden. "
+                        "Finanzen.net Zero bucht Dividenden als 'Dividende' oder 'Ausschüttung'.")
+            else:
+                # Period selector
+                _rxd_per = st.radio("Zeitraum", ["1M", "YTD", "1J", "Alle"],
+                                    horizontal=True, label_visibility="collapsed",
+                                    key="rxd_period")
+                _rxd_totals = {"1M": _rxd['total_1m'], "YTD": _rxd['total_ytd'],
+                               "1J": _rxd['total_1y'], "Alle": _rxd['total_all']}
+                _rxd_val = _rxd_totals[_rxd_per]
+                _rxd_s = f"{_rxd_val:,.2f}" if _rxd_val < 10 else f"{_rxd_val:,.0f}"
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:14px 18px;margin-bottom:14px;'>"
+                    f"<div style='color:{_C_ACCENT};font-size:0.72rem;font-weight:600;"
+                    f"text-transform:uppercase;letter-spacing:.06em;'>Erhalten ({_rxd_per})</div>"
+                    f"<div style='color:{_C_POSITIVE};font-size:1.6rem;font-weight:800;'>"
+                    f"€ {_rxd_s}</div></div>",
+                    unsafe_allow_html=True)
+
+                # Per-position list (last 12 months or all, sorted by amount)
+                _rxd_cutoff = {
+                    "1M":  pd.Timestamp(_today) - pd.Timedelta(days=30),
+                    "YTD": pd.Timestamp(_today.year, 1, 1),
+                    "1J":  pd.Timestamp(_today) - pd.Timedelta(days=365),
+                    "Alle": pd.Timestamp("2000-01-01"),
+                }[_rxd_per]
+                _rxd_filt = [r for r in _rxd['rows'] if r['date'] >= _rxd_cutoff]
+                _rxd_by_name: dict = {}
+                for _rr in _rxd_filt:
+                    _k = _rr['name']
+                    _rxd_by_name[_k] = _rxd_by_name.get(_k, 0.0) + _rr['amount']
+                for _rn, _rv in sorted(_rxd_by_name.items(), key=lambda x: x[1], reverse=True):
+                    _rv_s = f"{_rv:.2f}" if _rv < 10 else f"{_rv:,.0f}"
+                    st.markdown(
+                        f"<div style='display:flex;align-items:center;gap:6px;padding:6px 4px;"
+                        f"border-bottom:1px solid {_C_BORDER};'>"
+                        f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;flex:1;'>{_rn}</span>"
+                        f"<span style='color:{_C_POSITIVE};font-size:0.82rem;font-weight:700;'>"
+                        f"€ {_rv_s}</span></div>",
+                        unsafe_allow_html=True)
+
+                # Monthly bar chart (last 12 months)
+                import datetime as _dt2
+                _rxd_months = sorted(_rxd['monthly'].keys())[-24:]
+                if _rxd_months:
+                    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+                    _rxd_fig = go.Figure(go.Bar(
+                        x=_rxd_months,
+                        y=[_rxd['monthly'][m] for m in _rxd_months],
+                        marker_color=["#ffd600" if m == _today.strftime('%Y-%m')
+                                      else _C_POSITIVE for m in _rxd_months],
+                        text=[f"€{_rxd['monthly'][m]:,.0f}" if _rxd['monthly'][m] >= 1
+                              else f"€{_rxd['monthly'][m]:.2f}" for m in _rxd_months],
+                        textposition="outside",
+                    ))
+                    _rxd_fig.update_layout(
+                        template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG,
+                        plot_bgcolor=_C_CHART_BG, showlegend=False,
+                        height=200, margin=dict(l=5, r=5, t=20, b=5),
+                        yaxis=dict(showticklabels=False, showgrid=False),
+                        xaxis=dict(tickfont=dict(size=10)),
+                    )
+                    st.plotly_chart(_rxd_fig, use_container_width=True)
+
+            st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+            # ── Prognose + Earnings (braucht API) ────────────────────────
             _div_load_key = f"div_loaded_{_csv_key}"
 
             if not st.session_state.get(_div_load_key):
                 st.info("Lädt Ex-Dividenden-Termine und Earnings-Kalender für deine Positionen. "
                         "~5–20 Sek. je nach Portfolio-Größe — danach in dieser Sitzung gecacht.")
-                if st.button("💰 Dividenden & Earnings laden", type="primary",
+                if st.button("📈 Prognose & Earnings laden", type="primary",
                              key="btn_div_load", use_container_width=True):
                     st.session_state[_div_load_key] = True
                     st.rerun()
@@ -9389,8 +9524,8 @@ GEOGRAFISCHE VERTEILUNG:
                     st.session_state.pop(_div_load_key, None)
                     st.rerun()
 
-              # ── Dividenden-Übersicht ──────────────────────────────────
-              st.markdown("<div class='section-header'>💰 Dividenden-Übersicht</div>",
+              # ── Prognose: Jahres-Dividende ────────────────────────────
+              st.markdown("<div class='section-header'>📊 Jahres-Prognose</div>",
                           unsafe_allow_html=True)
               _dov_rows = []
               for _, _dor in stocks_etf.iterrows():
