@@ -11907,6 +11907,101 @@ if st.session_state.get("show_etf_analyzer"):
                 else:
                     st.markdown(f"**KI:** {_em['content']}")
 
+    # ── TER-Kostenrechner ─────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>💸 TER-Kostenrechner</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:14px 16px;margin-bottom:14px;color:{_C_TEXT_MUTED};font-size:0.82rem;line-height:1.55;'>"
+        f"Die Gesamtkostenquote (TER) klingt klein — wirkt sich aber erheblich auf den Vermögensaufbau aus. "
+        f"Vergleiche hier zwei ETFs und sieh, wie viel Kapital der Kostenunterschied über die Zeit kostet.</div>",
+        unsafe_allow_html=True)
+
+    _ter_default_a = round(_ei.get('ter', 0.002) * 100, 2) if _ei.get('ter') else 0.20
+    _ter_c1, _ter_c2, _ter_c3 = st.columns(3)
+    with _ter_c1:
+        _tc_ter_a = st.number_input("TER ETF A (%)", min_value=0.0, max_value=5.0,
+                                    value=_ter_default_a, step=0.01, format="%.2f",
+                                    key="tc_ter_a",
+                                    help="z.B. dieser ETF")
+        _tc_ter_b = st.number_input("TER ETF B (%)", min_value=0.0, max_value=5.0,
+                                    value=min(_ter_default_a + 0.20, 5.0), step=0.01, format="%.2f",
+                                    key="tc_ter_b",
+                                    help="Vergleichs-ETF")
+    with _ter_c2:
+        _tc_betrag = st.number_input("Anlagebetrag (€)", min_value=100, max_value=10_000_000,
+                                     value=10_000, step=500, key="tc_betrag")
+        _tc_jahre = st.slider("Anlagezeitraum (Jahre)", min_value=1, max_value=40,
+                              value=20, step=1, key="tc_jahre")
+    with _ter_c3:
+        _tc_rendite = st.slider("Jährl. Rendite vor TER (%)", min_value=0.0, max_value=20.0,
+                                value=7.0, step=0.5, key="tc_rendite")
+
+    _r_gross = _tc_rendite / 100
+    _r_a = _r_gross - _tc_ter_a / 100
+    _r_b = _r_gross - _tc_ter_b / 100
+    _years = list(range(0, _tc_jahre + 1))
+    _val_a = [_tc_betrag * (1 + _r_a) ** y for y in _years]
+    _val_b = [_tc_betrag * (1 + _r_b) ** y for y in _years]
+    _cost_diff = _val_a[-1] - _val_b[-1]
+    _annual_diff_approx = _tc_betrag * abs(_tc_ter_b - _tc_ter_a) / 100
+
+    _ter_fig = go.Figure()
+    _ter_fig.add_trace(go.Scatter(
+        x=_years, y=_val_a,
+        name=f"ETF A ({_tc_ter_a:.2f}%)",
+        line=dict(color=_C_POSITIVE, width=2),
+        fill='tozeroy', fillcolor="rgba(0,230,118,0.07)"
+    ))
+    _ter_fig.add_trace(go.Scatter(
+        x=_years, y=_val_b,
+        name=f"ETF B ({_tc_ter_b:.2f}%)",
+        line=dict(color=_C_NEGATIVE, width=2, dash='dot'),
+        fill='tozeroy', fillcolor="rgba(255,82,82,0.07)"
+    ))
+    _ter_fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color=_C_TEXT_PRIMARY, size=11),
+        xaxis=dict(title="Jahre", gridcolor=_C_BORDER, zeroline=False),
+        yaxis=dict(title="Portfoliowert (€)", gridcolor=_C_BORDER, zeroline=False,
+                   tickformat=",.0f"),
+        legend=dict(bgcolor='rgba(0,0,0,0)', font=dict(size=11)),
+        margin=dict(t=20, b=40, l=60, r=20),
+        height=280,
+    )
+    st.plotly_chart(_ter_fig, use_container_width=True, config={'displayModeBar': False})
+
+    _sm1, _sm2, _sm3 = st.columns(3)
+    _diff_sign = "günstiger" if _cost_diff >= 0 else "teurer"
+    _diff_label = "ETF A" if _cost_diff >= 0 else "ETF B"
+    with _sm1:
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+            f"padding:12px;text-align:center;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>Endwert ETF A</div>"
+            f"<div style='color:{_C_POSITIVE};font-size:1.25rem;font-weight:700;'>€{_val_a[-1]:,.0f}</div>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.66rem;'>nach {_tc_jahre} Jahren</div>"
+            f"</div>", unsafe_allow_html=True)
+    with _sm2:
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+            f"padding:12px;text-align:center;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>Endwert ETF B</div>"
+            f"<div style='color:{_C_NEGATIVE};font-size:1.25rem;font-weight:700;'>€{_val_b[-1]:,.0f}</div>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.66rem;'>nach {_tc_jahre} Jahren</div>"
+            f"</div>", unsafe_allow_html=True)
+    with _sm3:
+        _diff_clr = _C_POSITIVE if _cost_diff >= 0 else _C_NEGATIVE
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+            f"padding:12px;text-align:center;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>Kostenvorteil A</div>"
+            f"<div style='color:{_diff_clr};font-size:1.25rem;font-weight:700;'>€{abs(_cost_diff):,.0f}</div>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.66rem;'>ETF A ist {_diff_sign}</div>"
+            f"</div>", unsafe_allow_html=True)
+    st.caption(f"💡 Laufende Kosten p.a. (auf Startbetrag): ca. €{_annual_diff_approx:,.0f} Differenz · "
+               f"Zinseszinseffekt macht den Unterschied über Zeit deutlich größer.")
+
     st.stop()
 
 # ==================== MAIN DATA ====================
