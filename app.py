@@ -12317,6 +12317,230 @@ if st.session_state.get("show_etf_analyzer"):
         f"{' + Kirchensteuer' if _f1_kirche else ''} · "
         f"30% Teilfreistellung (Aktien-ETF) · vereinfacht, ohne Vorabpauschale.")
 
+    # ── P1: ETF-Overlap-Check ─────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🔀 ETF-Overlap-Check</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:14px 16px;margin-bottom:14px;color:{_C_TEXT_MUTED};font-size:0.82rem;line-height:1.55;'>"
+        f"Prüfe wie stark sich zwei ETFs überschneiden — z.B. VWCE + MSCI World haben bis zu 90% gleiche Positionen. "
+        f"Eine hohe Überschneidung bedeutet keine echte Diversifikation.</div>",
+        unsafe_allow_html=True)
+
+    _OL_DB = {
+        "VWCE.DE": ("Vanguard FTSE All-World Acc", [
+            ("AAPL","Apple",4.22),("MSFT","Microsoft",4.03),("NVDA","NVIDIA",3.48),
+            ("AMZN","Amazon",2.82),("META","Meta",1.83),("GOOGL","Alphabet A",1.71),
+            ("GOOG","Alphabet C",1.65),("TSLA","Tesla",1.12),("BRK-B","Berkshire",0.93),
+            ("JPM","JPMorgan",0.91),("AVGO","Broadcom",0.85),("LLY","Eli Lilly",0.83),
+            ("V","Visa",0.72),("UNH","UnitedHealth",0.70),("XOM","ExxonMobil",0.62),
+            ("COST","Costco",0.55),("NFLX","Netflix",0.52),("MA","Mastercard",0.50),
+            ("WMT","Walmart",0.48),("PG","Procter & Gamble",0.40),
+        ]),
+        "FWRA.DE": ("Invesco FTSE All-World Acc", [
+            ("AAPL","Apple",4.18),("MSFT","Microsoft",4.00),("NVDA","NVIDIA",3.45),
+            ("AMZN","Amazon",2.80),("META","Meta",1.80),("GOOGL","Alphabet A",1.68),
+            ("TSLA","Tesla",1.10),("BRK-B","Berkshire",0.91),("JPM","JPMorgan",0.89),
+            ("AVGO","Broadcom",0.83),("LLY","Eli Lilly",0.81),("V","Visa",0.70),
+            ("UNH","UnitedHealth",0.68),("XOM","ExxonMobil",0.60),("COST","Costco",0.53),
+            ("NFLX","Netflix",0.50),("MA","Mastercard",0.48),("WMT","Walmart",0.46),
+            ("NOVO-B.CO","Novo Nordisk",0.42),("PG","Procter & Gamble",0.39),
+        ]),
+        "SWDA.L": ("iShares MSCI World", [
+            ("AAPL","Apple",5.02),("MSFT","Microsoft",4.82),("NVDA","NVIDIA",4.20),
+            ("AMZN","Amazon",3.30),("META","Meta",2.22),("GOOGL","Alphabet A",2.00),
+            ("TSLA","Tesla",1.30),("BRK-B","Berkshire",1.12),("JPM","JPMorgan",1.10),
+            ("AVGO","Broadcom",1.02),("LLY","Eli Lilly",0.98),("V","Visa",0.88),
+            ("UNH","UnitedHealth",0.85),("XOM","ExxonMobil",0.75),("COST","Costco",0.68),
+            ("NFLX","Netflix",0.65),("MA","Mastercard",0.62),("WMT","Walmart",0.58),
+            ("PG","Procter & Gamble",0.50),("JNJ","Johnson & Johnson",0.46),
+        ]),
+        "XDWD.DE": ("Xtrackers MSCI World Swap", [
+            ("AAPL","Apple",5.00),("MSFT","Microsoft",4.80),("NVDA","NVIDIA",4.18),
+            ("AMZN","Amazon",3.28),("META","Meta",2.20),("GOOGL","Alphabet A",1.98),
+            ("TSLA","Tesla",1.28),("BRK-B","Berkshire",1.10),("JPM","JPMorgan",1.08),
+            ("AVGO","Broadcom",1.00),("LLY","Eli Lilly",0.96),("V","Visa",0.86),
+            ("UNH","UnitedHealth",0.83),("XOM","ExxonMobil",0.73),("COST","Costco",0.66),
+            ("MA","Mastercard",0.60),("WMT","Walmart",0.56),("PG","Procter & Gamble",0.48),
+            ("JNJ","Johnson & Johnson",0.44),("NFLX","Netflix",0.63),
+        ]),
+        "LCUW.DE": ("Amundi MSCI World", [
+            ("AAPL","Apple",4.95),("MSFT","Microsoft",4.75),("NVDA","NVIDIA",4.10),
+            ("AMZN","Amazon",3.22),("META","Meta",2.15),("GOOGL","Alphabet A",1.95),
+            ("TSLA","Tesla",1.25),("BRK-B","Berkshire",1.08),("JPM","JPMorgan",1.06),
+            ("AVGO","Broadcom",0.98),("LLY","Eli Lilly",0.94),("V","Visa",0.84),
+            ("UNH","UnitedHealth",0.81),("XOM","ExxonMobil",0.71),("COST","Costco",0.64),
+            ("MA","Mastercard",0.58),("WMT","Walmart",0.54),("NFLX","Netflix",0.61),
+            ("PG","Procter & Gamble",0.46),("JNJ","Johnson & Johnson",0.42),
+        ]),
+        "SXR8.DE": ("iShares Core S&P 500", [
+            ("AAPL","Apple",7.20),("MSFT","Microsoft",6.80),("NVDA","NVIDIA",6.40),
+            ("AMZN","Amazon",4.50),("META","Meta",3.00),("GOOGL","Alphabet A",2.50),
+            ("GOOG","Alphabet C",2.40),("TSLA","Tesla",1.80),("BRK-B","Berkshire",1.72),
+            ("JPM","JPMorgan",1.60),("AVGO","Broadcom",1.50),("LLY","Eli Lilly",1.40),
+            ("V","Visa",1.22),("UNH","UnitedHealth",1.18),("XOM","ExxonMobil",1.05),
+            ("COST","Costco",0.95),("NFLX","Netflix",0.90),("MA","Mastercard",0.88),
+            ("WMT","Walmart",0.82),("PG","Procter & Gamble",0.70),
+        ]),
+        "SPY5.DE": ("SPDR S&P 500", [
+            ("AAPL","Apple",7.15),("MSFT","Microsoft",6.75),("NVDA","NVIDIA",6.35),
+            ("AMZN","Amazon",4.45),("META","Meta",2.98),("GOOGL","Alphabet A",2.48),
+            ("TSLA","Tesla",1.78),("BRK-B","Berkshire",1.70),("JPM","JPMorgan",1.58),
+            ("AVGO","Broadcom",1.48),("LLY","Eli Lilly",1.38),("V","Visa",1.20),
+            ("UNH","UnitedHealth",1.16),("XOM","ExxonMobil",1.03),("COST","Costco",0.93),
+            ("NFLX","Netflix",0.88),("MA","Mastercard",0.86),("WMT","Walmart",0.80),
+            ("PG","Procter & Gamble",0.68),("JNJ","Johnson & Johnson",0.62),
+        ]),
+        "EQQQ.DE": ("Invesco Nasdaq-100", [
+            ("AAPL","Apple",9.10),("MSFT","Microsoft",8.20),("NVDA","NVIDIA",7.90),
+            ("AMZN","Amazon",5.20),("META","Meta",4.60),("TSLA","Tesla",3.10),
+            ("GOOGL","Alphabet A",3.00),("GOOG","Alphabet C",2.90),("AVGO","Broadcom",2.30),
+            ("COST","Costco",2.50),("NFLX","Netflix",1.80),("AMD","AMD",1.50),
+            ("ADBE","Adobe",1.30),("CSCO","Cisco",1.20),("INTC","Intel",0.80),
+            ("QCOM","Qualcomm",1.10),("PEP","PepsiCo",1.00),("INTU","Intuit",0.95),
+            ("AMGN","Amgen",0.90),("ISRG","Intuitive Surgical",0.85),
+        ]),
+        "MEUD.DE": ("Amundi STOXX Europe 600", [
+            ("ASML","ASML",3.60),("SAP","SAP",2.90),("NOVOB.CO","Novo Nordisk",4.10),
+            ("NESN.SW","Nestlé",2.50),("ROG.SW","Roche",2.00),("MC.PA","LVMH",1.80),
+            ("NOVN.SW","Novartis",1.80),("AZN","AstraZeneca",2.20),("SIE.DE","Siemens",1.60),
+            ("INGA.AS","ING Groep",1.20),("SAN.PA","Sanofi",1.50),("BAS.DE","BASF",0.90),
+            ("AIR.PA","Airbus",1.40),("SHEL","Shell",1.60),("BP","BP",0.95),
+            ("DBK.DE","Deutsche Bank",0.80),("ALV.DE","Allianz",1.30),("OR.PA","L'Oréal",1.20),
+            ("DHL.DE","DHL Group",0.85),("BMW.DE","BMW",0.75),
+        ]),
+        "IS3N.DE": ("iShares MSCI EM", [
+            ("2330.TW","TSMC",8.50),("005930.KS","Samsung",3.80),("RELIANCE.NS","Reliance",2.10),
+            ("9988.HK","Alibaba",2.00),("700.HK","Tencent",3.20),("3690.HK","Meituan",1.10),
+            ("INFY.NS","Infosys",1.20),("TCS.NS","TCS",1.10),("ICICIBANK.NS","ICICI Bank",1.00),
+            ("2454.TW","MediaTek",0.90),("006400.KS","Samsung SDI",0.60),
+            ("PDD","PDD Holdings",1.40),("BIDU","Baidu",0.70),("JD","JD.com",0.80),
+            ("1810.HK","Xiaomi",0.90),("9999.HK","NetEase",0.60),
+            ("ITUB","Itaú Unibanco",0.80),("VALE","Vale",0.70),
+            ("2317.TW","Foxconn",0.65),("IBN","ICICI Bank ADR",0.60),
+        ]),
+        "IUSN.DE": ("iShares MSCI World Small Cap", [
+            ("NVO","Novo Nordisk",0.40),("WSO","Watsco",0.35),("ODFL","Old Dominion",0.32),
+            ("FICO","Fair Isaac",0.30),("POOL","Pool Corp",0.28),("ELF","e.l.f. Beauty",0.25),
+            ("EWBC","East West Bancorp",0.24),("MKTX","MarketAxess",0.23),
+            ("RLI","RLI Corp",0.22),("EXPO","Exponent Inc",0.21),
+            ("CHX","ChampionX",0.20),("LMAT","LeMaitre Vascular",0.19),
+            ("MGEE","MGE Energy",0.18),("AAON","AAON Inc",0.17),
+            ("SSD","Simpson Manufacturing",0.17),("AIN","Albany International",0.16),
+            ("HCI","HCI Group",0.15),("NBTB","NBT Bancorp",0.14),
+            ("AWR","American States Water",0.13),("MGRC","McGrath RentCorp",0.12),
+        ]),
+        "VHYL.L": ("Vanguard All-World High Dividend", [
+            ("BRK-B","Berkshire",2.50),("JPM","JPMorgan",2.20),("XOM","ExxonMobil",2.10),
+            ("JNJ","Johnson & Johnson",1.80),("PG","Procter & Gamble",1.70),
+            ("ABBV","AbbVie",1.60),("CVX","Chevron",1.50),("KO","Coca-Cola",1.40),
+            ("PEP","PepsiCo",1.30),("MRK","Merck",1.20),("HD","Home Depot",1.10),
+            ("BAC","Bank of America",1.00),("WMT","Walmart",0.95),("CSCO","Cisco",0.90),
+            ("VZ","Verizon",0.85),("IBM","IBM",0.80),("PM","Philip Morris",0.78),
+            ("MO","Altria",0.72),("T","AT&T",0.70),("UNP","Union Pacific",0.65),
+        ]),
+    }
+
+    _ol_keys   = list(_OL_DB.keys())
+    _ol_labels = [f"{k} — {_OL_DB[k][0]}" for k in _ol_keys]
+    _ol_def_a  = _etf_tkr if _etf_tkr in _OL_DB else "VWCE.DE"
+    _ol_def_b  = "SXR8.DE" if _ol_def_a != "SXR8.DE" else "EQQQ.DE"
+
+    _ol_ca, _ol_cb = st.columns(2)
+    with _ol_ca:
+        _ol_sel_a = st.selectbox("ETF A", _ol_keys,
+                                 index=_ol_keys.index(_ol_def_a),
+                                 format_func=lambda k: f"{k}  ·  {_OL_DB[k][0]}",
+                                 key="ol_a")
+    with _ol_cb:
+        _ol_sel_b = st.selectbox("ETF B", _ol_keys,
+                                 index=_ol_keys.index(_ol_def_b),
+                                 format_func=lambda k: f"{k}  ·  {_OL_DB[k][0]}",
+                                 key="ol_b")
+
+    _ol_h_a = {t: (n, w) for t, n, w in _OL_DB[_ol_sel_a][1]}
+    _ol_h_b = {t: (n, w) for t, n, w in _OL_DB[_ol_sel_b][1]}
+    _ol_common = sorted(
+        [(t, _ol_h_a[t][0], _ol_h_a[t][1], _ol_h_b[t][1])
+         for t in _ol_h_a if t in _ol_h_b],
+        key=lambda x: x[2] + x[3], reverse=True
+    )
+    _ol_pct_a  = sum(w for _, _, w, _ in _ol_common)
+    _ol_pct_b  = sum(w for _, _, _, w in _ol_common)
+    _ol_unique_a = [(t, n, w) for t, (n, w) in _ol_h_a.items() if t not in _ol_h_b]
+    _ol_unique_b = [(t, n, w) for t, (n, w) in _ol_h_b.items() if t not in _ol_h_a]
+
+    _ol_m1, _ol_m2, _ol_m3 = st.columns(3)
+    for _c, _lbl, _val, _clr in [
+        (_ol_m1, f"Überschneidung in {_ol_sel_a}", f"{_ol_pct_a:.1f}%",
+         _C_NEGATIVE if _ol_pct_a > 50 else (_C_ACCENT if _ol_pct_a > 20 else _C_POSITIVE)),
+        (_ol_m2, f"Überschneidung in {_ol_sel_b}", f"{_ol_pct_b:.1f}%",
+         _C_NEGATIVE if _ol_pct_b > 50 else (_C_ACCENT if _ol_pct_b > 20 else _C_POSITIVE)),
+        (_ol_m3, "Gemeinsame Positionen", f"{len(_ol_common)} / {len(_ol_h_a)}",
+         _C_TEXT_PRIMARY),
+    ]:
+        _c.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+            f"padding:12px;text-align:center;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_lbl}</div>"
+            f"<div style='color:{_clr};font-size:1.25rem;font-weight:700;'>{_val}</div>"
+            f"</div>", unsafe_allow_html=True)
+
+    if _ol_common:
+        st.markdown(f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;font-weight:600;"
+                    f"margin:14px 0 6px 0;'>🔁 Überschneidungen (Top {min(len(_ol_common),15)})</div>",
+                    unsafe_allow_html=True)
+        _ol_rows = ""
+        for _t, _n, _wa, _wb in _ol_common[:15]:
+            _bar_a = int(_wa / 10 * 80)
+            _bar_b = int(_wb / 10 * 80)
+            _ol_rows += (
+                f"<div style='display:grid;grid-template-columns:80px 1fr 70px 1fr 70px;"
+                f"gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid {_C_BORDER}44;'>"
+                f"<div style='color:{_C_ACCENT};font-size:0.75rem;font-weight:700;'>{_t}</div>"
+                f"<div style='background:#1a2733;border-radius:3px;height:8px;overflow:hidden;'>"
+                f"<div style='background:{_C_POSITIVE};width:{_bar_a}%;height:100%;'></div></div>"
+                f"<div style='color:{_C_POSITIVE};font-size:0.72rem;text-align:right;'>{_wa:.2f}%</div>"
+                f"<div style='background:#1a2733;border-radius:3px;height:8px;overflow:hidden;'>"
+                f"<div style='background:{_C_ACCENT};width:{_bar_b}%;height:100%;'></div></div>"
+                f"<div style='color:{_C_ACCENT};font-size:0.72rem;text-align:right;'>{_wb:.2f}%</div>"
+                f"</div>"
+            )
+        _ol_hdr = (
+            f"<div style='display:grid;grid-template-columns:80px 1fr 70px 1fr 70px;"
+            f"gap:6px;padding:4px 0 6px 0;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.65rem;'>Ticker</div>"
+            f"<div style='color:{_C_POSITIVE};font-size:0.65rem;'>{_ol_sel_a}</div>"
+            f"<div></div>"
+            f"<div style='color:{_C_ACCENT};font-size:0.65rem;'>{_ol_sel_b}</div>"
+            f"<div></div></div>"
+        )
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+            f"border-radius:8px;padding:10px 14px;'>{_ol_hdr}{_ol_rows}</div>",
+            unsafe_allow_html=True)
+
+    _ol_uc_a, _ol_uc_b = st.columns(2)
+    for _uc_col, _uc_list, _uc_etf, _uc_clr in [
+        (_ol_uc_a, _ol_unique_a, _ol_sel_a, _C_POSITIVE),
+        (_ol_uc_b, _ol_unique_b, _ol_sel_b, _C_ACCENT),
+    ]:
+        if _uc_list:
+            _uc_items = "".join(
+                f"<div style='display:flex;justify-content:space-between;padding:3px 0;"
+                f"border-bottom:1px solid {_C_BORDER}33;'>"
+                f"<span style='color:{_uc_clr};font-size:0.73rem;'>{t}</span>"
+                f"<span style='color:{_C_TEXT_MUTED};font-size:0.73rem;'>{w:.2f}%</span></div>"
+                for t, _, w in sorted(_uc_list, key=lambda x: x[2], reverse=True)[:8]
+            )
+            _uc_col.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-radius:8px;padding:10px 12px;margin-top:10px;'>"
+                f"<div style='color:{_uc_clr};font-size:0.72rem;font-weight:600;"
+                f"margin-bottom:6px;'>Nur in {_uc_etf}</div>{_uc_items}</div>",
+                unsafe_allow_html=True)
+    st.caption("⚠️ Top-20-Holdings je ETF · Gewichte approximiert (Stand ~2025) · "
+               "Tatsächliche Überschneidung aller Positionen kann abweichen.")
+
     st.stop()
 
 # ==================== MAIN DATA ====================
