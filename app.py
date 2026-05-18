@@ -7470,8 +7470,9 @@ def _load_ex_div_earnings(ticker: str) -> dict:
             ed = info.get('earningsDate')
             ts = ed[0] if isinstance(ed, list) and ed else ed
         return {
-            'ex_div_date': info.get('exDividendDate'),
-            'earnings_ts': ts,
+            'ex_div_date':    info.get('exDividendDate'),
+            'earnings_ts':    ts,
+            'div_rate_native': info.get('trailingAnnualDividendRate') or 0.0,
         }
     except Exception:
         return {}
@@ -9393,11 +9394,13 @@ GEOGRAFISCHE VERTEILUNG:
                           unsafe_allow_html=True)
               _dov_rows = []
               for _, _dor in stocks_etf.iterrows():
+                _dtkr   = isin_map.get(_dor['ISIN'], '')
+                _cal    = _load_ex_div_earnings(_dtkr) if _dtkr else {}
                 _dinf   = _alloc_infos.get(_dor['ISIN'], {})
-                _drate  = float(_dinf.get('div_rate_native') or 0)
+                # prefer fresh rate from _load_ex_div_earnings (always fetched when tab loads)
+                _drate  = float(_cal.get('div_rate_native') or _dinf.get('div_rate_native') or 0)
                 if _drate <= 0:
                     continue
-                _dtkr   = isin_map.get(_dor['ISIN'], '')
                 _dfx    = quotes_ext.get(_dor['ISIN'], {}).get('fx', 1.0)
                 _dp     = prices.get(_dor['ISIN'])
                 _deur_p = _drate * _dfx              # Dividende je Anteil in EUR
@@ -9405,7 +9408,6 @@ GEOGRAFISCHE VERTEILUNG:
                 _dyoc   = (_deur_p / _dor['avg_cost'] * 100) if _dor['avg_cost'] > 0 else 0
                 _dyield = (_deur_p / _dp * 100) if (_dp and _dp > 0) else None
                 # ex-div date
-                _cal = _load_ex_div_earnings(_dtkr) if _dtkr else {}
                 _exd_ts = _cal.get('ex_div_date')
                 _exd_str = "—"
                 _exd_days = None
@@ -9426,15 +9428,17 @@ GEOGRAFISCHE VERTEILUNG:
                   st.info("Keine dividendenzahlenden Positionen im Portfolio.")
               else:
                   _dov_total = sum(r['deur_y'] for r in _dov_rows)
+                  _dov_tot_s = f"{_dov_total:,.0f}" if _dov_total >= 1 else f"{_dov_total:.2f}"
+                  _dov_mon_s = f"{_dov_total/12:,.0f}" if _dov_total/12 >= 1 else f"{_dov_total/12:.2f}"
                   st.markdown(
                       f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
                       f"border-radius:10px;padding:14px 18px;margin-bottom:14px;'>"
                       f"<div style='color:{_C_ACCENT};font-size:0.72rem;font-weight:600;"
-                      f"text-transform:uppercase;letter-spacing:.06em;'>Gesamt / Jahr</div>"
+                      f"text-transform:uppercase;letter-spacing:.06em;'>Gesamt / Jahr (Prognose)</div>"
                       f"<div style='color:#ffd600;font-size:1.6rem;font-weight:800;'>"
-                      f"€ {_dov_total:,.0f}</div>"
+                      f"€ {_dov_tot_s}</div>"
                       f"<div style='color:{_C_TEXT_MUTED};font-size:0.8rem;'>"
-                      f"≈ € {_dov_total/12:,.0f} / Monat</div></div>",
+                      f"≈ € {_dov_mon_s} / Monat</div></div>",
                       unsafe_allow_html=True)
                   _dov_rows.sort(key=lambda x: x['deur_y'], reverse=True)
                   for _dr in _dov_rows:
@@ -9444,6 +9448,8 @@ GEOGRAFISCHE VERTEILUNG:
                                   else _C_TEXT_MUTED)
                       _exd_tag    = ""
                       _yield_s    = f"Rendite {_dr['yield']:.2f}%" if _dr['yield'] is not None else "—"
+                      _deur_y_s   = (f"{_dr['deur_y']:,.0f}" if _dr['deur_y'] >= 1
+                                     else f"{_dr['deur_y']:.2f}")
                       if _dr['ex_days'] is not None and 0 <= _dr['ex_days'] <= 30:
                           _exd_tag = (f"<span style='background:{_C_POSITIVE}22;color:{_C_POSITIVE};"
                                       f"font-size:0.65rem;padding:1px 6px;border-radius:4px;"
@@ -9454,7 +9460,7 @@ GEOGRAFISCHE VERTEILUNG:
                           f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;flex:1;"
                           f"min-width:140px;'>{_dr['name']}</span>"
                           f"<span style='color:#ffd600;font-size:0.82rem;font-weight:700;"
-                          f"min-width:80px;text-align:right;'>€ {_dr['deur_y']:,.0f}/J</span>"
+                          f"min-width:80px;text-align:right;'>€ {_deur_y_s}/J</span>"
                           f"<span style='color:{_C_TEXT_MUTED};font-size:0.78rem;"
                           f"min-width:60px;text-align:right;'>YoC {_dr['yoc']:.2f}%</span>"
                           f"<span style='color:{_C_TEXT_MUTED};font-size:0.78rem;"
