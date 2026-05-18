@@ -12119,6 +12119,94 @@ if st.session_state.get("show_etf_analyzer"):
     st.caption(f"💡 Laufende Kosten p.a. (auf Startbetrag): ca. €{_annual_diff_approx:,.0f} Differenz · "
                f"Zinseszinseffekt macht den Unterschied über Zeit deutlich größer.")
 
+    # ── ETF-Sparplanrechner ───────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📅 ETF-Sparplanrechner</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:14px 16px;margin-bottom:14px;color:{_C_TEXT_MUTED};font-size:0.82rem;line-height:1.55;'>"
+        f"Berechne wie sich dein Vermögen durch regelmäßiges Investieren entwickelt — "
+        f"inklusive Zinseszinseffekt und optionaler Einmalanlage.</div>",
+        unsafe_allow_html=True)
+
+    _sp_c1, _sp_c2, _sp_c3 = st.columns(3)
+    with _sp_c1:
+        _sp_rate    = st.number_input("Monatliche Sparrate (€)", min_value=0, max_value=100_000,
+                                      value=200, step=50, key="sp_rate")
+        _sp_einmal  = st.number_input("Einmalanlage (€)", min_value=0, max_value=10_000_000,
+                                      value=0, step=500, key="sp_einmal")
+    with _sp_c2:
+        _sp_jahre   = st.slider("Anlagezeitraum (Jahre)", min_value=1, max_value=50,
+                                value=20, step=1, key="sp_jahre")
+        _sp_rendite = st.slider("Jährl. Rendite vor TER (%)", min_value=0.0, max_value=20.0,
+                                value=7.0, step=0.5, key="sp_rendite")
+    with _sp_c3:
+        _sp_ter     = st.number_input("TER (%)", min_value=0.0, max_value=5.0,
+                                      value=_ter_default_a, step=0.01, format="%.2f",
+                                      key="sp_ter",
+                                      help="Vorausgefüllt mit TER dieses ETFs")
+
+    _sp_r_net = (_sp_rendite - _sp_ter) / 100
+    _sp_r_mon = (1 + _sp_r_net) ** (1 / 12) - 1
+
+    _sp_years_list  = list(range(_sp_jahre + 1))
+    _sp_portfolio   = []
+    _sp_invested    = []
+    for _y in _sp_years_list:
+        _months = _y * 12
+        _pf = _sp_einmal * (1 + _sp_r_mon) ** _months
+        if _sp_r_mon > 0:
+            _pf += _sp_rate * ((1 + _sp_r_mon) ** _months - 1) / _sp_r_mon * (1 + _sp_r_mon)
+        else:
+            _pf += _sp_rate * _months
+        _sp_portfolio.append(_pf)
+        _sp_invested.append(_sp_einmal + _sp_rate * _months)
+
+    _sp_final    = _sp_portfolio[-1]
+    _sp_inv_tot  = _sp_invested[-1]
+    _sp_gewinn   = _sp_final - _sp_inv_tot
+    _sp_faktor   = _sp_final / _sp_inv_tot if _sp_inv_tot > 0 else 1.0
+
+    _sp_fig = go.Figure()
+    _sp_fig.add_trace(go.Scatter(
+        x=_sp_years_list, y=_sp_invested,
+        name="Eingezahltes Kapital",
+        line=dict(color=_C_TEXT_MUTED, width=1.5, dash='dot'),
+        fill='tozeroy', fillcolor="rgba(100,181,246,0.08)"
+    ))
+    _sp_fig.add_trace(go.Scatter(
+        x=_sp_years_list, y=_sp_portfolio,
+        name="Portfoliowert",
+        line=dict(color=_C_POSITIVE, width=2.5),
+        fill='tonexty', fillcolor="rgba(0,230,118,0.10)"
+    ))
+    _sp_fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color=_C_TEXT_PRIMARY, size=11),
+        xaxis=dict(title="Jahre", gridcolor=_C_BORDER, zeroline=False),
+        yaxis=dict(title="Wert (€)", gridcolor=_C_BORDER, zeroline=False, tickformat=",.0f"),
+        legend=dict(bgcolor='rgba(0,0,0,0)', font=dict(size=11), orientation='h', y=1.08),
+        margin=dict(t=30, b=40, l=60, r=20),
+        height=280,
+    )
+    st.plotly_chart(_sp_fig, use_container_width=True, config={'displayModeBar': False})
+
+    _sp_s1, _sp_s2, _sp_s3, _sp_s4 = st.columns(4)
+    for _col, _label, _val, _clr in [
+        (_sp_s1, "Endvermögen",        f"€{_sp_final:,.0f}",   _C_POSITIVE),
+        (_sp_s2, "Eingezahlt",         f"€{_sp_inv_tot:,.0f}", _C_TEXT_PRIMARY),
+        (_sp_s3, "Kursgewinne",        f"€{_sp_gewinn:,.0f}",  _C_POSITIVE if _sp_gewinn >= 0 else _C_NEGATIVE),
+        (_sp_s4, "Vermögensfaktor",    f"{_sp_faktor:.1f}x",   _C_ACCENT),
+    ]:
+        _col.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+            f"padding:12px;text-align:center;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_label}</div>"
+            f"<div style='color:{_clr};font-size:1.2rem;font-weight:700;'>{_val}</div>"
+            f"</div>", unsafe_allow_html=True)
+    st.caption(f"💡 Rendite nach TER: {_sp_rendite - _sp_ter:.2f}% p.a. · "
+               f"Monatliche Sparrate {_sp_rate}€ × {_sp_jahre} Jahre + Einmalanlage €{_sp_einmal:,}")
+
     st.stop()
 
 # ==================== MAIN DATA ====================
