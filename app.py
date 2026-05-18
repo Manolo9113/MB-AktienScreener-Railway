@@ -7527,15 +7527,29 @@ elif st.session_state.get("show_stocks"):
 @st.cache_data(ttl=43200, show_spinner=False)
 def _load_ex_div_earnings(ticker: str) -> dict:
     try:
-        info = yf.Ticker(ticker).info
+        t_obj = yf.Ticker(ticker)
+        info  = t_obj.info
         ts = info.get('earningsTimestamp')
         if not ts:
             ed = info.get('earningsDate')
             ts = ed[0] if isinstance(ed, list) and ed else ed
+        # Historical dividends per share — last 24 months grouped by YYYY-MM
+        div_monthly: dict = {}
+        try:
+            divs = t_obj.dividends
+            if divs is not None and not divs.empty:
+                cutoff = pd.Timestamp.today() - pd.DateOffset(months=24)
+                divs   = divs[divs.index >= cutoff]
+                for dt, amt in divs.items():
+                    ym = dt.strftime('%Y-%m')
+                    div_monthly[ym] = div_monthly.get(ym, 0.0) + float(amt)
+        except Exception:
+            pass
         return {
             'ex_div_date':    info.get('exDividendDate'),
             'earnings_ts':    ts,
             'div_rate_native': info.get('trailingAnnualDividendRate') or 0.0,
+            'div_monthly':    div_monthly,
         }
     except Exception:
         return {}
@@ -9439,8 +9453,9 @@ GEOGRAFISCHE VERTEILUNG:
                         unsafe_allow_html=True)
             _rxd = _calc_received_dividends(_csv_b)
             if not _rxd:
-                st.info("Keine Dividenden-/Ausschüttungsbuchungen in der CSV gefunden. "
-                        "Finanzen.net Zero bucht Dividenden als 'Dividende' oder 'Ausschüttung'.")
+                st.info("Dein Broker exportiert keine Dividenden in die CSV. "
+                        "Lade unten 'Prognose & Earnings' — dort wird die Dividendenhistorie "
+                        "direkt über yFinance (Schätzung auf Basis aktueller Anteile) geladen.")
             else:
                 _rxd_periods = ["1M", "3M", "YTD", "1J", "3J", "5J", "Max"]
                 _rxd_per = st.radio("Zeitraum", _rxd_periods, index=3,
@@ -9541,6 +9556,75 @@ GEOGRAFISCHE VERTEILUNG:
                     _load_ex_div_earnings.clear()
                     st.session_state.pop(_div_load_key, None)
                     st.rerun()
+
+              # ── Historische Dividenden (yFinance × aktuelle Anteile) ─────
+              st.markdown("<div class='section-header'>📅 Historische Dividenden</div>",
+                          unsafe_allow_html=True)
+              st.caption("Schätzung: yFinance-Zahlungsdaten × aktuelle Anteile. "
+                         "Abweichungen möglich wenn Anteile sich verändert haben.")
+              _hist_monthly: dict = {}
+              _hist_by_pos: dict  = {}
+              for _, _hor in stocks_etf.iterrows():
+                  _htkr  = isin_map.get(_hor['ISIN'], '')
+                  if not _htkr:
+                      continue
+                  _hcal  = _load_ex_div_earnings(_htkr)
+                  _hdm   = _hcal.get('div_monthly', {})
+                  _hfx   = quotes_ext.get(_hor['ISIN'], {}).get('fx', 1.0)
+                  _hsh   = _hor['shares']
+                  for _hym, _hamt in _hdm.items():
+                      _heur = _hamt * _hfx * _hsh
+                      _hist_monthly[_hym] = _hist_monthly.get(_hym, 0.0) + _heur
+                      _hist_by_pos[_hor['name'][:28]] = (
+                          _hist_by_pos.get(_hor['name'][:28], 0.0) + _heur)
+              _hist_months_show = sorted(_hist_monthly.keys())[-13:]
+              if not _hist_monthly:
+                  st.info("Keine historischen Dividendenzahlungen in yFinance gefunden.")
+              else:
+                  _hist_total = sum(_hist_monthly.values())
+                  _hist_s = f"{_hist_total:,.2f}" if _hist_total < 10 else f"{_hist_total:,.0f}"
+                  st.markdown(
+                      f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                      f"border-radius:10px;padding:12px 16px;margin-bottom:10px;'>"
+                      f"<div style='color:{_C_ACCENT};font-size:0.70rem;font-weight:600;"
+                      f"text-transform:uppercase;'>Gesamt (letzte 24 Monate)</div>"
+                      f"<div style='color:{_C_POSITIVE};font-size:1.5rem;font-weight:800;'>"
+                      f"€ {_hist_s}</div></div>",
+                      unsafe_allow_html=True)
+                  _cur_ym = _today.strftime('%Y-%m')
+                  _hfig = go.Figure(go.Bar(
+                      x=_hist_months_show,
+                      y=[_hist_monthly[m] for m in _hist_months_show],
+                      marker_color=["#ffd600" if m == _cur_ym else _C_POSITIVE
+                                    for m in _hist_months_show],
+                      text=[f"€{_hist_monthly[m]:,.0f}" if _hist_monthly[m] >= 1
+                            else f"€{_hist_monthly[m]:.2f}" for m in _hist_months_show],
+                      textposition="outside",
+                  ))
+                  _hfig.update_layout(
+                      template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG,
+                      plot_bgcolor=_C_CHART_BG, showlegend=False,
+                      height=210, margin=dict(l=5, r=5, t=22, b=5),
+                      yaxis=dict(showticklabels=False, showgrid=False),
+                      xaxis=dict(tickfont=dict(size=9)),
+                  )
+                  st.plotly_chart(_hfig, use_container_width=True)
+                  for _hn, _hv in sorted(_hist_by_pos.items(), key=lambda x: x[1], reverse=True):
+                      if _hv < 0.01:
+                          continue
+                      _hv_s = f"{_hv:.2f}" if _hv < 10 else f"{_hv:,.0f}"
+                      _hpct = _hv / _hist_total * 100 if _hist_total > 0 else 0
+                      st.markdown(
+                          f"<div style='display:flex;align-items:center;gap:6px;padding:6px 4px;"
+                          f"border-bottom:1px solid {_C_BORDER};'>"
+                          f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;flex:1;'>{_hn}</span>"
+                          f"<span style='color:{_C_TEXT_MUTED};font-size:0.74rem;margin-right:6px;'>"
+                          f"{_hpct:.0f}%</span>"
+                          f"<span style='color:{_C_POSITIVE};font-size:0.82rem;font-weight:700;'>"
+                          f"€ {_hv_s}</span></div>",
+                          unsafe_allow_html=True)
+
+              st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
               # ── Prognose: Jahres-Dividende ────────────────────────────
               st.markdown("<div class='section-header'>📊 Jahres-Prognose</div>",
