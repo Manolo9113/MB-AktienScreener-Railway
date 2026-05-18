@@ -12207,6 +12207,116 @@ if st.session_state.get("show_etf_analyzer"):
     st.caption(f"💡 Rendite nach TER: {_sp_rendite - _sp_ter:.2f}% p.a. · "
                f"Monatliche Sparrate {_sp_rate}€ × {_sp_jahre} Jahre + Einmalanlage €{_sp_einmal:,}")
 
+    # ── F1: Ausschüttend vs Thesaurierend ────────────────────────────────
+    st.markdown("<div class='section-header'>⚖️ Ausschüttend vs Thesaurierend</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:14px 16px;margin-bottom:14px;color:{_C_TEXT_MUTED};font-size:0.82rem;line-height:1.55;'>"
+        f"<b style='color:{_C_TEXT_PRIMARY}'>Thesaurierend</b>: Dividenden werden automatisch reinvestiert — "
+        f"Steuer erst beim Verkauf (+ Vorabpauschale, hier vereinfacht). "
+        f"<b style='color:{_C_TEXT_PRIMARY}'>Ausschüttend</b>: Dividenden werden jährlich ausgezahlt und sofort "
+        f"versteuert (26,375% nach 30% Teilfreistellung, Sparerpauschbetrag wird angerechnet).</div>",
+        unsafe_allow_html=True)
+
+    _f1_c1, _f1_c2, _f1_c3 = st.columns(3)
+    with _f1_c1:
+        _f1_betrag  = st.number_input("Einmalbetrag (€)", min_value=100, max_value=10_000_000,
+                                      value=10_000, step=500, key="f1_betrag")
+        _f1_rendite = st.slider("Gesamtrendite p.a. (%)", min_value=0.0, max_value=20.0,
+                                value=7.0, step=0.5, key="f1_rendite")
+    with _f1_c2:
+        _f1_div_y   = st.slider("Davon Dividendenrendite (%)", min_value=0.0, max_value=10.0,
+                                value=2.0, step=0.25, key="f1_div_y")
+        _f1_jahre   = st.slider("Laufzeit (Jahre)", min_value=1, max_value=50,
+                                value=20, step=1, key="f1_jahre")
+    with _f1_c3:
+        _f1_pausch  = st.number_input("Sparerpauschbetrag (€)", min_value=0, max_value=2000,
+                                      value=1000, step=100, key="f1_pausch",
+                                      help="1.000€ Einzelperson, 2.000€ Ehepaar")
+        _f1_kirche  = st.toggle("Kirchensteuer (9%)", value=False, key="f1_kirche")
+
+    _f1_steuer_satz = 0.26375 * (1.09 if _f1_kirche else 1.0)
+    _f1_teilfrei    = 0.30
+    _f1_eff_satz    = _f1_steuer_satz * (1 - _f1_teilfrei)
+    _f1_r           = _f1_rendite / 100
+    _f1_div         = _f1_div_y / 100
+    _f1_price_r     = _f1_r - _f1_div
+
+    # Thesaurierend: Steuerstundung bis Verkauf
+    _f1_thes_gross = [_f1_betrag * (1 + _f1_r) ** y for y in range(_f1_jahre + 1)]
+    _f1_thes_net   = []
+    for _y, _v in enumerate(_f1_thes_gross):
+        _gain = max(0, _v - _f1_betrag)
+        _tax  = _gain * _f1_eff_satz
+        _f1_thes_net.append(_v - _tax)
+
+    # Ausschüttend: jährliche Dividendenbesteuerung
+    _f1_aus_gross = [_f1_betrag]
+    _f1_aus_tax_paid = 0.0
+    _f1_pausch_rem = float(_f1_pausch)
+    for _ in range(_f1_jahre):
+        _pv = _f1_aus_gross[-1]
+        _div_gross   = _pv * _f1_div
+        _div_taxable = _div_gross * (1 - _f1_teilfrei)
+        _div_after_p = max(0.0, _div_taxable - _f1_pausch_rem)
+        _div_tax     = _div_after_p * _f1_steuer_satz
+        _f1_aus_tax_paid += _div_tax
+        _div_net     = _div_gross - _div_tax
+        _pv_new      = _pv * (1 + _f1_price_r) + _div_net
+        _f1_aus_gross.append(_pv_new)
+        _f1_pausch_rem = max(0.0, _f1_pausch_rem - _div_taxable)
+
+    _f1_aus_net = []
+    for _y, _v in enumerate(_f1_aus_gross):
+        _price_gain = max(0, _v - _f1_betrag)
+        _final_tax  = _price_gain * _f1_eff_satz
+        _f1_aus_net.append(_v - _final_tax)
+
+    _f1_years = list(range(_f1_jahre + 1))
+    _f1_fig   = go.Figure()
+    _f1_fig.add_trace(go.Scatter(
+        x=_f1_years, y=_f1_thes_net,
+        name="Thesaurierend (netto)",
+        line=dict(color=_C_POSITIVE, width=2.5),
+    ))
+    _f1_fig.add_trace(go.Scatter(
+        x=_f1_years, y=_f1_aus_net,
+        name="Ausschüttend (netto)",
+        line=dict(color=_C_ACCENT, width=2, dash='dot'),
+    ))
+    _f1_fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color=_C_TEXT_PRIMARY, size=11),
+        xaxis=dict(title="Jahre", gridcolor=_C_BORDER, zeroline=False),
+        yaxis=dict(title="Nettowert (€)", gridcolor=_C_BORDER, zeroline=False, tickformat=",.0f"),
+        legend=dict(bgcolor='rgba(0,0,0,0)', font=dict(size=11), orientation='h', y=1.08),
+        margin=dict(t=30, b=40, l=60, r=20),
+        height=270,
+    )
+    st.plotly_chart(_f1_fig, use_container_width=True, config={'displayModeBar': False})
+
+    _f1_thes_end = _f1_thes_net[-1]
+    _f1_aus_end  = _f1_aus_net[-1]
+    _f1_vorteil  = _f1_thes_end - _f1_aus_end
+    _f1_t1, _f1_t2, _f1_t3, _f1_t4 = st.columns(4)
+    for _col, _label, _val, _clr in [
+        (_f1_t1, "Thesaurierend netto",  f"€{_f1_thes_end:,.0f}", _C_POSITIVE),
+        (_f1_t2, "Ausschüttend netto",   f"€{_f1_aus_end:,.0f}",  _C_ACCENT),
+        (_f1_t3, "Vorteil Thesaurierend",f"€{_f1_vorteil:,.0f}",  _C_POSITIVE if _f1_vorteil >= 0 else _C_NEGATIVE),
+        (_f1_t4, "Gezahlte Div.-Steuer", f"€{_f1_aus_tax_paid:,.0f}", _C_NEGATIVE),
+    ]:
+        _col.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+            f"padding:12px;text-align:center;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_label}</div>"
+            f"<div style='color:{_clr};font-size:1.2rem;font-weight:700;'>{_val}</div>"
+            f"</div>", unsafe_allow_html=True)
+    st.caption(
+        f"Steuermodell DE: {_f1_steuer_satz*100:.3f}% Abgeltungsteuer + Soli"
+        f"{' + Kirchensteuer' if _f1_kirche else ''} · "
+        f"30% Teilfreistellung (Aktien-ETF) · vereinfacht, ohne Vorabpauschale.")
+
     st.stop()
 
 # ==================== MAIN DATA ====================
