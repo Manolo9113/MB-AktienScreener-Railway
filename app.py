@@ -7465,9 +7465,13 @@ elif st.session_state.get("show_stocks"):
 def _load_ex_div_earnings(ticker: str) -> dict:
     try:
         info = yf.Ticker(ticker).info
+        ts = info.get('earningsTimestamp')
+        if not ts:
+            ed = info.get('earningsDate')
+            ts = ed[0] if isinstance(ed, list) and ed else ed
         return {
             'ex_div_date': info.get('exDividendDate'),
-            'earnings_ts': info.get('earningsTimestamp') or info.get('earningsDate'),
+            'earnings_ts': ts,
         }
     except Exception:
         return {}
@@ -9486,7 +9490,7 @@ GEOGRAFISCHE VERTEILUNG:
                 try:
                     _ed = _divdt.date.fromtimestamp(int(_ets))
                     _days_to = (_ed - _today).days
-                    if _days_to > -7:
+                    if -7 < _days_to <= 90:
                         _earn_rows.append({
                             'name': _er['name'][:32], 'ticker': _etkr,
                             'date': _ed, 'days': _days_to,
@@ -9729,7 +9733,9 @@ GEOGRAFISCHE VERTEILUNG:
                                "Beta vs. MSCI World (SXR8.DE). "
                                "Sharpe: Risikofreier Zins 3% p.a. | Nur Einzelaktien, keine ETFs.")
                 else:
-                    st.info("Keine Einzelaktienpositionen für Risikoberechnung gefunden.")
+                    st.info("Keine Einzelaktienpositionen für Risikoberechnung gefunden. "
+                            "ETFs werden aus der Einzeltitelanalyse ausgeschlossen — "
+                            "Portfolio-Kennzahlen benötigen mindestens eine Einzelaktie mit Kursdaten.")
 
           except Exception as _e_risk:
               st.error(f"Fehler im Risiko-Tab: {_e_risk}")
