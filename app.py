@@ -7461,6 +7461,38 @@ elif st.session_state.get("show_stocks"):
 
     st.stop()
 
+@st.cache_data(ttl=43200, show_spinner=False)
+def _load_ex_div_earnings(ticker: str) -> dict:
+    try:
+        info = yf.Ticker(ticker).info
+        return {
+            'ex_div_date': info.get('exDividendDate'),
+            'earnings_ts': info.get('earningsTimestamp') or info.get('earningsDate'),
+        }
+    except Exception:
+        return {}
+
+@st.cache_data(ttl=43200, show_spinner=False)
+def _load_portfolio_risk_data(tickers_tuple: tuple, period: str = "1y") -> dict:
+    if not tickers_tuple:
+        return {}
+    try:
+        all_t = list(tickers_tuple)
+        raw = yf.download(all_t + ["SXR8.DE"], period=period,
+                          auto_adjust=True, progress=False, threads=True)
+        if raw.empty:
+            return {}
+        close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else raw
+        result = {}
+        for t in all_t + ["SXR8.DE"]:
+            if t in close.columns:
+                s = close[t].dropna()
+                if len(s) > 20:
+                    result[t] = s
+        return result
+    except Exception:
+        return {}
+
 # ==================== PORTFOLIO PAGE ====================
 if st.session_state.get("show_portfolio"):
     # ── Passwortschutz ────────────────────────────────────────────────────
@@ -7995,8 +8027,9 @@ if st.session_state.get("show_portfolio"):
                 st.session_state["show_landing"] = False
                 st.rerun()
 
-        tab_pos, tab_alloc, tab_perf, tab_holdings, tab_ki = st.tabs(
-            ["📊 Positionen", "🥧 Aufteilung", "📈 Performance", "🔍 Holdings", "🤖 KI-Analyse"])
+        tab_pos, tab_alloc, tab_perf, tab_holdings, tab_ki, tab_div, tab_risk = st.tabs(
+            ["📊 Positionen", "🥧 Aufteilung", "📈 Performance", "🔍 Holdings",
+             "🤖 KI-Analyse", "💰 Dividenden", "⚡ Risiko"])
 
         # ── Disk-Cache für Sektor-/Analyst-Daten laden (überlebt Deploys) ──────
         _disk_sec_cache = _load_isin_sector_cache()
@@ -8093,9 +8126,16 @@ if st.session_state.get("show_portfolio"):
                             f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.88rem;font-weight:600;'>{row['shares']:.4f}</div>",
                             unsafe_allow_html=True)
                     with c3:
+                        _drate_yoc = float(_inf.get('div_rate_native') or 0)
+                        _fx_yoc    = _qx.get('fx', 1.0)
+                        _yoc_pct   = (_drate_yoc * _fx_yoc / row['avg_cost'] * 100
+                                      if _drate_yoc > 0 and row['avg_cost'] > 0 else 0)
+                        _yoc_h = (f"<div style='color:#ffd600;font-size:0.68rem;'>"
+                                  f"YoC {_yoc_pct:.2f}%</div>") if _yoc_pct > 0 else ""
                         st.markdown(
                             f"<div style='color:#78909c;font-size:0.72rem;'>Ø Kurs</div>"
-                            f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.88rem;font-weight:600;'>€ {row['avg_cost']:.2f}</div>",
+                            f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.88rem;font-weight:600;'>€ {row['avg_cost']:.2f}</div>"
+                            f"{_yoc_h}",
                             unsafe_allow_html=True)
                     with c4:
                         if cur_price:
@@ -8186,7 +8226,49 @@ if st.session_state.get("show_portfolio"):
                         f"</div></div>",
                         unsafe_allow_html=True)
 
-            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+            # ── 52-Wochen-Heatmap ────────────────────────────────────
+            _hm_items = []
+            for _, _hr in stocks_etf.iterrows():
+                _hq = quotes_ext.get(_hr['ISIN'], {})
+                _hp = prices.get(_hr['ISIN'])
+                _hyh, _hyl = _hq.get('year_high_eur'), _hq.get('year_low_eur')
+                if _hp and _hyh and _hyl and _hyh > _hyl:
+                    _hpos = max(0.0, min(100.0, (_hp - _hyl) / (_hyh - _hyl) * 100))
+                    _hm_items.append({'name': _hr['name'][:20], 'pos': _hpos,
+                                      'ticker': isin_map.get(_hr['ISIN'], '')})
+            if _hm_items:
+                with st.expander(f"🌡️ 52-Wochen-Heatmap ({len(_hm_items)} Positionen)", expanded=False):
+                    _hm_items.sort(key=lambda x: x['pos'], reverse=True)
+                    _hm_cols = st.columns(3)
+                    for _hi, _hitem in enumerate(_hm_items):
+                        _p = _hitem['pos']
+                        if _p >= 66:   _hbg, _htxt = "#1b5e2088", _C_POSITIVE
+                        elif _p >= 33: _hbg, _htxt = "#e65100" + "55", _C_NEUTRAL
+                        else:          _hbg, _htxt = "#b71c1c88", _C_NEGATIVE
+                        _hfill = min(int(_p), 100)
+                        with _hm_cols[_hi % 3]:
+                            st.markdown(
+                                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                                f"border-radius:8px;padding:8px 10px;margin-bottom:6px;'>"
+                                f"<div style='display:flex;justify-content:space-between;"
+                                f"align-items:baseline;'>"
+                                f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;"
+                                f"font-weight:600;'>{_hitem['name']}</span>"
+                                f"<span style='color:{_htxt};font-size:0.72rem;font-weight:700;'>"
+                                f"{_p:.0f}%</span></div>"
+                                f"<div style='background:#1a2740;border-radius:3px;height:5px;"
+                                f"margin-top:4px;'>"
+                                f"<div style='background:{_htxt};width:{_hfill}%;height:5px;"
+                                f"border-radius:3px;'></div></div>"
+                                f"<div style='display:flex;justify-content:space-between;"
+                                f"color:{_C_TEXT_MUTED};font-size:0.62rem;margin-top:2px;'>"
+                                f"<span>52W-Tief</span><span>52W-Hoch</span></div></div>",
+                                unsafe_allow_html=True)
+                    st.caption("🟢 Nahe 52W-Hoch  🟡 Mitte  🔴 Nahe 52W-Tief")
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
             # ── Positions-Donut ──────────────────────────────────────
             _dn_labels, _dn_values = [], []
@@ -8581,6 +8663,45 @@ if st.session_state.get("show_portfolio"):
                         f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.8rem;font-weight:600;min-width:40px;text-align:right;'>"
                         f"{_ps:.1f}%</div></div>",
                         unsafe_allow_html=True)
+                # ── Rebalancing-Hinweis ───────────────────────────────
+                st.markdown("<div class='section-header'>⚖️ Rebalancing-Hinweis</div>",
+                            unsafe_allow_html=True)
+                _rb_items = []
+                for _, _rbr in stocks_etf.iterrows():
+                    _rbp = prices.get(_rbr['ISIN'])
+                    _rbv = max(0.0, (_rbp if _rbp else _rbr['avg_cost']) * _rbr['shares'])
+                    if _rbv > 0:
+                        _rb_items.append({'name': _rbr['name'][:34], 'val': _rbv})
+                if len(_rb_items) >= 2:
+                    _rb_total = sum(r['val'] for r in _rb_items)
+                    _rb_target = 100.0 / len(_rb_items)
+                    for _rbi in _rb_items:
+                        _rbi['pct']  = _rbi['val'] / _rb_total * 100
+                        _rbi['diff'] = _rbi['pct'] - _rb_target
+                    _rb_items.sort(key=lambda x: x['diff'], reverse=True)
+                    st.caption(f"Gleichgewichtung: {_rb_target:.1f}% je Position ({len(_rb_items)} Aktien/ETFs). "
+                               "Abweichung in Prozentpunkten.")
+                    for _rbi in _rb_items:
+                        _dv     = _rbi['diff']
+                        _bar_c  = _C_NEGATIVE if _dv > 5 else _C_POSITIVE if _dv < -5 else "#546e7a"
+                        _label  = "übergewichtet" if _dv > 5 else "untergewichtet" if _dv < -5 else "ok"
+                        _w_over = max(0, min(80, int(abs(_dv) * 4)))
+                        st.markdown(
+                            f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
+                            f"<span style='color:{_C_TEXT_MUTED2};font-size:0.76rem;min-width:190px;'>"
+                            f"{_rbi['name']}</span>"
+                            f"<span style='color:{_C_TEXT_MUTED};font-size:0.74rem;min-width:42px;"
+                            f"text-align:right;'>{_rbi['pct']:.1f}%</span>"
+                            f"<div style='background:#1a2740;border-radius:3px;width:80px;height:7px;"
+                            f"position:relative;'>"
+                            f"<div style='position:absolute;left:{'50%' if _dv >= 0 else str(50-_w_over//2)+'%'};"
+                            f"background:{_bar_c};width:{_w_over}%;height:7px;border-radius:3px;'></div>"
+                            f"<div style='position:absolute;left:50%;top:0;width:1px;height:7px;"
+                            f"background:#37474f;'></div></div>"
+                            f"<span style='color:{_bar_c};font-size:0.74rem;min-width:70px;'>"
+                            f"{_dv:+.1f} pp · {_label}</span></div>",
+                            unsafe_allow_html=True)
+
           except Exception as _e_alloc:
               st.error(f"Fehler im Aufteilung-Tab: {_e_alloc}")
 
@@ -9239,6 +9360,380 @@ GEOGRAFISCHE VERTEILUNG:
 
           except Exception as _e_ki:
               st.error(f"Fehler im KI-Analyse-Tab: {_e_ki}")
+
+        with tab_div:
+          try:
+            import datetime as _divdt
+            _today = _divdt.date.today()
+
+            # ── Dividenden-Übersicht ──────────────────────────────────
+            st.markdown("<div class='section-header'>💰 Dividenden-Übersicht</div>",
+                        unsafe_allow_html=True)
+            _dov_rows = []
+            for _, _dor in stocks_etf.iterrows():
+                _dinf   = _alloc_infos.get(_dor['ISIN'], {})
+                _drate  = float(_dinf.get('div_rate_native') or 0)
+                if _drate <= 0:
+                    continue
+                _dtkr   = isin_map.get(_dor['ISIN'], '')
+                _dfx    = quotes_ext.get(_dor['ISIN'], {}).get('fx', 1.0)
+                _dp     = prices.get(_dor['ISIN'])
+                _deur_p = _drate * _dfx              # Dividende je Anteil in EUR
+                _deur_y = _deur_p * _dor['shares']   # Jahres-Dividende gesamt EUR
+                _dyoc   = (_deur_p / _dor['avg_cost'] * 100) if _dor['avg_cost'] > 0 else 0
+                _dyield = (_deur_p / _dp * 100) if (_dp and _dp > 0) else None
+                # ex-div date
+                _cal = _load_ex_div_earnings(_dtkr) if _dtkr else {}
+                _exd_ts = _cal.get('ex_div_date')
+                _exd_str = "—"
+                _exd_days = None
+                if _exd_ts:
+                    try:
+                        _exd = _divdt.date.fromtimestamp(int(_exd_ts))
+                        _exd_str  = _exd.strftime("%d.%m.%Y")
+                        _exd_days = (_exd - _today).days
+                    except Exception:
+                        pass
+                _dov_rows.append({
+                    'name': _dor['name'][:32], 'ticker': _dtkr,
+                    'deur_y': _deur_y, 'deur_p': _deur_p,
+                    'yoc': _dyoc, 'yield': _dyield,
+                    'ex_div': _exd_str, 'ex_days': _exd_days,
+                })
+            if not _dov_rows:
+                st.info("Keine dividendenzahlenden Positionen im Portfolio.")
+            else:
+                _dov_total = sum(r['deur_y'] for r in _dov_rows)
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:14px 18px;margin-bottom:14px;'>"
+                    f"<div style='color:{_C_ACCENT};font-size:0.72rem;font-weight:600;"
+                    f"text-transform:uppercase;letter-spacing:.06em;'>Gesamt / Jahr</div>"
+                    f"<div style='color:#ffd600;font-size:1.6rem;font-weight:800;'>"
+                    f"€ {_dov_total:,.0f}</div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.8rem;'>"
+                    f"≈ € {_dov_total/12:,.0f} / Monat</div></div>",
+                    unsafe_allow_html=True)
+                _dov_rows.sort(key=lambda x: x['deur_y'], reverse=True)
+                for _dr in _dov_rows:
+                    _exd_clr = (_C_POSITIVE if (_dr['ex_days'] or 999) < 30
+                                else _C_NEUTRAL if (_dr['ex_days'] or 999) < 90
+                                else _C_TEXT_MUTED)
+                    _exd_tag = ""
+                    if _dr['ex_days'] is not None and 0 <= _dr['ex_days'] <= 30:
+                        _exd_tag = (f"<span style='background:{_C_POSITIVE}22;color:{_C_POSITIVE};"
+                                    f"font-size:0.65rem;padding:1px 6px;border-radius:4px;"
+                                    f"font-weight:700;'>in {_dr['ex_days']}d</span> ")
+                    st.markdown(
+                        f"<div style='display:flex;align-items:center;gap:6px;padding:7px 4px;"
+                        f"border-bottom:1px solid {_C_BORDER};flex-wrap:wrap;'>"
+                        f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;flex:1;"
+                        f"min-width:140px;'>{_dr['name']}</span>"
+                        f"<span style='color:#ffd600;font-size:0.82rem;font-weight:700;"
+                        f"min-width:80px;text-align:right;'>€ {_dr['deur_y']:,.0f}/J</span>"
+                        f"<span style='color:{_C_TEXT_MUTED};font-size:0.78rem;"
+                        f"min-width:60px;text-align:right;'>YoC {_dr['yoc']:.2f}%</span>"
+                        f"<span style='color:{_C_TEXT_MUTED};font-size:0.78rem;"
+                        f"min-width:60px;text-align:right;'>"
+                        f"Rendite {_dr['yield']:.2f}%</span>"
+                        f"<span style='color:{_exd_clr};font-size:0.76rem;min-width:90px;"
+                        f"text-align:right;'>{_exd_tag}Ex-Div: {_dr['ex_div']}</span></div>",
+                        unsafe_allow_html=True)
+                st.caption("Quelle: trailingAnnualDividendRate (yFinance). Schätzung, nicht garantiert.")
+
+                # ── Monatliche Prognose ───────────────────────────────
+                st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-header'>📅 Monatliche Prognose</div>",
+                            unsafe_allow_html=True)
+                _monthly = {m: _dov_total / 12 for m in range(1, 13)}
+                _month_names = ["Jan","Feb","Mär","Apr","Mai","Jun",
+                                "Jul","Aug","Sep","Okt","Nov","Dez"]
+                _mfig = go.Figure(go.Bar(
+                    x=_month_names,
+                    y=[round(_monthly[m], 2) for m in range(1, 13)],
+                    marker_color=["#ffd600" if m == _today.month else "#42a5f5"
+                                  for m in range(1, 13)],
+                    text=[f"€{v:,.0f}" for v in _monthly.values()],
+                    textposition="outside",
+                ))
+                _mfig.update_layout(
+                    template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG,
+                    plot_bgcolor=_C_CHART_BG, showlegend=False,
+                    height=220, margin=dict(l=5, r=5, t=10, b=5),
+                    yaxis=dict(showticklabels=False, showgrid=False),
+                    xaxis=dict(tickfont=dict(size=11)),
+                )
+                st.plotly_chart(_mfig, use_container_width=True)
+                st.caption("Gleichmäßige Verteilung — individuelle Zahlungsrhythmen (quartalsweise etc.) "
+                           "werden von yFinance nicht immer gemeldet.")
+
+            # ── Earnings-Kalender ─────────────────────────────────────
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-header'>📆 Earnings-Kalender</div>",
+                        unsafe_allow_html=True)
+            _earn_rows = []
+            _earn_checked = []
+            for _, _er in stocks_etf.iterrows():
+                _etkr = isin_map.get(_er['ISIN'], '')
+                if not _etkr or _er['ISIN'] in _earn_checked:
+                    continue
+                _earn_checked.append(_er['ISIN'])
+                _ecal = _load_ex_div_earnings(_etkr)
+                _ets  = _ecal.get('earnings_ts')
+                if not _ets:
+                    continue
+                try:
+                    _ed = _divdt.date.fromtimestamp(int(_ets))
+                    _days_to = (_ed - _today).days
+                    if _days_to > -7:
+                        _earn_rows.append({
+                            'name': _er['name'][:32], 'ticker': _etkr,
+                            'date': _ed, 'days': _days_to,
+                        })
+                except Exception:
+                    pass
+            if not _earn_rows:
+                st.info("Keine bekannten Earnings-Termine für deine Positionen.")
+            else:
+                _earn_rows.sort(key=lambda x: x['date'])
+                for _ear in _earn_rows[:15]:
+                    _dstr = _ear['date'].strftime("%d.%m.%Y")
+                    _ddelta = _ear['days']
+                    if _ddelta < 0:
+                        _dtag = f"vor {-_ddelta}d"
+                        _dc = _C_TEXT_MUTED
+                    elif _ddelta == 0:
+                        _dtag = "Heute!"
+                        _dc = _C_POSITIVE
+                    elif _ddelta <= 7:
+                        _dtag = f"in {_ddelta}d"
+                        _dc = _C_NEGATIVE
+                    elif _ddelta <= 30:
+                        _dtag = f"in {_ddelta}d"
+                        _dc = _C_NEUTRAL
+                    else:
+                        _dtag = f"in {_ddelta}d"
+                        _dc = _C_TEXT_MUTED
+                    st.markdown(
+                        f"<div style='display:flex;align-items:center;gap:10px;padding:7px 4px;"
+                        f"border-bottom:1px solid {_C_BORDER};'>"
+                        f"<span style='color:{_dc};font-size:0.82rem;font-weight:700;"
+                        f"min-width:70px;'>{_dstr}</span>"
+                        f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;flex:1;'>"
+                        f"{_ear['name']}</span>"
+                        f"<span style='color:{_C_TEXT_MUTED};font-size:0.74rem;'>"
+                        f"{_ear['ticker']}</span>"
+                        f"<span style='background:{_dc}22;color:{_dc};font-size:0.72rem;"
+                        f"padding:2px 8px;border-radius:5px;font-weight:600;'>{_dtag}</span></div>",
+                        unsafe_allow_html=True)
+
+          except Exception as _e_div:
+              st.error(f"Fehler im Dividenden-Tab: {_e_div}")
+
+        with tab_risk:
+          try:
+            st.markdown("<div class='section-header'>⚡ Portfolio-Risikoprofil</div>",
+                        unsafe_allow_html=True)
+            _risk_load_key = f"risk_loaded_{_csv_key}"
+            _risk_data_key = f"risk_data_{_csv_key}"
+
+            if not st.session_state.get(_risk_load_key):
+                st.info("Berechnet Beta, Volatilität, Sharpe-Ratio und Max-Drawdown "
+                        "auf Basis der letzten 12 Monate. Lädt ~15 Sek.")
+                if st.button("⚡ Risikodaten laden", type="primary",
+                             key="btn_risk_load", use_container_width=True):
+                    st.session_state[_risk_load_key] = True
+                    st.rerun()
+
+            if st.session_state.get(_risk_load_key):
+                _risk_tickers = tuple(sorted(set(
+                    isin_map[r['ISIN']] for _, r in stocks_etf.iterrows()
+                    if isin_map.get(r['ISIN'])
+                    and _alloc_infos.get(r['ISIN'], {}).get('quote_type') != 'ETF'
+                )))
+                if not st.session_state.get(_risk_data_key):
+                    with st.spinner("Kursdaten für Risikoanalyse werden geladen…"):
+                        _rd = _load_portfolio_risk_data(_risk_tickers)
+                    st.session_state[_risk_data_key] = _rd
+                _rd = st.session_state.get(_risk_data_key, {})
+                _bm_s = _rd.get("SXR8.DE")
+
+                # ── Portfolio-Renditen berechnen ─────────────────────
+                _pf_weights: dict = {}
+                _pf_total_v = 0.0
+                for _, _rr in stocks_etf.iterrows():
+                    _rt = isin_map.get(_rr['ISIN'])
+                    _rv = max(0.0, (prices.get(_rr['ISIN']) or _rr['avg_cost']) * _rr['shares'])
+                    if _rt and _rv > 0 and _rt in _rd:
+                        _pf_weights[_rt] = _pf_weights.get(_rt, 0) + _rv
+                        _pf_total_v += _rv
+
+                _port_returns = None
+                if _pf_total_v > 0 and _pf_weights:
+                    _rets_df_cols = {}
+                    for _t, _v in _pf_weights.items():
+                        if _t in _rd:
+                            _rets_df_cols[_t] = _rd[_t].pct_change().dropna()
+                    if _rets_df_cols:
+                        _rets_df = pd.DataFrame(_rets_df_cols).dropna()
+                        _w_arr   = pd.Series({t: v / _pf_total_v for t, v in _pf_weights.items()
+                                              if t in _rets_df.columns})
+                        _w_arr   = _w_arr.reindex(_rets_df.columns).fillna(0)
+                        _port_returns = (_rets_df * _w_arr).sum(axis=1)
+
+                _RF_DAILY = 0.03 / 252
+
+                def _max_dd(prices_s):
+                    roll_max = prices_s.cummax()
+                    dd = (prices_s - roll_max) / roll_max
+                    return dd.min() * 100
+
+                def _sharpe(rets, rf=_RF_DAILY):
+                    if len(rets) < 30 or rets.std() == 0:
+                        return None
+                    return (rets.mean() - rf) / rets.std() * (252 ** 0.5)
+
+                def _beta(rets_pos, rets_bm):
+                    if rets_bm is None or len(rets_pos) < 30:
+                        return None
+                    _cmb = pd.DataFrame({'p': rets_pos, 'b': rets_bm}).dropna()
+                    if len(_cmb) < 30:
+                        return None
+                    _cov = _cmb.cov()
+                    return _cov.loc['p', 'b'] / _cov.loc['b', 'b'] if _cov.loc['b', 'b'] != 0 else None
+
+                # ── Portfolio-KPIs ────────────────────────────────────
+                if _port_returns is not None and len(_port_returns) > 30:
+                    _pf_vol   = _port_returns.std() * (252 ** 0.5) * 100
+                    _pf_sharpe = _sharpe(_port_returns)
+                    _bm_rets   = _bm_s.pct_change().dropna() if _bm_s is not None else None
+                    _pf_beta   = _beta(_port_returns, _bm_rets)
+                    _pf_ret_1y = (_port_returns + 1).prod() - 1
+                    _pf_cum    = (1 + _port_returns).cumprod()
+                    _pf_mdd    = _max_dd(_pf_cum)
+
+                    _rk1, _rk2, _rk3, _rk4, _rk5 = st.columns(5)
+                    def _rkpi(col, label, val, fmt, color=None):
+                        _vc = color or _C_TEXT_PRIMARY
+                        col.markdown(
+                            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                            f"border-radius:10px;padding:12px 10px;text-align:center;'>"
+                            f"<div style='color:{_C_ACCENT};font-size:0.68rem;font-weight:600;"
+                            f"text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;'>"
+                            f"{label}</div>"
+                            f"<div style='color:{_vc};font-size:1.25rem;font-weight:800;'>"
+                            f"{fmt.format(val) if val is not None else '—'}</div></div>",
+                            unsafe_allow_html=True)
+                    _rkpi(_rk1, "Rendite 1J",    _pf_ret_1y * 100, "{:+.1f}%",
+                          _C_POSITIVE if _pf_ret_1y >= 0 else _C_NEGATIVE)
+                    _rkpi(_rk2, "Volatilität",   _pf_vol,          "{:.1f}%")
+                    _rkpi(_rk3, "Sharpe Ratio",  _pf_sharpe,       "{:.2f}",
+                          _C_POSITIVE if (_pf_sharpe or 0) > 1 else _C_NEUTRAL if (_pf_sharpe or 0) > 0.5 else _C_NEGATIVE)
+                    _rkpi(_rk4, "Max Drawdown",  _pf_mdd,          "{:.1f}%", _C_NEGATIVE)
+                    _rkpi(_rk5, "Beta (MSCI W)", _pf_beta,         "{:.2f}",
+                          _C_POSITIVE if (_pf_beta or 1) < 0.9 else _C_NEUTRAL if (_pf_beta or 1) < 1.1 else _C_NEGATIVE)
+                    st.caption("Benchmark: SXR8.DE (iShares MSCI World). Risikofreier Zinssatz: 3% p.a.")
+
+                    # ── Portfolio-Rendite-Chart ───────────────────────
+                    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                    _pf_cum_pct = (_pf_cum - 1) * 100
+                    _rch = go.Figure()
+                    _rch.add_trace(go.Scatter(
+                        x=_pf_cum_pct.index, y=_pf_cum_pct.values,
+                        mode='lines', name='Portfolio',
+                        line=dict(color='#42a5f5', width=2),
+                        fill='tozeroy',
+                        fillcolor='rgba(66,165,245,0.08)',
+                    ))
+                    if _bm_rets is not None:
+                        _bm_cum_pct = ((_bm_rets + 1).cumprod() - 1) * 100
+                        _rch.add_trace(go.Scatter(
+                            x=_bm_cum_pct.index, y=_bm_cum_pct.values,
+                            mode='lines', name='MSCI World',
+                            line=dict(color='#546e7a', width=1.5, dash='dot'),
+                        ))
+                    _rch.add_hline(y=0, line_color='#263238', line_width=1)
+                    _rch.update_layout(
+                        template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG,
+                        plot_bgcolor=_C_CHART_BG, height=220,
+                        margin=dict(l=5, r=5, t=10, b=5),
+                        legend=dict(orientation='h', y=1.05, x=0, font=dict(size=10)),
+                        yaxis=dict(ticksuffix='%', tickfont=dict(size=10)),
+                        xaxis=dict(tickfont=dict(size=10)),
+                    )
+                    st.plotly_chart(_rch, use_container_width=True)
+
+                # ── Positions-Risikotabelle ───────────────────────────
+                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-header'>📋 Risiko je Position</div>",
+                            unsafe_allow_html=True)
+                _bm_rets_pos = (_bm_s.pct_change().dropna()
+                                if _bm_s is not None else None)
+                _pos_risk_rows = []
+                for _, _prr in stocks_etf.iterrows():
+                    _ptkr = isin_map.get(_prr['ISIN'])
+                    if not _ptkr or _ptkr not in _rd:
+                        continue
+                    _ph    = _rd[_ptkr]
+                    _pr    = _ph.pct_change().dropna()
+                    _pvol  = _pr.std() * (252 ** 0.5) * 100
+                    _pbeta = _beta(_pr, _bm_rets_pos)
+                    _pmdd  = _max_dd(_ph)
+                    _psh   = _sharpe(_pr)
+                    _pos_risk_rows.append({
+                        'name': _prr['name'][:28], 'ticker': _ptkr,
+                        'vol': _pvol, 'beta': _pbeta, 'mdd': _pmdd, 'sharpe': _psh,
+                    })
+                if _pos_risk_rows:
+                    _pos_risk_rows.sort(key=lambda x: x['vol'], reverse=True)
+                    _prt_hdr = (
+                        f"<div style='display:grid;grid-template-columns:1fr 70px 60px 70px 70px;"
+                        f"gap:4px;padding:4px 6px;border-bottom:1px solid {_C_BORDER};'>"
+                        f"<span style='color:{_C_ACCENT};font-size:0.68rem;font-weight:600;"
+                        f"text-transform:uppercase;'>Position</span>"
+                        f"<span style='color:{_C_ACCENT};font-size:0.68rem;font-weight:600;"
+                        f"text-align:right;'>Vola</span>"
+                        f"<span style='color:{_C_ACCENT};font-size:0.68rem;font-weight:600;"
+                        f"text-align:right;'>Beta</span>"
+                        f"<span style='color:{_C_ACCENT};font-size:0.68rem;font-weight:600;"
+                        f"text-align:right;'>Max-DD</span>"
+                        f"<span style='color:{_C_ACCENT};font-size:0.68rem;font-weight:600;"
+                        f"text-align:right;'>Sharpe</span></div>"
+                    )
+                    st.markdown(_prt_hdr, unsafe_allow_html=True)
+                    for _prw in _pos_risk_rows:
+                        _vc    = _C_NEGATIVE if (_prw['vol'] or 0) > 35 else _C_NEUTRAL if (_prw['vol'] or 0) > 20 else _C_POSITIVE
+                        _bc    = (_C_NEGATIVE if (_prw['beta'] or 1) > 1.3
+                                  else _C_NEUTRAL if (_prw['beta'] or 1) > 0.9
+                                  else _C_POSITIVE)
+                        _sc    = (_C_POSITIVE if (_prw['sharpe'] or 0) > 1
+                                  else _C_NEUTRAL if (_prw['sharpe'] or 0) > 0.5
+                                  else _C_NEGATIVE)
+                        _pbeta_s  = "—" if _prw['beta']   is None else f"{_prw['beta']:.2f}"
+                        _psharpe_s = "—" if _prw['sharpe'] is None else f"{_prw['sharpe']:.2f}"
+                        st.markdown(
+                            f"<div style='display:grid;grid-template-columns:1fr 70px 60px 70px 70px;"
+                            f"gap:4px;padding:6px 6px;border-bottom:1px solid {_C_BORDER};'>"
+                            f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;'>"
+                            f"{_prw['name']}</span>"
+                            f"<span style='color:{_vc};font-size:0.78rem;font-weight:600;"
+                            f"text-align:right;'>{_prw['vol']:.1f}%</span>"
+                            f"<span style='color:{_bc};font-size:0.78rem;font-weight:600;"
+                            f"text-align:right;'>{_pbeta_s}</span>"
+                            f"<span style='color:{_C_NEGATIVE};font-size:0.78rem;font-weight:600;"
+                            f"text-align:right;'>{_prw['mdd']:.1f}%</span>"
+                            f"<span style='color:{_sc};font-size:0.78rem;font-weight:600;"
+                            f"text-align:right;'>{_psharpe_s}</span>"
+                            f"</div>",
+                            unsafe_allow_html=True)
+                    st.caption("Vola = annualisierte Volatilität (1J). "
+                               "Beta vs. MSCI World (SXR8.DE). "
+                               "Sharpe: Risikofreier Zins 3% p.a. | Nur Einzelaktien, keine ETFs.")
+                else:
+                    st.info("Keine Einzelaktienpositionen für Risikoberechnung gefunden.")
+
+          except Exception as _e_risk:
+              st.error(f"Fehler im Risiko-Tab: {_e_risk}")
 
     elif df_port is None:
         st.info("📂 Bitte lade deine Orderhistorie-CSV hoch.\n\n"
