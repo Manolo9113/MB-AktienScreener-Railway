@@ -5562,8 +5562,9 @@ def _calc_received_dividends(csv_bytes: bytes) -> dict:
         return {}
     today = pd.Timestamp.today().normalize()
     ytd_start = pd.Timestamp(today.year, 1, 1)
-    rows, by_isin, monthly = [], {}, {}
-    tot_1m = tot_ytd = tot_1y = tot_all = 0.0
+    rows, monthly = [], {}
+    totals = {k: 0.0 for k in ('1M', '3M', 'YTD', '1J', '3J', '5J', 'Max')}
+    by_period: dict = {k: {} for k in totals}
     for _, row in df.iterrows():
         d, v = row['_date'], row['_wert']
         isin = str(row.get('ISIN', '') or '')
@@ -5571,20 +5572,21 @@ def _calc_received_dividends(csv_bytes: bytes) -> dict:
         days_ago = (today - d).days
         rows.append({'date': d, 'isin': isin, 'name': name, 'amount': v,
                      'type': str(row.get('Richtung', ''))})
-        tot_all += v
-        if days_ago <= 30:   tot_1m  += v
-        if d >= ytd_start:   tot_ytd += v
-        if days_ago <= 365:  tot_1y  += v
         ym = d.strftime('%Y-%m')
         monthly[ym] = monthly.get(ym, 0.0) + v
-        if days_ago <= 365:
-            by_isin[isin] = by_isin.get(isin, 0.0) + v
+        hits = []
+        if days_ago <= 30:    hits.append('1M')
+        if days_ago <= 90:    hits.append('3M')
+        if d >= ytd_start:    hits.append('YTD')
+        if days_ago <= 365:   hits.append('1J')
+        if days_ago <= 1095:  hits.append('3J')
+        if days_ago <= 1825:  hits.append('5J')
+        hits.append('Max')
+        for k in hits:
+            totals[k] += v
+            by_period[k][isin] = by_period[k].get(isin, 0.0) + v
     rows.sort(key=lambda x: x['date'], reverse=True)
-    return {
-        'rows': rows, 'by_isin': by_isin, 'monthly': monthly,
-        'total_1m': tot_1m, 'total_ytd': tot_ytd,
-        'total_1y': tot_1y, 'total_all': tot_all,
-    }
+    return {'rows': rows, 'monthly': monthly, 'totals': totals, 'by_period': by_period}
 
 
 # ==================== SIDEBAR ====================
@@ -9440,65 +9442,81 @@ GEOGRAFISCHE VERTEILUNG:
                 st.info("Keine Dividenden-/Ausschüttungsbuchungen in der CSV gefunden. "
                         "Finanzen.net Zero bucht Dividenden als 'Dividende' oder 'Ausschüttung'.")
             else:
-                # Period selector
-                _rxd_per = st.radio("Zeitraum", ["1M", "YTD", "1J", "Alle"],
+                _rxd_periods = ["1M", "3M", "YTD", "1J", "3J", "5J", "Max"]
+                _rxd_per = st.radio("Zeitraum", _rxd_periods, index=3,
                                     horizontal=True, label_visibility="collapsed",
                                     key="rxd_period")
-                _rxd_totals = {"1M": _rxd['total_1m'], "YTD": _rxd['total_ytd'],
-                               "1J": _rxd['total_1y'], "Alle": _rxd['total_all']}
-                _rxd_val = _rxd_totals[_rxd_per]
-                _rxd_s = f"{_rxd_val:,.2f}" if _rxd_val < 10 else f"{_rxd_val:,.0f}"
+                _rxd_val  = _rxd['totals'][_rxd_per]
+                _rxd_s    = f"{_rxd_val:,.2f}" if _rxd_val < 10 else f"{_rxd_val:,.0f}"
+
+                # Derived stats for selected period
+                _rxd_rows_p = _rxd['by_period'][_rxd_per]
+                _rxd_n_months = {"1M":1,"3M":3,"YTD":max(1,_today.month),"1J":12,
+                                 "3J":36,"5J":60,"Max":max(1,len(_rxd['monthly']))}[_rxd_per]
+                _rxd_monthly_avg = _rxd_val / _rxd_n_months
+                _rxd_daily  = _rxd_val / max(1, {"1M":30,"3M":90,"YTD":_today.timetuple().tm_yday,
+                                                  "1J":365,"3J":1095,"5J":1825,
+                                                  "Max":max(1,(pd.Timestamp.today()-
+                                                  min(r['date'] for r in _rxd['rows'])).days)}[_rxd_per])
+
                 st.markdown(
                     f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
-                    f"border-radius:10px;padding:14px 18px;margin-bottom:14px;'>"
-                    f"<div style='color:{_C_ACCENT};font-size:0.72rem;font-weight:600;"
-                    f"text-transform:uppercase;letter-spacing:.06em;'>Erhalten ({_rxd_per})</div>"
-                    f"<div style='color:{_C_POSITIVE};font-size:1.6rem;font-weight:800;'>"
-                    f"€ {_rxd_s}</div></div>",
+                    f"border-radius:12px;padding:16px 18px;margin-bottom:12px;'>"
+                    f"<div style='color:{_C_ACCENT};font-size:0.70rem;font-weight:600;"
+                    f"text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;'>"
+                    f"Insgesamt erhalten ({_rxd_per})</div>"
+                    f"<div style='color:{_C_POSITIVE};font-size:2rem;font-weight:800;'>"
+                    f"€ {_rxd_s}</div>"
+                    f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;'>"
+                    f"<div><div style='color:{_C_TEXT_PRIMARY};font-size:0.95rem;font-weight:700;'>"
+                    f"€ {_rxd_monthly_avg:,.2f}</div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;'>Ø Monatlich</div></div>"
+                    f"<div><div style='color:{_C_TEXT_PRIMARY};font-size:0.95rem;font-weight:700;'>"
+                    f"€ {_rxd_daily:,.2f}</div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;'>Ø Täglich</div></div>"
+                    f"</div></div>",
                     unsafe_allow_html=True)
 
-                # Per-position list (last 12 months or all, sorted by amount)
-                _rxd_cutoff = {
-                    "1M":  pd.Timestamp(_today) - pd.Timedelta(days=30),
-                    "YTD": pd.Timestamp(_today.year, 1, 1),
-                    "1J":  pd.Timestamp(_today) - pd.Timedelta(days=365),
-                    "Alle": pd.Timestamp("2000-01-01"),
-                }[_rxd_per]
-                _rxd_filt = [r for r in _rxd['rows'] if r['date'] >= _rxd_cutoff]
-                _rxd_by_name: dict = {}
-                for _rr in _rxd_filt:
-                    _k = _rr['name']
-                    _rxd_by_name[_k] = _rxd_by_name.get(_k, 0.0) + _rr['amount']
-                for _rn, _rv in sorted(_rxd_by_name.items(), key=lambda x: x[1], reverse=True):
+                # Per-position list for selected period
+                for _rn, _rv in sorted(_rxd_rows_p.items(), key=lambda x: x[1], reverse=True):
+                    _rlabel = next((r['name'] for r in _rxd['rows'] if r['isin'] == _rn), _rn)
                     _rv_s = f"{_rv:.2f}" if _rv < 10 else f"{_rv:,.0f}"
+                    _rpct  = (_rv / _rxd_val * 100) if _rxd_val > 0 else 0
                     st.markdown(
-                        f"<div style='display:flex;align-items:center;gap:6px;padding:6px 4px;"
+                        f"<div style='display:flex;align-items:center;gap:6px;padding:7px 4px;"
                         f"border-bottom:1px solid {_C_BORDER};'>"
-                        f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;flex:1;'>{_rn}</span>"
+                        f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;flex:1;'>{_rlabel[:32]}</span>"
+                        f"<span style='color:{_C_TEXT_MUTED};font-size:0.74rem;margin-right:6px;'>"
+                        f"{_rpct:.0f}%</span>"
                         f"<span style='color:{_C_POSITIVE};font-size:0.82rem;font-weight:700;'>"
                         f"€ {_rv_s}</span></div>",
                         unsafe_allow_html=True)
 
-                # Monthly bar chart (last 12 months)
-                import datetime as _dt2
-                _rxd_months = sorted(_rxd['monthly'].keys())[-24:]
-                if _rxd_months:
+                # Monthly bar chart — window depends on period
+                _rxd_chart_months = {
+                    "1M": 3, "3M": 6, "YTD": 13, "1J": 13,
+                    "3J": 36, "5J": 60, "Max": 999,
+                }[_rxd_per]
+                _rxd_months_all = sorted(_rxd['monthly'].keys())
+                _rxd_months_show = _rxd_months_all[-_rxd_chart_months:]
+                if _rxd_months_show:
                     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+                    _cur_ym = _today.strftime('%Y-%m')
                     _rxd_fig = go.Figure(go.Bar(
-                        x=_rxd_months,
-                        y=[_rxd['monthly'][m] for m in _rxd_months],
-                        marker_color=["#ffd600" if m == _today.strftime('%Y-%m')
-                                      else _C_POSITIVE for m in _rxd_months],
+                        x=_rxd_months_show,
+                        y=[_rxd['monthly'][m] for m in _rxd_months_show],
+                        marker_color=["#ffd600" if m == _cur_ym else _C_POSITIVE
+                                      for m in _rxd_months_show],
                         text=[f"€{_rxd['monthly'][m]:,.0f}" if _rxd['monthly'][m] >= 1
-                              else f"€{_rxd['monthly'][m]:.2f}" for m in _rxd_months],
+                              else f"€{_rxd['monthly'][m]:.2f}" for m in _rxd_months_show],
                         textposition="outside",
                     ))
                     _rxd_fig.update_layout(
                         template=_C_CHART_THEME, paper_bgcolor=_C_CHART_BG,
                         plot_bgcolor=_C_CHART_BG, showlegend=False,
-                        height=200, margin=dict(l=5, r=5, t=20, b=5),
+                        height=210, margin=dict(l=5, r=5, t=22, b=5),
                         yaxis=dict(showticklabels=False, showgrid=False),
-                        xaxis=dict(tickfont=dict(size=10)),
+                        xaxis=dict(tickfont=dict(size=9)),
                     )
                     st.plotly_chart(_rxd_fig, use_container_width=True)
 
