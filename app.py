@@ -8686,6 +8686,7 @@ if st.session_state.get("show_portfolio"):
                         _bar_c  = _C_NEGATIVE if _dv > 5 else _C_POSITIVE if _dv < -5 else "#546e7a"
                         _label  = "übergewichtet" if _dv > 5 else "untergewichtet" if _dv < -5 else "ok"
                         _w_over = max(0, min(80, int(abs(_dv) * 4)))
+                        _bar_left = "50%" if _dv >= 0 else f"{max(0, 50 - _w_over)}%"
                         st.markdown(
                             f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
                             f"<span style='color:{_C_TEXT_MUTED2};font-size:0.76rem;min-width:190px;'>"
@@ -8694,7 +8695,7 @@ if st.session_state.get("show_portfolio"):
                             f"text-align:right;'>{_rbi['pct']:.1f}%</span>"
                             f"<div style='background:#1a2740;border-radius:3px;width:80px;height:7px;"
                             f"position:relative;'>"
-                            f"<div style='position:absolute;left:{'50%' if _dv >= 0 else str(50-_w_over//2)+'%'};"
+                            f"<div style='position:absolute;left:{_bar_left};"
                             f"background:{_bar_c};width:{_w_over}%;height:7px;border-radius:3px;'></div>"
                             f"<div style='position:absolute;left:50%;top:0;width:1px;height:7px;"
                             f"background:#37474f;'></div></div>"
