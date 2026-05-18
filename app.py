@@ -3411,6 +3411,46 @@ def load_market_news():
     return headlines[:4]
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_sector_perf() -> list:
+    """S&P 500 Sektoren — Tagesperformance via Sektor-ETFs."""
+    _sectors = [
+        ("Technologie",      "XLK"),
+        ("Finanzen",         "XLF"),
+        ("Gesundheit",       "XLV"),
+        ("Energie",          "XLE"),
+        ("Konsum (zyklisch)","XLY"),
+        ("Konsum (defensiv)","XLP"),
+        ("Industrie",        "XLI"),
+        ("Rohstoffe",        "XLB"),
+        ("Immobilien",       "XLRE"),
+        ("Kommunikation",    "XLC"),
+        ("Versorger",        "XLU"),
+    ]
+    result = []
+    try:
+        tickers = " ".join(s[1] for s in _sectors)
+        raw = yf.download(tickers, period="2d", interval="1d",
+                          auto_adjust=True, progress=False, threads=True)
+        if raw.empty:
+            return []
+        close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else raw
+        for name, sym in _sectors:
+            if sym not in close.columns:
+                continue
+            s = close[sym].dropna()
+            if len(s) >= 2:
+                pct = (s.iloc[-1] / s.iloc[-2] - 1) * 100
+            elif len(s) == 1:
+                pct = 0.0
+            else:
+                continue
+            result.append({'name': name, 'sym': sym, 'pct': float(pct)})
+    except Exception:
+        pass
+    return sorted(result, key=lambda x: x['pct'], reverse=True)
+
+
 # ==================== STOCK PICKS ====================
 _GROWTH_POOL = {
     "NVDA":  "KI-Chip-Marktführer mit explosivem Datencenter-Wachstum",
@@ -6761,6 +6801,32 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
             if _maki_time:
                 st.caption(f"Stand: {_maki_time} · {_maki_model} · Gültig 24h")
             st.markdown(_maki_result)
+
+    # ── Sektor-Heatmap ───────────────────────────────────────────────────
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>🌡️ S&P 500 Sektoren — Heute</div>", unsafe_allow_html=True)
+    _sec_perf = _load_sector_perf()
+    if _sec_perf:
+        # 4-column tile grid
+        _hm_cols = st.columns(4)
+        for _hi, _sp in enumerate(_sec_perf):
+            _p = _sp['pct']
+            if _p >= 1.5:    _tile_bg, _tile_txt = "#1b3a2a", _C_POSITIVE
+            elif _p >= 0.3:  _tile_bg, _tile_txt = "#163020", "#66bb6a"
+            elif _p >= -0.3: _tile_bg, _tile_txt = "#1a2433", _C_TEXT_MUTED
+            elif _p >= -1.5: _tile_bg, _tile_txt = "#3a1a1a", "#ef9a9a"
+            else:             _tile_bg, _tile_txt = "#2a1010", _C_NEGATIVE
+            _sign = "+" if _p >= 0 else ""
+            with _hm_cols[_hi % 4]:
+                st.markdown(
+                    f"<div style='background:{_tile_bg};border:1px solid {_C_BORDER};"
+                    f"border-radius:8px;padding:10px 8px;margin-bottom:8px;text-align:center;'>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.66rem;margin-bottom:4px;"
+                    f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{_sp['name']}</div>"
+                    f"<div style='color:{_tile_txt};font-size:1.05rem;font-weight:800;'>"
+                    f"{_sign}{_p:.2f}%</div></div>",
+                    unsafe_allow_html=True)
+    st.caption("Quelle: S&P 500 Sektor-ETFs (XLK, XLF, …). Verzögert ~15 Min.")
 
     # ── Marktschlagzeilen ────────────────────────────────────────────────
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
@@ -14737,25 +14803,69 @@ elif _at == 8:
         st.markdown("<div class='section-header'>👤 Insider Transaktionen</div>", unsafe_allow_html=True)
         if show_insider and insider_df is not None and not insider_df.empty:
             try:
+                # ── Net Buy/Sell Signal ───────────────────────────────
+                _ins_buy_vol = _ins_sell_vol = 0.0
+                _ins_buy_cnt = _ins_sell_cnt = 0
+                for _, _ir in insider_df.iterrows():
+                    _itx = str(_ir.get("Transaction", ""))
+                    _iv  = _ir.get("Value", 0)
+                    _iv  = float(_iv) if isinstance(_iv, (int, float)) else 0.0
+                    if "Buy" in _itx or "Purchase" in _itx:
+                        _ins_buy_vol  += _iv; _ins_buy_cnt  += 1
+                    elif "Sale" in _itx or "Sell" in _itx:
+                        _ins_sell_vol += _iv; _ins_sell_cnt += 1
+                _ins_net = _ins_buy_vol - _ins_sell_vol
+                if _ins_buy_vol > 0 or _ins_sell_vol > 0:
+                    _sig_clr  = _C_POSITIVE if _ins_net > 0 else _C_NEGATIVE
+                    _sig_icon = "📈" if _ins_net > 0 else "📉"
+                    _sig_text = "Net Insider-Kauf" if _ins_net > 0 else "Net Insider-Verkauf"
+                    _sig_hint = ("Insiders kaufen eigene Aktien — oft bullisches Signal, "
+                                 "da sie Einblick in das Unternehmen haben."
+                                 if _ins_net > 0 else
+                                 "Verkäufe können Diversifikation, Steuern oder Bonusprogramme sein — "
+                                 "nicht automatisch bärisch, aber Käufe wären positiver.")
+                    st.markdown(
+                        f"<div style='background:{_sig_clr}18;border:1px solid {_sig_clr}55;"
+                        f"border-radius:10px;padding:10px 14px;margin-bottom:10px;'>"
+                        f"<div style='color:{_sig_clr};font-size:0.85rem;font-weight:700;'>"
+                        f"{_sig_icon} {_sig_text}: ${abs(_ins_net):,.0f}</div>"
+                        f"<div style='display:flex;gap:14px;margin-top:5px;'>"
+                        f"<span style='color:{_C_POSITIVE};font-size:0.76rem;'>▲ Käufe: "
+                        f"${_ins_buy_vol:,.0f} ({_ins_buy_cnt}x)</span>"
+                        f"<span style='color:{_C_NEGATIVE};font-size:0.76rem;'>▼ Verkäufe: "
+                        f"${_ins_sell_vol:,.0f} ({_ins_sell_cnt}x)</span>"
+                        f"</div>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:6px;'>"
+                        f"{_sig_hint}</div></div>",
+                        unsafe_allow_html=True)
+
+                # ── Transaktionsliste ─────────────────────────────────
                 show_cols = [c for c in ["Insider", "Relationship", "Transaction", "Value", "Date", "Shares"] if c in insider_df.columns]
-                display_df = insider_df[show_cols].head(10).copy() if show_cols else insider_df.head(10).copy()
-                # Style it
+                display_df = insider_df[show_cols].head(12).copy() if show_cols else insider_df.head(12).copy()
                 for _, row in display_df.iterrows():
                     tx = str(row.get("Transaction", ""))
-                    is_buy = "Buy" in tx or "Purchase" in tx or "Kauf" in tx
-                    tx_class = "insider-buy" if is_buy else "insider-sell"
-                    name = row.get("Insider", row.get("Name", "–"))
-                    val = row.get("Value", "")
+                    is_buy = "Buy" in tx or "Purchase" in tx
+                    _row_clr = _C_POSITIVE if is_buy else _C_NEGATIVE
+                    _tx_short = "Kauf" if is_buy else "Verkauf"
+                    name = str(row.get("Insider", row.get("Name", "–")))[:22]
+                    rel  = str(row.get("Relationship", ""))[:18]
+                    val  = row.get("Value", "")
                     date = str(row.get("Date", ""))[:10]
                     val_str = f"${val:,.0f}" if isinstance(val, (int, float)) else str(val)
-                    st.markdown(f"""
-                    <div class="insider-row">
-                        <span style="color:{_C_TEXT_SEC};">{str(name)[:20]}</span>
-                        <span class="{tx_class}">{tx}</span>
-                        <span style="color:{_C_ACCENT};">{val_str}</span>
-                        <span style="color:{_C_TEXT_MUTED};">{date}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div style='display:flex;align-items:center;gap:6px;padding:6px 2px;"
+                        f"border-bottom:1px solid {_C_BORDER};flex-wrap:wrap;'>"
+                        f"<span style='background:{_row_clr}22;color:{_row_clr};font-size:0.68rem;"
+                        f"padding:1px 6px;border-radius:4px;font-weight:700;min-width:52px;"
+                        f"text-align:center;'>{_tx_short}</span>"
+                        f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;flex:1;"
+                        f"min-width:80px;'>{name}</span>"
+                        f"<span style='color:{_C_TEXT_MUTED};font-size:0.72rem;'>{rel}</span>"
+                        f"<span style='color:{_C_ACCENT};font-size:0.78rem;font-weight:600;"
+                        f"margin-left:auto;'>{val_str}</span>"
+                        f"<span style='color:{_C_TEXT_MUTED};font-size:0.70rem;'>{date}</span>"
+                        f"</div>",
+                        unsafe_allow_html=True)
             except Exception as e:
                 st.caption(f"Fehler beim Anzeigen: {e}")
         else:
