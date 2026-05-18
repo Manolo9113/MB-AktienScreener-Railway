@@ -14875,62 +14875,66 @@ elif _at == 8:
     with col_peers:
         st.markdown("<div class='section-header'>🔁 Peer Vergleich</div>", unsafe_allow_html=True)
         if show_peers and peers:
-            peer_tickers = [ticker] + peers
-            peer_data = []
-            for pt in peer_tickers:
-                try:
-                    pi = yf.Ticker(pt).info
-                    _fcf_p  = pi.get("freeCashflow")
-                    _mc_p   = pi.get("marketCap")
-                    _fcy_p  = (_fcf_p / _mc_p * 100) if _fcf_p and _mc_p else None
-                    _roe_p  = pi.get("returnOnEquity")
-                    peer_data.append({
-                        "Ticker":     pt,
-                        "Kurs":       pi.get("currentPrice") or pi.get("regularMarketPrice"),
-                        "Mkt Cap":    _mc_p,
-                        "P/E":        pi.get("trailingPE"),
-                        "Gross Mg%":  (pi.get("grossMargins") or 0) * 100,
-                        "Op. Mg%":    (pi.get("operatingMargins") or 0) * 100,
-                        "Rev Gr%":    (pi.get("revenueGrowth") or 0) * 100,
-                        "FCF Yield%": _fcy_p,
-                        "ROE%":       (_roe_p * 100) if _roe_p else None,
-                    })
-                except:
-                    pass
+            _peer_tickers = [ticker] + peers[:4]
+            # Load via cached helper (no per-call blocking)
+            _peer_metrics = {pt: load_watchlist_metrics(pt) for pt in _peer_tickers}
 
-            if peer_data:
-                pdf = pd.DataFrame(peer_data).set_index("Ticker")
-                # Sector benchmark row
-                _bench_p = SECTOR_BENCHMARKS.get(sector, {})
-                if _bench_p:
-                    pdf.loc[f"∅ {sector[:14]}"] = {
-                        "Kurs":       None,
-                        "Mkt Cap":    None,
-                        "P/E":        None,
-                        "Gross Mg%":  _bench_p.get("Bruttomarge"),
-                        "Op. Mg%":    _bench_p.get("Op. Marge"),
-                        "Rev Gr%":    _bench_p.get("Umsatzwachstum"),
-                        "FCF Yield%": _bench_p.get("FCF Yield"),
-                        "ROE%":       None,
-                    }
-                # Format columns
-                def _pct(v):
-                    return f"{v:.1f}%" if isinstance(v, float) and not pd.isna(v) else "—"
-                def _pr(v):
-                    return f"${v:.2f}" if isinstance(v, float) and not pd.isna(v) else "—"
-                pdf["Kurs"]       = pdf["Kurs"].apply(_pr)
-                pdf["Mkt Cap"]    = pdf["Mkt Cap"].apply(lambda v: fmt_large(v) if isinstance(v, float) and not pd.isna(v) else "—")
-                pdf["P/E"]        = pdf["P/E"].apply(lambda v: f"{v:.1f}x" if isinstance(v, float) and not pd.isna(v) else "—")
-                pdf["Gross Mg%"]  = pdf["Gross Mg%"].apply(_pct)
-                pdf["Op. Mg%"]    = pdf["Op. Mg%"].apply(_pct)
-                pdf["Rev Gr%"]    = pdf["Rev Gr%"].apply(_pct)
-                pdf["FCF Yield%"] = pdf["FCF Yield%"].apply(_pct)
-                pdf["ROE%"]       = pdf["ROE%"].apply(_pct)
-                st.dataframe(pdf, use_container_width=True)
-        elif not FMP_API_KEY:
-            st.markdown('<div class="insight-box">FMP API Key erforderlich für Peer-Daten.</div>', unsafe_allow_html=True)
+            # Metrics config: (key, label, higher_is_better, format)
+            _pm_cfg = [
+                ("pe",      "P/E",        False, lambda v: f"{v:.1f}x" if v else "—"),
+                ("gm",      "Brutto-Mg",  True,  lambda v: f"{v:.1f}%"),
+                ("op_mg",   "Op.-Mg",     True,  lambda v: f"{v:.1f}%"),
+                ("net_mg",  "Netto-Mg",   True,  lambda v: f"{v:.1f}%"),
+                ("rev_gr",  "Umsatz-Wachstum", True, lambda v: f"{v:+.1f}%"),
+                ("fcf_y",   "FCF-Yield",  True,  lambda v: f"{v:.1f}%"),
+                ("roe",     "ROE",        True,  lambda v: f"{v:.1f}%"),
+            ]
+
+            # Compute best/worst per metric across peers
+            def _best_worst(key, higher_better):
+                vals = {pt: _peer_metrics[pt].get(key) for pt in _peer_tickers}
+                vals = {pt: v for pt, v in vals.items() if v is not None and v != 0}
+                if not vals:
+                    return None, None
+                best = max(vals, key=lambda p: vals[p]) if higher_better else min(vals, key=lambda p: vals[p])
+                worst = min(vals, key=lambda p: vals[p]) if higher_better else max(vals, key=lambda p: vals[p])
+                return best, worst
+
+            for pt in _peer_tickers:
+                _pm  = _peer_metrics[pt]
+                _is_main = pt == ticker
+                _border  = f"2px solid {_C_ACCENT}" if _is_main else f"1px solid {_C_BORDER}"
+                _hdr_clr = _C_ACCENT if _is_main else _C_TEXT_MUTED
+                _name    = _pm.get('name', pt)[:22]
+                _mc_s    = fmt_large(_pm['mkt_cap']) if _pm.get('mkt_cap') else "—"
+                _rows_html = ""
+                for key, label, hib, fmt in _pm_cfg:
+                    val = _pm.get(key)
+                    best, worst = _best_worst(key, hib)
+                    if pt == best:        _vc = _C_POSITIVE
+                    elif pt == worst:     _vc = _C_NEGATIVE
+                    else:                 _vc = _C_TEXT_PRIMARY
+                    val_s = fmt(val) if val is not None else "—"
+                    _rows_html += (
+                        f"<div style='display:flex;justify-content:space-between;"
+                        f"padding:3px 0;border-bottom:1px solid {_C_BORDER}11;'>"
+                        f"<span style='color:{_C_TEXT_MUTED};font-size:0.72rem;'>{label}</span>"
+                        f"<span style='color:{_vc};font-size:0.75rem;font-weight:600;'>{val_s}</span>"
+                        f"</div>"
+                    )
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:{_border};"
+                    f"border-radius:10px;padding:10px 12px;margin-bottom:8px;'>"
+                    f"<div style='color:{_hdr_clr};font-size:0.78rem;font-weight:700;"
+                    f"margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>"
+                    f"{'★ ' if _is_main else ''}{_name}"
+                    f"<span style='color:{_C_TEXT_MUTED};font-size:0.68rem;font-weight:400;"
+                    f"margin-left:6px;'>{pt} · {_mc_s}</span></div>"
+                    f"{_rows_html}</div>",
+                    unsafe_allow_html=True)
+            st.caption("🟢 Bestwert · 🔴 Schlechtestwert im Vergleich. ★ = analysierte Aktie.")
         else:
-            st.markdown('<div class="insight-box">Keine Peers gefunden.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="insight-box">Keine Peers verfügbar.</div>', unsafe_allow_html=True)
 
     # ── Management ────────────────────────────────────────────────────
     st.markdown("<div class='section-header'>👔 Management & Ownership</div>", unsafe_allow_html=True)
