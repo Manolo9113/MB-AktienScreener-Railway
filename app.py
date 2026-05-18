@@ -3451,6 +3451,64 @@ def _load_sector_perf() -> list:
     return sorted(result, key=lambda x: x['pct'], reverse=True)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _load_treemap_data() -> dict:
+    """Top S&P 500 stocks by market cap — daily % change for treemap."""
+    _STOCKS = [
+        # (ticker, sector_de, mcap_B)
+        ("AAPL",  "Technologie",      3200), ("MSFT",  "Technologie",      3100),
+        ("NVDA",  "Technologie",      2800), ("GOOGL", "Kommunikation",     2100),
+        ("AMZN",  "Konsum (zyklisch)",2000), ("META",  "Kommunikation",     1400),
+        ("TSLA",  "Konsum (zyklisch)", 700), ("AVGO",  "Technologie",        900),
+        ("BRK-B", "Finanzen",          900), ("JPM",   "Finanzen",           650),
+        ("LLY",   "Gesundheit",        700), ("V",     "Finanzen",           580),
+        ("UNH",   "Gesundheit",        500), ("XOM",   "Energie",            490),
+        ("MA",    "Finanzen",          460), ("COST",  "Konsum (defensiv)",  420),
+        ("PG",    "Konsum (defensiv)", 380), ("JNJ",   "Gesundheit",         370),
+        ("HD",    "Konsum (zyklisch)", 380), ("ABBV",  "Gesundheit",         320),
+        ("BAC",   "Finanzen",          330), ("WMT",   "Konsum (defensiv)",  700),
+        ("MRK",   "Gesundheit",        270), ("CVX",   "Energie",            270),
+        ("NFLX",  "Kommunikation",     380), ("KO",    "Konsum (defensiv)",  260),
+        ("CRM",   "Technologie",       260), ("AMD",   "Technologie",        240),
+        ("ORCL",  "Technologie",       460), ("PEP",   "Konsum (defensiv)",  210),
+        ("TMO",   "Gesundheit",        200), ("CSCO",  "Technologie",        220),
+        ("ADBE",  "Technologie",       180), ("ACN",   "Technologie",        210),
+        ("MS",    "Finanzen",          190), ("GS",    "Finanzen",           180),
+        ("NEE",   "Versorger",         120), ("UNP",   "Industrie",          150),
+        ("HON",   "Industrie",         130), ("CAT",   "Industrie",          170),
+        ("BA",    "Industrie",         130), ("DE",    "Industrie",          120),
+        ("INTC",  "Technologie",        90), ("MU",    "Technologie",        110),
+        ("GE",    "Industrie",         200), ("RTX",   "Industrie",          160),
+        ("BX",    "Finanzen",          190), ("SPGI",  "Finanzen",           150),
+        ("LIN",   "Rohstoffe",         210), ("APD",   "Rohstoffe",          50),
+        ("AMT",   "Immobilien",        100), ("PLD",   "Immobilien",         110),
+        ("DUK",   "Versorger",          80), ("SO",    "Versorger",           90),
+        ("SLB",   "Energie",            60), ("COP",   "Energie",            130),
+    ]
+    try:
+        tickers = [s[0] for s in _STOCKS]
+        raw = yf.download(tickers, period="2d", interval="1d",
+                          auto_adjust=True, progress=False, threads=True)
+        if raw.empty:
+            return {}
+        close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else raw
+        rows = []
+        for tkr, sector, mcap in _STOCKS:
+            if tkr not in close.columns:
+                continue
+            s = close[tkr].dropna()
+            if len(s) >= 2:
+                pct = float((s.iloc[-1] / s.iloc[-2] - 1) * 100)
+            elif len(s) == 1:
+                pct = 0.0
+            else:
+                continue
+            rows.append({'ticker': tkr, 'sector': sector, 'mcap': mcap, 'pct': pct})
+        return {'rows': rows, 'ts': pd.Timestamp.now().strftime('%H:%M')}
+    except Exception:
+        return {}
+
+
 # ==================== STOCK PICKS ====================
 _GROWTH_POOL = {
     "NVDA":  "KI-Chip-Marktführer mit explosivem Datencenter-Wachstum",
@@ -5853,29 +5911,88 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
-    # ── Sektor-Heatmap ───────────────────────────────────────────────────
-    st.markdown("<div class='section-header'>🌡️ S&P 500 Sektoren — Heute</div>", unsafe_allow_html=True)
-    _sec_perf = _load_sector_perf()
-    if _sec_perf:
-        _hm_cols = st.columns(4)
-        for _hi, _sp in enumerate(_sec_perf):
-            _p = _sp['pct']
-            if _p >= 1.5:    _tile_bg, _tile_txt = "#1b3a2a", _C_POSITIVE
-            elif _p >= 0.3:  _tile_bg, _tile_txt = "#163020", "#66bb6a"
-            elif _p >= -0.3: _tile_bg, _tile_txt = "#1a2433", _C_TEXT_MUTED
-            elif _p >= -1.5: _tile_bg, _tile_txt = "#3a1a1a", "#ef9a9a"
-            else:             _tile_bg, _tile_txt = "#2a1010", _C_NEGATIVE
-            _sign = "+" if _p >= 0 else ""
-            with _hm_cols[_hi % 4]:
-                st.markdown(
-                    f"<div style='background:{_tile_bg};border:1px solid {_C_BORDER};"
-                    f"border-radius:8px;padding:10px 8px;margin-bottom:8px;text-align:center;'>"
-                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.66rem;margin-bottom:4px;"
-                    f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{_sp['name']}</div>"
-                    f"<div style='color:{_tile_txt};font-size:1.05rem;font-weight:800;'>"
-                    f"{_sign}{_p:.2f}%</div></div>",
-                    unsafe_allow_html=True)
-    st.caption("S&P 500 Sektor-ETFs (XLK, XLF …). Verzögert ~15 Min.")
+    # ── S&P 500 Heatmap (Treemap) ────────────────────────────────────────
+    st.markdown("<div class='section-header'>🌡️ S&P 500 Heatmap — Heute</div>", unsafe_allow_html=True)
+    _tm_data = _load_treemap_data()
+    if _tm_data and _tm_data.get('rows'):
+        _tm_rows = _tm_data['rows']
+        _tm_labels  = [r['ticker'] for r in _tm_rows]
+        _tm_parents = [r['sector']  for r in _tm_rows]
+        _tm_values  = [r['mcap']    for r in _tm_rows]
+        _tm_pcts    = [r['pct']     for r in _tm_rows]
+        _tm_text    = [f"{r['ticker']}<br>{'+' if r['pct']>=0 else ''}{r['pct']:.2f}%"
+                       for r in _tm_rows]
+        _sectors_uniq = sorted(set(_tm_parents))
+        _tm_labels  = _sectors_uniq + _tm_labels
+        _tm_parents = ["S&P 500"] * len(_sectors_uniq) + _tm_parents
+        _tm_values  = [0] * len(_sectors_uniq) + _tm_values
+        _tm_pcts    = [0.0] * len(_sectors_uniq) + _tm_pcts
+        _tm_text    = _sectors_uniq + _tm_text
+        _tm_colors  = _tm_pcts
+        _tm_fig = go.Figure(go.Treemap(
+            labels=_tm_labels,
+            parents=_tm_parents,
+            values=_tm_values,
+            text=_tm_text,
+            textinfo="text",
+            hovertemplate="<b>%{label}</b><br>Market Cap: ~$%{value}Mrd<extra></extra>",
+            marker=dict(
+                colors=_tm_colors,
+                colorscale=[
+                    [0.0,  "#7f0000"],
+                    [0.3,  "#c62828"],
+                    [0.45, "#4a2020"],
+                    [0.5,  "#1a2433"],
+                    [0.55, "#1a3020"],
+                    [0.7,  "#2e7d32"],
+                    [1.0,  "#00c853"],
+                ],
+                cmid=0,
+                cmin=-3,
+                cmax=3,
+                showscale=True,
+                colorbar=dict(
+                    thickness=10,
+                    len=0.6,
+                    tickvals=[-3, -1.5, 0, 1.5, 3],
+                    ticktext=["-3%", "-1.5%", "0%", "+1.5%", "+3%"],
+                    tickfont=dict(size=9, color=_C_TEXT_MUTED),
+                    bgcolor='rgba(0,0,0,0)',
+                    outlinewidth=0,
+                ),
+            ),
+            textfont=dict(size=11, color="#ffffff"),
+            root_color="rgba(0,0,0,0)",
+        ))
+        _tm_fig.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(t=0, b=0, l=0, r=0),
+            height=420,
+        )
+        st.plotly_chart(_tm_fig, use_container_width=True,
+                        config={'displayModeBar': False})
+        st.caption(f"~55 Top-S&P-500-Aktien · Größe = Market Cap · Farbe = Tagesrendite · Stand: {_tm_data.get('ts','—')} (verzögert ~15 Min.)")
+    else:
+        _sec_perf = _load_sector_perf()
+        if _sec_perf:
+            _hm_cols = st.columns(4)
+            for _hi, _sp in enumerate(_sec_perf):
+                _p = _sp['pct']
+                if _p >= 1.5:    _tile_bg, _tile_txt = "#1b3a2a", _C_POSITIVE
+                elif _p >= 0.3:  _tile_bg, _tile_txt = "#163020", "#66bb6a"
+                elif _p >= -0.3: _tile_bg, _tile_txt = "#1a2433", _C_TEXT_MUTED
+                elif _p >= -1.5: _tile_bg, _tile_txt = "#3a1a1a", "#ef9a9a"
+                else:             _tile_bg, _tile_txt = "#2a1010", _C_NEGATIVE
+                _sign = "+" if _p >= 0 else ""
+                with _hm_cols[_hi % 4]:
+                    st.markdown(
+                        f"<div style='background:{_tile_bg};border:1px solid {_C_BORDER};"
+                        f"border-radius:8px;padding:10px 8px;margin-bottom:8px;text-align:center;'>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.66rem;margin-bottom:4px;'>{_sp['name']}</div>"
+                        f"<div style='color:{_tile_txt};font-size:1.05rem;font-weight:800;'>{_sign}{_p:.2f}%</div>"
+                        f"</div>", unsafe_allow_html=True)
+            st.caption("Sektor-ETFs als Fallback.")
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
