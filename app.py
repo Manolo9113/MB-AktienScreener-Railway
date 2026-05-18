@@ -12993,6 +12993,108 @@ if st.session_state.get("show_etf_analyzer"):
     st.caption("⚠️ Top-20-Holdings je ETF · Gewichte approximiert (Stand ~2025) · "
                "Tatsächliche Überschneidung aller Positionen kann abweichen.")
 
+    # ── P3: Vorabpauschale-Rechner ────────────────────────────────────────
+    st.markdown("<div class='section-header'>🧾 Vorabpauschale-Rechner</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:14px 16px;margin-bottom:14px;color:{_C_TEXT_MUTED};font-size:0.82rem;line-height:1.6;'>"
+        f"Thesaurierende ETFs schütten keine Dividenden aus — trotzdem erhebt das Finanzamt jährlich "
+        f"eine <b style='color:{_C_TEXT_PRIMARY};'>Vorabpauschale</b> als pauschalen Steuervorschuss. "
+        f"Sie wird am <b style='color:{_C_TEXT_PRIMARY};'>2. Januar</b> automatisch vom Broker abgebucht. "
+        f"Bei Verlusten oder geringen Kursgewinnen kann sie entfallen.</div>",
+        unsafe_allow_html=True)
+
+    _vp_basiszins_hist = {
+        2026: 2.12, 2025: 2.29, 2024: 2.29, 2023: 2.55, 2022: 1.94,
+        2021: 0.0,  2020: 0.0,  2019: 0.52, 2018: 0.87, 2017: 0.59,
+    }
+    _cur_year = pd.Timestamp.today().year
+    _vp_c1, _vp_c2, _vp_c3 = st.columns(3)
+    with _vp_c1:
+        _vp_wert    = st.number_input("ETF-Wert Jahresanfang (€)", min_value=0, max_value=10_000_000,
+                                      value=10_000, step=500, key="vp_wert")
+        _vp_rendite = st.number_input("Kursgewinn im Jahr (%)", min_value=-50.0, max_value=100.0,
+                                      value=8.0, step=0.5, format="%.1f", key="vp_rendite",
+                                      help="Tatsächliche Wertentwicklung des ETFs im Steuerjahr")
+    with _vp_c2:
+        _vp_basis   = st.number_input("Basiszins (%)", min_value=0.0, max_value=10.0,
+                                      value=_vp_basiszins_hist.get(_cur_year, 2.12),
+                                      step=0.01, format="%.2f", key="vp_basis",
+                                      help="Vom BMF jährlich festgelegt (aktuell ~2,12% für 2026)")
+        _vp_typ     = st.selectbox("ETF-Typ (Teilfreistellung)", [
+                                      "Aktien-ETF (30%)",
+                                      "Misch-ETF (15%)",
+                                      "Immobilien-ETF (60%)",
+                                  ], key="vp_typ")
+    with _vp_c3:
+        _vp_pausch  = st.number_input("Noch verfügbarer Sparerpauschbetrag (€)",
+                                      min_value=0, max_value=2000, value=1000, step=100,
+                                      key="vp_pausch",
+                                      help="1.000 € Einzelperson, 2.000 € Ehepaar/Zusammenveranlagung")
+        _vp_kirche  = st.toggle("Kirchensteuer (9%)", value=False, key="vp_kirche")
+
+    _vp_teilfrei = {"Aktien-ETF (30%)": 0.30, "Misch-ETF (15%)": 0.15, "Immobilien-ETF (60%)": 0.60}[_vp_typ]
+    _vp_steuer_satz = 0.26375 * (1.09 if _vp_kirche else 1.0)
+
+    _vp_basisertrag   = _vp_wert * (_vp_basis / 100) * 0.70
+    _vp_kursgewinn    = _vp_wert * (_vp_rendite / 100)
+    _vp_vorabpausch   = max(0.0, min(_vp_basisertrag, _vp_kursgewinn))
+    _vp_steuerpfl     = _vp_vorabpausch * (1 - _vp_teilfrei)
+    _vp_nach_pausch   = max(0.0, _vp_steuerpfl - _vp_pausch)
+    _vp_steuer        = _vp_nach_pausch * _vp_steuer_satz
+    _vp_entfaellt     = _vp_vorabpausch == 0
+
+    if _vp_entfaellt:
+        st.success("✅ Keine Vorabpauschale — Kursgewinn liegt unter dem Basisertrag oder ETF hat Verlust gemacht.")
+    else:
+        _p3_c1, _p3_c2, _p3_c3, _p3_c4 = st.columns(4)
+        for _pc, _pl, _pv, _pclr in [
+            (_p3_c1, "Basisertrag",         f"€{_vp_basisertrag:,.2f}",  _C_TEXT_PRIMARY),
+            (_p3_c2, "Vorabpauschale",      f"€{_vp_vorabpausch:,.2f}",  _C_ACCENT),
+            (_p3_c3, "Steuerpflichtiger Anteil", f"€{_vp_steuerpfl:,.2f}", _C_NEGATIVE),
+            (_p3_c4, "Steuer (€)",          f"€{_vp_steuer:,.2f}",       _C_NEGATIVE),
+        ]:
+            _pc.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+                f"padding:12px;text-align:center;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_pl}</div>"
+                f"<div style='color:{_pclr};font-size:1.15rem;font-weight:700;'>{_pv}</div>"
+                f"</div>", unsafe_allow_html=True)
+
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+            f"padding:12px 14px;margin-top:10px;font-size:0.80rem;color:{_C_TEXT_MUTED};line-height:1.7;'>"
+            f"<b style='color:{_C_TEXT_PRIMARY};'>Rechenweg:</b><br>"
+            f"Basisertrag = €{_vp_wert:,.0f} × {_vp_basis:.2f}% × 0,70 = <b>€{_vp_basisertrag:,.2f}</b><br>"
+            f"Vorabpauschale = min(Basisertrag, Kursgewinn €{_vp_kursgewinn:,.2f}) = <b>€{_vp_vorabpausch:,.2f}</b><br>"
+            f"Nach {int(_vp_teilfrei*100)}% Teilfreistellung steuerpflichtig: <b>€{_vp_steuerpfl:,.2f}</b><br>"
+            f"Abzgl. Sparerpauschbetrag €{min(_vp_pausch, _vp_steuerpfl):,.2f} → zu versteuern: "
+            f"<b>€{_vp_nach_pausch:,.2f}</b><br>"
+            f"Steuer ({_vp_steuer_satz*100:.3f}%): <b style='color:{_C_NEGATIVE};'>€{_vp_steuer:,.2f}</b> "
+            f"→ wird am 2. Januar vom Broker abgebucht.</div>",
+            unsafe_allow_html=True)
+
+    st.markdown(
+        f"<div style='margin-top:12px;'>"
+        f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;font-weight:600;margin-bottom:5px;'>"
+        f"Basiszins-Historie (BMF)</div>"
+        f"<div style='display:flex;gap:6px;flex-wrap:wrap;'>", unsafe_allow_html=True)
+    _bz_html = "<div style='display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;'>"
+    for _bzy, _bzv in sorted(_vp_basiszins_hist.items(), reverse=True):
+        _bz_clr  = _C_POSITIVE if _bzv > 0 else _C_TEXT_MUTED
+        _bz_bold = "font-weight:700;" if _bzy == _cur_year else ""
+        _bz_html += (
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+            f"border-radius:5px;padding:4px 8px;text-align:center;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.60rem;'>{_bzy}</div>"
+            f"<div style='color:{_bz_clr};font-size:0.72rem;{_bz_bold}'>{_bzv:.2f}%</div>"
+            f"</div>")
+    _bz_html += "</div>"
+    st.markdown(_bz_html, unsafe_allow_html=True)
+    st.caption("Vorabpauschale gilt nur für thesaurierende ETFs · "
+               "Bei ausschüttenden ETFs werden Dividenden direkt versteuert · "
+               "Basiszins 2026 vorläufig · keine Steuerberatung.")
+
     st.stop()
 
 # ==================== MAIN DATA ====================
