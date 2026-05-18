@@ -3540,6 +3540,96 @@ def _load_seasonal_data(sym: str) -> dict:
         return {}
 
 
+@st.cache_data(ttl=21600, show_spinner=False)
+def _load_magic_formula(tickers: tuple) -> list:
+    """Greenblatt Magic Formula: Earnings Yield + ROIC-Ranking."""
+    rows = []
+    try:
+        import concurrent.futures as _cfe
+        def _fetch(t):
+            try:
+                info = yf.Ticker(t).info
+                ebit       = info.get("ebitda") or 0
+                ev         = info.get("enterpriseValue") or 0
+                total_debt = info.get("totalDebt") or 0
+                cash       = info.get("totalCash") or 0
+                cur_assets = info.get("totalCurrentAssets") or 0
+                cur_liab   = info.get("totalCurrentLiabilities") or 0
+                net_fixed  = info.get("netPPE") or info.get("propertyPlantEquipmentNet") or 0
+                name       = info.get("shortName") or t
+                price      = info.get("currentPrice") or 0
+                sector     = info.get("sector") or "—"
+                if ev > 0 and ebit > 0:
+                    ey = ebit / ev * 100
+                else:
+                    ey = None
+                net_wc = (cur_assets - cash) - (cur_liab - total_debt)
+                invested = net_fixed + max(0, net_wc)
+                if invested > 0 and ebit > 0:
+                    roic = ebit / invested * 100
+                else:
+                    roic = None
+                if ey is None or roic is None:
+                    return None
+                return {"ticker": t, "name": name, "ey": ey, "roic": roic,
+                        "price": price, "sector": sector}
+            except Exception:
+                return None
+        with _cfe.ThreadPoolExecutor(max_workers=8) as ex:
+            results = list(ex.map(_fetch, tickers, timeout=20))
+        rows = [r for r in results if r]
+        if not rows:
+            return []
+        ey_sorted   = sorted(rows, key=lambda x: x["ey"],   reverse=True)
+        roic_sorted = sorted(rows, key=lambda x: x["roic"], reverse=True)
+        ey_rank   = {r["ticker"]: i for i, r in enumerate(ey_sorted)}
+        roic_rank = {r["ticker"]: i for i, r in enumerate(roic_sorted)}
+        for r in rows:
+            r["mf_score"] = ey_rank[r["ticker"]] + roic_rank[r["ticker"]]
+        rows.sort(key=lambda x: x["mf_score"])
+    except Exception:
+        pass
+    return rows[:15]
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _load_insider_watchlist(tickers: tuple) -> list:
+    """Insider-Käufe der letzten 6 Monate für eine Tickerliste."""
+    results = []
+    cutoff  = pd.Timestamp.today() - pd.DateOffset(months=6)
+    try:
+        import concurrent.futures as _cfe
+        def _fetch(t):
+            try:
+                df = yf.Ticker(t).insider_transactions
+                if df is None or df.empty:
+                    return []
+                if df.index.tz is not None:
+                    df.index = df.index.tz_localize(None)
+                df = df[df.index >= cutoff]
+                buys = df[df.get("Transaction", df.get("transactionType", pd.Series(dtype=str)))
+                          .astype(str).str.contains("Purchase|Buy|Kauf", case=False, na=False)]
+                out = []
+                for dt, row in buys.iterrows():
+                    val = row.get("Value") or row.get("value") or 0
+                    shares = row.get("Shares") or row.get("shares") or 0
+                    insider = row.get("Insider") or row.get("insiderName") or "—"
+                    role    = row.get("Relationship") or row.get("relationship") or "—"
+                    out.append({"ticker": t, "date": dt, "insider": insider,
+                                "role": role, "shares": int(shares), "value": float(val)})
+                return out
+            except Exception:
+                return []
+        with _cfe.ThreadPoolExecutor(max_workers=6) as ex:
+            parts = list(ex.map(_fetch, tickers, timeout=15))
+        for part in parts:
+            results.extend(part)
+    except Exception:
+        pass
+    results.sort(key=lambda x: x["date"], reverse=True)
+    return results[:20]
+
+
 # ==================== STOCK PICKS ====================
 _GROWTH_POOL = {
     "NVDA":  "KI-Chip-Marktführer mit explosivem Datencenter-Wachstum",
@@ -7799,6 +7889,111 @@ elif st.session_state.get("show_stocks"):
                     st.rerun()
         else:
             st.info("Daytrading-Daten werden geladen…")
+
+    # ── A1: Magic Formula Screener ────────────────────────────────────────
+    with st.expander("🧙 Magic Formula Screener — Greenblatt (6h Cache)", expanded=False):
+        _MF_POOL = (
+            "AAPL","MSFT","GOOGL","AMZN","META","NVDA","BRK-B","JPM","V","UNH",
+            "XOM","JNJ","PG","MA","HD","ABBV","MRK","CVX","KO","PEP","BAC","WMT",
+            "COST","AVGO","LLY","NFLX","CRM","ORCL","CSCO","ADBE","AMD","INTC",
+            "TXN","QCOM","IBM","MU","ACN","UNP","HON","CAT","DE","GE","RTX","BA",
+            "MMM","AXP","GS","MS","BX","SPGI","MCO","ICE","CME","SCHW","C","WFC",
+        )
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.80rem;margin-bottom:10px;'>"
+            f"Joel Greenblatts Magic Formula: Rankt Aktien nach <b style='color:{_C_TEXT_PRIMARY};'>"
+            f"Earnings Yield</b> (EBIT/Enterprise Value) + <b style='color:{_C_TEXT_PRIMARY};'>"
+            f"ROIC</b> (EBIT/Invested Capital). Niedriger Kombinationsrang = attraktiv.</div>",
+            unsafe_allow_html=True)
+        _mf_load_key = "mf_loaded"
+        if not st.session_state.get(_mf_load_key):
+            if st.button("🧙 Magic Formula berechnen", key="btn_mf", use_container_width=True):
+                st.session_state[_mf_load_key] = True
+                st.rerun()
+        if st.session_state.get(_mf_load_key):
+            with st.spinner("Berechne Magic Formula für 55 Aktien…"):
+                _mf_rows = _load_magic_formula(_MF_POOL)
+            if _mf_rows:
+                for _ri, _mr in enumerate(_mf_rows):
+                    _ey_clr  = _C_POSITIVE if _mr["ey"]   > 8  else _C_TEXT_MUTED
+                    _rc_clr  = _C_POSITIVE if _mr["roic"] > 15 else _C_TEXT_MUTED
+                    _rank_bg = _C_ACCENT if _ri == 0 else ("rgba(0,230,118,0.1)" if _ri < 3 else _C_CARD_BG)
+                    st.markdown(
+                        f"<div style='background:{_rank_bg};border:1px solid {_C_BORDER};"
+                        f"border-radius:8px;padding:9px 12px;margin-bottom:5px;"
+                        f"display:grid;grid-template-columns:28px 1fr 80px 80px 80px;gap:8px;align-items:center;'>"
+                        f"<div style='color:{_C_ACCENT};font-size:0.90rem;font-weight:800;text-align:center;'>#{_ri+1}</div>"
+                        f"<div>"
+                        f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.80rem;font-weight:600;'>{_mr['ticker']}</div>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_mr['name'][:28]} · {_mr['sector'][:16]}</div>"
+                        f"</div>"
+                        f"<div style='text-align:center;'>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.62rem;'>EY</div>"
+                        f"<div style='color:{_ey_clr};font-size:0.78rem;font-weight:700;'>{_mr['ey']:.1f}%</div>"
+                        f"</div>"
+                        f"<div style='text-align:center;'>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.62rem;'>ROIC</div>"
+                        f"<div style='color:{_rc_clr};font-size:0.78rem;font-weight:700;'>{_mr['roic']:.1f}%</div>"
+                        f"</div>"
+                        f"<div style='text-align:right;'>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.62rem;'>Preis</div>"
+                        f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;'>${_mr['price']:.0f}</div>"
+                        f"</div>"
+                        f"</div>", unsafe_allow_html=True)
+                    if st.button(f"→ {_mr['ticker']}", key=f"mf_{_mr['ticker']}", use_container_width=False):
+                        _go_to_ticker(_mr["ticker"])
+                        st.rerun()
+                st.caption("EY = EBIT/EV · ROIC = EBIT/(Net PPE + Net Working Capital) · "
+                           "Rang 1-15 aus ~55 S&P-500-Werten · keine Anlageberatung.")
+            else:
+                st.warning("Daten konnten nicht geladen werden.")
+
+    # ── A3: Insider-Käufe Watchlist ───────────────────────────────────────
+    with st.expander("🕵️ Insider-Käufe Watchlist — letzte 6 Monate (1h Cache)", expanded=False):
+        _wl_tickers = list({
+            row.get("ticker") or row.get("Ticker") or ""
+            for row in (st.session_state.get("watchlist") or [])
+        } - {""})
+        if not _wl_tickers:
+            st.info("Keine Watchlist-Positionen gefunden — bitte zuerst Portfolio hochladen.")
+        else:
+            st.markdown(
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.80rem;margin-bottom:10px;'>"
+                f"Insider-Käufe (Vorstände, Aufsichtsräte) deiner <b style='color:{_C_TEXT_PRIMARY};'>"
+                f"{len(_wl_tickers)} Watchlist-Aktien</b> der letzten 6 Monate. "
+                f"Insider-Käufe gelten als starkes Vertrauenssignal.</div>",
+                unsafe_allow_html=True)
+            _ins_load_key = "ins_wl_loaded"
+            if not st.session_state.get(_ins_load_key):
+                if st.button("🕵️ Insider-Daten laden", key="btn_ins_wl", use_container_width=True):
+                    st.session_state[_ins_load_key] = True
+                    st.rerun()
+            if st.session_state.get(_ins_load_key):
+                with st.spinner("Lade Insider-Transaktionen…"):
+                    _ins_rows = _load_insider_watchlist(tuple(sorted(_wl_tickers)))
+                if _ins_rows:
+                    for _ir in _ins_rows:
+                        _val_str = f"${_ir['value']:,.0f}" if _ir["value"] > 0 else "—"
+                        _date_str = _ir["date"].strftime("%d.%m.%Y") if hasattr(_ir["date"], "strftime") else str(_ir["date"])[:10]
+                        st.markdown(
+                            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                            f"border-left:3px solid {_C_POSITIVE};border-radius:8px;"
+                            f"padding:9px 12px;margin-bottom:5px;"
+                            f"display:grid;grid-template-columns:60px 1fr auto;gap:8px;align-items:center;'>"
+                            f"<div style='color:{_C_ACCENT};font-size:0.82rem;font-weight:700;'>{_ir['ticker']}</div>"
+                            f"<div>"
+                            f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;font-weight:600;'>{str(_ir['insider'])[:30]}</div>"
+                            f"<div style='color:{_C_TEXT_MUTED};font-size:0.67rem;'>{str(_ir['role'])[:28]} · {_date_str}</div>"
+                            f"</div>"
+                            f"<div style='text-align:right;'>"
+                            f"<div style='color:{_C_POSITIVE};font-size:0.80rem;font-weight:700;'>{_val_str}</div>"
+                            f"<div style='color:{_C_TEXT_MUTED};font-size:0.66rem;'>{_ir['shares']:,} Aktien</div>"
+                            f"</div>"
+                            f"</div>", unsafe_allow_html=True)
+                    st.caption("Nur Käufe (Purchases) · Quelle: yFinance / SEC Form 4 · "
+                               "Verkäufe können steuerlich bedingt sein — Käufe sind aussagekräftiger.")
+                else:
+                    st.info("Keine Insider-Käufe in den letzten 6 Monaten gefunden.")
 
     # ── KI-Investmentstrategie ─────────────────────────────────────────────────
     st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
