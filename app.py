@@ -6945,6 +6945,102 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
                 st.caption(f"Stand: {_maki_time} · {_maki_model} · Gültig 24h")
             st.markdown(_maki_result)
 
+    # ── L1: Makro-Kalender ───────────────────────────────────────────────
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>📅 Makro-Kalender</div>", unsafe_allow_html=True)
+    _today = pd.Timestamp.today().normalize()
+    _MK_EVENTS = [
+        # (datum, ereignis, kategorie, wichtigkeit)  wichtigkeit: 3=hoch, 2=mittel, 1=niedrig
+        ("2025-05-20", "Fed-Protokoll (FOMC Minutes)",         "Fed",  2),
+        ("2025-05-22", "US PCE / Kerninflation (April)",       "CPI",  3),
+        ("2025-05-27", "US BIP Q1 (2. Schätzung)",             "BIP",  2),
+        ("2025-05-28", "EZB Wirtschaftsbulletin",              "EZB",  1),
+        ("2025-05-30", "US PCE Deflator (April)",              "CPI",  3),
+        ("2025-06-05", "EZB Zinsentscheid",                    "EZB",  3),
+        ("2025-06-06", "US Arbeitsmarkt (NFP Mai)",            "Jobs", 3),
+        ("2025-06-11", "US CPI Mai",                           "CPI",  3),
+        ("2025-06-17", "US PPI Mai",                           "CPI",  2),
+        ("2025-06-17", "Fed Zinsentscheid (FOMC)",             "Fed",  3),
+        ("2025-06-18", "Fed Pressekonferenz Powell",           "Fed",  3),
+        ("2025-06-20", "US Michigan Sentiment",                "Stim", 1),
+        ("2025-06-25", "US BIP Q1 (3. Schätzung)",            "BIP",  2),
+        ("2025-07-02", "US Arbeitsmarkt (NFP Juni)",           "Jobs", 3),
+        ("2025-07-10", "US CPI Juni",                          "CPI",  3),
+        ("2025-07-14", "EZB Zinsentscheid",                    "EZB",  3),
+        ("2025-07-15", "US PPI Juni",                          "CPI",  2),
+        ("2025-07-24", "EZB Zinsentscheid",                    "EZB",  3),
+        ("2025-07-29", "Fed Zinsentscheid (FOMC)",             "Fed",  3),
+        ("2025-07-30", "US BIP Q2 (1. Schätzung)",            "BIP",  3),
+        ("2025-08-01", "US Arbeitsmarkt (NFP Juli)",           "Jobs", 3),
+        ("2025-08-13", "US CPI Juli",                          "CPI",  3),
+        ("2025-09-11", "EZB Zinsentscheid",                    "EZB",  3),
+        ("2025-09-16", "Fed Zinsentscheid (FOMC)",             "Fed",  3),
+        ("2025-09-17", "Fed Pressekonferenz Powell",           "Fed",  3),
+        ("2025-10-30", "EZB Zinsentscheid",                    "EZB",  3),
+        ("2025-10-28", "Fed Zinsentscheid (FOMC)",             "Fed",  3),
+        ("2025-12-09", "Fed Zinsentscheid (FOMC)",             "Fed",  3),
+        ("2025-12-18", "EZB Zinsentscheid",                    "EZB",  3),
+    ]
+    _CAT_CLR = {
+        "Fed":  (_C_ACCENT,    "#0d1f35"),
+        "EZB":  ("#ab47bc",    "#1a0d2e"),
+        "CPI":  (_C_NEGATIVE,  "#2a1010"),
+        "BIP":  ("#ff9800",    "#2a1a00"),
+        "Jobs": (_C_POSITIVE,  "#0d2a1a"),
+        "Stim": (_C_TEXT_MUTED,"#1a1a1a"),
+    }
+    _IMP_ICON = {3: "🔴", 2: "🟡", 1: "⚪"}
+    _mk_upcoming = [
+        (pd.Timestamp(d), name, cat, imp)
+        for d, name, cat, imp in _MK_EVENTS
+        if pd.Timestamp(d) >= _today
+    ]
+    _mk_upcoming.sort(key=lambda x: x[0])
+    _mk_show = _mk_upcoming[:8]
+
+    if _mk_show:
+        _mk_next = _mk_show[0][0]
+        _mk_days = (_mk_next - _today).days
+        _mk_next_name = _mk_show[0][1]
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+            f"padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:12px;'>"
+            f"<div style='font-size:1.4rem;'>⏰</div>"
+            f"<div><div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>Nächstes Ereignis in</div>"
+            f"<div style='color:{_C_ACCENT};font-size:1.0rem;font-weight:700;'>"
+            + ("Heute" if _mk_days == 0 else f"{_mk_days} Tag{'e' if _mk_days != 1 else ''}") +
+            f"</div>"
+            f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;'>{_mk_next_name}</div></div>"
+            f"</div>",
+            unsafe_allow_html=True)
+
+        for _mk_ts, _mk_name, _mk_cat, _mk_imp in _mk_show:
+            _clr, _bg = _CAT_CLR.get(_mk_cat, (_C_TEXT_MUTED, _C_CARD_BG))
+            _mk_delta = (_mk_ts - _today).days
+            _mk_date_str = _mk_ts.strftime("%d.%m.%Y")
+            _mk_in_str = (
+                "Heute" if _mk_delta == 0
+                else f"in {_mk_delta}d" if _mk_delta < 14
+                else _mk_ts.strftime("%d. %b")
+            )
+            st.markdown(
+                f"<div style='background:{_bg};border:1px solid {_clr}44;border-radius:6px;"
+                f"padding:8px 12px;margin-bottom:5px;"
+                f"display:grid;grid-template-columns:36px 1fr auto auto;gap:8px;align-items:center;'>"
+                f"<div style='font-size:1.1rem;text-align:center;'>{_IMP_ICON[_mk_imp]}</div>"
+                f"<div>"
+                f"  <div style='color:{_C_TEXT_PRIMARY};font-size:0.80rem;font-weight:600;'>{_mk_name}</div>"
+                f"  <div style='color:{_C_TEXT_MUTED};font-size:0.66rem;'>{_mk_date_str}</div>"
+                f"</div>"
+                f"<div style='background:{_clr}22;border-radius:4px;padding:2px 7px;"
+                f"color:{_clr};font-size:0.65rem;font-weight:700;white-space:nowrap;'>{_mk_cat}</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.70rem;white-space:nowrap;'>{_mk_in_str}</div>"
+                f"</div>",
+                unsafe_allow_html=True)
+        st.caption("🔴 Hohe Marktrelevanz · 🟡 Mittel · ⚪ Niedrig · Termine können sich verschieben.")
+    else:
+        st.info("Keine bevorstehenden Termine im Kalender.")
+
     # ── Marktschlagzeilen ────────────────────────────────────────────────
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown("<div class='section-header'>📰 Aktuelle Marktschlagzeilen</div>", unsafe_allow_html=True)
@@ -12437,6 +12533,42 @@ if st.session_state.get("show_etf_analyzer"):
             ("BAC","Bank of America",1.00),("WMT","Walmart",0.95),("CSCO","Cisco",0.90),
             ("VZ","Verizon",0.85),("IBM","IBM",0.80),("PM","Philip Morris",0.78),
             ("MO","Altria",0.72),("T","AT&T",0.70),("UNP","Union Pacific",0.65),
+        ]),
+        "VHYL.AS": ("Vanguard FTSE All-World High Div Yield (EUR)", [
+            ("BRK-B","Berkshire",2.52),("JPM","JPMorgan",2.22),("XOM","ExxonMobil",2.12),
+            ("JNJ","Johnson & Johnson",1.82),("PG","Procter & Gamble",1.72),
+            ("ABBV","AbbVie",1.62),("CVX","Chevron",1.52),("KO","Coca-Cola",1.42),
+            ("PEP","PepsiCo",1.32),("MRK","Merck",1.22),("HD","Home Depot",1.12),
+            ("BAC","Bank of America",1.02),("WMT","Walmart",0.97),("CSCO","Cisco",0.92),
+            ("VZ","Verizon",0.87),("IBM","IBM",0.82),("PM","Philip Morris",0.80),
+            ("NESN.SW","Nestlé",0.75),("SHEL","Shell",0.72),("AZN","AstraZeneca",0.68),
+        ]),
+        "WEBG.DE": ("Amundi Prime All Country World Acc", [
+            ("AAPL","Apple",4.18),("MSFT","Microsoft",3.98),("NVDA","NVIDIA",3.42),
+            ("AMZN","Amazon",2.78),("META","Meta",1.81),("GOOGL","Alphabet A",1.69),
+            ("GOOG","Alphabet C",1.62),("TSLA","Tesla",1.10),("BRK-B","Berkshire",0.92),
+            ("JPM","JPMorgan",0.90),("AVGO","Broadcom",0.84),("LLY","Eli Lilly",0.82),
+            ("V","Visa",0.71),("UNH","UnitedHealth",0.69),("XOM","ExxonMobil",0.61),
+            ("COST","Costco",0.54),("NFLX","Netflix",0.51),("MA","Mastercard",0.49),
+            ("WMT","Walmart",0.47),("PG","Procter & Gamble",0.39),
+        ]),
+        "IUIT.DE": ("iShares MSCI World Information Technology", [
+            ("AAPL","Apple",18.50),("MSFT","Microsoft",17.20),("NVDA","NVIDIA",15.80),
+            ("AVGO","Broadcom",4.20),("ORCL","Oracle",3.10),("AMD","AMD",2.80),
+            ("CSCO","Cisco",2.50),("ADBE","Adobe",2.30),("CRM","Salesforce",2.20),
+            ("ACN","Accenture",2.10),("INTC","Intel",1.60),("QCOM","Qualcomm",1.80),
+            ("TXN","Texas Instruments",1.50),("IBM","IBM",1.40),("INTU","Intuit",1.30),
+            ("AMAT","Applied Materials",1.20),("LRCX","Lam Research",1.10),
+            ("MU","Micron",1.05),("KLAC","KLA Corp",0.95),("ADI","Analog Devices",0.90),
+        ]),
+        "CSNDX.DE": ("iShares Nasdaq-100 UCITS ETF", [
+            ("AAPL","Apple",9.05),("MSFT","Microsoft",8.15),("NVDA","NVIDIA",7.85),
+            ("AMZN","Amazon",5.15),("META","Meta",4.55),("TSLA","Tesla",3.05),
+            ("GOOGL","Alphabet A",2.98),("GOOG","Alphabet C",2.88),("AVGO","Broadcom",2.28),
+            ("COST","Costco",2.48),("NFLX","Netflix",1.78),("AMD","AMD",1.48),
+            ("ADBE","Adobe",1.28),("CSCO","Cisco",1.18),("QCOM","Qualcomm",1.08),
+            ("INTC","Intel",0.78),("PEP","PepsiCo",0.98),("INTU","Intuit",0.93),
+            ("AMGN","Amgen",0.88),("ISRG","Intuitive Surgical",0.83),
         ]),
     }
 
