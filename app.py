@@ -16110,15 +16110,14 @@ elif _at == 2:
         f"letter-spacing:0.05em;margin:28px 0 10px 0;'>📈 WACHSTUMS-CHART — INNERER WERT VS. KURS</div>",
         unsafe_allow_html=True)
 
-    _gc_obj   = yf.Ticker(ticker)
-    _gc_hist  = _gc_obj.history(period="5y", interval="1mo", auto_adjust=True)
-    _gc_inc   = _gc_obj.income_stmt
+    _gc_obj  = yf.Ticker(ticker)
+    _gc_hist = _gc_obj.history(period="5y", interval="1mo", auto_adjust=True)
+    _gc_inc  = _gc_obj.income_stmt
 
-    # strip tz from price history
     if not _gc_hist.empty and getattr(_gc_hist.index, 'tz', None):
         _gc_hist.index = _gc_hist.index.tz_localize(None)
 
-    # --- Historical EPS per year (priority: Diluted EPS > Basic EPS > NI/Shares) ---
+    # --- Historical EPS & Revenue/share per year ---
     _gc_eps_data: list = []
     _gc_rev_ps_data: list = []
     if _gc_inc is not None and not _gc_inc.empty:
@@ -16127,40 +16126,33 @@ elif _at == 2:
                                          'Net Income Common Stockholders Reported'] if r in _gc_inc.index), None)
         _gc_sh_row  = next((r for r in ['Diluted Average Shares', 'Basic Average Shares'] if r in _gc_inc.index), None)
         _gc_rev_row = next((r for r in ['Total Revenue', 'Revenue'] if r in _gc_inc.index), None)
-
         for _gc_col in sorted(_gc_inc.columns):
             try:
                 _gc_ts = pd.Timestamp(_gc_col)
                 if _gc_ts.tzinfo:
                     _gc_ts = _gc_ts.tz_localize(None)
-                # EPS
                 if _gc_eps_row:
-                    _gc_eps_v = float(_gc_inc.loc[_gc_eps_row, _gc_col])
-                    _gc_eps_data.append((_gc_ts, _gc_eps_v))
+                    _gc_eps_data.append((_gc_ts, float(_gc_inc.loc[_gc_eps_row, _gc_col])))
                 elif _gc_ni_row and _gc_sh_row:
-                    _gc_ni = float(_gc_inc.loc[_gc_ni_row, _gc_col])
-                    _gc_sh = float(_gc_inc.loc[_gc_sh_row, _gc_col])
-                    if _gc_sh and _gc_sh > 0:
-                        _gc_eps_data.append((_gc_ts, _gc_ni / _gc_sh))
-                # Revenue/share
+                    _ni = float(_gc_inc.loc[_gc_ni_row, _gc_col])
+                    _sh = float(_gc_inc.loc[_gc_sh_row, _gc_col])
+                    if _sh > 0:
+                        _gc_eps_data.append((_gc_ts, _ni / _sh))
                 if _gc_rev_row and _gc_sh_row:
-                    _gc_rev_v = float(_gc_inc.loc[_gc_rev_row, _gc_col])
-                    _gc_sh_v  = float(_gc_inc.loc[_gc_sh_row, _gc_col]) if _gc_sh_row else None
-                    if _gc_sh_v and _gc_sh_v > 0:
-                        _gc_rev_ps_data.append((_gc_ts, _gc_rev_v / _gc_sh_v))
+                    _rv = float(_gc_inc.loc[_gc_rev_row, _gc_col])
+                    _sh = float(_gc_inc.loc[_gc_sh_row, _gc_col])
+                    if _sh > 0:
+                        _gc_rev_ps_data.append((_gc_ts, _rv / _sh))
             except Exception:
                 continue
 
-    _gc_eps_sorted   = sorted(_gc_eps_data,    key=lambda x: x[0])
-    _gc_rev_sorted   = sorted(_gc_rev_ps_data, key=lambda x: x[0])
+    _gc_eps_sorted = sorted(_gc_eps_data,    key=lambda x: x[0])
+    _gc_rev_sorted = sorted(_gc_rev_ps_data, key=lambda x: x[0])
+    _gc_use_eps    = len(_gc_eps_sorted) >= 2 and any(v > 0 for _, v in _gc_eps_sorted[-2:])
+    _gc_metric     = _gc_eps_sorted if _gc_use_eps else _gc_rev_sorted
+    _gc_mlabel     = "EPS" if _gc_use_eps else "Umsatz/Aktie"
 
-    # Decide EPS vs Revenue/share (use EPS if last 2 years are profitable)
-    _gc_use_eps = (len(_gc_eps_sorted) >= 2
-                   and any(v > 0 for _, v in _gc_eps_sorted[-2:]))
-    _gc_metric  = _gc_eps_sorted if _gc_use_eps else _gc_rev_sorted
-    _gc_mlabel  = "EPS" if _gc_use_eps else "Umsatz/Aktie"
-
-    # --- EPS CAGR ---
+    # --- Growth rates ---
     _gc_pos_eps = [(t, v) for t, v in _gc_eps_sorted if v > 0]
     if len(_gc_pos_eps) >= 2:
         _gc_eps_cagr = (_gc_pos_eps[-1][1] / _gc_pos_eps[0][1]) ** (1 / max(1, len(_gc_pos_eps) - 1)) - 1
@@ -16168,152 +16160,131 @@ elif _at == 2:
         _gc_eps_cagr = _fwd_eps / _trail_eps - 1
     else:
         _gc_eps_cagr = 0.10
-
-    # --- Revenue CAGR ---
     if len(_gc_rev_sorted) >= 2 and _gc_rev_sorted[0][1] > 0:
         _gc_rev_cagr = (_gc_rev_sorted[-1][1] / _gc_rev_sorted[0][1]) ** (1 / max(1, len(_gc_rev_sorted) - 1)) - 1
     else:
         _gc_rev_cagr = yf_info.get("revenueGrowth") or 0.08
-
     _gc_combined_cagr = (_gc_eps_cagr + _gc_rev_cagr) / 2
-
-    # Fair multiple (PEG≈1 → fair PE ≈ growth% → capped 10–60)
-    _gc_growth_pct = _gc_combined_cagr * 100
-    if _gc_use_eps:
-        _gc_fair_mult = max(10.0, min(60.0, _gc_growth_pct))
-    else:
-        _gc_fair_mult = max(1.5, min(15.0, _gc_growth_pct / 10))
+    _gc_growth_pct    = _gc_combined_cagr * 100
+    _gc_fair_mult     = (max(10.0, min(60.0, _gc_growth_pct)) if _gc_use_eps
+                         else max(1.5, min(15.0, _gc_growth_pct / 10)))
 
     if len(_gc_metric) >= 2 and not _gc_hist.empty:
-        # --- Build monthly historical series ---
-        _gc_dates_h, _gc_px_h, _gc_iv_h = [], [], []
-        for _gc_dt, _gc_row in _gc_hist.iterrows():
-            _gc_px = float(_gc_row['Close'])
-            # most recent annual metric value before this month
-            _gc_prev = [(t, v) for t, v in _gc_metric if t <= _gc_dt + pd.Timedelta(days=90)]
-            if not _gc_prev:
-                continue
-            _gc_cur_val = _gc_prev[-1][1]
-            _gc_iv_val  = (_gc_cur_val * _gc_fair_mult
-                           if (_gc_cur_val > 0 or not _gc_use_eps) else None)
-            _gc_dates_h.append(_gc_dt)
-            _gc_px_h.append(_gc_px)
-            _gc_iv_h.append(_gc_iv_val)
+        _gc_today = pd.Timestamp.now().normalize()
 
-        # --- Build 3-year forecast ---
-        _gc_today      = pd.Timestamp.now().normalize()
-        _gc_dates_f, _gc_iv_f = [], []
+        # --- Anchor points for smooth IV: annual EPS + trailing EPS at today ---
+        _gc_ann_pts: list = [(t, v * _gc_fair_mult) for t, v in _gc_metric if v > 0]
+        _gc_cur_eps = (_trail_eps if _trail_eps and _trail_eps > 0
+                       else (_gc_eps_sorted[-1][1] if _gc_eps_sorted else None))
+        if _gc_cur_eps and _gc_cur_eps > 0:
+            _gc_ann_pts.append((_gc_today, _gc_cur_eps * _gc_fair_mult))
+        _gc_ann_pts = sorted(_gc_ann_pts, key=lambda x: x[0])
+
+        # --- Forecast anchor points (analyst estimates + CAGR extension) ---
         _gc_fcast_by_yr: dict = {}
         for _ge in _eps_est:
             if _ge.get("estimate") and _ge["estimate"] > 0:
                 _gc_fcast_by_yr[_ge["year"]] = _ge["estimate"]
 
-        _gc_proj_base = (_trail_eps if (_trail_eps and _trail_eps > 0)
-                         else (_gc_eps_sorted[-1][1] if _gc_eps_sorted else 0))
+        _gc_f_pts: list = list(_gc_ann_pts[-1:])  # start from last historical anchor
+        if _gc_fcast_by_yr:
+            for _yr, _eps in sorted(_gc_fcast_by_yr.items()):
+                _gc_f_pts.append((pd.Timestamp(f"{_yr}-12-31"), _eps * _gc_fair_mult))
+            # extend 2 more years beyond last analyst estimate using EPS CAGR
+            _gc_last_yr  = max(_gc_fcast_by_yr)
+            _gc_last_eps = _gc_fcast_by_yr[_gc_last_yr]
+            for _ext in [1, 2]:
+                _gc_f_pts.append((pd.Timestamp(f"{_gc_last_yr + _ext}-12-31"),
+                                   _gc_last_eps * (1 + _gc_eps_cagr) ** _ext * _gc_fair_mult))
+        else:
+            _gc_base_eps = _gc_cur_eps if (_gc_cur_eps and _gc_cur_eps > 0) else 0
+            for _yr_add in [1, 2, 3]:
+                _gc_f_pts.append((_gc_today + pd.DateOffset(years=_yr_add),
+                                   _gc_base_eps * (1 + _gc_eps_cagr) ** _yr_add * _gc_fair_mult))
+        _gc_f_pts = sorted(_gc_f_pts, key=lambda x: x[0])
+
+        # --- Linear interpolation → smooth monthly IV ---
+        _gc_dates_h = list(_gc_hist.index)
+        _gc_px_h    = [float(r['Close']) for _, r in _gc_hist.iterrows()]
+
+        _gc_pts_ts = np.array([t.timestamp() for t, _ in _gc_ann_pts])
+        _gc_pts_iv = np.array([v for _, v in _gc_ann_pts])
+        _gc_hist_ts = np.array([d.timestamp() for d in _gc_dates_h])
+        _gc_iv_h = np.interp(_gc_hist_ts, _gc_pts_ts, _gc_pts_iv).tolist()
+
+        # --- Smooth monthly forecast IV ---
+        _gc_f_ts = np.array([t.timestamp() for t, _ in _gc_f_pts])
+        _gc_f_iv = np.array([v for _, v in _gc_f_pts])
+        _gc_dates_f, _gc_iv_f = [], []
         for _gc_m in range(1, 37):
             _gc_fdt = _gc_today + pd.DateOffset(months=_gc_m)
-            _gc_yr  = _gc_fdt.year
-            if _gc_fcast_by_yr:
-                _gc_proj = _gc_fcast_by_yr.get(
-                    _gc_yr,
-                    _gc_fcast_by_yr[max(_gc_fcast_by_yr)])
-            elif _gc_proj_base and _gc_proj_base > 0:
-                _gc_proj = _gc_proj_base * (1 + _gc_eps_cagr) ** (_gc_m / 12.0)
-            else:
-                _gc_proj = None
-            _gc_iv_f.append(_gc_proj * _gc_fair_mult if _gc_proj else None)
+            _gc_iv_f.append(float(np.interp(_gc_fdt.timestamp(), _gc_f_ts, _gc_f_iv)))
             _gc_dates_f.append(_gc_fdt)
 
         # --- Plotly chart ---
-        _gc_fig = go.Figure()
-
-        _gc_iv_arr = np.array([v if v is not None else np.nan for v in _gc_iv_h])
+        _gc_fig   = go.Figure()
+        _gc_iv_arr = np.array(_gc_iv_h, dtype=float)
         _gc_px_arr = np.array(_gc_px_h, dtype=float)
+        _gc_base      = np.minimum(_gc_iv_arr, _gc_px_arr)
+        _gc_green_top = np.where(_gc_iv_arr >= _gc_px_arr, _gc_iv_arr, _gc_base)
+        _gc_red_top   = np.where(_gc_px_arr >  _gc_iv_arr, _gc_px_arr, _gc_base)
 
-        # per-point baseline = min(IV, price), with NaN guard
-        _gc_base = np.where(
-            np.isnan(_gc_iv_arr), _gc_px_arr,
-            np.minimum(_gc_iv_arr, _gc_px_arr))
-        # top of green region (undervalued: IV > price)
-        _gc_green_top = np.where(
-            ~np.isnan(_gc_iv_arr) & (_gc_iv_arr > _gc_px_arr), _gc_iv_arr, _gc_base)
-        # top of red region (overvalued: price > IV)
-        _gc_red_top = np.where(
-            ~np.isnan(_gc_iv_arr) & (_gc_px_arr > _gc_iv_arr), _gc_px_arr, _gc_base)
-
-        # green fill (baseline → green_top where IV > price)
-        _gc_fig.add_trace(go.Scatter(
-            x=_gc_dates_h, y=_gc_base.tolist(),
+        # Green undervalued fill (baseline → IV where IV > price)
+        _gc_fig.add_trace(go.Scatter(x=_gc_dates_h, y=_gc_base.tolist(),
             fill=None, line=dict(color='rgba(0,0,0,0)', width=0),
             showlegend=False, hoverinfo='skip'))
-        _gc_fig.add_trace(go.Scatter(
-            x=_gc_dates_h, y=_gc_green_top.tolist(),
-            fill='tonexty', fillcolor='rgba(38,166,154,0.22)',
+        _gc_fig.add_trace(go.Scatter(x=_gc_dates_h, y=_gc_green_top.tolist(),
+            fill='tonexty', fillcolor='rgba(38,166,154,0.30)',
             line=dict(color='rgba(0,0,0,0)', width=0),
             showlegend=False, hoverinfo='skip'))
 
-        # red fill (baseline → red_top where price > IV)
-        _gc_fig.add_trace(go.Scatter(
-            x=_gc_dates_h, y=_gc_base.tolist(),
+        # Red overvalued fill (baseline → price where price > IV)
+        _gc_fig.add_trace(go.Scatter(x=_gc_dates_h, y=_gc_base.tolist(),
             fill=None, line=dict(color='rgba(0,0,0,0)', width=0),
             showlegend=False, hoverinfo='skip'))
-        _gc_fig.add_trace(go.Scatter(
-            x=_gc_dates_h, y=_gc_red_top.tolist(),
-            fill='tonexty', fillcolor='rgba(239,83,80,0.22)',
+        _gc_fig.add_trace(go.Scatter(x=_gc_dates_h, y=_gc_red_top.tolist(),
+            fill='tonexty', fillcolor='rgba(239,83,80,0.30)',
             line=dict(color='rgba(0,0,0,0)', width=0),
             showlegend=False, hoverinfo='skip'))
 
-        # Forecast IV fill (light green, dashed)
-        _gc_iv_f_arr = np.array([v if v is not None else np.nan for v in _gc_iv_f])
-        _gc_fig.add_trace(go.Scatter(
-            x=_gc_dates_f, y=[0] * len(_gc_dates_f),
+        # Forecast IV shaded area
+        _gc_iv_f_arr = np.array(_gc_iv_f, dtype=float)
+        _gc_fig.add_trace(go.Scatter(x=_gc_dates_f, y=[0]*len(_gc_dates_f),
             fill=None, line=dict(color='rgba(0,0,0,0)', width=0),
             showlegend=False, hoverinfo='skip'))
-        _gc_fig.add_trace(go.Scatter(
-            x=_gc_dates_f, y=_gc_iv_f_arr.tolist(),
-            fill='tonexty', fillcolor='rgba(38,166,154,0.08)',
-            line=dict(color='rgba(38,166,154,0.35)', width=1, dash='dot'),
-            name=f'Innerer Wert Prognose ({_gc_mlabel}×{_gc_fair_mult:.0f})',
+        _gc_fig.add_trace(go.Scatter(x=_gc_dates_f, y=_gc_iv_f_arr.tolist(),
+            fill='tonexty', fillcolor='rgba(255,213,79,0.08)',
+            line=dict(color='rgba(255,213,79,0.45)', width=1.5, dash='dash'),
+            name='IV Prognose',
             hovertemplate='%{x|%b %Y}<br>Prognose IV: ' + _cur_sym + '%{y:.2f}<extra></extra>'))
 
-        # Actual price line
-        _gc_fig.add_trace(go.Scatter(
-            x=_gc_dates_h, y=_gc_px_h,
-            mode='lines', name='Kurs (monatlich)',
-            line=dict(color='#e0e0e0', width=2.5),
+        # Kurs line
+        _gc_fig.add_trace(go.Scatter(x=_gc_dates_h, y=_gc_px_h,
+            mode='lines', name='Kurs',
+            line=dict(color='#ffffff', width=2.5),
             hovertemplate='%{x|%b %Y}<br>Kurs: ' + _cur_sym + '%{y:.2f}<extra></extra>'))
 
-        # Innerer Wert line (historical)
-        _gc_fig.add_trace(go.Scatter(
-            x=_gc_dates_h, y=_gc_iv_h,
-            mode='lines', name=f'Innerer Wert (×{_gc_fair_mult:.0f})',
+        # Innerer Wert line
+        _gc_fig.add_trace(go.Scatter(x=_gc_dates_h, y=_gc_iv_h,
+            mode='lines', name=f'Innerer Wert ({_gc_mlabel}×{_gc_fair_mult:.0f})',
             line=dict(color='#ffd54f', width=2),
             hovertemplate='%{x|%b %Y}<br>Innerer Wert: ' + _cur_sym + '%{y:.2f}<extra></extra>'))
 
-        # Forecast IV line
-        _gc_fig.add_trace(go.Scatter(
-            x=_gc_dates_f, y=_gc_iv_f,
-            mode='lines', name='IV Prognose',
-            line=dict(color='#ffd54f', width=2, dash='dash'),
-            hovertemplate='%{x|%b %Y}<br>Prognose IV: ' + _cur_sym + '%{y:.2f}<extra></extra>'))
+        # Vertical divider at today
+        _gc_fig.add_vline(x=_gc_today.timestamp() * 1000,
+            line_color='rgba(255,255,255,0.3)', line_dash='dot', line_width=1)
 
-        # Vertical "Heute" line
-        _gc_fig.add_vline(
-            x=_gc_today.timestamp() * 1000,
-            line_color='rgba(255,255,255,0.25)', line_dash='dot', line_width=1)
-
-        # Section labels
-        _gc_all_vals = [v for v in _gc_iv_h if v] + _gc_px_h + [v for v in _gc_iv_f if v]
+        _gc_all_vals = _gc_iv_h + _gc_px_h + list(_gc_iv_f_arr)
         _gc_ymax     = max(_gc_all_vals) * 1.12 if _gc_all_vals else 1
         if _gc_dates_h:
             _gc_fig.add_annotation(
                 x=_gc_dates_h[len(_gc_dates_h) // 3], y=_gc_ymax,
-                text='Vergangenheit', font=dict(color='rgba(255,255,255,0.3)', size=9),
+                text='Vergangenheit', font=dict(color='rgba(255,255,255,0.28)', size=9),
                 showarrow=False, yanchor='top')
         if _gc_dates_f:
             _gc_fig.add_annotation(
                 x=_gc_dates_f[len(_gc_dates_f) // 2], y=_gc_ymax,
-                text='Prognose', font=dict(color='rgba(255,255,255,0.3)', size=9),
+                text='Prognose', font=dict(color='rgba(255,255,255,0.28)', size=9),
                 showarrow=False, yanchor='top')
 
         _gc_fig.update_layout(
@@ -16334,8 +16305,7 @@ elif _at == 2:
         _gc_comb_pct = _gc_combined_cagr * 100
 
         def _gc_col(v):
-            return ("#26a69a" if v > 15 else "#66bb6a" if v > 5
-                    else "#ffa726" if v > 0 else "#ef5350")
+            return "#26a69a" if v > 15 else "#66bb6a" if v > 5 else "#ffa726" if v > 0 else "#ef5350"
 
         _gc_mc1, _gc_mc2, _gc_mc3 = st.columns(3)
         with _gc_mc1:
@@ -16360,12 +16330,13 @@ elif _at == 2:
                 <div style="color:{_C_TEXT_MUTED};font-size:0.72rem;">Faires Multiple: {_gc_fair_mult:.0f}×</div>
             </div>""", unsafe_allow_html=True)
 
+        _gc_eps_pct_str = f"{_gc_eps_pct:+.1f}%"
         st.markdown(
             f"<div style='color:#37474f;font-size:0.70rem;margin-top:6px;'>"
-            f"Innerer Wert = {_gc_mlabel} × {_gc_fair_mult:.0f}× (PEG≈1, faires Multiple = Wachstum%). "
-            f"<span style='color:#26a69a;'>Grün</span> = Kurs unter Innerem Wert (unterbewertet) · "
-            f"<span style='color:#ef5350;'>Rot</span> = Kurs über Innerem Wert (überbewertet). "
-            f"Prognose basiert auf {'Analystenschätzungen' if _gc_fcast_by_yr else f'historischem CAGR ({_gc_eps_pct:+.1f}%)'}."
+            f"Innerer Wert = {_gc_mlabel} × {_gc_fair_mult:.0f}× (PEG≈1). "
+            f"<span style='color:#26a69a;'>Grün</span> = unterbewertet · "
+            f"<span style='color:#ef5350;'>Rot</span> = überbewertet. "
+            f"Prognose via {'Analystenschätzungen' if _gc_fcast_by_yr else 'CAGR (' + _gc_eps_pct_str + ')'}."
             f"</div>",
             unsafe_allow_html=True)
     else:
