@@ -10880,6 +10880,121 @@ GEOGRAFISCHE VERTEILUNG:
                 st.caption(
                     f"Startkapital: €{_rc_start:,.0f} · Sparrate: €{_rc_sparre}/Monat · "
                     f"{_rc_jahre} Jahre · keine Steuern/Inflation eingerechnet · keine Anlageberatung.")
+
+                # ── Zielwert-Rechner ──────────────────────────────────
+                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-header'>🎯 Zielwert-Rechner</div>",
+                            unsafe_allow_html=True)
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:14px 16px;margin-bottom:16px;"
+                    f"color:{_C_TEXT_MUTED};font-size:0.82rem;line-height:1.55;'>"
+                    f"Wann erreichst du dein Zielkapital? Zwei Varianten: "
+                    f"<b style='color:{_C_TEXT_PRIMARY};'>Wie lange dauert es</b> mit deiner aktuellen "
+                    f"Sparrate — oder "
+                    f"<b style='color:{_C_TEXT_PRIMARY};'>wie viel musst du monatlich sparen</b> "
+                    f"um das Ziel in einer bestimmten Zeit zu erreichen?</div>",
+                    unsafe_allow_html=True)
+
+                _zv_c1, _zv_c2 = st.columns(2)
+                with _zv_c1:
+                    _zv_ziel    = st.number_input(
+                        "Zielkapital (€)", min_value=1000, max_value=100_000_000,
+                        value=100_000, step=5000, key="zv_ziel")
+                    _zv_rendite = st.slider(
+                        "Erwartete Rendite p.a. (%)", 0.0, 20.0, float(_rc_base), 0.5,
+                        key="zv_rendite")
+                with _zv_c2:
+                    _zv_start   = st.number_input(
+                        "Startkapital (€)", min_value=0, max_value=10_000_000,
+                        value=int(_rc_start), step=500, key="zv_start")
+                    _zv_sparre  = st.number_input(
+                        "Monatliche Sparrate (€)", min_value=0, max_value=50_000,
+                        value=int(_rc_sparre), step=50, key="zv_sparre")
+
+                _zv_r_net = _zv_rendite / 100
+                _zv_r_mon = (1 + _zv_r_net) ** (1 / 12) - 1
+
+                # ─ Variante A: Wie lange dauert es? ─────────────────
+                st.markdown(
+                    f"<div style='color:{_C_ACCENT};font-size:0.76rem;font-weight:700;"
+                    f"margin:12px 0 6px 0;'>⏱ Wie lange dauert es bis €{_zv_ziel:,.0f}?</div>",
+                    unsafe_allow_html=True)
+                _zv_years_needed = None
+                if _zv_ziel <= _zv_start:
+                    st.success(f"✅ Ziel bereits erreicht! Dein Startkapital €{_zv_start:,} ≥ €{_zv_ziel:,}.")
+                else:
+                    if _zv_r_mon > 0 or _zv_sparre > 0:
+                        _zv_pf = float(_zv_start)
+                        for _zv_m in range(1, 601):
+                            _zv_pf = _zv_pf * (1 + _zv_r_mon) + _zv_sparre
+                            if _zv_pf >= _zv_ziel:
+                                _zv_years_needed = _zv_m / 12
+                                break
+                    if _zv_years_needed:
+                        _zv_yrs_full = int(_zv_years_needed)
+                        _zv_mon_rem  = round((_zv_years_needed - _zv_yrs_full) * 12)
+                        _zv_dur_str  = (f"{_zv_yrs_full} Jahre" if _zv_mon_rem == 0
+                                        else f"{_zv_yrs_full} Jahre {_zv_mon_rem} Monate")
+                        _zv_a1, _zv_a2, _zv_a3 = st.columns(3)
+                        for _zvc, _zvl, _zvv, _zvcl in [
+                            (_zv_a1, "Zeit bis Ziel",       _zv_dur_str,                    _C_POSITIVE),
+                            (_zv_a2, "Gesamt eingezahlt",   f"€{_zv_start + _zv_sparre * int(_zv_years_needed * 12):,.0f}", _C_TEXT_PRIMARY),
+                            (_zv_a3, "Zinseszinsanteil",    f"€{_zv_ziel - _zv_start - _zv_sparre * int(_zv_years_needed * 12):,.0f}", _C_ACCENT),
+                        ]:
+                            _zvc.markdown(
+                                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                                f"border-radius:8px;padding:12px;text-align:center;'>"
+                                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_zvl}</div>"
+                                f"<div style='color:{_zvcl};font-size:1.15rem;font-weight:700;'>{_zvv}</div>"
+                                f"</div>", unsafe_allow_html=True)
+                    else:
+                        st.warning(
+                            f"Ziel €{_zv_ziel:,.0f} nicht innerhalb von 50 Jahren erreichbar "
+                            f"mit €{_zv_sparre}/Monat und {_zv_rendite:.1f}% Rendite. "
+                            "Erhöhe Sparrate oder Rendite.")
+
+                # ─ Variante B: Wie viel monatlich nötig? ────────────
+                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div style='color:{_C_ACCENT};font-size:0.76rem;font-weight:700;"
+                    f"margin-bottom:6px;'>💰 Wie viel Sparrate brauche ich in X Jahren?</div>",
+                    unsafe_allow_html=True)
+                _zv_jahre_b = st.slider(
+                    "Zeitraum (Jahre)", 1, 50, 10, key="zv_jahre_b")
+                _zv_n_b     = _zv_jahre_b * 12
+                _zv_pv_b    = _zv_start * (1 + _zv_r_mon) ** _zv_n_b
+                _zv_rest_b  = _zv_ziel - _zv_pv_b
+                if _zv_rest_b <= 0:
+                    st.success(
+                        f"✅ Dein Startkapital €{_zv_start:,} wächst in {_zv_jahre_b} Jahren "
+                        f"auf €{_zv_pv_b:,.0f} — Ziel ohne Sparrate erreichbar!")
+                    _zv_pmt_b = 0.0
+                elif _zv_r_mon > 0:
+                    _zv_pmt_b = (_zv_rest_b * _zv_r_mon
+                                 / ((1 + _zv_r_mon) ** _zv_n_b - 1)
+                                 / (1 + _zv_r_mon))
+                else:
+                    _zv_pmt_b = _zv_rest_b / _zv_n_b
+                _zv_tot_b    = _zv_start + _zv_pmt_b * _zv_n_b
+                _zv_zinsen_b = _zv_ziel - _zv_tot_b
+                _zv_b1, _zv_b2, _zv_b3, _zv_b4 = st.columns(4)
+                for _zvc2, _zvl2, _zvv2, _zvcl2 in [
+                    (_zv_b1, "Benötigte Sparrate",  f"€{_zv_pmt_b:,.0f}/Monat", _C_POSITIVE),
+                    (_zv_b2, "Zeitraum",             f"{_zv_jahre_b} Jahre",     _C_TEXT_PRIMARY),
+                    (_zv_b3, "Gesamt eingezahlt",    f"€{_zv_tot_b:,.0f}",       _C_TEXT_PRIMARY),
+                    (_zv_b4, "Zinseszinsanteil",     f"€{_zv_zinsen_b:,.0f}",    _C_ACCENT),
+                ]:
+                    _zvc2.markdown(
+                        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                        f"border-radius:8px;padding:12px;text-align:center;'>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_zvl2}</div>"
+                        f"<div style='color:{_zvcl2};font-size:1.05rem;font-weight:700;'>{_zvv2}</div>"
+                        f"</div>", unsafe_allow_html=True)
+                st.caption(
+                    f"Startkapital €{_zv_start:,.0f} · Ziel €{_zv_ziel:,.0f} · "
+                    f"Rendite {_zv_rendite:.1f}% p.a. · keine Steuern/Inflation · keine Anlageberatung.")
+
             except Exception as _e_rc:
                 st.error(f"Fehler im Prognose-Tab: {_e_rc}")
 
