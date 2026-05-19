@@ -11636,6 +11636,146 @@ if st.session_state.get("show_etf_analyzer"):
 
     _etf_raw_resolved = st.session_state["etf_ticker_input"].strip()
 
+    # ── F2: ETF-Screener ──────────────────────────────────────────────────
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>🔍 ETF-Screener</div>", unsafe_allow_html=True)
+
+    # ETF-Datenbank: (ticker, name, isin, wkn, ter_pct, region, aussch, aum_mrd)
+    _SCR_DB = [
+        # Global — Thesaurierend
+        ("VWCE.DE","Vanguard FTSE All-World Acc","IE00B3RBWM25","A1JX52",0.22,"Global","Thes",18.0),
+        ("FWRA.DE","Invesco FTSE All-World Acc","IE00BD45KH83","A2PKXG",0.15,"Global","Thes",6.0),
+        ("LCUW.DE","Amundi MSCI World","LU1781541179","ETF127",0.12,"Global","Thes",5.0),
+        ("XDWD.DE","Xtrackers MSCI World Swap","IE00BJ0KDQ92","DBX1MW",0.19,"Global","Thes",8.0),
+        ("SXR8.DE","iShares Core MSCI World","IE00B4L5Y983","A0RPWH",0.20,"Global","Thes",70.0),
+        ("WEBG.DE","Amundi Prime All Country World Acc","IE0009HF1WK0","A3ERPV",0.07,"Global","Thes",3.0),
+        ("XMWO.DE","Xtrackers MSCI World Swap 1C","LU0392494562","DBX1ME",0.19,"Global","Thes",4.0),
+        ("IWDA.L","iShares Core MSCI World (USD)","IE00B4L5Y983","A0HGV0",0.20,"Global","Thes",60.0),
+        # Global — Ausschüttend
+        ("VHYL.L","Vanguard FTSE All-World High Div","IE00B8GKDB10","A1T8FV",0.22,"Global","Dist",5.0),
+        ("VHYL.AS","Vanguard FTSE All-World High Div (EUR)","IE00B8GKDB10","A1T8FV",0.22,"Global","Dist",5.0),
+        ("QDIV.DE","iShares MSCI World Quality Div","IE00BYYHSQ67","A2DWBY",0.38,"Global","Dist",2.0),
+        ("IWRD.L","iShares MSCI World (USD Dist)","IE00B0M62Q58","A0HGV5",0.50,"Global","Dist",12.0),
+        # USA — Thesaurierend
+        ("SXR2.DE","iShares Core S&P 500 Acc","IE0031442068","622391",0.07,"USA","Thes",45.0),
+        ("SPY5.DE","SPDR S&P 500 UCITS Acc","IE00B6YX5C33","A1JWXY",0.03,"USA","Thes",8.0),
+        ("IUSE.DE","iShares MSCI USA Acc","IE00B52SFT06","A1CL19",0.15,"USA","Thes",6.0),
+        ("CSP1.L","iShares Core S&P 500 (USD Acc)","IE00B5BMR087","A1JJTC",0.07,"USA","Thes",90.0),
+        ("CSPX.L","iShares Core S&P 500 (USD Acc)","IE00B5BMR087","A1JJTC",0.07,"USA","Thes",90.0),
+        # USA — Ausschüttend
+        ("IUSA.L","iShares S&P 500 (USD Dist)","IE0031442068","622391",0.07,"USA","Dist",30.0),
+        # Nasdaq
+        ("EQQQ.DE","Invesco NASDAQ-100","IE0032895942","A0YEDL",0.30,"USA","Thes",10.0),
+        ("CSNDX.DE","iShares Nasdaq-100","IE00B53SZB19","A2H9QP",0.33,"USA","Thes",12.0),
+        ("QDVE.DE","iShares S&P 500 IT Sector","IE00B3WJKG14","A142N1",0.15,"USA","Thes",4.0),
+        ("IUIT.DE","iShares MSCI World IT","IE00BD45KH83","A2H9QP",0.40,"USA","Thes",3.0),
+        # Europa — Thesaurierend
+        ("LYPS.DE","Lyxor Core EURO STOXX 50","FR0007054358","LYX0RT",0.07,"Europa","Thes",7.0),
+        ("XESC.DE","Xtrackers Euro Stoxx 50","LU0322253229","DBX1ME",0.09,"Europa","Thes",5.0),
+        ("EXW1.DE","iShares Core EURO STOXX 50","DE0005933956","593395",0.10,"Europa","Thes",8.0),
+        ("MEUD.DE","Amundi EURO STOXX 50","LU1681048804","ETF091",0.15,"Europa","Thes",4.0),
+        ("IQQY.DE","iShares MSCI Europe","IE0031442069","A0HGWC",0.12,"Europa","Thes",6.0),
+        ("IEUA.DE","iShares Core MSCI Europe","IE00B4K48X80","A0YEDG",0.12,"Europa","Thes",9.0),
+        ("SPYY.DE","SPDR MSCI Europe","IE00BKWQ0M75","A2H9Q5",0.12,"Europa","Thes",2.0),
+        # Europa — Ausschüttend
+        ("EXS1.DE","iShares Core DAX (Dist)","DE0005933931","593393",0.16,"Europa","Dist",14.0),
+        ("ISPA.DE","iShares STOXX Europe Select Div 30","IE00B3F81R35","A0H0744",0.40,"Europa","Dist",1.5),
+        ("IDVY.L","iShares Euro Dividend UCITS","DE0002635299","263529",0.40,"Europa","Dist",1.0),
+        # Schwellenländer
+        ("IS3N.DE","iShares Core MSCI EM IMI","IE00B4L5YC18","A0HGWC",0.20,"EM","Thes",20.0),
+        ("XMME.DE","Xtrackers MSCI EM Swap","LU1437016972","A2H9GB",0.20,"EM","Thes",5.0),
+        ("IS3R.DE","iShares MSCI EM ex-China","IE0002XZSHO1","A3CPBQ",0.18,"EM","Thes",2.0),
+        ("IQQC.DE","iShares MSCI China","IE00B5VL8F07","A1H5EU",0.74,"EM","Thes",2.0),
+        # Asien / Japan
+        ("EXV5.DE","iShares Core MSCI Japan IMI","IE00B4L5YX21","A0YBR5",0.12,"Asien","Thes",3.0),
+        ("XDJP.DE","Xtrackers MSCI Japan Swap","LU0274209740","DBX1MJ",0.15,"Asien","Thes",2.0),
+        # Small Cap
+        ("IUSN.DE","iShares MSCI World Small Cap","IE00BF4RFH31","A2DWBY",0.35,"Global","Thes",8.0),
+        ("WSML.DE","iShares MSCI World Small Cap","IE00BF4RFH31","A2DWBY",0.35,"Global","Thes",8.0),
+        # Faktor / Themen
+        ("IWQU.DE","iShares MSCI World Quality Factor","IE00BD1F4L37","A2JDYF",0.30,"Global","Thes",4.0),
+        ("IWMO.DE","iShares MSCI World Momentum Factor","IE00BD1F4N58","A2JDYG",0.30,"Global","Thes",3.0),
+        ("MVOL.DE","iShares MSCI World Min Vol","IE00B8FHGS14","A1J781",0.20,"Global","Thes",4.0),
+        ("IQQH.DE","iShares Global Clean Energy","IE00B1XNHC34","A0MZBE",0.65,"Themen","Thes",2.0),
+        ("HEAL.DE","iShares MSCI World Health Care","IE00BYVJRR92","A2PLDF",0.35,"Themen","Thes",2.0),
+        ("XDWD.DE","Xtrackers MSCI World Quality","IE00BJ0KDQ92","DBX1MW",0.25,"Global","Thes",5.0),
+    ]
+
+    with st.expander("🔍 ETF-Screener — Filter nach Region, TER, Ausschüttung", expanded=False):
+        _scr_f1, _scr_f2, _scr_f3, _scr_f4 = st.columns(4)
+        with _scr_f1:
+            _scr_region = st.selectbox("Region", ["Alle","Global","USA","Europa","EM","Asien","Themen"],
+                                       key="scr_region")
+        with _scr_f2:
+            _scr_aussch = st.selectbox("Ausschüttung", ["Alle","Thesaurierend","Ausschüttend"],
+                                       key="scr_aussch")
+        with _scr_f3:
+            _scr_ter_max = st.slider("Max. TER (%)", 0.0, 1.0, 1.0, 0.05, key="scr_ter")
+        with _scr_f4:
+            _scr_sort = st.selectbox("Sortierung", ["TER ↑","AUM ↓","Name ↑"], key="scr_sort")
+
+        _scr_search = st.text_input("Name / Ticker suchen", placeholder="z.B. World, MSCI, Vanguard…",
+                                    key="scr_search", label_visibility="visible")
+
+        _scr_results = [
+            r for r in _SCR_DB
+            if (_scr_region == "Alle" or r[5] == _scr_region)
+            and (_scr_aussch == "Alle"
+                 or (_scr_aussch == "Thesaurierend" and r[6] == "Thes")
+                 or (_scr_aussch == "Ausschüttend"  and r[6] == "Dist"))
+            and r[4] <= _scr_ter_max
+            and (_scr_search == ""
+                 or _scr_search.lower() in r[0].lower()
+                 or _scr_search.lower() in r[1].lower())
+        ]
+        if _scr_sort == "TER ↑":
+            _scr_results.sort(key=lambda x: x[4])
+        elif _scr_sort == "AUM ↓":
+            _scr_results.sort(key=lambda x: x[7], reverse=True)
+        else:
+            _scr_results.sort(key=lambda x: x[1])
+
+        _scr_region_clr = {
+            "Global":"#64b5f6","USA":"#81c784","Europa":"#ffb74d",
+            "EM":"#f06292","Asien":"#ce93d8","Themen":"#4dd0e1",
+        }
+        _scr_aussch_lbl = {"Thes":"♻️ Thes","Dist":"💰 Dist"}
+
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin:8px 0 6px 0;'>"
+            f"{len(_scr_results)} ETFs gefunden</div>", unsafe_allow_html=True)
+
+        if not _scr_results:
+            st.info("Keine ETFs mit diesen Filterkriterien gefunden.")
+        else:
+            for _sr in _scr_results[:30]:
+                _sr_tkr, _sr_nm, _sr_isin, _sr_wkn, _sr_ter, _sr_reg, _sr_aus, _sr_aum = _sr
+                _rc = _scr_region_clr.get(_sr_reg, _C_TEXT_MUTED)
+                _al = _scr_aussch_lbl.get(_sr_aus, _sr_aus)
+                _ter_clr = (_C_POSITIVE if _sr_ter <= 0.10
+                            else _C_TEXT_MUTED if _sr_ter <= 0.25 else _C_NEGATIVE)
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:8px;padding:9px 12px;margin-bottom:5px;"
+                    f"display:grid;grid-template-columns:80px 1fr 60px 60px 70px;gap:8px;align-items:center;'>"
+                    f"<div style='color:{_C_ACCENT};font-size:0.80rem;font-weight:700;'>{_sr_tkr}</div>"
+                    f"<div>"
+                    f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;font-weight:600;"
+                    f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{_sr_nm[:38]}</div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.64rem;'>ISIN {_sr_isin} · WKN {_sr_wkn}</div>"
+                    f"</div>"
+                    f"<div style='background:{_rc}22;color:{_rc};border-radius:4px;"
+                    f"padding:2px 5px;font-size:0.65rem;font-weight:700;text-align:center;'>{_sr_reg}</div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.70rem;text-align:center;'>{_al}</div>"
+                    f"<div style='color:{_ter_clr};font-size:0.80rem;font-weight:700;text-align:right;'>"
+                    f"{_sr_ter:.2f}%</div>"
+                    f"</div>", unsafe_allow_html=True)
+                if st.button(f"Analysieren →", key=f"scr_{_sr_tkr}_{_sr_isin}", use_container_width=False):
+                    st.session_state["etf_ticker_input"] = _sr_tkr
+                    st.rerun()
+            if len(_scr_results) > 30:
+                st.caption(f"Zeige 30 von {len(_scr_results)} — Filter verfeinern für mehr Präzision.")
+
     # ── ETF Rechner (immer sichtbar, kein ETF nötig) ──────────────────────
     st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
     st.markdown("<div class='section-header'>🧮 ETF Rechner</div>", unsafe_allow_html=True)
