@@ -5485,6 +5485,78 @@ _ISIN_SECTOR_HARD = {
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
+def _load_pf_fundamentals(ticker_tuple: tuple) -> dict:
+    """Fundamentalkennzahlen (FCF-Marge, Gross Margin, Rev-Growth, PE, PB)
+    für Portfolio-Positionen — gecacht 24h, paralleler Fetch."""
+    import concurrent.futures as _cf2
+    result: dict = {}
+
+    def _fetch_one(tkr: str) -> tuple[str, dict]:
+        try:
+            with _cf2.ThreadPoolExecutor(max_workers=1) as _ex2:
+                _f2 = _ex2.submit(lambda: yf.Ticker(tkr).info)
+                info = _f2.result(timeout=5.0)
+            rev  = info.get('totalRevenue') or 0
+            fcf  = info.get('freeCashflow') or 0
+            gm   = (info.get('grossMargins') or 0) * 100
+            rg   = (info.get('revenueGrowth') or 0) * 100
+            pe   = info.get('trailingPE') or info.get('forwardPE')
+            pb   = info.get('priceToBook')
+            dy   = (info.get('dividendYield') or 0) * 100
+            fcfm = (fcf / rev * 100) if rev and rev > 0 and fcf else None
+            return tkr, {
+                'gross_margin':    gm,
+                'fcf_margin':      fcfm,
+                'rev_growth':      rg,
+                'pe':              pe,
+                'pb':              pb,
+                'div_yield':       dy,
+                'quote_type':      (info.get('quoteType') or 'EQUITY').upper(),
+            }
+        except Exception:
+            return tkr, {}
+
+    with _cf2.ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {pool.submit(_fetch_one, t): t for t in ticker_tuple}
+        for fut in _cf2.as_completed(futures):
+            tkr2, data = fut.result()
+            result[tkr2] = data
+    return result
+
+
+def _classify_stock(d: dict) -> str:
+    """Klassifiziert ein Wertpapier anhand Fundamentaldaten."""
+    qt = d.get('quote_type', 'EQUITY')
+    if qt in ('ETF', 'MUTUALFUND'):
+        return 'ETF / Fonds'
+    gm  = d.get('gross_margin') or 0
+    fcfm = d.get('fcf_margin')
+    rg  = d.get('rev_growth') or 0
+    pe  = d.get('pe')
+    pb  = d.get('pb')
+    dy  = d.get('div_yield') or 0
+
+    is_quality = (gm > 40 and (fcfm is not None and fcfm > 8))
+    is_growth  = rg > 15
+    is_value   = ((pe and pe < 15) or (pb and pb < 1.5))
+    is_div     = dy > 3.0
+
+    if is_quality and is_growth:
+        return 'Quality Growth'
+    if is_quality:
+        return 'Quality'
+    if is_growth:
+        return 'Growth'
+    if is_value and is_div:
+        return 'Value & Dividende'
+    if is_value:
+        return 'Value'
+    if is_div:
+        return 'Dividende'
+    return 'Sonstige'
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
 def _get_ticker_info_cached(ticker: str) -> dict:
     """Sektor + QuoteType via yFinance (gecacht 24h). Timeout 4s pro Call."""
     import concurrent.futures as _cf
@@ -9413,6 +9485,220 @@ if st.session_state.get("show_portfolio"):
                                 f"<span style='color:{_act_clr};font-size:0.80rem;font-weight:700;"
                                 f"min-width:120px;text-align:right;'>{_act_lbl}</span></div>",
                                 unsafe_allow_html=True)
+
+                # ── Aktien-Stil-Analyse ───────────────────────────────
+                st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-header'>🔬 Aktien-Stil-Analyse</div>",
+                            unsafe_allow_html=True)
+                _eq_tickers_style = [
+                    isin_map[r['ISIN']] for _, r in stocks_etf.iterrows()
+                    if isin_map.get(r['ISIN'])
+                    and (_alloc_infos.get(r['ISIN'], {}).get('quote_type', 'EQUITY')
+                         not in ('ETF', 'MUTUALFUND'))
+                ]
+                _eq_tickers_style = list(dict.fromkeys(_eq_tickers_style))  # dedup, preserve order
+
+                _style_load_key = f"style_loaded_{_csv_key}"
+                if not _eq_tickers_style:
+                    st.info("Keine Aktien-Positionen für Stil-Analyse gefunden (nur ETFs/Krypto).")
+                elif not st.session_state.get(_style_load_key):
+                    st.info(f"Analysiert {len(_eq_tickers_style)} Aktien-Positionen: "
+                            f"FCF-Marge, Gross Margin, Umsatzwachstum, KGV, KBV.")
+                    if st.button("🔬 Stil-Analyse laden", key="btn_style_load",
+                                 use_container_width=True, type="primary"):
+                        st.session_state[_style_load_key] = True
+                        st.rerun()
+
+                if st.session_state.get(_style_load_key) and _eq_tickers_style:
+                    _style_c2, _style_c2b = st.columns([1, 1])
+                    with _style_c2b:
+                        if st.button("🔄 Neu laden", key="btn_style_reload",
+                                     use_container_width=True):
+                            _load_pf_fundamentals.clear()
+                            st.session_state.pop(_style_load_key, None)
+                            st.rerun()
+
+                    with st.spinner(f"Lade Fundamentaldaten für {len(_eq_tickers_style)} Aktien…"):
+                        _fund_data = _load_pf_fundamentals(tuple(sorted(_eq_tickers_style)))
+
+                    # Positionen mit Wert + Kategorie zusammenführen
+                    _style_rows = []
+                    for _, _sr in stocks_etf.iterrows():
+                        _st = isin_map.get(_sr['ISIN'], '')
+                        if not _st or _st not in _fund_data:
+                            continue
+                        _sd = _fund_data[_st]
+                        if _sd.get('quote_type', 'EQUITY') in ('ETF', 'MUTUALFUND'):
+                            continue
+                        _sp = prices.get(_sr['ISIN'])
+                        _sv = max(0.0, (_sp if _sp else _sr['avg_cost']) * _sr['shares'])
+                        _cat = _classify_stock(_sd)
+                        _style_rows.append({
+                            'name':    _sr['name'][:22],
+                            'ticker':  _st,
+                            'val':     _sv,
+                            'cat':     _cat,
+                            'gm':      _sd.get('gross_margin') or 0,
+                            'fcfm':    _sd.get('fcf_margin'),
+                            'rg':      _sd.get('rev_growth') or 0,
+                            'pe':      _sd.get('pe'),
+                        })
+
+                    if not _style_rows:
+                        st.info("Keine Fundamentaldaten verfügbar.")
+                    else:
+                        _total_style_val = sum(r['val'] for r in _style_rows) or 1
+                        _cat_colors = {
+                            'Quality Growth':    '#00e676',
+                            'Quality':           '#42a5f5',
+                            'Growth':            '#ff8a65',
+                            'Value & Dividende': '#ffd54f',
+                            'Value':             '#ce93d8',
+                            'Dividende':         '#ffcc02',
+                            'Sonstige':          '#546e7a',
+                        }
+
+                        # Aggregiere nach Kategorie
+                        from collections import defaultdict as _dd
+                        _cat_agg: dict = _dd(lambda: {'val': 0.0, 'names': []})
+                        for _r2 in _style_rows:
+                            _cat_agg[_r2['cat']]['val']   += _r2['val']
+                            _cat_agg[_r2['cat']]['names'].append(_r2['name'])
+                        _cat_agg = dict(sorted(
+                            _cat_agg.items(), key=lambda x: x[1]['val'], reverse=True))
+
+                        # ─ Donut-Chart ────────────────────────────────
+                        _pie_labels = list(_cat_agg.keys())
+                        _pie_vals   = [_cat_agg[k]['val'] for k in _pie_labels]
+                        _pie_clrs   = [_cat_colors.get(k, '#546e7a') for k in _pie_labels]
+                        _pie_fig = go.Figure(go.Pie(
+                            labels=_pie_labels,
+                            values=_pie_vals,
+                            marker_colors=_pie_clrs,
+                            hole=0.55,
+                            textinfo='label+percent',
+                            textfont=dict(size=11, color=_C_TEXT_PRIMARY),
+                            hovertemplate='<b>%{label}</b><br>€%{value:,.0f}<br>%{percent}<extra></extra>',
+                        ))
+                        _pie_fig.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            showlegend=False,
+                            height=280,
+                            margin=dict(t=10, b=10, l=10, r=10),
+                            annotations=[dict(
+                                text=f"<b>{len(_style_rows)}</b><br>Aktien",
+                                x=0.5, y=0.5, font_size=14,
+                                font_color=_C_TEXT_PRIMARY,
+                                showarrow=False,
+                            )],
+                        )
+
+                        # ─ Scatter: FCF-Marge vs Umsatzwachstum ───────
+                        _sc_x, _sc_y, _sc_sz, _sc_lbl, _sc_clr = [], [], [], [], []
+                        for _r3 in _style_rows:
+                            if _r3['fcfm'] is None:
+                                continue
+                            _sc_x.append(_r3['rg'])
+                            _sc_y.append(_r3['fcfm'])
+                            _sc_sz.append(max(10, min(60, _r3['val'] / _total_style_val * 600)))
+                            _sc_lbl.append(
+                                f"{_r3['name']}<br>FCF {_r3['fcfm']:.1f}% · "
+                                f"Wachstum {_r3['rg']:.1f}%<br>"
+                                + (f"KGV {_r3['pe']:.1f}x" if _r3['pe'] else ""))
+                            _sc_clr.append(_cat_colors.get(_r3['cat'], '#546e7a'))
+
+                        _scat_fig = None
+                        if len(_sc_x) >= 2:
+                            _scat_fig = go.Figure(go.Scatter(
+                                x=_sc_x, y=_sc_y,
+                                mode='markers+text',
+                                marker=dict(
+                                    size=_sc_sz,
+                                    color=_sc_clr,
+                                    opacity=0.82,
+                                    line=dict(width=1, color='rgba(255,255,255,0.15)'),
+                                ),
+                                text=[r['name'] for r in _style_rows if r['fcfm'] is not None],
+                                textposition='top center',
+                                textfont=dict(size=9, color=_C_TEXT_MUTED),
+                                hovertext=_sc_lbl,
+                                hoverinfo='text',
+                            ))
+                            _scat_fig.add_vline(x=0, line_dash="dot",
+                                                line_color=_C_BORDER, line_width=1)
+                            _scat_fig.add_hline(y=0, line_dash="dot",
+                                                line_color=_C_BORDER, line_width=1)
+                            _scat_fig.update_layout(
+                                paper_bgcolor="rgba(0,0,0,0)",
+                                plot_bgcolor="rgba(0,0,0,0)",
+                                font=dict(color=_C_TEXT_PRIMARY, size=10),
+                                xaxis=dict(title="Umsatzwachstum (%)",
+                                           gridcolor=_C_BORDER, zeroline=False),
+                                yaxis=dict(title="FCF-Marge (%)",
+                                           gridcolor=_C_BORDER, zeroline=False),
+                                height=320,
+                                margin=dict(t=20, b=50, l=55, r=20),
+                                showlegend=False,
+                            )
+
+                        _dc1, _dc2 = st.columns([1, 1])
+                        with _dc1:
+                            st.markdown(
+                                f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;"
+                                f"font-weight:600;margin-bottom:4px;'>Stil-Verteilung (nach Wert)</div>",
+                                unsafe_allow_html=True)
+                            st.plotly_chart(_pie_fig, use_container_width=True,
+                                            config={"displayModeBar": False})
+                        with _dc2:
+                            if _scat_fig:
+                                st.markdown(
+                                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;"
+                                    f"font-weight:600;margin-bottom:4px;'>"
+                                    f"FCF-Marge vs. Wachstum (Blasengröße = Portfoliogewicht)</div>",
+                                    unsafe_allow_html=True)
+                                st.plotly_chart(_scat_fig, use_container_width=True,
+                                                config={"displayModeBar": False})
+                            else:
+                                st.info("Zu wenig FCF-Daten für Scatter-Plot.")
+
+                        # Legende + Liste
+                        _legend_html = "<div style='display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;'>"
+                        for _ck, _cv in _cat_colors.items():
+                            if _ck in _cat_agg:
+                                _legend_html += (
+                                    f"<span style='display:flex;align-items:center;gap:4px;"
+                                    f"background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                                    f"border-radius:5px;padding:3px 8px;'>"
+                                    f"<span style='width:10px;height:10px;border-radius:50%;"
+                                    f"background:{_cv};display:inline-block;'></span>"
+                                    f"<span style='color:{_C_TEXT_MUTED};font-size:0.72rem;'>"
+                                    f"{_ck}</span></span>")
+                        _legend_html += "</div>"
+                        st.markdown(_legend_html, unsafe_allow_html=True)
+
+                        # Positionsliste nach Kategorie
+                        for _cat_k, _cat_v in _cat_agg.items():
+                            _ck_clr = _cat_colors.get(_cat_k, '#546e7a')
+                            _ck_pct = _cat_v['val'] / _total_style_val * 100
+                            st.markdown(
+                                f"<div style='display:flex;align-items:center;gap:8px;"
+                                f"padding:6px 0;border-bottom:1px solid {_C_BORDER};'>"
+                                f"<span style='width:10px;height:10px;border-radius:50%;"
+                                f"background:{_ck_clr};flex-shrink:0;'></span>"
+                                f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;"
+                                f"font-weight:600;min-width:140px;'>{_cat_k}</span>"
+                                f"<span style='color:{_C_TEXT_MUTED};font-size:0.76rem;flex:1;'>"
+                                f"{', '.join(_cat_v['names'][:6])}"
+                                f"{'…' if len(_cat_v['names']) > 6 else ''}</span>"
+                                f"<span style='color:{_ck_clr};font-size:0.80rem;font-weight:700;"
+                                f"min-width:44px;text-align:right;'>{_ck_pct:.1f}%</span></div>",
+                                unsafe_allow_html=True)
+
+                        st.caption(
+                            "Klassifizierung: Quality = Gross Margin >40% & FCF-Marge >8% · "
+                            "Growth = Umsatzwachstum >15% · Value = KGV <15x oder KBV <1,5x · "
+                            "Dividende = Rendite >3% · Quelle: yFinance · keine Anlageberatung.")
 
           except Exception as _e_alloc:
               st.error(f"Fehler im Aufteilung-Tab: {_e_alloc}")
