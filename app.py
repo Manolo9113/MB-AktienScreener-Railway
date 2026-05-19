@@ -9358,6 +9358,62 @@ if st.session_state.get("show_portfolio"):
                             f"{_dv:+.1f} pp · {_label}</span></div>",
                             unsafe_allow_html=True)
 
+                # ── Rebalancing-Rechner ───────────────────────────────
+                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-header'>🎯 Rebalancing-Rechner</div>",
+                            unsafe_allow_html=True)
+                st.caption("Gib deine Ziel-Gewichtung ein — der Rechner zeigt, "
+                           "wieviel du kaufen/verkaufen musst oder wie du Sparrate einsetzen kannst.")
+                _rb2_total = sum(r['val'] for r in _rb_items) if _rb_items else 0
+                if len(_rb_items) < 2:
+                    st.info("Mindestens 2 Positionen erforderlich.")
+                else:
+                    _rb2_targets: dict = {}
+                    _rb2_cols = st.columns(min(len(_rb_items), 4))
+                    for _i2, _rbi2 in enumerate(_rb_items):
+                        _ci2 = _rb2_cols[_i2 % 4]
+                        _rb2_targets[_rbi2['name']] = _ci2.number_input(
+                            f"{_rbi2['name'][:20]}", min_value=0.0, max_value=100.0,
+                            value=round(100.0 / len(_rb_items), 1), step=0.5,
+                            key=f"rb2_tgt_{_i2}", format="%.1f")
+                    _rb2_sum_targets = sum(_rb2_targets.values())
+                    _rb2_add_cash = st.number_input(
+                        "Zusätzliches Kapital (€) — optional", min_value=0, max_value=1_000_000,
+                        value=0, step=100, key="rb2_cash",
+                        help="Z.B. monatliche Sparrate — nur Käufe, kein Verkauf nötig")
+                    if abs(_rb2_sum_targets - 100.0) > 0.5:
+                        st.warning(f"Ziel-Summe: {_rb2_sum_targets:.1f}% — muss 100% ergeben.")
+                    else:
+                        _rb2_new_total = _rb2_total + _rb2_add_cash
+                        st.markdown(
+                            f"<div style='color:{_C_TEXT_MUTED};font-size:0.8rem;margin:8px 0 10px 0;'>"
+                            f"Aktueller Portfoliowert: <b style='color:{_C_TEXT_PRIMARY};'>"
+                            f"€{_rb2_total:,.0f}</b>"
+                            + (f" + €{_rb2_add_cash:,} Zukauf = "
+                               f"<b style='color:{_C_ACCENT};'>€{_rb2_new_total:,.0f}</b>"
+                               if _rb2_add_cash > 0 else "") +
+                            "</div>", unsafe_allow_html=True)
+                        for _rbi3 in _rb_items:
+                            _cur_v3  = _rbi3['val']
+                            _tgt_pct = _rb2_targets.get(_rbi3['name'], 0)
+                            _tgt_v3  = _rb2_new_total * _tgt_pct / 100
+                            _diff_v3 = _tgt_v3 - _cur_v3
+                            _act_clr = _C_POSITIVE if _diff_v3 >= 0 else _C_NEGATIVE
+                            _act_lbl = f"Kaufen +€{_diff_v3:,.0f}" if _diff_v3 >= 50 else (
+                                f"Verkaufen −€{abs(_diff_v3):,.0f}" if _diff_v3 <= -50 else "✓ ok")
+                            st.markdown(
+                                f"<div style='display:flex;align-items:center;gap:8px;"
+                                f"padding:7px 4px;border-bottom:1px solid {_C_BORDER};'>"
+                                f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;"
+                                f"flex:1;min-width:150px;'>{_rbi3['name'][:32]}</span>"
+                                f"<span style='color:{_C_TEXT_MUTED};font-size:0.76rem;"
+                                f"min-width:58px;text-align:right;'>Ist {_rbi3['pct']:.1f}%</span>"
+                                f"<span style='color:{_C_ACCENT};font-size:0.76rem;"
+                                f"min-width:58px;text-align:right;'>→ {_tgt_pct:.1f}%</span>"
+                                f"<span style='color:{_act_clr};font-size:0.80rem;font-weight:700;"
+                                f"min-width:120px;text-align:right;'>{_act_lbl}</span></div>",
+                                unsafe_allow_html=True)
+
           except Exception as _e_alloc:
               st.error(f"Fehler im Aufteilung-Tab: {_e_alloc}")
 
@@ -13033,6 +13089,58 @@ if st.session_state.get("show_etf_analyzer"):
     st.caption(f"💡 Rendite nach TER: {_sp_rendite - _sp_ter:.2f}% p.a. · "
                f"Monatliche Sparrate {_sp_rate}€ × {_sp_jahre} Jahre + Einmalanlage €{_sp_einmal:,}")
 
+    # ── Zielsparbetrag-Rechner ────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🎯 Zielsparbetrag-Rechner</div>",
+                unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:14px 16px;margin-bottom:14px;color:{_C_TEXT_MUTED};font-size:0.82rem;line-height:1.55;'>"
+        f"Wie viel musst du monatlich sparen, um ein bestimmtes Zielkapital zu erreichen? "
+        f"Umgekehrte Rechnung zum Sparplanrechner — gib Ziel, Zeitraum und Rendite ein.</div>",
+        unsafe_allow_html=True)
+    _zsb_c1, _zsb_c2, _zsb_c3 = st.columns(3)
+    with _zsb_c1:
+        _zsb_ziel    = st.number_input("Zielkapital (€)", min_value=1000, max_value=100_000_000,
+                                       value=100_000, step=5000, key="zsb_ziel")
+        _zsb_einmal  = st.number_input("Bereits investiert / Einmalanlage (€)", min_value=0,
+                                       max_value=10_000_000, value=0, step=500, key="zsb_einmal")
+    with _zsb_c2:
+        _zsb_jahre   = st.slider("Zeitraum (Jahre)", 1, 50, 20, key="zsb_jahre")
+        _zsb_rendite = st.slider("Jährl. Rendite vor TER (%)", 0.0, 20.0, 7.0, 0.5, key="zsb_rendite")
+    with _zsb_c3:
+        _zsb_ter     = st.number_input("TER (%)", 0.0, 5.0, _ter_default_a, 0.01, "%.2f", key="zsb_ter")
+    _zsb_r_net = (_zsb_rendite - _zsb_ter) / 100
+    _zsb_r_mon = (1 + _zsb_r_net) ** (1 / 12) - 1
+    _zsb_n     = _zsb_jahre * 12
+    _zsb_pv_grown = _zsb_einmal * (1 + _zsb_r_mon) ** _zsb_n
+    _zsb_remaining = _zsb_ziel - _zsb_pv_grown
+    if _zsb_remaining <= 0:
+        st.success(f"✅ Deine Einmalanlage von €{_zsb_einmal:,} wächst in {_zsb_jahre} Jahren "
+                   f"bereits auf €{_zsb_pv_grown:,.0f} — Ziel ohne Sparrate erreichbar!")
+        _zsb_pmt = 0.0
+    elif _zsb_r_mon > 0:
+        _zsb_pmt = _zsb_remaining * _zsb_r_mon / ((1 + _zsb_r_mon) ** _zsb_n - 1) / (1 + _zsb_r_mon)
+    else:
+        _zsb_pmt = _zsb_remaining / _zsb_n
+    _zsb_total_invest = _zsb_einmal + _zsb_pmt * _zsb_n
+    _zsb_gewinn = _zsb_ziel - _zsb_total_invest
+    _zsb_a, _zsb_b, _zsb_c, _zsb_d = st.columns(4)
+    for _zc, _zl, _zv, _zcl in [
+        (_zsb_a, "Monatl. Sparrate",   f"€{_zsb_pmt:,.0f}",          _C_POSITIVE),
+        (_zsb_b, "Gesamt eingezahlt",  f"€{_zsb_total_invest:,.0f}",  _C_TEXT_PRIMARY),
+        (_zsb_c, "Zinseszinsgewinn",   f"€{_zsb_gewinn:,.0f}",        _C_POSITIVE if _zsb_gewinn >= 0 else _C_NEGATIVE),
+        (_zsb_d, "Rendite nach TER",   f"{_zsb_rendite - _zsb_ter:.2f}% p.a.", _C_ACCENT),
+    ]:
+        _zc.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+            f"padding:12px;text-align:center;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_zl}</div>"
+            f"<div style='color:{_zcl};font-size:1.2rem;font-weight:700;'>{_zv}</div>"
+            f"</div>", unsafe_allow_html=True)
+    if _zsb_pmt > 0:
+        st.caption(f"💡 Du brauchst €{_zsb_pmt:,.0f}/Monat über {_zsb_jahre} Jahre, "
+                   f"um €{_zsb_ziel:,} zu erreichen — davon €{_zsb_gewinn:,.0f} Zinsen.")
+
     # ── F1: Ausschüttend vs Thesaurierend ────────────────────────────────
     st.markdown("<div class='section-header'>⚖️ Ausschüttend vs Thesaurierend</div>", unsafe_allow_html=True)
     st.markdown(
@@ -13503,6 +13611,79 @@ if st.session_state.get("show_etf_analyzer"):
     st.caption("Vorabpauschale gilt nur für thesaurierende ETFs · "
                "Bei ausschüttenden ETFs werden Dividenden direkt versteuert · "
                "Basiszins 2026 vorläufig · keine Steuerberatung.")
+
+    # ── Ausschüttungshistorie ─────────────────────────────────────────────
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>📊 Ausschüttungshistorie</div>",
+                unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:14px 16px;margin-bottom:14px;color:{_C_TEXT_MUTED};font-size:0.82rem;line-height:1.55;'>"
+        f"Historische Dividenden/Ausschüttungen dieses ETFs je Anteil (Quelle: yFinance). "
+        f"Thesaurierende ETFs zahlen keine Ausschüttungen — hier erscheinen Vorabpauschalen-relevante "
+        f"Basisbeträge.</div>",
+        unsafe_allow_html=True)
+    _ah_load_key = f"ah_loaded_{_etf_tkr}"
+    if not st.session_state.get(_ah_load_key):
+        if st.button("📈 Ausschüttungshistorie laden", key="btn_ah_load",
+                     use_container_width=True):
+            st.session_state[_ah_load_key] = True
+            st.rerun()
+    if st.session_state.get(_ah_load_key):
+        try:
+            _ah_obj = yf.Ticker(_etf_tkr)
+            _ah_divs = _ah_obj.dividends
+            if _ah_divs is None or len(_ah_divs) == 0:
+                st.info("Keine Ausschüttungen in yFinance gefunden — "
+                        "dies ist entweder ein thesaurierender ETF oder yFinance hat keine Daten.")
+            else:
+                _ah_divs.index = pd.to_datetime(_ah_divs.index).tz_localize(None)
+                _ah_annual = _ah_divs.resample('YE').sum()
+                _ah_annual.index = _ah_annual.index.year
+                _ah_years = list(_ah_annual.index.astype(str))
+                _ah_vals  = list(_ah_annual.values)
+                _ah_cur_yr = str(pd.Timestamp.today().year)
+                _ah_clrs  = [_C_NEUTRAL if y == _ah_cur_yr else _C_POSITIVE for y in _ah_years]
+                _ah_fig = go.Figure(go.Bar(
+                    x=_ah_years, y=_ah_vals,
+                    marker_color=_ah_clrs,
+                    text=[f"€{v:.4f}" if v < 0.1 else f"€{v:.3f}" for v in _ah_vals],
+                    textposition="outside",
+                ))
+                _ah_fig.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=_C_TEXT_PRIMARY, size=11),
+                    xaxis=dict(title="Jahr", gridcolor=_C_BORDER, type="category"),
+                    yaxis=dict(title="Ausschüttung je Anteil", gridcolor=_C_BORDER,
+                               zeroline=False, tickprefix="€"),
+                    height=280, margin=dict(t=30, b=40, l=60, r=20),
+                    showlegend=False,
+                )
+                st.plotly_chart(_ah_fig, use_container_width=True,
+                                config={"displayModeBar": False})
+                _ah_last3 = _ah_annual.tail(3)
+                _ah_s1, _ah_s2, _ah_s3 = st.columns(3)
+                for _ahc, (_ahr_yr, _ahr_val) in zip(
+                        [_ah_s1, _ah_s2, _ah_s3], _ah_last3.items()):
+                    _ahc.markdown(
+                        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                        f"border-radius:8px;padding:12px;text-align:center;'>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_ahr_yr}</div>"
+                        f"<div style='color:{_C_POSITIVE};font-size:1.2rem;font-weight:700;'>"
+                        f"€{_ahr_val:.4f}</div>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.65rem;'>je Anteil</div>"
+                        f"</div>", unsafe_allow_html=True)
+                if len(_ah_annual) >= 2:
+                    _ah_trend = (_ah_annual.iloc[-1] / _ah_annual.iloc[-2] - 1) * 100
+                    _ah_tc = _C_POSITIVE if _ah_trend >= 0 else _C_NEGATIVE
+                    st.caption(
+                        f"Letztes Jahr: €{_ah_annual.iloc[-1]:.4f} je Anteil · "
+                        f"Veränderung zum Vorjahr: "
+                        f"<span style='color:{_ah_tc};font-weight:700;'>"
+                        f"{'▲' if _ah_trend >= 0 else '▼'}{abs(_ah_trend):.1f}%</span>",
+                        unsafe_allow_html=True)
+        except Exception as _ah_e:
+            st.error(f"Ausschüttungshistorie konnte nicht geladen werden: {_ah_e}")
 
     st.stop()
 
@@ -15816,6 +15997,87 @@ elif _at == 4:
             <div style="margin-top:6px;">{tsy_badge}</div>
             <div class="metric-sub">FCF Yield + Dividende</div>
         </div>""", unsafe_allow_html=True)
+
+    # ── KGV-Historie ─────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📉 KGV-Historie (Trailing P/E)</div>",
+                unsafe_allow_html=True)
+    try:
+        _kh_obj = yf.Ticker(ticker)
+        _kh_inc = _kh_obj.income_stmt
+        _kh_hist5 = _kh_obj.history(period="5y", auto_adjust=True)
+        if _kh_inc is not None and not _kh_inc.empty and not _kh_hist5.empty:
+            _kh_eps_rows = [r for r in ['Net Income', 'Diluted EPS', 'Basic EPS'] if r in _kh_inc.index]
+            _kh_shares_rows = [r for r in ['Diluted Average Shares', 'Basic Average Shares'] if r in _kh_inc.index]
+            _kh_pts = []
+            if _kh_eps_rows and _kh_shares_rows:
+                for _kh_col in _kh_inc.columns:
+                    try:
+                        _kh_ni = float(_kh_inc.loc['Net Income', _kh_col])
+                        _kh_sh = float(_kh_inc.loc[_kh_shares_rows[0], _kh_col])
+                        if _kh_sh and _kh_sh > 0 and _kh_ni:
+                            _kh_eps_yr = _kh_ni / _kh_sh
+                            _kh_date = pd.Timestamp(_kh_col).tz_localize(None)
+                            _kh_price_sub = _kh_hist5[_kh_hist5.index <= _kh_date + pd.Timedelta(days=30)]['Close']
+                            if not _kh_price_sub.empty and _kh_eps_yr > 0:
+                                _kh_p = float(_kh_price_sub.iloc[-1])
+                                _kh_pe = _kh_p / _kh_eps_yr
+                                if 0 < _kh_pe < 300:
+                                    _kh_pts.append((_kh_date.strftime('%Y'), _kh_pe))
+                    except Exception:
+                        continue
+            if _kh_pts:
+                _kh_pts.sort(key=lambda x: x[0])
+                _kh_yrs = [p[0] for p in _kh_pts]
+                _kh_pes = [p[1] for p in _kh_pts]
+                _kh_avg = sum(_kh_pes) / len(_kh_pes)
+                _kh_fig = go.Figure()
+                _kh_fig.add_trace(go.Bar(
+                    x=_kh_yrs, y=_kh_pes,
+                    marker_color=[_C_NEGATIVE if p > _kh_avg * 1.2 else
+                                  _C_POSITIVE if p < _kh_avg * 0.8 else "#64b5f6"
+                                  for p in _kh_pes],
+                    text=[f"{p:.1f}x" for p in _kh_pes],
+                    textposition="outside",
+                ))
+                _kh_fig.add_hline(y=_kh_avg, line_dash="dot", line_color=_C_NEUTRAL,
+                                  line_width=1.5,
+                                  annotation_text=f"Ø {_kh_avg:.1f}x",
+                                  annotation_font_color=_C_NEUTRAL)
+                if trailing_pe:
+                    _kh_fig.add_hline(y=trailing_pe, line_dash="dash", line_color=_C_ACCENT,
+                                      line_width=1.5,
+                                      annotation_text=f"Aktuell {trailing_pe:.1f}x",
+                                      annotation_font_color=_C_ACCENT)
+                _kh_fig.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=_C_TEXT_PRIMARY, size=11),
+                    xaxis=dict(type="category", gridcolor=_C_BORDER),
+                    yaxis=dict(title="KGV (P/E)", gridcolor=_C_BORDER,
+                               zeroline=False, ticksuffix="x"),
+                    height=250, margin=dict(t=30, b=30, l=50, r=60),
+                    showlegend=False,
+                )
+                st.plotly_chart(_kh_fig, use_container_width=True,
+                                config={"displayModeBar": False})
+                _kh_min = min(_kh_pes)
+                _kh_max = max(_kh_pes)
+                _kh_note = ""
+                if trailing_pe:
+                    if trailing_pe > _kh_max * 0.95:
+                        _kh_note = f"⚠️ Aktuelles KGV {trailing_pe:.1f}x nahe historischem Maximum ({_kh_max:.1f}x)."
+                    elif trailing_pe < _kh_min * 1.05:
+                        _kh_note = f"✅ Aktuelles KGV {trailing_pe:.1f}x nahe historischem Minimum ({_kh_min:.1f}x)."
+                    else:
+                        _kh_note = (f"Aktuelles KGV {trailing_pe:.1f}x · "
+                                    f"Hist. Bandbreite {_kh_min:.1f}x–{_kh_max:.1f}x · "
+                                    f"Ø {_kh_avg:.1f}x")
+                st.caption(_kh_note or f"Hist. Ø KGV {_kh_avg:.1f}x · Bandbreite {_kh_min:.1f}x–{_kh_max:.1f}x")
+            else:
+                st.info("Keine ausreichenden Daten für KGV-Historie.")
+        else:
+            st.info("Keine Finanzdaten für KGV-Historie verfügbar.")
+    except Exception as _kh_e:
+        st.info(f"KGV-Historie nicht verfügbar: {_kh_e}")
 
     # Analyst target
     if target_mean and price:
