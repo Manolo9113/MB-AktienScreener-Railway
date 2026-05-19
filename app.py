@@ -10680,12 +10680,7 @@ GEOGRAFISCHE VERTEILUNG:
 
         with tab_insider:
             try:
-                _ins_pf_tickers = list({
-                    row.get("ticker") or row.get("Ticker") or ""
-                    for row in (st.session_state.get("watchlist") or [])
-                } - {""})
-                if not _ins_pf_tickers:
-                    _ins_pf_tickers = list(_pos_dict.keys()) if "_pos_dict" in dir() else []
+                _ins_pf_tickers = sorted({t for t in isin_map.values() if t})
                 if not _ins_pf_tickers:
                     st.info("Keine Portfolio-Positionen gefunden.")
                 else:
