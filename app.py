@@ -16183,8 +16183,11 @@ elif _at == 2:
         # --- Forecast anchor points (analyst estimates + CAGR extension) ---
         _gc_fcast_by_yr: dict = {}
         for _ge in _eps_est:
-            if _ge.get("estimate") and _ge["estimate"] > 0:
-                _gc_fcast_by_yr[_ge["year"]] = _ge["estimate"]
+            _gc_yr_raw = _ge.get("year")
+            _gc_est    = _ge.get("estimate")
+            # only accept integer calendar years (skip "+1q", "+2y" strings from yFinance)
+            if isinstance(_gc_yr_raw, int) and _gc_yr_raw > 2000 and _gc_est and _gc_est > 0:
+                _gc_fcast_by_yr[_gc_yr_raw] = _gc_est
 
         _gc_f_pts: list = list(_gc_ann_pts[-1:])  # start from last historical anchor
         if _gc_fcast_by_yr:
