@@ -2765,6 +2765,19 @@ def _fred_last(series_id: str, n: int = 1) -> list[float]:
         return []
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch_income_stmt(tkr: str):
+    return yf.Ticker(tkr).income_stmt
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch_hist_monthly(tkr: str):
+    return yf.Ticker(tkr).history(period="5y", interval="1mo", auto_adjust=True)
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch_hist_daily_5y(tkr: str):
+    return yf.Ticker(tkr).history(period="5y", auto_adjust=True)
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def _load_bond_monitor() -> dict:
     """MOVE-Index + Treasury-Yields + Credit-Spreads (stündlich gecacht)."""
@@ -12515,6 +12528,7 @@ if st.session_state.get("show_etf_analyzer"):
 
         _scr_search = st.text_input("Name / Ticker suchen", placeholder="z.B. World, MSCI, Vanguard…",
                                     key="scr_search", label_visibility="visible")
+        _scr_q = _scr_search.lower()
 
         _scr_results = [
             r for r in _SCR_DB
@@ -12524,10 +12538,10 @@ if st.session_state.get("show_etf_analyzer"):
                  or (_scr_aussch == "Ausschüttend"  and r[6] == "Dist"))
             and r[4] <= _scr_ter_max
             and (_scr_search == ""
-                 or _scr_search.lower() in r[0].lower()
-                 or _scr_search.lower() in r[1].lower()
-                 or _scr_search.lower() in r[2].lower()
-                 or _scr_search.lower() in r[3].lower())
+                 or _scr_q in r[0].lower()
+                 or _scr_q in r[1].lower()
+                 or _scr_q in r[2].lower()
+                 or _scr_q in r[3].lower())
         ]
         if _scr_sort == "TER ↑":
             _scr_results.sort(key=lambda x: x[4])
@@ -16110,9 +16124,8 @@ elif _at == 2:
         f"letter-spacing:0.05em;margin:28px 0 10px 0;'>📈 WACHSTUMS-CHART — INNERER WERT VS. KURS</div>",
         unsafe_allow_html=True)
 
-    _gc_obj  = yf.Ticker(ticker)
-    _gc_hist = _gc_obj.history(period="5y", interval="1mo", auto_adjust=True)
-    _gc_inc  = _gc_obj.income_stmt
+    _gc_hist = _fetch_hist_monthly(ticker)
+    _gc_inc  = _fetch_income_stmt(ticker)
 
     if not _gc_hist.empty and getattr(_gc_hist.index, 'tz', None):
         _gc_hist.index = _gc_hist.index.tz_localize(None)
@@ -16155,13 +16168,15 @@ elif _at == 2:
     # --- Growth rates ---
     _gc_pos_eps = [(t, v) for t, v in _gc_eps_sorted if v > 0]
     if len(_gc_pos_eps) >= 2:
-        _gc_eps_cagr = (_gc_pos_eps[-1][1] / _gc_pos_eps[0][1]) ** (1 / max(1, len(_gc_pos_eps) - 1)) - 1
+        _gc_eps_yrs  = max(1, (_gc_pos_eps[-1][0] - _gc_pos_eps[0][0]).days / 365.25)
+        _gc_eps_cagr = (_gc_pos_eps[-1][1] / _gc_pos_eps[0][1]) ** (1 / _gc_eps_yrs) - 1
     elif _fwd_eps and _trail_eps and _trail_eps > 0 and _fwd_eps > 0:
         _gc_eps_cagr = _fwd_eps / _trail_eps - 1
     else:
         _gc_eps_cagr = 0.10
     if len(_gc_rev_sorted) >= 2 and _gc_rev_sorted[0][1] > 0:
-        _gc_rev_cagr = (_gc_rev_sorted[-1][1] / _gc_rev_sorted[0][1]) ** (1 / max(1, len(_gc_rev_sorted) - 1)) - 1
+        _gc_rev_yrs  = max(1, (_gc_rev_sorted[-1][0] - _gc_rev_sorted[0][0]).days / 365.25)
+        _gc_rev_cagr = (_gc_rev_sorted[-1][1] / _gc_rev_sorted[0][1]) ** (1 / _gc_rev_yrs) - 1
     else:
         _gc_rev_cagr = yf_info.get("revenueGrowth") or 0.08
     _gc_combined_cagr = (_gc_eps_cagr + _gc_rev_cagr) / 2
@@ -16193,36 +16208,39 @@ elif _at == 2:
         if _gc_fcast_by_yr:
             for _yr, _eps in sorted(_gc_fcast_by_yr.items()):
                 _gc_f_pts.append((pd.Timestamp(f"{_yr}-12-31"), _eps * _gc_fair_mult))
-            # extend 2 more years beyond last analyst estimate using EPS CAGR
             _gc_last_yr  = max(_gc_fcast_by_yr)
             _gc_last_eps = _gc_fcast_by_yr[_gc_last_yr]
             for _ext in [1, 2]:
                 _gc_f_pts.append((pd.Timestamp(f"{_gc_last_yr + _ext}-12-31"),
                                    _gc_last_eps * (1 + _gc_eps_cagr) ** _ext * _gc_fair_mult))
         else:
-            _gc_base_eps = _gc_cur_eps if (_gc_cur_eps and _gc_cur_eps > 0) else 0
+            # use last known IV as base to avoid flat-zero forecast when trailing EPS is unavailable
+            _gc_base_iv = _gc_ann_pts[-1][1] if _gc_ann_pts else 0
+            _gc_base_eps_f = _gc_cur_eps if (_gc_cur_eps and _gc_cur_eps > 0) else None
             for _yr_add in [1, 2, 3]:
-                _gc_f_pts.append((_gc_today + pd.DateOffset(years=_yr_add),
-                                   _gc_base_eps * (1 + _gc_eps_cagr) ** _yr_add * _gc_fair_mult))
+                _proj = ((_gc_base_eps_f * (1 + _gc_eps_cagr) ** _yr_add * _gc_fair_mult)
+                         if _gc_base_eps_f else _gc_base_iv * (1 + _gc_eps_cagr) ** _yr_add)
+                _gc_f_pts.append((_gc_today + pd.DateOffset(years=_yr_add), _proj))
         _gc_f_pts = sorted(_gc_f_pts, key=lambda x: x[0])
 
         # --- Linear interpolation → smooth monthly IV ---
         _gc_dates_h = list(_gc_hist.index)
-        _gc_px_h    = [float(r['Close']) for _, r in _gc_hist.iterrows()]
+        _gc_px_h    = _gc_hist['Close'].astype(float).tolist()
 
-        _gc_pts_ts = np.array([t.timestamp() for t, _ in _gc_ann_pts])
-        _gc_pts_iv = np.array([v for _, v in _gc_ann_pts])
-        _gc_hist_ts = np.array([d.timestamp() for d in _gc_dates_h])
-        _gc_iv_h = np.interp(_gc_hist_ts, _gc_pts_ts, _gc_pts_iv).tolist()
+        if len(_gc_ann_pts) < 2:
+            # not enough profitable years — fall back to price-mirroring so chart doesn't crash
+            _gc_iv_h = _gc_px_h[:]
+        else:
+            _gc_pts_ts  = np.array([t.timestamp() for t, _ in _gc_ann_pts])
+            _gc_pts_iv  = np.array([v for _, v in _gc_ann_pts])
+            _gc_hist_ts = np.array([d.timestamp() for d in _gc_dates_h])
+            _gc_iv_h    = np.interp(_gc_hist_ts, _gc_pts_ts, _gc_pts_iv).tolist()
 
-        # --- Smooth monthly forecast IV ---
-        _gc_f_ts = np.array([t.timestamp() for t, _ in _gc_f_pts])
-        _gc_f_iv = np.array([v for _, v in _gc_f_pts])
-        _gc_dates_f, _gc_iv_f = [], []
-        for _gc_m in range(1, 37):
-            _gc_fdt = _gc_today + pd.DateOffset(months=_gc_m)
-            _gc_iv_f.append(float(np.interp(_gc_fdt.timestamp(), _gc_f_ts, _gc_f_iv)))
-            _gc_dates_f.append(_gc_fdt)
+        _gc_f_ts    = np.array([t.timestamp() for t, _ in _gc_f_pts])
+        _gc_f_iv_a  = np.array([v for _, v in _gc_f_pts])
+        _gc_dates_f = [_gc_today + pd.DateOffset(months=m) for m in range(1, 37)]
+        _gc_iv_f    = (np.interp([d.timestamp() for d in _gc_dates_f], _gc_f_ts, _gc_f_iv_a).tolist()
+                       if len(_gc_f_pts) >= 2 else [_gc_ann_pts[-1][1]] * 36 if _gc_ann_pts else [])
 
         # --- Plotly chart ---
         _gc_fig   = go.Figure()
@@ -16305,7 +16323,7 @@ elif _at == 2:
         # --- 3 metric cards ---
         _gc_eps_pct  = _gc_eps_cagr * 100
         _gc_rev_pct  = _gc_rev_cagr * 100
-        _gc_comb_pct = _gc_combined_cagr * 100
+        _gc_comb_pct = _gc_growth_pct  # already = combined_cagr * 100
 
         def _gc_col(v):
             return "#26a69a" if v > 15 else "#66bb6a" if v > 5 else "#ffa726" if v > 0 else "#ef5350"
@@ -16877,9 +16895,8 @@ elif _at == 4:
     st.markdown("<div class='section-header'>📉 KGV-Historie (Trailing P/E)</div>",
                 unsafe_allow_html=True)
     try:
-        _kh_obj = yf.Ticker(ticker)
-        _kh_inc = _kh_obj.income_stmt
-        _kh_hist5 = _kh_obj.history(period="5y", auto_adjust=True)
+        _kh_inc   = _fetch_income_stmt(ticker)
+        _kh_hist5 = _fetch_hist_daily_5y(ticker)
         if _kh_inc is not None and not _kh_inc.empty and not _kh_hist5.empty:
             # Normalize price history index to tz-naive for safe comparison with income stmt dates
             _kh_hist5_naive = _kh_hist5.copy()
