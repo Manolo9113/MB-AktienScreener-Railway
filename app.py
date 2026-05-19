@@ -7948,53 +7948,6 @@ elif st.session_state.get("show_stocks"):
             else:
                 st.warning("Daten konnten nicht geladen werden.")
 
-    # ── A3: Insider-Käufe Watchlist ───────────────────────────────────────
-    with st.expander("🕵️ Insider-Käufe Watchlist — letzte 6 Monate (1h Cache)", expanded=False):
-        _wl_tickers = list({
-            row.get("ticker") or row.get("Ticker") or ""
-            for row in (st.session_state.get("watchlist") or [])
-        } - {""})
-        if not _wl_tickers:
-            st.info("Keine Watchlist-Positionen gefunden — bitte zuerst Portfolio hochladen.")
-        else:
-            st.markdown(
-                f"<div style='color:{_C_TEXT_MUTED};font-size:0.80rem;margin-bottom:10px;'>"
-                f"Insider-Käufe (Vorstände, Aufsichtsräte) deiner <b style='color:{_C_TEXT_PRIMARY};'>"
-                f"{len(_wl_tickers)} Watchlist-Aktien</b> der letzten 6 Monate. "
-                f"Insider-Käufe gelten als starkes Vertrauenssignal.</div>",
-                unsafe_allow_html=True)
-            _ins_load_key = "ins_wl_loaded"
-            if not st.session_state.get(_ins_load_key):
-                if st.button("🕵️ Insider-Daten laden", key="btn_ins_wl", use_container_width=True):
-                    st.session_state[_ins_load_key] = True
-                    st.rerun()
-            if st.session_state.get(_ins_load_key):
-                with st.spinner("Lade Insider-Transaktionen…"):
-                    _ins_rows = _load_insider_watchlist(tuple(sorted(_wl_tickers)))
-                if _ins_rows:
-                    for _ir in _ins_rows:
-                        _val_str = f"${_ir['value']:,.0f}" if _ir["value"] > 0 else "—"
-                        _date_str = _ir["date"].strftime("%d.%m.%Y") if hasattr(_ir["date"], "strftime") else str(_ir["date"])[:10]
-                        st.markdown(
-                            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
-                            f"border-left:3px solid {_C_POSITIVE};border-radius:8px;"
-                            f"padding:9px 12px;margin-bottom:5px;"
-                            f"display:grid;grid-template-columns:60px 1fr auto;gap:8px;align-items:center;'>"
-                            f"<div style='color:{_C_ACCENT};font-size:0.82rem;font-weight:700;'>{_ir['ticker']}</div>"
-                            f"<div>"
-                            f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;font-weight:600;'>{str(_ir['insider'])[:30]}</div>"
-                            f"<div style='color:{_C_TEXT_MUTED};font-size:0.67rem;'>{str(_ir['role'])[:28]} · {_date_str}</div>"
-                            f"</div>"
-                            f"<div style='text-align:right;'>"
-                            f"<div style='color:{_C_POSITIVE};font-size:0.80rem;font-weight:700;'>{_val_str}</div>"
-                            f"<div style='color:{_C_TEXT_MUTED};font-size:0.66rem;'>{_ir['shares']:,} Aktien</div>"
-                            f"</div>"
-                            f"</div>", unsafe_allow_html=True)
-                    st.caption("Nur Käufe (Purchases) · Quelle: yFinance / SEC Form 4 · "
-                               "Verkäufe können steuerlich bedingt sein — Käufe sind aussagekräftiger.")
-                else:
-                    st.info("Keine Insider-Käufe in den letzten 6 Monaten gefunden.")
-
     # ── KI-Investmentstrategie ─────────────────────────────────────────────────
     st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
     st.markdown(f"""
@@ -8722,9 +8675,9 @@ if st.session_state.get("show_portfolio"):
                 st.session_state["show_landing"] = False
                 st.rerun()
 
-        tab_pos, tab_alloc, tab_perf, tab_holdings, tab_ki, tab_div, tab_risk = st.tabs(
+        tab_pos, tab_alloc, tab_perf, tab_holdings, tab_ki, tab_div, tab_risk, tab_insider = st.tabs(
             ["📊 Positionen", "🥧 Aufteilung", "📈 Performance", "🔍 Holdings",
-             "🤖 KI-Analyse", "💰 Dividenden", "⚡ Risiko"])
+             "🤖 KI-Analyse", "💰 Dividenden", "⚡ Risiko", "🕵️ Insider"])
 
         # ── Disk-Cache für Sektor-/Analyst-Daten laden (überlebt Deploys) ──────
         _disk_sec_cache = _load_isin_sector_cache()
@@ -10660,6 +10613,111 @@ GEOGRAFISCHE VERTEILUNG:
 
           except Exception as _e_risk:
               st.error(f"Fehler im Risiko-Tab: {_e_risk}")
+
+        with tab_insider:
+            try:
+                _ins_pf_tickers = list({
+                    row.get("ticker") or row.get("Ticker") or ""
+                    for row in (st.session_state.get("watchlist") or [])
+                } - {""})
+                if not _ins_pf_tickers:
+                    _ins_pf_tickers = list(_pos_dict.keys()) if "_pos_dict" in dir() else []
+                if not _ins_pf_tickers:
+                    st.info("Keine Portfolio-Positionen gefunden.")
+                else:
+                    st.markdown(
+                        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                        f"border-radius:10px;padding:14px 16px;margin-bottom:14px;"
+                        f"color:{_C_TEXT_MUTED};font-size:0.82rem;line-height:1.55;'>"
+                        f"Insider-Käufe (Vorstände, Aufsichtsräte) deiner "
+                        f"<b style='color:{_C_TEXT_PRIMARY};'>{len(_ins_pf_tickers)} Positionen</b> "
+                        f"der letzten 6 Monate. Insider-Käufe gelten als starkes Vertrauenssignal — "
+                        f"niemand kennt das Unternehmen besser als das Management.</div>",
+                        unsafe_allow_html=True)
+
+                    _ins_tab_key = f"ins_tab_{_csv_key}"
+                    if not st.session_state.get(_ins_tab_key):
+                        if st.button("🕵️ Insider-Transaktionen laden",
+                                     key="btn_ins_tab", use_container_width=True, type="primary"):
+                            st.session_state[_ins_tab_key] = True
+                            st.rerun()
+                    if st.session_state.get(_ins_tab_key):
+                        with st.spinner("Lade Insider-Daten…"):
+                            _ins_tab_rows = _load_insider_watchlist(tuple(sorted(_ins_pf_tickers)))
+
+                        if _ins_tab_rows:
+                            _ins_buy_tab  = [r for r in _ins_tab_rows]
+                            _ins_tickers_with_buys = sorted({r["ticker"] for r in _ins_buy_tab})
+                            _ins_net_by_t = {
+                                t: sum(r["value"] for r in _ins_buy_tab if r["ticker"] == t)
+                                for t in _ins_tickers_with_buys
+                            }
+                            st.markdown(
+                                f"<div style='color:{_C_POSITIVE};font-size:0.80rem;font-weight:600;"
+                                f"margin-bottom:8px;'>✅ {len(_ins_buy_tab)} Insider-Käufe bei "
+                                f"{len(_ins_tickers_with_buys)} Positionen gefunden</div>",
+                                unsafe_allow_html=True)
+
+                            _ins_filter = st.selectbox(
+                                "Filtern nach Ticker", ["Alle"] + _ins_tickers_with_buys,
+                                key="ins_tab_filter")
+                            _ins_display = (
+                                _ins_buy_tab if _ins_filter == "Alle"
+                                else [r for r in _ins_buy_tab if r["ticker"] == _ins_filter]
+                            )
+
+                            for _ir in _ins_display:
+                                _val_str  = f"${_ir['value']:,.0f}" if _ir["value"] > 0 else "—"
+                                _date_str = (_ir["date"].strftime("%d.%m.%Y")
+                                             if hasattr(_ir["date"], "strftime")
+                                             else str(_ir["date"])[:10])
+                                st.markdown(
+                                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                                    f"border-left:3px solid {_C_POSITIVE};border-radius:8px;"
+                                    f"padding:10px 14px;margin-bottom:6px;"
+                                    f"display:grid;grid-template-columns:70px 1fr auto;gap:10px;align-items:center;'>"
+                                    f"<div style='color:{_C_ACCENT};font-size:0.85rem;font-weight:700;'>"
+                                    f"{_ir['ticker']}</div>"
+                                    f"<div>"
+                                    f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.80rem;font-weight:600;'>"
+                                    f"{str(_ir['insider'])[:32]}</div>"
+                                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>"
+                                    f"{str(_ir['role'])[:30]} · {_date_str}</div>"
+                                    f"</div>"
+                                    f"<div style='text-align:right;'>"
+                                    f"<div style='color:{_C_POSITIVE};font-size:0.85rem;font-weight:700;'>"
+                                    f"{_val_str}</div>"
+                                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>"
+                                    f"{_ir['shares']:,} Aktien</div>"
+                                    f"</div>"
+                                    f"</div>", unsafe_allow_html=True)
+
+                            if _ins_tickers_with_buys:
+                                st.markdown(
+                                    f"<div style='margin-top:14px;color:{_C_TEXT_MUTED};"
+                                    f"font-size:0.72rem;font-weight:600;margin-bottom:6px;'>"
+                                    f"Gesamtkaufvolumen je Position</div>",
+                                    unsafe_allow_html=True)
+                                _ins_sorted_vol = sorted(_ins_net_by_t.items(),
+                                                         key=lambda x: x[1], reverse=True)
+                                _ins_max_vol = max(v for _, v in _ins_sorted_vol) or 1
+                                for _it, _iv in _ins_sorted_vol:
+                                    _bar_w = int(_iv / _ins_max_vol * 100)
+                                    st.markdown(
+                                        f"<div style='display:grid;grid-template-columns:60px 1fr 80px;"
+                                        f"gap:8px;align-items:center;margin-bottom:4px;'>"
+                                        f"<div style='color:{_C_ACCENT};font-size:0.75rem;font-weight:700;'>{_it}</div>"
+                                        f"<div style='background:#1a2733;border-radius:3px;height:8px;'>"
+                                        f"<div style='background:{_C_POSITIVE};width:{_bar_w}%;height:100%;border-radius:3px;'></div></div>"
+                                        f"<div style='color:{_C_POSITIVE};font-size:0.72rem;text-align:right;'>${_iv:,.0f}</div>"
+                                        f"</div>", unsafe_allow_html=True)
+                        else:
+                            st.success("✅ Keine Insider-Käufe in den letzten 6 Monaten — "
+                                       "kein besonderes Signal in deinem Portfolio.")
+                        st.caption("Quelle: yFinance / SEC Form 4 · nur Käufe (Purchases) · "
+                                   "Verkäufe können steuerlich bedingt sein.")
+            except Exception as _e_ins:
+                st.error(f"Fehler im Insider-Tab: {_e_ins}")
 
     elif df_port is None:
         st.info("📂 Bitte lade deine Orderhistorie-CSV hoch.\n\n"
