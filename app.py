@@ -16277,24 +16277,24 @@ elif _at == 2:
             line=dict(color='rgba(0,0,0,0)', width=0),
             showlegend=False, hoverinfo='skip'))
 
-        # IV line: historical solid, forecast dashed — same golden color
+        # Price line (historical) — white, visible on both green and red zones
+        _gc_fig.add_trace(go.Scatter(
+            x=_gc_dates_h, y=_gc_px_arr.tolist(),
+            mode='lines', name='Kurs',
+            line=dict(color='#ffffff', width=2.5),
+            hovertemplate='%{x|%b %Y}<br>Kurs: ' + _cur_sym + '%{y:.2f}<extra></extra>'))
+
+        # IV line: historical solid, forecast dashed — golden so it reads as "value reference"
         _gc_fig.add_trace(go.Scatter(
             x=_gc_dates_h, y=_gc_iv_arr.tolist(),
             mode='lines', name=f'Innerer Wert ({_gc_mlabel}×{_gc_fair_mult:.0f})',
-            line=dict(color='#ffffff', width=2.5),
+            line=dict(color='#ffd54f', width=2),
             hovertemplate='%{x|%b %Y}<br>Innerer Wert: ' + _cur_sym + '%{y:.2f}<extra></extra>'))
         _gc_fig.add_trace(go.Scatter(
             x=_gc_dates_f, y=_gc_iv_f_arr.tolist(),
             mode='lines', showlegend=False,
-            line=dict(color='#ffffff', width=2, dash='dash'),
+            line=dict(color='#ffd54f', width=1.5, dash='dash'),
             hovertemplate='%{x|%b %Y}<br>Prognose IV: ' + _cur_sym + '%{y:.2f}<extra></extra>'))
-
-        # Price line (historical only, bright white/yellow)
-        _gc_fig.add_trace(go.Scatter(
-            x=_gc_dates_h, y=_gc_px_arr.tolist(),
-            mode='lines', name='Kurs',
-            line=dict(color='#ffd54f', width=2),
-            hovertemplate='%{x|%b %Y}<br>Kurs: ' + _cur_sym + '%{y:.2f}<extra></extra>'))
 
         # Today divider
         _gc_fig.add_vline(x=_gc_today.timestamp() * 1000,
