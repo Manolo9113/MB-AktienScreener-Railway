@@ -11311,12 +11311,18 @@ if st.session_state.get("show_etf_analyzer"):
         'IE00BYYHSQ67':'QDIV.DE','LU0292096186':'XDIV.DE',
         # Themen
         'IE00B1XNHC34':'IQQH.DE','IE00BYVJRR92':'WTAI.L','IE00BKM4GZ66':'IS3R.DE',
+        # Faktor / Mega Cap (neu)
+        'IE00BP3QZ601':'IS3Q.DE','IE00BP3QZB59':'IS3S.DE',
+        'IE000YBGJ9I4':'MEGA.DE','IE0008M1R3N4':'USMC.DE',
+        'IE000Z7P04F4':'QTOP.DE','IE000FJJZA01':'QUS5.DE',
         # WKN → ticker
         'A0RPWH':'SXR8.DE','A1JX52':'VWCE.DE','622391':'SXR2.DE','A0HGWC':'IS3N.DE',
         'DBX1MW':'XDWD.DE','A0YEDL':'EQQQ.DE','593393':'EXS1.DE','ETF127':'LCUW.DE',
         'A2PKXG':'FWRA.DE','A0MZBE':'XMME.DE','A111EG':'IS3R.DE','A1JWXY':'SPY5.DE',
         'A1T8FV':'VHYL.L','A2DWBY':'IUSN.DE','ETF091':'MEUD.DE','593395':'EXW1.DE',
         'A0YEDL':'EQQQ.DE','A0YBR5':'EXV5.DE','A1H5EU':'IQQC.DE','LYX0RT':'LYPS.DE',
+        'A12ATE':'IS3Q.DE','A12ATG':'IS3S.DE','ETF220':'MEGA.DE',
+        'A414W8':'USMC.DE','A40V3X':'QTOP.DE','A40UMR':'QUS5.DE',
         # Name → ticker
         'msci world':'SXR8.DE','msci em':'IS3N.DE','msci emerging':'IS3N.DE',
         'all world':'VWCE.DE','ftse all world':'VWCE.DE','sp500':'SXR2.DE',
@@ -11406,7 +11412,8 @@ if st.session_state.get("show_etf_analyzer"):
         'HEAL.DE':0.0035,   # MSCI World Health — 0,35%
         # ── Faktor-ETFs ──────────────────────────────────────────────────────
         'IWQU.DE':0.0030,   # iShares MSCI World Quality — 0,30%
-        'IS3Q.DE':0.0030,   # iShares Edge MSCI World Quality — 0,30%
+        'IS3Q.DE':0.0025,   # iShares Edge MSCI World Quality — 0,25%
+        'IS3S.DE':0.0025,   # iShares Edge MSCI World Value Factor — 0,25%
         'IWMO.DE':0.0030,   # iShares MSCI World Momentum — 0,30%
         'MVOL.DE':0.0020,   # iShares MSCI World Min Volatility — 0,20%
         'WVAL.DE':0.0030,   # iShares MSCI World Value — 0,30%
@@ -11432,6 +11439,11 @@ if st.session_state.get("show_etf_analyzer"):
         'IQQH.DE':0.0065,'4GLD.DE':0.0025,   # Physical Gold — 0,25%
         'PPFB.DE':0.0025,   # Invesco Physical Gold — 0,25%
         'EGLN.DE':0.0019,   # iShares Physical Gold — 0,19%
+        # ── USA Mega Cap / Qualität (neu) ────────────────────────────────────────
+        'MEGA.DE':0.0015,   # Amundi MSCI USA Mega Cap — 0,15%
+        'USMC.DE':0.0009,   # Franklin US Mega Cap 100 — 0,09%
+        'QTOP.DE':0.0030,   # iShares Nasdaq 100 Top 30 — 0,30%
+        'QUS5.DE':0.0025,   # SPDR S&P 500 Quality Aristocrats — 0,25%
     }
 
     # ── US-Datenticker (für yFinance funds_data + FMP — XETRA hat kaum Daten) ─
@@ -11494,6 +11506,11 @@ if st.session_state.get("show_etf_analyzer"):
         'WVAL.DE':'VLUE',  # iShares MSCI World Value Factor
         'IFSW.DE':'SIZE',  # iShares MSCI World Size Factor
         'LGQG.DE':'QUAL',  # L&G Global Quality ETF
+        'IS3S.DE':'VLUE',  # iShares Edge MSCI World Value Factor
+        'MEGA.DE':'IVV',   # Amundi MSCI USA Mega Cap
+        'USMC.DE':'QQQ',   # Franklin US Mega Cap 100
+        'QTOP.DE':'QQQ',   # iShares Nasdaq 100 Top 30
+        'QUS5.DE':'QUAL',  # SPDR S&P 500 Quality Aristocrats
         # ── Europa ───────────────────────────────────────────────────────────
         'EXW1.DE':'VGK','IQQY.DE':'VGK','SPYY.DE':'VGK','IEUA.DE':'VGK',
         'XEUR.DE':'VGK','IQQE.DE':'VGK','IEMC.DE':'VGK','ZPRX.DE':'EWQ',
@@ -11555,6 +11572,8 @@ if st.session_state.get("show_etf_analyzer"):
         'IUIT.DE':  3_500_000_000,   # iShares MSCI World IT
         'HEAL.DE':  1_500_000_000,   # iShares MSCI World Health
         'IWQU.DE':  3_000_000_000,   # iShares MSCI World Quality
+        'IS3Q.DE':  4_371_000_000,   # iShares Edge MSCI World Quality Factor
+        'IS3S.DE':  6_082_000_000,   # iShares Edge MSCI World Value Factor
         'IWMO.DE':  2_000_000_000,   # iShares MSCI World Momentum
         'MVOL.DE':  4_000_000_000,   # iShares MSCI World Min Volatility
         'WVAL.DE':    800_000_000,   # iShares MSCI World Value
@@ -11572,6 +11591,10 @@ if st.session_state.get("show_etf_analyzer"):
         'IS3W.DE':    800_000_000,   # iShares MSCI Taiwan
         'VUSA.L':   8_000_000_000,   # Vanguard S&P 500 (GBP)
         'VHYL.L':   3_000_000_000,   # Vanguard FTSE All-World High Div
+        'MEGA.DE':      9_000_000,   # Amundi MSCI USA Mega Cap
+        'USMC.DE':     89_000_000,   # Franklin US Mega Cap 100
+        'QTOP.DE':     41_000_000,   # iShares Nasdaq 100 Top 30
+        'QUS5.DE':    703_000_000,   # SPDR S&P 500 Quality Aristocrats
     }
 
     # ── Statische Länder-Gewichtungen (Quelle: Fondsanbieter, Stand 2024) ────
@@ -11843,7 +11866,7 @@ if st.session_state.get("show_etf_analyzer"):
         'HEAL.DE':  "iShares MSCI World Health Care UCITS ETF (TER 0,35%) — globale Pharma, Biotech und Medizintechnik. Eli Lilly, UnitedHealth, Novo Nordisk als Hauptpositionen.",
         # ── Faktor-ETFs ───────────────────────────────────────────────────────
         'IWQU.DE':  "iShares MSCI World Quality Factor UCITS ETF (TER 0,30%) — selektiert ~300 Unternehmen nach hoher Eigenkapitalrendite, stabilem Gewinnwachstum und niedriger Verschuldung.",
-        'IS3Q.DE':  "iShares Edge MSCI World Quality Factor UCITS ETF (TER 0,30%) — Quality-Faktor weltweit. Historisch überlegene risikoadjustierte Rendite gegenüber dem MSCI World.",
+        'IS3Q.DE':  "iShares Edge MSCI World Quality Factor UCITS ETF (TER 0,25%) — Quality-Faktor weltweit. Historisch überlegene risikoadjustierte Rendite gegenüber dem MSCI World.",
         'IWMO.DE':  "iShares MSCI World Momentum Factor UCITS ETF (TER 0,30%) — investiert in Aktien mit starker Kursdynamik. Hohe Umschlagshäufigkeit, überdurchschnittliche Rendite in Bullmärkten.",
         'MVOL.DE':  "iShares MSCI World Minimum Volatility UCITS ETF (TER 0,20%) — reduziert Schwankungen durch gezielte Titelauswahl. Defensiv mit moderatem Rendite-Risiko-Profil.",
         'WVAL.DE':  "iShares MSCI World Value Factor UCITS ETF (TER 0,30%) — günstiger bewertete Qualitätsunternehmen weltweit. Historisch bei steigendem Zinsniveau besser als Growth-ETFs.",
@@ -12272,6 +12295,14 @@ if st.session_state.get("show_etf_analyzer"):
         ("IQQH.DE","iShares Global Clean Energy","IE00B1XNHC34","A0MZBE",0.65,"Themen","Thes",2.0),
         ("HEAL.DE","iShares MSCI World Health Care","IE00BYVJRR92","A2PLDF",0.35,"Themen","Thes",2.0),
         ("XDWD.DE","Xtrackers MSCI World Quality","IE00BJ0KDQ92","DBX1MW",0.25,"Global","Thes",5.0),
+        # Faktor — Quality / Value
+        ("IS3Q.DE","iShares MSCI World Quality Factor Acc","IE00BP3QZ601","A12ATE",0.25,"Global","Thes",4.4),
+        ("IS3S.DE","iShares MSCI World Value Factor Acc","IE00BP3QZB59","A12ATG",0.25,"Global","Thes",6.1),
+        # USA Mega Cap
+        ("MEGA.DE","Amundi MSCI USA Mega Cap Acc","IE000YBGJ9I4","ETF220",0.15,"USA","Thes",0.01),
+        ("USMC.DE","Franklin US Mega Cap 100 Acc","IE0008M1R3N4","A414W8",0.09,"USA","Thes",0.09),
+        ("QTOP.DE","iShares Nasdaq 100 Top 30 Acc","IE000Z7P04F4","A40V3X",0.30,"USA","Thes",0.04),
+        ("QUS5.DE","SPDR S&P 500 Quality Aristocrats Acc","IE000FJJZA01","A40UMR",0.25,"USA","Thes",0.70),
     ]
 
     with st.expander("🔍 ETF-Screener — Filter nach Region, TER, Ausschüttung", expanded=False):
