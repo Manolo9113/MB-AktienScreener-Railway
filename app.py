@@ -5493,9 +5493,7 @@ def _load_pf_fundamentals(ticker_tuple: tuple) -> dict:
 
     def _fetch_one(tkr: str) -> tuple[str, dict]:
         try:
-            with _cf2.ThreadPoolExecutor(max_workers=1) as _ex2:
-                _f2 = _ex2.submit(lambda: yf.Ticker(tkr).info)
-                info = _f2.result(timeout=5.0)
+            info = yf.Ticker(tkr).info
             rev  = info.get('totalRevenue') or 0
             fcf  = info.get('freeCashflow') or 0
             gm   = (info.get('grossMargins') or 0) * 100
@@ -9516,16 +9514,13 @@ if st.session_state.get("show_portfolio"):
                         if len(_sc_x) >= 2:
                             _scat_fig = go.Figure(go.Scatter(
                                 x=_sc_x, y=_sc_y,
-                                mode='markers+text',
+                                mode='markers',
                                 marker=dict(
                                     size=_sc_sz,
                                     color=_sc_clr,
-                                    opacity=0.82,
+                                    opacity=0.85,
                                     line=dict(width=1, color='rgba(255,255,255,0.15)'),
                                 ),
-                                text=[r['name'] for r in _style_rows if r['fcfm'] is not None],
-                                textposition='top center',
-                                textfont=dict(size=9, color=_C_TEXT_MUTED),
                                 hovertext=_sc_lbl,
                                 hoverinfo='text',
                             ))
@@ -14043,7 +14038,9 @@ if st.session_state.get("show_etf_analyzer"):
                 st.info("Keine Ausschüttungen in yFinance gefunden — "
                         "dies ist entweder ein thesaurierender ETF oder yFinance hat keine Daten.")
             else:
-                _ah_divs.index = pd.to_datetime(_ah_divs.index).tz_localize(None)
+                _ah_divs.index = pd.to_datetime(_ah_divs.index)
+                if getattr(_ah_divs.index, 'tz', None) is not None:
+                    _ah_divs.index = _ah_divs.index.tz_convert(None)
                 _ah_annual = _ah_divs.resample('YE').sum()
                 _ah_annual.index = _ah_annual.index.year
                 _ah_years = list(_ah_annual.index.astype(str))
@@ -16412,10 +16409,13 @@ elif _at == 4:
         _kh_inc = _kh_obj.income_stmt
         _kh_hist5 = _kh_obj.history(period="5y", auto_adjust=True)
         if _kh_inc is not None and not _kh_inc.empty and not _kh_hist5.empty:
-            _kh_eps_rows = [r for r in ['Net Income', 'Diluted EPS', 'Basic EPS'] if r in _kh_inc.index]
             _kh_shares_rows = [r for r in ['Diluted Average Shares', 'Basic Average Shares'] if r in _kh_inc.index]
+            # Normalize price history index to tz-naive for safe comparison with income stmt dates
+            _kh_hist5_naive = _kh_hist5.copy()
+            if getattr(_kh_hist5_naive.index, 'tz', None) is not None:
+                _kh_hist5_naive.index = _kh_hist5_naive.index.tz_localize(None)
             _kh_pts = []
-            if _kh_eps_rows and _kh_shares_rows:
+            if 'Net Income' in _kh_inc.index and _kh_shares_rows:
                 for _kh_col in _kh_inc.columns:
                     try:
                         _kh_ni = float(_kh_inc.loc['Net Income', _kh_col])
@@ -16423,7 +16423,7 @@ elif _at == 4:
                         if _kh_sh and _kh_sh > 0 and _kh_ni:
                             _kh_eps_yr = _kh_ni / _kh_sh
                             _kh_date = pd.Timestamp(_kh_col).tz_localize(None)
-                            _kh_price_sub = _kh_hist5[_kh_hist5.index <= _kh_date + pd.Timedelta(days=30)]['Close']
+                            _kh_price_sub = _kh_hist5_naive[_kh_hist5_naive.index <= _kh_date + pd.Timedelta(days=30)]['Close']
                             if not _kh_price_sub.empty and _kh_eps_yr > 0:
                                 _kh_p = float(_kh_price_sub.iloc[-1])
                                 _kh_pe = _kh_p / _kh_eps_yr
