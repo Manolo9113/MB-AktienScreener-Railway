@@ -11911,6 +11911,13 @@ if st.session_state.get("show_etf_analyzer"):
         # Themen
         ('IQQH.DE', 'iShares Global Clean Energy UCITS',    'IE00B1XNHC34','A0MZBE', '0,65%'),
         ('XMME.DE', 'Xtrackers MSCI EM Swap UCITS',         'LU1437016972','A2H9GB', '0,20%'),
+        # Faktor / Qualität / Mega Cap
+        ('IS3Q.DE', 'iShares MSCI World Quality Factor UCITS Acc', 'IE00BP3QZ601','A12ATE','0,25%'),
+        ('IS3S.DE', 'iShares MSCI World Value Factor UCITS Acc',   'IE00BP3QZB59','A12ATG','0,25%'),
+        ('MEGA.DE', 'Amundi MSCI USA Mega Cap UCITS Acc',          'IE000YBGJ9I4','ETF220','0,15%'),
+        ('USMC.DE', 'Franklin US Mega Cap 100 UCITS Acc',          'IE0008M1R3N4','A414W8','0,09%'),
+        ('QTOP.DE', 'iShares Nasdaq 100 Top 30 UCITS Acc',         'IE000Z7P04F4','A40V3X','0,30%'),
+        ('QUS5.DE', 'SPDR S&P 500 Quality Aristocrats UCITS Acc',  'IE000FJJZA01','A40UMR','0,25%'),
     ]
 
     @st.cache_data(ttl=3600, show_spinner=False)
@@ -12518,7 +12525,9 @@ if st.session_state.get("show_etf_analyzer"):
             and r[4] <= _scr_ter_max
             and (_scr_search == ""
                  or _scr_search.lower() in r[0].lower()
-                 or _scr_search.lower() in r[1].lower())
+                 or _scr_search.lower() in r[1].lower()
+                 or _scr_search.lower() in r[2].lower()
+                 or _scr_search.lower() in r[3].lower())
         ]
         if _scr_sort == "TER ↑":
             _scr_results.sort(key=lambda x: x[4])
