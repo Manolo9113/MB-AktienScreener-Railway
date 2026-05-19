@@ -16247,10 +16247,12 @@ elif _at == 2:
         _gc_px_arr   = np.array(_gc_px_h, dtype=float)
         _gc_iv_f_arr = np.array(_gc_iv_f, dtype=float)
 
-        # ymax covers all values including forecast
-        _gc_chart_vals = ([v for v in _gc_iv_arr if not np.isnan(v)] +
-                          [v for v in _gc_px_arr if not np.isnan(v)] +
-                          [v for v in _gc_iv_f_arr if not np.isnan(v)])
+        # y-axis range: zoom in like growthinvesting.net — start near lowest value,
+        # not at 0. fill='tozeroy' still works because 0 is just below visible area.
+        _gc_hist_vals  = ([v for v in _gc_iv_arr if not np.isnan(v)] +
+                          [v for v in _gc_px_arr if not np.isnan(v)])
+        _gc_chart_vals = _gc_hist_vals + [v for v in _gc_iv_f_arr if not np.isnan(v)]
+        _gc_ymin = min(_gc_hist_vals) * 0.82 if _gc_hist_vals else 0
         _gc_ymax = max(_gc_chart_vals) * 1.10 if _gc_chart_vals else 1
 
         # Combined dates+IV for continuous fills across history→forecast
@@ -16319,7 +16321,7 @@ elif _at == 2:
             xaxis=dict(showgrid=False, color='#37474f', tickfont=dict(color='#546e7a')),
             yaxis=dict(showgrid=False, color='#37474f',
                        tickfont=dict(color='#546e7a'), tickprefix=_cur_sym,
-                       range=[0, _gc_ymax]),
+                       range=[_gc_ymin, _gc_ymax]),
             hovermode='x unified')
 
         st.plotly_chart(_gc_fig, use_container_width=True)
