@@ -11635,6 +11635,105 @@ if st.session_state.get("show_etf_analyzer"):
                 st.rerun()
 
     _etf_raw_resolved = st.session_state["etf_ticker_input"].strip()
+
+    # ── ETF Rechner (immer sichtbar, kein ETF nötig) ──────────────────────
+    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>🧮 ETF Rechner</div>", unsafe_allow_html=True)
+
+    with st.expander("💸 TER-Kostenrechner — Kostenvergleich zweier ETFs", expanded=False):
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.82rem;margin-bottom:10px;'>"
+            f"Die TER klingt klein — wirkt sich aber erheblich auf den Vermögensaufbau aus.</div>",
+            unsafe_allow_html=True)
+        _rc1, _rc2, _rc3 = st.columns(3)
+        with _rc1:
+            _rtc_ter_a = st.number_input("TER ETF A (%)", 0.0, 5.0, 0.07, 0.01, "%.2f", key="rtc_ter_a")
+            _rtc_ter_b = st.number_input("TER ETF B (%)", 0.0, 5.0, 0.20, 0.01, "%.2f", key="rtc_ter_b")
+        with _rc2:
+            _rtc_betrag = st.number_input("Anlagebetrag (€)", 100, 10_000_000, 10_000, 500, key="rtc_betrag")
+            _rtc_jahre  = st.slider("Zeitraum (Jahre)", 1, 40, 20, key="rtc_jahre")
+        with _rc3:
+            _rtc_rend   = st.slider("Rendite vor TER (%)", 0.0, 20.0, 7.0, 0.5, key="rtc_rend")
+        _rr_a = (_rtc_rend - _rtc_ter_a) / 100
+        _rr_b = (_rtc_rend - _rtc_ter_b) / 100
+        _ryrs = list(range(_rtc_jahre + 1))
+        _rv_a = [_rtc_betrag * (1 + _rr_a) ** y for y in _ryrs]
+        _rv_b = [_rtc_betrag * (1 + _rr_b) ** y for y in _ryrs]
+        _rdiff = _rv_a[-1] - _rv_b[-1]
+        _rfig = go.Figure()
+        _rfig.add_trace(go.Scatter(x=_ryrs, y=_rv_a, name=f"ETF A ({_rtc_ter_a:.2f}%)",
+                                   line=dict(color=_C_POSITIVE, width=2),
+                                   fill="tozeroy", fillcolor="rgba(0,230,118,0.07)"))
+        _rfig.add_trace(go.Scatter(x=_ryrs, y=_rv_b, name=f"ETF B ({_rtc_ter_b:.2f}%)",
+                                   line=dict(color=_C_NEGATIVE, width=2, dash="dot"),
+                                   fill="tozeroy", fillcolor="rgba(255,82,82,0.07)"))
+        _rfig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                            font=dict(color=_C_TEXT_PRIMARY, size=11), height=240,
+                            xaxis=dict(title="Jahre", gridcolor=_C_BORDER),
+                            yaxis=dict(title="Wert (€)", gridcolor=_C_BORDER, tickformat=",.0f"),
+                            legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", y=1.08),
+                            margin=dict(t=30, b=30, l=60, r=10))
+        st.plotly_chart(_rfig, use_container_width=True, config={"displayModeBar": False})
+        _rs1, _rs2, _rs3 = st.columns(3)
+        for _c, _l, _v, _cl in [
+            (_rs1, f"Endwert ETF A", f"€{_rv_a[-1]:,.0f}", _C_POSITIVE),
+            (_rs2, f"Endwert ETF B", f"€{_rv_b[-1]:,.0f}", _C_NEGATIVE),
+            (_rs3, "Kostenvorteil A", f"€{abs(_rdiff):,.0f}", _C_POSITIVE if _rdiff >= 0 else _C_NEGATIVE),
+        ]:
+            _c.markdown(f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                        f"border-radius:8px;padding:10px;text-align:center;'>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_l}</div>"
+                        f"<div style='color:{_cl};font-size:1.2rem;font-weight:700;'>{_v}</div>"
+                        f"</div>", unsafe_allow_html=True)
+
+    with st.expander("📅 ETF-Sparplanrechner — Zinseszins auf Monatsbasis", expanded=False):
+        _sp2_c1, _sp2_c2, _sp2_c3 = st.columns(3)
+        with _sp2_c1:
+            _sp2_rate   = st.number_input("Monatliche Sparrate (€)", 0, 100_000, 200, 50, key="sp2_rate")
+            _sp2_einmal = st.number_input("Einmalanlage (€)", 0, 10_000_000, 0, 500, key="sp2_einmal")
+        with _sp2_c2:
+            _sp2_jahre  = st.slider("Zeitraum (Jahre)", 1, 50, 20, key="sp2_jahre")
+            _sp2_rend   = st.slider("Rendite vor TER (%)", 0.0, 20.0, 7.0, 0.5, key="sp2_rend")
+        with _sp2_c3:
+            _sp2_ter    = st.number_input("TER (%)", 0.0, 5.0, 0.20, 0.01, "%.2f", key="sp2_ter")
+        _sp2_r_net = (_sp2_rend - _sp2_ter) / 100
+        _sp2_r_mon = (1 + _sp2_r_net) ** (1/12) - 1
+        _sp2_yrs   = list(range(_sp2_jahre + 1))
+        _sp2_pf, _sp2_inv = [], []
+        for _y in _sp2_yrs:
+            _m = _y * 12
+            _pf = _sp2_einmal * (1 + _sp2_r_mon) ** _m
+            _pf += (_sp2_rate * ((1 + _sp2_r_mon)**_m - 1) / _sp2_r_mon * (1 + _sp2_r_mon)
+                    if _sp2_r_mon > 0 else _sp2_rate * _m)
+            _sp2_pf.append(_pf); _sp2_inv.append(_sp2_einmal + _sp2_rate * _m)
+        _sp2_fig = go.Figure()
+        _sp2_fig.add_trace(go.Scatter(x=_sp2_yrs, y=_sp2_inv, name="Eingezahlt",
+                                      line=dict(color=_C_TEXT_MUTED, width=1.5, dash="dot"),
+                                      fill="tozeroy", fillcolor="rgba(100,181,246,0.07)"))
+        _sp2_fig.add_trace(go.Scatter(x=_sp2_yrs, y=_sp2_pf, name="Portfoliowert",
+                                      line=dict(color=_C_POSITIVE, width=2.5),
+                                      fill="tonexty", fillcolor="rgba(0,230,118,0.10)"))
+        _sp2_fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                               font=dict(color=_C_TEXT_PRIMARY, size=11), height=240,
+                               xaxis=dict(title="Jahre", gridcolor=_C_BORDER),
+                               yaxis=dict(title="Wert (€)", gridcolor=_C_BORDER, tickformat=",.0f"),
+                               legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", y=1.08),
+                               margin=dict(t=30, b=30, l=60, r=10))
+        st.plotly_chart(_sp2_fig, use_container_width=True, config={"displayModeBar": False})
+        _sp2_s1, _sp2_s2, _sp2_s3, _sp2_s4 = st.columns(4)
+        _sp2_gewinn = _sp2_pf[-1] - _sp2_inv[-1]
+        for _c, _l, _v, _cl in [
+            (_sp2_s1, "Endvermögen",    f"€{_sp2_pf[-1]:,.0f}",   _C_POSITIVE),
+            (_sp2_s2, "Eingezahlt",     f"€{_sp2_inv[-1]:,.0f}",  _C_TEXT_PRIMARY),
+            (_sp2_s3, "Kursgewinne",    f"€{_sp2_gewinn:,.0f}",   _C_POSITIVE),
+            (_sp2_s4, "Faktor",         f"{_sp2_pf[-1]/_sp2_inv[-1]:.1f}x" if _sp2_inv[-1] else "—", _C_ACCENT),
+        ]:
+            _c.markdown(f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                        f"border-radius:8px;padding:10px;text-align:center;'>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_l}</div>"
+                        f"<div style='color:{_cl};font-size:1.2rem;font-weight:700;'>{_v}</div>"
+                        f"</div>", unsafe_allow_html=True)
+
     if not _etf_raw_resolved:
         st.stop()
 
