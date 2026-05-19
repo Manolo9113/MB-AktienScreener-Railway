@@ -16182,7 +16182,7 @@ elif _at == 2:
     _gc_combined_cagr = (_gc_eps_cagr + _gc_rev_cagr) / 2
     _gc_growth_pct    = _gc_combined_cagr * 100
     _gc_fair_mult     = (max(10.0, min(60.0, _gc_growth_pct)) if _gc_use_eps
-                         else max(3.0, min(30.0, _gc_rev_cagr * 100)))
+                         else max(1.5, min(30.0, _gc_rev_cagr * 100)))
 
     if len(_gc_metric) >= 2 and not _gc_hist.empty:
         _gc_today = pd.Timestamp.now().normalize()
