@@ -2765,6 +2765,39 @@ def _fred_last(series_id: str, n: int = 1) -> list[float]:
         return []
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _load_bond_monitor() -> dict:
+    """MOVE-Index + Treasury-Yields + Credit-Spreads (stündlich gecacht)."""
+    out: dict = {}
+    # MOVE Index (ICE BofAML Bond-Volatilitätsindex, ~VIX für Anleihen) via yFinance
+    try:
+        _mv = yf.Ticker("^MOVE").history(period="5d", interval="1d")
+        if not _mv.empty:
+            out["move"] = float(_mv["Close"].iloc[-1])
+            if len(_mv) >= 2:
+                out["move_chg"] = float(_mv["Close"].iloc[-1]) - float(_mv["Close"].iloc[-2])
+    except Exception:
+        pass
+    # Treasury-Renditen via FRED (tagesaktuell, letzten 2 Werte für Veränderung)
+    for _bkey, _bsid in [("t2y", "DGS2"), ("t10y", "DGS10"), ("t30y", "DGS30")]:
+        _bv = _fred_last(_bsid, 2)
+        if _bv:
+            out[_bkey] = _bv[0]
+            out[f"{_bkey}_chg"] = round(_bv[0] - _bv[1], 3) if len(_bv) >= 2 else None
+    # Zinskurve 10J − 2J (invertiert = Rezessionswarnung)
+    _yc2 = _fred_last("T10Y2Y")
+    if _yc2:
+        out["yc_10_2"] = _yc2[0]
+    # Credit Spreads (OAS in %)
+    _hy = _fred_last("BAMLH0A0HYM2")   # US High Yield Option-Adjusted Spread
+    if _hy:
+        out["hy_spread"] = _hy[0]
+    _ig = _fred_last("BAMLC0A0CM")     # US Investment Grade Corporate OAS
+    if _ig:
+        out["ig_spread"] = _ig[0]
+    return out
+
+
 @st.cache_data(ttl=3600)
 def load_macro_data() -> dict:
     """Wechselkurse (yfinance) + Makro-Indikatoren (FRED, kein Key nötig)."""
@@ -6358,6 +6391,161 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
                     {_kdisp}
                 </div>
             </div>""", unsafe_allow_html=True)
+
+    # ── Bond Monitor ─────────────────────────────────────────────────
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>🏦 Bond Monitor</div>", unsafe_allow_html=True)
+    _bm = _load_bond_monitor()
+
+    # Erklärungstext
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:10px 14px;margin-bottom:12px;color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.55;'>"
+        f"<b style='color:{_C_TEXT_PRIMARY};'>Warum Anleihen?</b> "
+        f"Bond-Trader sehen Stress früher als Aktieninvestoren. Steigende Renditen verteuern Kredite, "
+        f"drücken Bewertungsmultiples (KGV) und belasten Wachstumsaktien. "
+        f"Credit Spreads zeigen, wie viel Risikoprämie der Markt fordert — weiten sie sich aus, steigt die Risikoaversion.</div>",
+        unsafe_allow_html=True)
+
+    # ─ Zeile 1: MOVE + HY Spread + IG Spread ─────────────────────────
+    _bm_c1, _bm_c2, _bm_c3 = st.columns([1.4, 1, 1])
+
+    with _bm_c1:
+        _mv = _bm.get("move")
+        _mv_chg = _bm.get("move_chg")
+        if _mv is not None:
+            if _mv < 80:
+                _mv_clr, _mv_lbl, _mv_emoji = _C_POSITIVE,  "Ruhige Phase",         "🟢"
+            elif _mv < 100:
+                _mv_clr, _mv_lbl, _mv_emoji = _C_NEUTRAL,   "Erste Stresssignale",  "🟡"
+            else:
+                _mv_clr, _mv_lbl, _mv_emoji = _C_NEGATIVE,  "Erhöhter Bond-Stress", "🔴"
+            _mv_chg_str = (f" <span style='color:{ _C_NEGATIVE if _mv_chg > 0 else _C_POSITIVE};font-size:0.72rem;'>"
+                           f"{'▲' if _mv_chg > 0 else '▼'} {abs(_mv_chg):.1f}</span>") if _mv_chg is not None else ""
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_mv_clr}44;"
+                f"border-left:3px solid {_mv_clr};border-radius:10px;padding:12px 14px;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:2px;'>"
+                f"MOVE Index"
+                f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                f'<span class="tt-box">ICE BofAML MOVE Index — quasi der VIX für den US-Anleihemarkt. '
+                f'Misst implizite Volatilität 1-monatiger Treasury-Optionen. '
+                f'Unter 80: ruhig · 80–100: erste Stresssignale · Über 100: echte Probleme. '
+                f'Historische Hochs: 2022 Fed-Straffung ~160, April 2025 Tariff-Schock ~120.</span></span>'
+                f"</div>"
+                f"<div style='display:flex;align-items:baseline;gap:8px;'>"
+                f"<span style='color:{_mv_clr};font-size:1.6rem;font-weight:700;'>{_mv:.1f}</span>"
+                f"{_mv_chg_str}"
+                f"</div>"
+                f"<div style='color:{_mv_clr};font-size:0.72rem;font-weight:600;margin-top:2px;'>"
+                f"{_mv_emoji} {_mv_lbl}</div>"
+                f"<div style='margin-top:6px;background:{_C_BORDER};border-radius:4px;height:4px;'>"
+                f"<div style='background:{_mv_clr};width:{min(int(_mv/160*100),100)}%;height:4px;border-radius:4px;'></div>"
+                f"</div>"
+                f"<div style='display:flex;justify-content:space-between;color:{_C_TEXT_MUTED};font-size:0.60rem;margin-top:2px;'>"
+                f"<span>0</span><span>80</span><span>100</span><span>160</span>"
+                f"</div></div>",
+                unsafe_allow_html=True)
+        else:
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+                f"padding:12px 14px;color:{_C_TEXT_MUTED};font-size:0.82rem;'>MOVE Index: nicht verfügbar</div>",
+                unsafe_allow_html=True)
+
+    with _bm_c2:
+        _hy = _bm.get("hy_spread")
+        if _hy is not None:
+            if _hy < 3.0:   _hy_clr, _hy_lbl = _C_POSITIVE,  "Enge Spreads"
+            elif _hy < 5.0: _hy_clr, _hy_lbl = _C_NEUTRAL,   "Normale Risikoprämie"
+            elif _hy < 8.0: _hy_clr, _hy_lbl = "#ff8f00",    "Erhöhte Risikoaversion"
+            else:           _hy_clr, _hy_lbl = _C_NEGATIVE,  "Credit-Stress / Krise"
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_hy_clr}44;"
+                f"border-left:3px solid {_hy_clr};border-radius:10px;padding:12px 14px;height:100%;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:2px;'>"
+                f"HY Credit Spread"
+                f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                f'<span class="tt-box">US High Yield Option-Adjusted Spread (OAS) — Aufschlag von Hochzinsanleihen gegenüber US-Treasuries. '
+                f'Unter 3%: Markt ist risikofreudig · 3–5%: normal · 5–8%: Stress · Über 8%: Krisenmodus. '
+                f'Weitet sich der Spread aus, flieht Kapital aus risikobehafteten Assets.</span></span>'
+                f"</div>"
+                f"<div style='color:{_hy_clr};font-size:1.45rem;font-weight:700;'>{_hy:.2f}%</div>"
+                f"<div style='color:{_hy_clr};font-size:0.72rem;font-weight:600;'>{_hy_lbl}</div>"
+                f"</div>",
+                unsafe_allow_html=True)
+
+    with _bm_c3:
+        _ig = _bm.get("ig_spread")
+        if _ig is not None:
+            if _ig < 0.8:   _ig_clr, _ig_lbl = _C_POSITIVE,  "Sehr enge Spreads"
+            elif _ig < 1.5: _ig_clr, _ig_lbl = _C_NEUTRAL,   "Normales Niveau"
+            elif _ig < 2.5: _ig_clr, _ig_lbl = "#ff8f00",    "Erhöhte Vorsicht"
+            else:           _ig_clr, _ig_lbl = _C_NEGATIVE,  "IG-Stress"
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_ig_clr}44;"
+                f"border-left:3px solid {_ig_clr};border-radius:10px;padding:12px 14px;height:100%;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:2px;'>"
+                f"IG Credit Spread"
+                f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                f'<span class="tt-box">US Investment Grade Option-Adjusted Spread (OAS) — Aufschlag von bonitätsstarken Unternehmensanleihen vs. Treasuries. '
+                f'Unter 0,8%: sehr eng / risikofreudig · 0,8–1,5%: normal · 1,5–2,5%: Vorsicht · Über 2,5%: IG-Stress. '
+                f'IG-Spreads weiten sich früh in Rezessionen aus.</span></span>'
+                f"</div>"
+                f"<div style='color:{_ig_clr};font-size:1.45rem;font-weight:700;'>{_ig:.2f}%</div>"
+                f"<div style='color:{_ig_clr};font-size:0.72rem;font-weight:600;'>{_ig_lbl}</div>"
+                f"</div>",
+                unsafe_allow_html=True)
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    # ─ Zeile 2: Treasury-Renditen + Zinskurve ───────────────────────
+    _bm_r1, _bm_r2, _bm_r3, _bm_r4 = st.columns(4)
+    for _brc, _bkey, _blabel, _bunit, _btip in [
+        (_bm_r1, "t2y",   "🇺🇸 2J Rendite",  "%",
+         "Rendite 2-jähriger US-Staatsanleihen. Reagiert sehr sensitiv auf Fed-Leitzinserwartungen. "
+         "Steigt die 2J-Rendite über die 10J-Rendite, entsteht eine Inversion — historisch verlässlicher Rezessionsindikator."),
+        (_bm_r2, "t10y",  "🇺🇸 10J Rendite", "%",
+         "Rendite 10-jähriger US-Treasuries — wichtigster Zinssatz der Welt. "
+         "Bestimmt Hypothekenzinsen, Unternehmensfinanzierung und Aktienbewertungen (KGV). "
+         "Über 4,5%: echte Konkurrenz für Aktien."),
+        (_bm_r3, "t30y",  "🇺🇸 30J Rendite", "%",
+         "Rendite 30-jähriger US-Staatsanleihen. Misst langfristige Inflationserwartungen. "
+         "Steigende 30J-Renditen signalisieren Zweifel an fiskalischer Nachhaltigkeit der USA."),
+        (_bm_r4, "yc_10_2", "📉 Zinskurve (10J-2J)", "%",
+         "10J-Rendite minus 2J-Rendite. Positiv = normale Kurve (kurzfristige Zinsen niedriger). "
+         "Negativ = invertiert = historisch zuverlässigster Rezessionsindikator mit 6–18 Monate Vorlauf. "
+         "Inversion war vor jedem US-Rezession seit 1970 zu beobachten."),
+    ]:
+        _bval = _bm.get(_bkey)
+        _bchg = _bm.get(f"{_bkey}_chg")
+        if _bval is not None:
+            if _bkey == "yc_10_2":
+                _bc = _C_NEGATIVE if _bval < 0 else _C_NEUTRAL if _bval < 0.3 else _C_POSITIVE
+                _bdisp = f"{_bval:+.2f}%"
+            else:
+                _bc = _C_TEXT_PRIMARY
+                _bdisp = f"{_bval:.2f}%"
+            _bchg_html = ""
+            if _bchg is not None:
+                _bch_c = _C_NEGATIVE if _bchg > 0 else _C_POSITIVE
+                _bchg_html = (f"<div style='color:{_bch_c};font-size:0.65rem;'>"
+                              f"{'▲' if _bchg > 0 else '▼'} {abs(_bchg):.3f}%</div>")
+            _brc.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;padding:10px 10px;text-align:center;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.65rem;line-height:1.3;'>{_blabel}"
+                f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                f'<span class="tt-box">{_btip}</span></span></div>'
+                f"<div style='color:{_bc};font-size:1.05rem;font-weight:700;margin:4px 0;'>{_bdisp}</div>"
+                f"{_bchg_html}"
+                f"</div>",
+                unsafe_allow_html=True)
+        else:
+            _brc.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+                f"padding:10px;text-align:center;color:{_C_TEXT_MUTED};font-size:0.75rem;'>{_blabel}<br>—</div>",
+                unsafe_allow_html=True)
+
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
     # ── Buffett-Indikator & S&P 500 PEG ──────────────────────────────
     _bi             = macro.get("buffett")
