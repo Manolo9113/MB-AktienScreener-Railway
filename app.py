@@ -8675,9 +8675,9 @@ if st.session_state.get("show_portfolio"):
                 st.session_state["show_landing"] = False
                 st.rerun()
 
-        tab_pos, tab_alloc, tab_perf, tab_holdings, tab_ki, tab_div, tab_risk, tab_insider = st.tabs(
+        tab_pos, tab_alloc, tab_perf, tab_holdings, tab_ki, tab_div, tab_risk, tab_insider, tab_rechner = st.tabs(
             ["📊 Positionen", "🥧 Aufteilung", "📈 Performance", "🔍 Holdings",
-             "🤖 KI-Analyse", "💰 Dividenden", "⚡ Risiko", "🕵️ Insider"])
+             "🤖 KI-Analyse", "💰 Dividenden", "⚡ Risiko", "🕵️ Insider", "🔮 Prognose"])
 
         # ── Disk-Cache für Sektor-/Analyst-Daten laden (überlebt Deploys) ──────
         _disk_sec_cache = _load_isin_sector_cache()
@@ -10718,6 +10718,123 @@ GEOGRAFISCHE VERTEILUNG:
                                    "Verkäufe können steuerlich bedingt sein.")
             except Exception as _e_ins:
                 st.error(f"Fehler im Insider-Tab: {_e_ins}")
+
+        with tab_rechner:
+            try:
+                _pf_start = int(round(current_total or 10000, -2))
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:14px 16px;margin-bottom:16px;"
+                    f"color:{_C_TEXT_MUTED};font-size:0.82rem;line-height:1.55;'>"
+                    f"Wie entwickelt sich dein Portfolio unter verschiedenen Marktszenarien? "
+                    f"Startwert ist dein aktueller Depotwert — alle Werte manuell anpassbar.</div>",
+                    unsafe_allow_html=True)
+
+                _rc_c1, _rc_c2 = st.columns([1, 1])
+                with _rc_c1:
+                    _rc_start  = st.number_input("Depotwert heute (€)", 0, 10_000_000,
+                                                 _pf_start, 500, key="rc_start")
+                    _rc_sparre = st.number_input("Monatliche Sparrate (€)", 0, 50_000,
+                                                 200, 50, key="rc_sparre")
+                    _rc_jahre  = st.slider("Zeitraum (Jahre)", 1, 40, 15, key="rc_jahre")
+                with _rc_c2:
+                    st.markdown(
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;font-weight:600;"
+                        f"margin-bottom:8px;'>Szenarien — Rendite p.a.</div>",
+                        unsafe_allow_html=True)
+                    _rc_bull = st.slider("🚀 Bull Case (%)",  4.0, 25.0, 12.0, 0.5, key="rc_bull")
+                    _rc_base = st.slider("📊 Base Case (%)",  1.0, 15.0,  7.0, 0.5, key="rc_base")
+                    _rc_bad  = st.slider("📉 Bad Case  (%)", -5.0,  8.0,  2.0, 0.5, key="rc_bad")
+
+                _rc_yrs = list(range(_rc_jahre + 1))
+
+                def _rc_calc(r_pct):
+                    r_net = r_pct / 100
+                    r_mon = (1 + r_net) ** (1/12) - 1
+                    vals, inv = [], []
+                    for y in _rc_yrs:
+                        m = y * 12
+                        pf = _rc_start * (1 + r_mon) ** m
+                        pf += (_rc_sparre * ((1 + r_mon)**m - 1) / r_mon * (1 + r_mon)
+                               if r_mon != 0 else _rc_sparre * m)
+                        vals.append(pf)
+                        inv.append(_rc_start + _rc_sparre * m)
+                    return vals, inv
+
+                _bull_v, _inv_v = _rc_calc(_rc_bull)
+                _base_v, _      = _rc_calc(_rc_base)
+                _bad_v,  _      = _rc_calc(_rc_bad)
+
+                _rc_fig = go.Figure()
+                _rc_fig.add_trace(go.Scatter(
+                    x=_rc_yrs, y=_inv_v, name="Eingezahlt",
+                    line=dict(color=_C_BORDER, width=1.5, dash="dot"),
+                    fill="tozeroy", fillcolor="rgba(100,181,246,0.05)"))
+                _rc_fig.add_trace(go.Scatter(
+                    x=_rc_yrs, y=_bad_v, name=f"📉 Bad ({_rc_bad:+.1f}%)",
+                    line=dict(color=_C_NEGATIVE, width=2, dash="dash"),
+                    fill="tonexty", fillcolor="rgba(255,82,82,0.06)"))
+                _rc_fig.add_trace(go.Scatter(
+                    x=_rc_yrs, y=_base_v, name=f"📊 Base ({_rc_base:+.1f}%)",
+                    line=dict(color=_C_ACCENT, width=2.5),
+                    fill="tonexty", fillcolor="rgba(100,181,246,0.08)"))
+                _rc_fig.add_trace(go.Scatter(
+                    x=_rc_yrs, y=_bull_v, name=f"🚀 Bull ({_rc_bull:+.1f}%)",
+                    line=dict(color=_C_POSITIVE, width=2.5),
+                    fill="tonexty", fillcolor="rgba(0,230,118,0.08)"))
+
+                _rc_fig.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=_C_TEXT_PRIMARY, size=11),
+                    xaxis=dict(title="Jahre", gridcolor=_C_BORDER, zeroline=False,
+                               tickvals=list(range(0, _rc_jahre+1, max(1, _rc_jahre//8)))),
+                    yaxis=dict(title="Portfoliowert (€)", gridcolor=_C_BORDER,
+                               zeroline=False, tickformat=",.0f"),
+                    legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h",
+                                y=1.08, font=dict(size=11)),
+                    margin=dict(t=35, b=40, l=70, r=10),
+                    height=340,
+                )
+                st.plotly_chart(_rc_fig, use_container_width=True,
+                                config={"displayModeBar": False})
+
+                _rc_inv_end = _inv_v[-1]
+                _sc_c1, _sc_c2, _sc_c3, _sc_c4 = st.columns(4)
+                for _c, _lbl, _val, _clr in [
+                    (_sc_c1, "Eingezahlt gesamt",    f"€{_rc_inv_end:,.0f}",  _C_TEXT_PRIMARY),
+                    (_sc_c2, f"📉 Bad ({_rc_bad:+.0f}%)", f"€{_bad_v[-1]:,.0f}",  _C_NEGATIVE),
+                    (_sc_c3, f"📊 Base ({_rc_base:+.0f}%)",f"€{_base_v[-1]:,.0f}", _C_ACCENT),
+                    (_sc_c4, f"🚀 Bull ({_rc_bull:+.0f}%)",f"€{_bull_v[-1]:,.0f}", _C_POSITIVE),
+                ]:
+                    _c.markdown(
+                        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                        f"border-radius:8px;padding:12px;text-align:center;'>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_lbl}</div>"
+                        f"<div style='color:{_clr};font-size:1.15rem;font-weight:700;'>{_val}</div>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.65rem;'>"
+                        f"Faktor {_val.replace('€','').replace(',','').strip().split('.')[0].strip()}"
+                        f"</div></div>", unsafe_allow_html=True)
+
+                # Faktor-Zeile sauber
+                st.markdown("<div style='display:flex;gap:8px;margin-top:6px;'>", unsafe_allow_html=True)
+                _fak_cols = st.columns(3)
+                for _fc, _fn, _fv in [
+                    (_fak_cols[0], f"Bad × Faktor",  _bad_v[-1]  / _rc_start if _rc_start else 0),
+                    (_fak_cols[1], f"Base × Faktor", _base_v[-1] / _rc_start if _rc_start else 0),
+                    (_fak_cols[2], f"Bull × Faktor", _bull_v[-1] / _rc_start if _rc_start else 0),
+                ]:
+                    _fc.markdown(
+                        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                        f"border-radius:6px;padding:7px;text-align:center;'>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.65rem;'>{_fn}</div>"
+                        f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.85rem;font-weight:700;'>"
+                        f"{_fv:.1f}×</div></div>", unsafe_allow_html=True)
+
+                st.caption(
+                    f"Startkapital: €{_rc_start:,.0f} · Sparrate: €{_rc_sparre}/Monat · "
+                    f"{_rc_jahre} Jahre · keine Steuern/Inflation eingerechnet · keine Anlageberatung.")
+            except Exception as _e_rc:
+                st.error(f"Fehler im Prognose-Tab: {_e_rc}")
 
     elif df_port is None:
         st.info("📂 Bitte lade deine Orderhistorie-CSV hoch.\n\n"
