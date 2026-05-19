@@ -16243,79 +16243,83 @@ elif _at == 2:
                        if len(_gc_f_pts) >= 2 else [_gc_ann_pts[-1][1]] * 36 if _gc_ann_pts else [])
 
         # --- Plotly chart ---
-        _gc_fig   = go.Figure()
-        _gc_iv_arr = np.array(_gc_iv_h, dtype=float)
-        _gc_px_arr = np.array(_gc_px_h, dtype=float)
-        _gc_base      = np.minimum(_gc_iv_arr, _gc_px_arr)
-        _gc_green_top = np.where(_gc_iv_arr >= _gc_px_arr, _gc_iv_arr, _gc_base)
-        _gc_red_top   = np.where(_gc_px_arr >  _gc_iv_arr, _gc_px_arr, _gc_base)
-
-        # Green undervalued fill (baseline → IV where IV > price)
-        _gc_fig.add_trace(go.Scatter(x=_gc_dates_h, y=_gc_base.tolist(),
-            fill=None, line=dict(color='rgba(0,0,0,0)', width=0),
-            showlegend=False, hoverinfo='skip'))
-        _gc_fig.add_trace(go.Scatter(x=_gc_dates_h, y=_gc_green_top.tolist(),
-            fill='tonexty', fillcolor='rgba(38,166,154,0.30)',
-            line=dict(color='rgba(0,0,0,0)', width=0),
-            showlegend=False, hoverinfo='skip'))
-
-        # Red overvalued fill (baseline → price where price > IV)
-        _gc_fig.add_trace(go.Scatter(x=_gc_dates_h, y=_gc_base.tolist(),
-            fill=None, line=dict(color='rgba(0,0,0,0)', width=0),
-            showlegend=False, hoverinfo='skip'))
-        _gc_fig.add_trace(go.Scatter(x=_gc_dates_h, y=_gc_red_top.tolist(),
-            fill='tonexty', fillcolor='rgba(239,83,80,0.30)',
-            line=dict(color='rgba(0,0,0,0)', width=0),
-            showlegend=False, hoverinfo='skip'))
-
-        # Forecast IV shaded area
+        _gc_iv_arr   = np.array(_gc_iv_h, dtype=float)
+        _gc_px_arr   = np.array(_gc_px_h, dtype=float)
         _gc_iv_f_arr = np.array(_gc_iv_f, dtype=float)
-        _gc_fig.add_trace(go.Scatter(x=_gc_dates_f, y=[0]*len(_gc_dates_f),
+
+        # ymax covers all values including forecast
+        _gc_chart_vals = ([v for v in _gc_iv_arr if not np.isnan(v)] +
+                          [v for v in _gc_px_arr if not np.isnan(v)] +
+                          [v for v in _gc_iv_f_arr if not np.isnan(v)])
+        _gc_ymax = max(_gc_chart_vals) * 1.10 if _gc_chart_vals else 1
+
+        # Combined dates+IV for continuous fills across history→forecast
+        _gc_all_dates = _gc_dates_h + _gc_dates_f
+        _gc_all_iv    = _gc_iv_arr.tolist() + _gc_iv_f_arr.tolist()
+
+        _gc_fig = go.Figure()
+
+        # Red zone: IV → ymax  (overvalued region ABOVE the IV line)
+        _gc_fig.add_trace(go.Scatter(
+            x=_gc_all_dates, y=[_gc_ymax] * len(_gc_all_dates),
             fill=None, line=dict(color='rgba(0,0,0,0)', width=0),
             showlegend=False, hoverinfo='skip'))
-        _gc_fig.add_trace(go.Scatter(x=_gc_dates_f, y=_gc_iv_f_arr.tolist(),
-            fill='tonexty', fillcolor='rgba(255,213,79,0.08)',
-            line=dict(color='rgba(255,213,79,0.45)', width=1.5, dash='dash'),
-            name='IV Prognose',
+        _gc_fig.add_trace(go.Scatter(
+            x=_gc_all_dates, y=_gc_all_iv,
+            fill='tonexty', fillcolor='rgba(183,28,28,0.42)',
+            line=dict(color='rgba(0,0,0,0)', width=0),
+            showlegend=False, hoverinfo='skip'))
+
+        # Green zone: 0 → IV  (undervalued region BELOW the IV line)
+        _gc_fig.add_trace(go.Scatter(
+            x=_gc_all_dates, y=_gc_all_iv,
+            fill='tozeroy', fillcolor='rgba(27,94,32,0.48)',
+            line=dict(color='rgba(0,0,0,0)', width=0),
+            showlegend=False, hoverinfo='skip'))
+
+        # IV line: historical solid, forecast dashed — same golden color
+        _gc_fig.add_trace(go.Scatter(
+            x=_gc_dates_h, y=_gc_iv_arr.tolist(),
+            mode='lines', name=f'Innerer Wert ({_gc_mlabel}×{_gc_fair_mult:.0f})',
+            line=dict(color='#ffffff', width=2.5),
+            hovertemplate='%{x|%b %Y}<br>Innerer Wert: ' + _cur_sym + '%{y:.2f}<extra></extra>'))
+        _gc_fig.add_trace(go.Scatter(
+            x=_gc_dates_f, y=_gc_iv_f_arr.tolist(),
+            mode='lines', showlegend=False,
+            line=dict(color='#ffffff', width=2, dash='dash'),
             hovertemplate='%{x|%b %Y}<br>Prognose IV: ' + _cur_sym + '%{y:.2f}<extra></extra>'))
 
-        # Kurs line
-        _gc_fig.add_trace(go.Scatter(x=_gc_dates_h, y=_gc_px_h,
+        # Price line (historical only, bright white/yellow)
+        _gc_fig.add_trace(go.Scatter(
+            x=_gc_dates_h, y=_gc_px_arr.tolist(),
             mode='lines', name='Kurs',
-            line=dict(color='#ffffff', width=2.5),
+            line=dict(color='#ffd54f', width=2),
             hovertemplate='%{x|%b %Y}<br>Kurs: ' + _cur_sym + '%{y:.2f}<extra></extra>'))
 
-        # Innerer Wert line
-        _gc_fig.add_trace(go.Scatter(x=_gc_dates_h, y=_gc_iv_h,
-            mode='lines', name=f'Innerer Wert ({_gc_mlabel}×{_gc_fair_mult:.0f})',
-            line=dict(color='#ffd54f', width=2),
-            hovertemplate='%{x|%b %Y}<br>Innerer Wert: ' + _cur_sym + '%{y:.2f}<extra></extra>'))
-
-        # Vertical divider at today
+        # Today divider
         _gc_fig.add_vline(x=_gc_today.timestamp() * 1000,
-            line_color='rgba(255,255,255,0.3)', line_dash='dot', line_width=1)
+            line_color='rgba(255,255,255,0.7)', line_width=1.5)
 
-        _gc_all_vals = _gc_iv_h + _gc_px_h + list(_gc_iv_f_arr)
-        _gc_ymax     = max(_gc_all_vals) * 1.12 if _gc_all_vals else 1
         if _gc_dates_h:
             _gc_fig.add_annotation(
-                x=_gc_dates_h[len(_gc_dates_h) // 3], y=_gc_ymax,
-                text='Vergangenheit', font=dict(color='rgba(255,255,255,0.28)', size=9),
+                x=_gc_dates_h[len(_gc_dates_h) // 3], y=_gc_ymax * 0.97,
+                text='Vergangenheit', font=dict(color='rgba(255,255,255,0.55)', size=10),
                 showarrow=False, yanchor='top')
         if _gc_dates_f:
             _gc_fig.add_annotation(
-                x=_gc_dates_f[len(_gc_dates_f) // 2], y=_gc_ymax,
-                text='Prognose', font=dict(color='rgba(255,255,255,0.28)', size=9),
+                x=_gc_dates_f[len(_gc_dates_f) // 2], y=_gc_ymax * 0.97,
+                text='Prognose', font=dict(color='rgba(255,255,255,0.55)', size=10),
                 showarrow=False, yanchor='top')
 
         _gc_fig.update_layout(
-            height=400, paper_bgcolor='#0d1526', plot_bgcolor='#0d1526',
+            height=500, paper_bgcolor='#0d1526', plot_bgcolor='#0d1526',
             margin=dict(l=8, r=8, t=8, b=8),
             legend=dict(orientation='h', yanchor='bottom', y=1.01, xanchor='left', x=0,
                         font=dict(color='#90a4ae', size=10), bgcolor='rgba(0,0,0,0)'),
             xaxis=dict(showgrid=False, color='#37474f', tickfont=dict(color='#546e7a')),
-            yaxis=dict(showgrid=True, gridcolor='#1a2744', color='#37474f',
-                       tickfont=dict(color='#546e7a'), tickprefix=_cur_sym),
+            yaxis=dict(showgrid=False, color='#37474f',
+                       tickfont=dict(color='#546e7a'), tickprefix=_cur_sym,
+                       range=[0, _gc_ymax]),
             hovermode='x unified')
 
         st.plotly_chart(_gc_fig, use_container_width=True)
