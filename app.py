@@ -3513,12 +3513,19 @@ def _load_treemap_data() -> dict:
 def _load_seasonal_data(sym: str) -> dict:
     """Historische Monatsrenditen (20 Jahre) für Saisonalitäts-Analyse."""
     try:
-        raw = yf.download(sym, period="20y", interval="1mo",
+        import datetime as _dt
+        _start = (pd.Timestamp.today() - pd.DateOffset(years=20)).strftime("%Y-%m-%d")
+        raw = yf.download(sym, start=_start, interval="1mo",
                           auto_adjust=True, progress=False)
         if raw.empty:
             return {}
-        close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else raw["Close"]
-        close = close.dropna()
+        close_raw = raw["Close"]
+        if isinstance(close_raw, pd.DataFrame):
+            close = close_raw.iloc[:, 0].dropna()
+        else:
+            close = close_raw.dropna()
+        if close.empty:
+            return {}
         rets = close.pct_change().dropna() * 100
         month_names = ["Jan","Feb","Mär","Apr","Mai","Jun",
                        "Jul","Aug","Sep","Okt","Nov","Dez"]
@@ -7194,7 +7201,8 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
     _sea_sel = st.radio("Index", list(_sea_idx_map.keys()),
                         horizontal=True, key="sea_idx",
                         label_visibility="collapsed")
-    _sea_data = _load_seasonal_data(_sea_idx_map[_sea_sel])
+    with st.spinner("Lade Saisonaldaten…"):
+        _sea_data = _load_seasonal_data(_sea_idx_map[_sea_sel])
     if _sea_data and _sea_data.get("rows"):
         _sea_rows  = _sea_data["rows"]
         _sea_years = _sea_data["years"]
@@ -7254,7 +7262,7 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
             f"{_C_ACCENT[0] if False else '🔵'} = aktueller Monat · "
             f"Historische Muster ≠ Garantie.")
     else:
-        st.info("Saisonale Daten werden geladen…")
+        st.warning("Saisonale Daten konnten nicht geladen werden — yFinance-Verbindung prüfen.")
 
     # ── Marktschlagzeilen ────────────────────────────────────────────────
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
@@ -10800,35 +10808,23 @@ GEOGRAFISCHE VERTEILUNG:
 
                 _rc_inv_end = _inv_v[-1]
                 _sc_c1, _sc_c2, _sc_c3, _sc_c4 = st.columns(4)
-                for _c, _lbl, _val, _clr in [
-                    (_sc_c1, "Eingezahlt gesamt",    f"€{_rc_inv_end:,.0f}",  _C_TEXT_PRIMARY),
-                    (_sc_c2, f"📉 Bad ({_rc_bad:+.0f}%)", f"€{_bad_v[-1]:,.0f}",  _C_NEGATIVE),
-                    (_sc_c3, f"📊 Base ({_rc_base:+.0f}%)",f"€{_base_v[-1]:,.0f}", _C_ACCENT),
-                    (_sc_c4, f"🚀 Bull ({_rc_bull:+.0f}%)",f"€{_bull_v[-1]:,.0f}", _C_POSITIVE),
+                for _c, _lbl, _end_val, _clr, _fak in [
+                    (_sc_c1, "Eingezahlt gesamt",      _rc_inv_end,   _C_TEXT_PRIMARY, None),
+                    (_sc_c2, f"📉 Bad ({_rc_bad:+.0f}%)",  _bad_v[-1],  _C_NEGATIVE,
+                     _bad_v[-1]  / _rc_start if _rc_start else 0),
+                    (_sc_c3, f"📊 Base ({_rc_base:+.0f}%)", _base_v[-1], _C_ACCENT,
+                     _base_v[-1] / _rc_start if _rc_start else 0),
+                    (_sc_c4, f"🚀 Bull ({_rc_bull:+.0f}%)", _bull_v[-1], _C_POSITIVE,
+                     _bull_v[-1] / _rc_start if _rc_start else 0),
                 ]:
+                    _fak_line = (f"<div style='color:{_C_TEXT_MUTED};font-size:0.65rem;'>"
+                                 f"{_fak:.1f}× Startkapital</div>" if _fak else "")
                     _c.markdown(
                         f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
                         f"border-radius:8px;padding:12px;text-align:center;'>"
                         f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_lbl}</div>"
-                        f"<div style='color:{_clr};font-size:1.15rem;font-weight:700;'>{_val}</div>"
-                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.65rem;'>"
-                        f"Faktor {_val.replace('€','').replace(',','').strip().split('.')[0].strip()}"
-                        f"</div></div>", unsafe_allow_html=True)
-
-                # Faktor-Zeile sauber
-                st.markdown("<div style='display:flex;gap:8px;margin-top:6px;'>", unsafe_allow_html=True)
-                _fak_cols = st.columns(3)
-                for _fc, _fn, _fv in [
-                    (_fak_cols[0], f"Bad × Faktor",  _bad_v[-1]  / _rc_start if _rc_start else 0),
-                    (_fak_cols[1], f"Base × Faktor", _base_v[-1] / _rc_start if _rc_start else 0),
-                    (_fak_cols[2], f"Bull × Faktor", _bull_v[-1] / _rc_start if _rc_start else 0),
-                ]:
-                    _fc.markdown(
-                        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
-                        f"border-radius:6px;padding:7px;text-align:center;'>"
-                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.65rem;'>{_fn}</div>"
-                        f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.85rem;font-weight:700;'>"
-                        f"{_fv:.1f}×</div></div>", unsafe_allow_html=True)
+                        f"<div style='color:{_clr};font-size:1.15rem;font-weight:700;'>€{_end_val:,.0f}</div>"
+                        f"{_fak_line}</div>", unsafe_allow_html=True)
 
                 st.caption(
                     f"Startkapital: €{_rc_start:,.0f} · Sparrate: €{_rc_sparre}/Monat · "
@@ -13081,20 +13077,19 @@ if st.session_state.get("show_etf_analyzer"):
         _f1_thes_net.append(_v - _tax)
 
     # Ausschüttend: jährliche Dividendenbesteuerung
+    # Sparerpauschbetrag erneuert sich jedes Jahr
     _f1_aus_gross = [_f1_betrag]
     _f1_aus_tax_paid = 0.0
-    _f1_pausch_rem = float(_f1_pausch)
     for _ in range(_f1_jahre):
         _pv = _f1_aus_gross[-1]
         _div_gross   = _pv * _f1_div
         _div_taxable = _div_gross * (1 - _f1_teilfrei)
-        _div_after_p = max(0.0, _div_taxable - _f1_pausch_rem)
+        _div_after_p = max(0.0, _div_taxable - _f1_pausch)   # jährlich voll verfügbar
         _div_tax     = _div_after_p * _f1_steuer_satz
         _f1_aus_tax_paid += _div_tax
         _div_net     = _div_gross - _div_tax
         _pv_new      = _pv * (1 + _f1_price_r) + _div_net
         _f1_aus_gross.append(_pv_new)
-        _f1_pausch_rem = max(0.0, _f1_pausch_rem - _div_taxable)
 
     _f1_aus_net = []
     for _y, _v in enumerate(_f1_aus_gross):
