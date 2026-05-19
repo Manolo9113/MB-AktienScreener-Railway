@@ -9390,102 +9390,6 @@ if st.session_state.get("show_portfolio"):
                         f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.8rem;font-weight:600;min-width:40px;text-align:right;'>"
                         f"{_ps:.1f}%</div></div>",
                         unsafe_allow_html=True)
-                # ── Rebalancing-Hinweis ───────────────────────────────
-                st.markdown("<div class='section-header'>⚖️ Rebalancing-Hinweis</div>",
-                            unsafe_allow_html=True)
-                _rb_items = []
-                for _, _rbr in stocks_etf.iterrows():
-                    _rbp = prices.get(_rbr['ISIN'])
-                    _rbv = max(0.0, (_rbp if _rbp else _rbr['avg_cost']) * _rbr['shares'])
-                    if _rbv > 0:
-                        _rb_items.append({'name': _rbr['name'][:34], 'val': _rbv})
-                if len(_rb_items) >= 2:
-                    _rb_total = sum(r['val'] for r in _rb_items)
-                    _rb_target = 100.0 / len(_rb_items)
-                    for _rbi in _rb_items:
-                        _rbi['pct']  = _rbi['val'] / _rb_total * 100
-                        _rbi['diff'] = _rbi['pct'] - _rb_target
-                    _rb_items.sort(key=lambda x: x['diff'], reverse=True)
-                    st.caption(f"Gleichgewichtung: {_rb_target:.1f}% je Position ({len(_rb_items)} Aktien/ETFs). "
-                               "Abweichung in Prozentpunkten.")
-                    for _rbi in _rb_items:
-                        _dv     = _rbi['diff']
-                        _bar_c  = _C_NEGATIVE if _dv > 5 else _C_POSITIVE if _dv < -5 else "#546e7a"
-                        _label  = "übergewichtet" if _dv > 5 else "untergewichtet" if _dv < -5 else "ok"
-                        _w_over = max(0, min(80, int(abs(_dv) * 4)))
-                        _bar_left = "50%" if _dv >= 0 else f"{max(0, 50 - _w_over)}%"
-                        st.markdown(
-                            f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
-                            f"<span style='color:{_C_TEXT_MUTED2};font-size:0.76rem;min-width:190px;'>"
-                            f"{_rbi['name']}</span>"
-                            f"<span style='color:{_C_TEXT_MUTED};font-size:0.74rem;min-width:42px;"
-                            f"text-align:right;'>{_rbi['pct']:.1f}%</span>"
-                            f"<div style='background:#1a2740;border-radius:3px;width:80px;height:7px;"
-                            f"position:relative;'>"
-                            f"<div style='position:absolute;left:{_bar_left};"
-                            f"background:{_bar_c};width:{_w_over}%;height:7px;border-radius:3px;'></div>"
-                            f"<div style='position:absolute;left:50%;top:0;width:1px;height:7px;"
-                            f"background:#37474f;'></div></div>"
-                            f"<span style='color:{_bar_c};font-size:0.74rem;min-width:70px;'>"
-                            f"{_dv:+.1f} pp · {_label}</span></div>",
-                            unsafe_allow_html=True)
-
-                # ── Rebalancing-Rechner ───────────────────────────────
-                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-                st.markdown("<div class='section-header'>🎯 Rebalancing-Rechner</div>",
-                            unsafe_allow_html=True)
-                st.caption("Gib deine Ziel-Gewichtung ein — der Rechner zeigt, "
-                           "wieviel du kaufen/verkaufen musst oder wie du Sparrate einsetzen kannst.")
-                _rb2_total = sum(r['val'] for r in _rb_items) if _rb_items else 0
-                if len(_rb_items) < 2:
-                    st.info("Mindestens 2 Positionen erforderlich.")
-                else:
-                    _rb2_targets: dict = {}
-                    _rb2_cols = st.columns(min(len(_rb_items), 4))
-                    for _i2, _rbi2 in enumerate(_rb_items):
-                        _ci2 = _rb2_cols[_i2 % 4]
-                        _rb2_targets[_rbi2['name']] = _ci2.number_input(
-                            f"{_rbi2['name'][:20]}", min_value=0.0, max_value=100.0,
-                            value=round(100.0 / len(_rb_items), 1), step=0.5,
-                            key=f"rb2_tgt_{_i2}", format="%.1f")
-                    _rb2_sum_targets = sum(_rb2_targets.values())
-                    _rb2_add_cash = st.number_input(
-                        "Zusätzliches Kapital (€) — optional", min_value=0, max_value=1_000_000,
-                        value=0, step=100, key="rb2_cash",
-                        help="Z.B. monatliche Sparrate — nur Käufe, kein Verkauf nötig")
-                    if abs(_rb2_sum_targets - 100.0) > 0.5:
-                        st.warning(f"Ziel-Summe: {_rb2_sum_targets:.1f}% — muss 100% ergeben.")
-                    else:
-                        _rb2_new_total = _rb2_total + _rb2_add_cash
-                        st.markdown(
-                            f"<div style='color:{_C_TEXT_MUTED};font-size:0.8rem;margin:8px 0 10px 0;'>"
-                            f"Aktueller Portfoliowert: <b style='color:{_C_TEXT_PRIMARY};'>"
-                            f"€{_rb2_total:,.0f}</b>"
-                            + (f" + €{_rb2_add_cash:,} Zukauf = "
-                               f"<b style='color:{_C_ACCENT};'>€{_rb2_new_total:,.0f}</b>"
-                               if _rb2_add_cash > 0 else "") +
-                            "</div>", unsafe_allow_html=True)
-                        for _rbi3 in _rb_items:
-                            _cur_v3  = _rbi3['val']
-                            _tgt_pct = _rb2_targets.get(_rbi3['name'], 0)
-                            _tgt_v3  = _rb2_new_total * _tgt_pct / 100
-                            _diff_v3 = _tgt_v3 - _cur_v3
-                            _act_clr = _C_POSITIVE if _diff_v3 >= 0 else _C_NEGATIVE
-                            _act_lbl = f"Kaufen +€{_diff_v3:,.0f}" if _diff_v3 >= 50 else (
-                                f"Verkaufen −€{abs(_diff_v3):,.0f}" if _diff_v3 <= -50 else "✓ ok")
-                            st.markdown(
-                                f"<div style='display:flex;align-items:center;gap:8px;"
-                                f"padding:7px 4px;border-bottom:1px solid {_C_BORDER};'>"
-                                f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;"
-                                f"flex:1;min-width:150px;'>{_rbi3['name'][:32]}</span>"
-                                f"<span style='color:{_C_TEXT_MUTED};font-size:0.76rem;"
-                                f"min-width:58px;text-align:right;'>Ist {_rbi3['pct']:.1f}%</span>"
-                                f"<span style='color:{_C_ACCENT};font-size:0.76rem;"
-                                f"min-width:58px;text-align:right;'>→ {_tgt_pct:.1f}%</span>"
-                                f"<span style='color:{_act_clr};font-size:0.80rem;font-weight:700;"
-                                f"min-width:120px;text-align:right;'>{_act_lbl}</span></div>",
-                                unsafe_allow_html=True)
-
                 # ── Aktien-Stil-Analyse ───────────────────────────────
                 st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
                 st.markdown("<div class='section-header'>🔬 Aktien-Stil-Analyse</div>",
@@ -9699,6 +9603,102 @@ if st.session_state.get("show_portfolio"):
                             "Klassifizierung: Quality = Gross Margin >40% & FCF-Marge >8% · "
                             "Growth = Umsatzwachstum >15% · Value = KGV <15x oder KBV <1,5x · "
                             "Dividende = Rendite >3% · Quelle: yFinance · keine Anlageberatung.")
+
+                # ── Rebalancing-Hinweis ───────────────────────────────
+                st.markdown("<div class='section-header'>⚖️ Rebalancing-Hinweis</div>",
+                            unsafe_allow_html=True)
+                _rb_items = []
+                for _, _rbr in stocks_etf.iterrows():
+                    _rbp = prices.get(_rbr['ISIN'])
+                    _rbv = max(0.0, (_rbp if _rbp else _rbr['avg_cost']) * _rbr['shares'])
+                    if _rbv > 0:
+                        _rb_items.append({'name': _rbr['name'][:34], 'val': _rbv})
+                if len(_rb_items) >= 2:
+                    _rb_total = sum(r['val'] for r in _rb_items)
+                    _rb_target = 100.0 / len(_rb_items)
+                    for _rbi in _rb_items:
+                        _rbi['pct']  = _rbi['val'] / _rb_total * 100
+                        _rbi['diff'] = _rbi['pct'] - _rb_target
+                    _rb_items.sort(key=lambda x: x['diff'], reverse=True)
+                    st.caption(f"Gleichgewichtung: {_rb_target:.1f}% je Position ({len(_rb_items)} Aktien/ETFs). "
+                               "Abweichung in Prozentpunkten.")
+                    for _rbi in _rb_items:
+                        _dv     = _rbi['diff']
+                        _bar_c  = _C_NEGATIVE if _dv > 5 else _C_POSITIVE if _dv < -5 else "#546e7a"
+                        _label  = "übergewichtet" if _dv > 5 else "untergewichtet" if _dv < -5 else "ok"
+                        _w_over = max(0, min(80, int(abs(_dv) * 4)))
+                        _bar_left = "50%" if _dv >= 0 else f"{max(0, 50 - _w_over)}%"
+                        st.markdown(
+                            f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
+                            f"<span style='color:{_C_TEXT_MUTED2};font-size:0.76rem;min-width:190px;'>"
+                            f"{_rbi['name']}</span>"
+                            f"<span style='color:{_C_TEXT_MUTED};font-size:0.74rem;min-width:42px;"
+                            f"text-align:right;'>{_rbi['pct']:.1f}%</span>"
+                            f"<div style='background:#1a2740;border-radius:3px;width:80px;height:7px;"
+                            f"position:relative;'>"
+                            f"<div style='position:absolute;left:{_bar_left};"
+                            f"background:{_bar_c};width:{_w_over}%;height:7px;border-radius:3px;'></div>"
+                            f"<div style='position:absolute;left:50%;top:0;width:1px;height:7px;"
+                            f"background:#37474f;'></div></div>"
+                            f"<span style='color:{_bar_c};font-size:0.74rem;min-width:70px;'>"
+                            f"{_dv:+.1f} pp · {_label}</span></div>",
+                            unsafe_allow_html=True)
+
+                # ── Rebalancing-Rechner ───────────────────────────────
+                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-header'>🎯 Rebalancing-Rechner</div>",
+                            unsafe_allow_html=True)
+                st.caption("Gib deine Ziel-Gewichtung ein — der Rechner zeigt, "
+                           "wieviel du kaufen/verkaufen musst oder wie du Sparrate einsetzen kannst.")
+                _rb2_total = sum(r['val'] for r in _rb_items) if _rb_items else 0
+                if len(_rb_items) < 2:
+                    st.info("Mindestens 2 Positionen erforderlich.")
+                else:
+                    _rb2_targets: dict = {}
+                    _rb2_cols = st.columns(min(len(_rb_items), 4))
+                    for _i2, _rbi2 in enumerate(_rb_items):
+                        _ci2 = _rb2_cols[_i2 % 4]
+                        _rb2_targets[_rbi2['name']] = _ci2.number_input(
+                            f"{_rbi2['name'][:20]}", min_value=0.0, max_value=100.0,
+                            value=round(100.0 / len(_rb_items), 1), step=0.5,
+                            key=f"rb2_tgt_{_i2}", format="%.1f")
+                    _rb2_sum_targets = sum(_rb2_targets.values())
+                    _rb2_add_cash = st.number_input(
+                        "Zusätzliches Kapital (€) — optional", min_value=0, max_value=1_000_000,
+                        value=0, step=100, key="rb2_cash",
+                        help="Z.B. monatliche Sparrate — nur Käufe, kein Verkauf nötig")
+                    if abs(_rb2_sum_targets - 100.0) > 0.5:
+                        st.warning(f"Ziel-Summe: {_rb2_sum_targets:.1f}% — muss 100% ergeben.")
+                    else:
+                        _rb2_new_total = _rb2_total + _rb2_add_cash
+                        st.markdown(
+                            f"<div style='color:{_C_TEXT_MUTED};font-size:0.8rem;margin:8px 0 10px 0;'>"
+                            f"Aktueller Portfoliowert: <b style='color:{_C_TEXT_PRIMARY};'>"
+                            f"€{_rb2_total:,.0f}</b>"
+                            + (f" + €{_rb2_add_cash:,} Zukauf = "
+                               f"<b style='color:{_C_ACCENT};'>€{_rb2_new_total:,.0f}</b>"
+                               if _rb2_add_cash > 0 else "") +
+                            "</div>", unsafe_allow_html=True)
+                        for _rbi3 in _rb_items:
+                            _cur_v3  = _rbi3['val']
+                            _tgt_pct = _rb2_targets.get(_rbi3['name'], 0)
+                            _tgt_v3  = _rb2_new_total * _tgt_pct / 100
+                            _diff_v3 = _tgt_v3 - _cur_v3
+                            _act_clr = _C_POSITIVE if _diff_v3 >= 0 else _C_NEGATIVE
+                            _act_lbl = f"Kaufen +€{_diff_v3:,.0f}" if _diff_v3 >= 50 else (
+                                f"Verkaufen −€{abs(_diff_v3):,.0f}" if _diff_v3 <= -50 else "✓ ok")
+                            st.markdown(
+                                f"<div style='display:flex;align-items:center;gap:8px;"
+                                f"padding:7px 4px;border-bottom:1px solid {_C_BORDER};'>"
+                                f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;"
+                                f"flex:1;min-width:150px;'>{_rbi3['name'][:32]}</span>"
+                                f"<span style='color:{_C_TEXT_MUTED};font-size:0.76rem;"
+                                f"min-width:58px;text-align:right;'>Ist {_rbi3['pct']:.1f}%</span>"
+                                f"<span style='color:{_C_ACCENT};font-size:0.76rem;"
+                                f"min-width:58px;text-align:right;'>→ {_tgt_pct:.1f}%</span>"
+                                f"<span style='color:{_act_clr};font-size:0.80rem;font-weight:700;"
+                                f"min-width:120px;text-align:right;'>{_act_lbl}</span></div>",
+                                unsafe_allow_html=True)
 
           except Exception as _e_alloc:
               st.error(f"Fehler im Aufteilung-Tab: {_e_alloc}")
