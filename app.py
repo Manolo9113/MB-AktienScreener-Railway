@@ -16409,26 +16409,34 @@ elif _at == 4:
         _kh_inc = _kh_obj.income_stmt
         _kh_hist5 = _kh_obj.history(period="5y", auto_adjust=True)
         if _kh_inc is not None and not _kh_inc.empty and not _kh_hist5.empty:
-            _kh_shares_rows = [r for r in ['Diluted Average Shares', 'Basic Average Shares'] if r in _kh_inc.index]
             # Normalize price history index to tz-naive for safe comparison with income stmt dates
             _kh_hist5_naive = _kh_hist5.copy()
             if getattr(_kh_hist5_naive.index, 'tz', None) is not None:
                 _kh_hist5_naive.index = _kh_hist5_naive.index.tz_localize(None)
+            # yFinance 0.2.x+ liefert EPS direkt; ältere Versionen nur Net Income + Shares
+            _kh_eps_row    = next((r for r in ['Diluted EPS', 'Basic EPS'] if r in _kh_inc.index), None)
+            _kh_ni_row     = next((r for r in ['Net Income', 'Net Income Common Stockholders',
+                                                'Net Income Common Stockholders Reported'] if r in _kh_inc.index), None)
+            _kh_shares_row = next((r for r in ['Diluted Average Shares', 'Basic Average Shares'] if r in _kh_inc.index), None)
             _kh_pts = []
-            if 'Net Income' in _kh_inc.index and _kh_shares_rows:
+            if _kh_eps_row or (_kh_ni_row and _kh_shares_row):
                 for _kh_col in _kh_inc.columns:
                     try:
-                        _kh_ni = float(_kh_inc.loc['Net Income', _kh_col])
-                        _kh_sh = float(_kh_inc.loc[_kh_shares_rows[0], _kh_col])
-                        if _kh_sh and _kh_sh > 0 and _kh_ni:
+                        if _kh_eps_row:
+                            _kh_eps_yr = float(_kh_inc.loc[_kh_eps_row, _kh_col])
+                        else:
+                            _kh_ni = float(_kh_inc.loc[_kh_ni_row, _kh_col])
+                            _kh_sh = float(_kh_inc.loc[_kh_shares_row, _kh_col])
+                            if not (_kh_sh and _kh_sh > 0 and _kh_ni):
+                                continue
                             _kh_eps_yr = _kh_ni / _kh_sh
-                            _kh_date = pd.Timestamp(_kh_col).tz_localize(None)
-                            _kh_price_sub = _kh_hist5_naive[_kh_hist5_naive.index <= _kh_date + pd.Timedelta(days=30)]['Close']
-                            if not _kh_price_sub.empty and _kh_eps_yr > 0:
-                                _kh_p = float(_kh_price_sub.iloc[-1])
-                                _kh_pe = _kh_p / _kh_eps_yr
-                                if 0 < _kh_pe < 300:
-                                    _kh_pts.append((_kh_date.strftime('%Y'), _kh_pe))
+                        _kh_date = pd.Timestamp(_kh_col).tz_localize(None)
+                        _kh_price_sub = _kh_hist5_naive[_kh_hist5_naive.index <= _kh_date + pd.Timedelta(days=30)]['Close']
+                        if not _kh_price_sub.empty and _kh_eps_yr and _kh_eps_yr > 0:
+                            _kh_p = float(_kh_price_sub.iloc[-1])
+                            _kh_pe = _kh_p / _kh_eps_yr
+                            if 0 < _kh_pe < 300:
+                                _kh_pts.append((_kh_date.strftime('%Y'), _kh_pe))
                     except Exception:
                         continue
             if _kh_pts:
