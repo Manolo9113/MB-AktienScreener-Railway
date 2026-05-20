@@ -17838,12 +17838,12 @@ elif _at == 8:
                         f"<div style='background:{_sig_clr}18;border:1px solid {_sig_clr}55;"
                         f"border-radius:10px;padding:10px 14px;margin-bottom:10px;'>"
                         f"<div style='color:{_sig_clr};font-size:0.85rem;font-weight:700;'>"
-                        f"{_sig_icon} {_sig_text}: ${abs(_ins_net):,.0f}</div>"
+                        f"{_sig_icon} {_sig_text}: {_cur_sym}{abs(_ins_net):,.0f}</div>"
                         f"<div style='display:flex;gap:14px;margin-top:5px;'>"
                         f"<span style='color:{_C_POSITIVE};font-size:0.76rem;'>▲ Käufe: "
-                        f"${_ins_buy_vol:,.0f} ({_ins_buy_cnt}x)</span>"
+                        f"{_cur_sym}{_ins_buy_vol:,.0f} ({_ins_buy_cnt}x)</span>"
                         f"<span style='color:{_C_NEGATIVE};font-size:0.76rem;'>▼ Verkäufe: "
-                        f"${_ins_sell_vol:,.0f} ({_ins_sell_cnt}x)</span>"
+                        f"{_cur_sym}{_ins_sell_vol:,.0f} ({_ins_sell_cnt}x)</span>"
                         f"</div>"
                         f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:6px;'>"
                         f"{_sig_hint}</div></div>",
@@ -17861,7 +17861,7 @@ elif _at == 8:
                     rel  = str(row.get("Relationship", ""))[:18]
                     val  = row.get("Value", "")
                     date = str(row.get("Date", ""))[:10]
-                    val_str = f"${val:,.0f}" if isinstance(val, (int, float)) else str(val)
+                    val_str = f"{_cur_sym}{val:,.0f}" if isinstance(val, (int, float)) else str(val)
                     st.markdown(
                         f"<div style='display:flex;align-items:center;gap:6px;padding:6px 2px;"
                         f"border-bottom:1px solid {_C_BORDER};flex-wrap:wrap;'>"
@@ -17994,7 +17994,7 @@ elif _at == 8:
             _age   = o.get("age")
             _pay   = o.get("totalPay")
             _age_s = str(_age) if _age else "–"
-            _pay_s = f"${_pay/1e6:.1f}M" if _pay else "–"
+            _pay_s = f"{_cur_sym}{_pay/1e6:.1f}M" if _pay else "–"
             _mgmt_rows.append((_name, _title, _age_s, _pay_s))
 
         _mc_cols = st.columns([3, 4, 1, 2])
