@@ -16183,6 +16183,7 @@ elif _at == 2:
     _gc_growth_pct    = _gc_combined_cagr * 100
     _gc_fair_mult     = (max(10.0, min(60.0, _gc_growth_pct)) if _gc_use_eps
                          else max(1.5, min(30.0, _gc_rev_cagr * 100)))
+    _gc_fcst_cagr     = _gc_eps_cagr if _gc_use_eps else _gc_rev_cagr
 
     if len(_gc_metric) >= 2 and not _gc_hist.empty:
         _gc_today = pd.Timestamp.now().normalize()
@@ -16212,14 +16213,14 @@ elif _at == 2:
             _gc_last_eps = _gc_fcast_by_yr[_gc_last_yr]
             for _ext in [1, 2]:
                 _gc_f_pts.append((pd.Timestamp(f"{_gc_last_yr + _ext}-12-31"),
-                                   _gc_last_eps * (1 + _gc_eps_cagr) ** _ext * _gc_fair_mult))
+                                   _gc_last_eps * (1 + _gc_fcst_cagr) ** _ext * _gc_fair_mult))
         else:
             # use last known IV as base to avoid flat-zero forecast when trailing EPS is unavailable
             _gc_base_iv = _gc_ann_pts[-1][1] if _gc_ann_pts else 0
             _gc_base_eps_f = _gc_cur_eps if (_gc_cur_eps and _gc_cur_eps > 0) else None
             for _yr_add in [1, 2, 3]:
-                _proj = ((_gc_base_eps_f * (1 + _gc_eps_cagr) ** _yr_add * _gc_fair_mult)
-                         if _gc_base_eps_f else _gc_base_iv * (1 + _gc_eps_cagr) ** _yr_add)
+                _proj = ((_gc_base_eps_f * (1 + _gc_fcst_cagr) ** _yr_add * _gc_fair_mult)
+                         if _gc_base_eps_f else _gc_base_iv * (1 + _gc_fcst_cagr) ** _yr_add)
                 _gc_f_pts.append((_gc_today + pd.DateOffset(years=_yr_add), _proj))
         _gc_f_pts = sorted(_gc_f_pts, key=lambda x: x[0])
 
@@ -16229,12 +16230,14 @@ elif _at == 2:
 
         if len(_gc_ann_pts) < 2:
             # not enough profitable years — fall back to price-mirroring so chart doesn't crash
-            _gc_iv_h = _gc_px_h[:]
+            _gc_iv_h   = _gc_px_h[:]
+            _gc_cur_iv = _gc_iv_h[-1] if _gc_iv_h else 0.0
         else:
             _gc_pts_ts  = np.array([t.timestamp() for t, _ in _gc_ann_pts])
             _gc_pts_iv  = np.array([v for _, v in _gc_ann_pts])
             _gc_hist_ts = np.array([d.timestamp() for d in _gc_dates_h])
             _gc_iv_h    = np.interp(_gc_hist_ts, _gc_pts_ts, _gc_pts_iv).tolist()
+            _gc_cur_iv  = float(np.interp(_gc_today.timestamp(), _gc_pts_ts, _gc_pts_iv))
 
         _gc_f_ts    = np.array([t.timestamp() for t, _ in _gc_f_pts])
         _gc_f_iv_a  = np.array([v for _, v in _gc_f_pts])
@@ -16298,6 +16301,16 @@ elif _at == 2:
             line=dict(color='#ffd54f', width=1.5, dash='dash'),
             hovertemplate='%{x|%b %Y}<br>Prognose IV: ' + _cur_sym + '%{y:.2f}<extra></extra>'))
 
+        # IV dot at today with label
+        _gc_fig.add_trace(go.Scatter(
+            x=[_gc_today], y=[_gc_cur_iv],
+            mode='markers+text',
+            marker=dict(color='#ffd54f', size=9, line=dict(color='#0d1526', width=1.5)),
+            text=[f'{_cur_sym}{_gc_cur_iv:.2f}'],
+            textposition='top center',
+            textfont=dict(color='#ffd54f', size=10),
+            showlegend=False, hoverinfo='skip'))
+
         # Today divider
         _gc_fig.add_vline(x=_gc_today.timestamp() * 1000,
             line_color='rgba(255,255,255,0.7)', line_width=1.5)
@@ -16326,44 +16339,79 @@ elif _at == 2:
 
         st.plotly_chart(_gc_fig, use_container_width=True)
 
-        # --- 3 metric cards ---
+        # --- 4 metric cards ---
         _gc_eps_pct  = _gc_eps_cagr * 100
         _gc_rev_pct  = _gc_rev_cagr * 100
-        _gc_comb_pct = _gc_growth_pct  # already = combined_cagr * 100
+        _gc_comb_pct = _gc_growth_pct
+        _gc_cur_price = _gc_px_h[-1] if _gc_px_h else 0.0
+        _gc_val_pct   = (_gc_cur_price / _gc_cur_iv - 1) * 100 if _gc_cur_iv > 0 else None
 
         def _gc_col(v):
             return "#26a69a" if v > 15 else "#66bb6a" if v > 5 else "#ffa726" if v > 0 else "#ef5350"
 
-        _gc_mc1, _gc_mc2, _gc_mc3 = st.columns(3)
+        _gc_mc1, _gc_mc2, _gc_mc3, _gc_mc4 = st.columns(4)
         with _gc_mc1:
-            st.markdown(f"""
-            <div class="metric-card" style="text-align:center;">
-                <div class="metric-label">Gewinn-Wachstumsrate</div>
-                <div class="metric-value" style="color:{_gc_col(_gc_eps_pct)};font-size:1.45rem;">{_gc_eps_pct:+.2f}%</div>
-                <div style="color:{_C_TEXT_MUTED};font-size:0.72rem;">EPS CAGR ({len(_gc_eps_sorted)}J)</div>
-            </div>""", unsafe_allow_html=True)
+            if _gc_use_eps:
+                st.markdown(f"""
+                <div class="metric-card" style="text-align:center;">
+                    <div class="metric-label">Gewinn-Wachstum</div>
+                    <div class="metric-value" style="color:{_gc_col(_gc_eps_pct)};font-size:1.45rem;">{_gc_eps_pct:+.1f}%</div>
+                    <div style="color:{_C_TEXT_MUTED};font-size:0.72rem;">EPS CAGR ({len(_gc_eps_sorted)}J)</div>
+                </div>""", unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="metric-card" style="text-align:center;">
+                    <div class="metric-label">Umsatz-Wachstum</div>
+                    <div class="metric-value" style="color:{_gc_col(_gc_rev_pct)};font-size:1.45rem;">{_gc_rev_pct:+.1f}%</div>
+                    <div style="color:{_C_TEXT_MUTED};font-size:0.72rem;">Rev CAGR ({len(_gc_rev_sorted)}J) · Basis</div>
+                </div>""", unsafe_allow_html=True)
         with _gc_mc2:
-            st.markdown(f"""
-            <div class="metric-card" style="text-align:center;">
-                <div class="metric-label">Umsatz-Wachstumsrate</div>
-                <div class="metric-value" style="color:{_gc_col(_gc_rev_pct)};font-size:1.45rem;">{_gc_rev_pct:+.2f}%</div>
-                <div style="color:{_C_TEXT_MUTED};font-size:0.72rem;">Revenue CAGR ({len(_gc_rev_sorted)}J)</div>
-            </div>""", unsafe_allow_html=True)
+            if _gc_use_eps:
+                st.markdown(f"""
+                <div class="metric-card" style="text-align:center;">
+                    <div class="metric-label">Umsatz-Wachstum</div>
+                    <div class="metric-value" style="color:{_gc_col(_gc_rev_pct)};font-size:1.45rem;">{_gc_rev_pct:+.1f}%</div>
+                    <div style="color:{_C_TEXT_MUTED};font-size:0.72rem;">Revenue CAGR ({len(_gc_rev_sorted)}J)</div>
+                </div>""", unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="metric-card" style="text-align:center;">
+                    <div class="metric-label">Gewinn-Wachstum</div>
+                    <div class="metric-value" style="color:#546e7a;font-size:1.45rem;">n/a</div>
+                    <div style="color:{_C_TEXT_MUTED};font-size:0.72rem;">Nicht profitabel (PS-Basis)</div>
+                </div>""", unsafe_allow_html=True)
         with _gc_mc3:
             st.markdown(f"""
             <div class="metric-card" style="text-align:center;">
-                <div class="metric-label">Wachstumsrate (Gesamt)</div>
-                <div class="metric-value" style="color:{_gc_col(_gc_comb_pct)};font-size:1.45rem;">{_gc_comb_pct:+.2f}%</div>
+                <div class="metric-label">Wachstum (Gesamt)</div>
+                <div class="metric-value" style="color:{_gc_col(_gc_comb_pct)};font-size:1.45rem;">{_gc_comb_pct:+.1f}%</div>
                 <div style="color:{_C_TEXT_MUTED};font-size:0.72rem;">Faires Multiple: {_gc_fair_mult:.0f}×</div>
             </div>""", unsafe_allow_html=True)
+        with _gc_mc4:
+            if _gc_val_pct is not None:
+                _gc_val_col  = "#ef5350" if _gc_val_pct > 0 else "#26a69a"
+                _gc_val_label = "überbewertet" if _gc_val_pct > 0 else "unterbewertet"
+                st.markdown(f"""
+                <div class="metric-card" style="text-align:center;">
+                    <div class="metric-label">Aktuelle Bewertung</div>
+                    <div class="metric-value" style="color:{_gc_val_col};font-size:1.45rem;">{_gc_val_pct:+.1f}%</div>
+                    <div style="color:{_C_TEXT_MUTED};font-size:0.72rem;">vs. IV {_cur_sym}{_gc_cur_iv:.2f} · {_gc_val_label}</div>
+                </div>""", unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="metric-card" style="text-align:center;">
+                    <div class="metric-label">Aktuelle Bewertung</div>
+                    <div class="metric-value" style="color:#546e7a;font-size:1.45rem;">—</div>
+                    <div style="color:{_C_TEXT_MUTED};font-size:0.72rem;">Keine IV-Daten</div>
+                </div>""", unsafe_allow_html=True)
 
-        _gc_eps_pct_str = f"{_gc_eps_pct:+.1f}%"
+        _gc_fcst_pct_str = f"{_gc_fcst_cagr * 100:+.1f}%"
         st.markdown(
             f"<div style='color:#37474f;font-size:0.70rem;margin-top:6px;'>"
             f"Innerer Wert = {_gc_mlabel} × {_gc_fair_mult:.0f}× (PEG≈1). "
             f"<span style='color:#26a69a;'>Grün</span> = unterbewertet · "
             f"<span style='color:#ef5350;'>Rot</span> = überbewertet. "
-            f"Prognose via {'Analystenschätzungen' if _gc_fcast_by_yr else 'CAGR (' + _gc_eps_pct_str + ')'}."
+            f"Prognose via {'Analystenschätzungen' if _gc_fcast_by_yr else 'CAGR (' + _gc_fcst_pct_str + ')'}."
             f"</div>",
             unsafe_allow_html=True)
     else:
