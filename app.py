@@ -5941,7 +5941,7 @@ def _calc_received_dividends(csv_bytes: bytes) -> dict:
 
 # ==================== SIDEBAR ====================
 with st.sidebar:
-    st.markdown("""
+    st.markdown(f"""
     <div style='text-align:center; padding: 20px 0 10px 0;'>
         <span style='font-size:2rem;'>📈</span>
         <div style='color:{_C_ACCENT}; font-size:1.3rem; font-weight:700; margin-top:6px;'>StocksMB</div>
@@ -6034,7 +6034,7 @@ with st.sidebar:
         st.markdown("<div class='section-header'>🔐 Konto</div>", unsafe_allow_html=True)
         if st.session_state.get("wl_unlocked"):
             st.markdown(
-                "<div style='color:{_C_ACCENT};font-size:0.78rem;padding:4px 0 6px 0;'>🔓 Angemeldet</div>",
+                f"<div style='color:{_C_ACCENT};font-size:0.78rem;padding:4px 0 6px 0;'>🔓 Angemeldet</div>",
                 unsafe_allow_html=True)
             if st.button("Abmelden", use_container_width=True, key="wl_logout"):
                 st.session_state["wl_unlocked"] = False
@@ -6059,7 +6059,7 @@ with st.sidebar:
         for _w in list(_sb_wl):
             _wc1, _wc2 = st.columns([5, 1])
             with _wc1:
-                if st.button(f"📈 **{_w['ticker']}** — {_w['name'][:18]}",
+                if st.button(f"📈 **{_w['ticker']}** — {_w.get('name', _w['ticker'])[:18]}",
                              key=f"wl_nav_{_w['ticker']}", use_container_width=True):
                     _go_to_ticker(_w["ticker"])
                     st.rerun()
@@ -6111,7 +6111,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
   margin-top:10px;text-align:right;'>— {_q_author}</div>
 </div>
 """, unsafe_allow_html=True)
-    st.markdown("""
+    st.markdown(f"""
     <div style="text-align:center; padding:48px 0 32px 0;">
         <div style="font-size:3rem; font-weight:800; color:#fff; letter-spacing:-1px;">
             📈 <span style="color:#00e5ff;">Stocks</span>MB
