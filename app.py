@@ -16981,7 +16981,7 @@ elif _at == 4:
             # Normalize price history index to tz-naive for safe comparison with income stmt dates
             _kh_hist5_naive = _kh_hist5.copy()
             if getattr(_kh_hist5_naive.index, 'tz', None) is not None:
-                _kh_hist5_naive.index = _kh_hist5_naive.index.tz_localize(None)
+                _kh_hist5_naive.index = _kh_hist5_naive.index.tz_convert(None)
             # yFinance 0.2.x+ liefert EPS direkt; ältere Versionen nur Net Income + Shares
             _kh_eps_row    = next((r for r in ['Diluted EPS', 'Basic EPS'] if r in _kh_inc.index), None)
             _kh_ni_row     = next((r for r in ['Net Income', 'Net Income Common Stockholders',
@@ -16999,7 +16999,8 @@ elif _at == 4:
                             if not (_kh_sh and _kh_sh > 0 and _kh_ni):
                                 continue
                             _kh_eps_yr = _kh_ni / _kh_sh
-                        _kh_date = pd.Timestamp(_kh_col).tz_localize(None)
+                        _kh_ts   = pd.Timestamp(_kh_col)
+                        _kh_date = _kh_ts.tz_convert(None) if _kh_ts.tzinfo else _kh_ts
                         _kh_price_sub = _kh_hist5_naive[_kh_hist5_naive.index <= _kh_date + pd.Timedelta(days=30)]['Close']
                         if not _kh_price_sub.empty and _kh_eps_yr and _kh_eps_yr > 0:
                             _kh_p = float(_kh_price_sub.iloc[-1])
@@ -17069,7 +17070,7 @@ elif _at == 4:
         up_color = _C_POSITIVE if upside_val > 0 else _C_NEGATIVE
         st.markdown(f"""
         <div class="insight-box">
-            <strong>Kursziel:</strong> ${target_mean:.2f} |
+            <strong>Kursziel:</strong> {_cur_sym}{target_mean:.2f} |
             <strong style="color:{up_color}">
             {'▲' if upside_val > 0 else '▼'} {abs(upside_val):.1f}% Upside
             </strong> vom aktuellen Kurs |
@@ -17128,7 +17129,7 @@ elif _at == 4:
             _fv = dcf_valuation(fcf, shares_outstanding,
                                 _sc["growth"], _sc["terminal"], _sc["discount"], 10)
             _sc_vals[_name] = _fv
-            if _fv:
+            if _fv and price:
                 _mg = (_fv - price) / price * 100
                 _mg_label = f"{'▲' if _mg > 0 else '▼'} {abs(_mg):.1f}% {'Upside' if _mg > 0 else 'Downside'}"
                 _mg_clr   = _sc["accent"] if _mg > 0 else _C_NEGATIVE
@@ -17143,7 +17144,7 @@ elif _at == 4:
                 {_name}</div>
               <div style='color:#78909c;font-size:0.7rem;margin-bottom:10px;'>{_sc["label"]}</div>
               <div style='color:{_C_TEXT_PRIMARY};font-size:1.9rem;font-weight:800;'>
-                {"${:,.0f}".format(_fv) if _fv else "N/A"}</div>
+                {f"{_cur_sym}{_fv:,.0f}" if _fv else "N/A"}</div>
               <div style='color:{_mg_clr};font-size:0.85rem;font-weight:600;margin:6px 0;'>
                 {_mg_label}</div>
               <div style='color:#37474f;font-size:0.68rem;line-height:1.6;margin-top:8px;
@@ -17163,7 +17164,7 @@ elif _at == 4:
             _fig_dcf = go.Figure(go.Bar(
                 x=_bar_labels, y=_bar_vals,
                 marker_color=_bar_clrs,
-                text=[f"${v:,.0f}" for v in _bar_vals],
+                text=[f"{_cur_sym}{v:,.0f}" for v in _bar_vals],
                 textposition="outside",
                 textfont=dict(size=11, color="#90a4ae"),
             ))
@@ -17178,7 +17179,7 @@ elif _at == 4:
                 height=260, showlegend=False,
                 margin=dict(l=0, r=0, t=30, b=0),
                 yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False,
-                           tickprefix="$"),
+                           tickprefix=_cur_sym),
                 xaxis=dict(showgrid=False),
             )
             st.plotly_chart(_fig_dcf, use_container_width=True)
@@ -17227,7 +17228,7 @@ elif _at == 4:
                      border-radius:16px;padding:22px;margin-top:10px;text-align:center;">
                     <div style="color:#78909c;font-size:0.8rem;text-transform:uppercase;
                          letter-spacing:1px;margin-bottom:8px;">Eigenes Szenario</div>
-                    <div style="color:{_C_TEXT_PRIMARY};font-size:2.5rem;font-weight:800;">${fair_val:.2f}</div>
+                    <div style="color:{_C_TEXT_PRIMARY};font-size:2.5rem;font-weight:800;">{_cur_sym}{fair_val:.2f}</div>
                     <div style="color:{m_color};font-size:1rem;margin-top:6px;font-weight:600;">
                         {'▲' if margin > 0 else '▼'} {abs(margin):.1f}% {m_label}
                     </div>
