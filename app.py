@@ -1217,6 +1217,60 @@ def load_yfinance_extended(ticker: str):
         pass
     return hist_weekly, hist_monthly, share_history, splits_data
 
+@st.cache_data(ttl=43200, show_spinner=False)
+def _load_dividend_history(ticker: str) -> dict:
+    """Vollständige Dividendenhistorie + FCF/EPS-Deckung für Dividenden-Tab."""
+    out = {"divs": pd.Series(dtype=float), "annual": {}, "fcf_ps": {}, "eps_annual": {}}
+    try:
+        stk = yf.Ticker(ticker)
+        raw = stk.dividends
+        if raw is not None and not raw.empty:
+            if hasattr(raw.index, "tz") and raw.index.tz is not None:
+                raw.index = raw.index.tz_convert(None)
+            out["divs"] = raw
+            # Annual aggregation
+            annual = raw.groupby(raw.index.year).sum()
+            out["annual"] = {int(y): float(v) for y, v in annual.items()}
+        # FCF per share from cashflow statements
+        try:
+            cf = stk.cashflow
+            bs = stk.balance_sheet
+            if cf is not None and not cf.empty:
+                ocf_row = next((r for r in ["Operating Cash Flow", "Total Cash From Operating Activities"] if r in cf.index), None)
+                capex_row = next((r for r in ["Capital Expenditure", "Capital Expenditures"] if r in cf.index), None)
+                sh_row = next((r for r in ["Ordinary Shares Number", "Share Issued"] if bs is not None and r in bs.index), None)
+                for col in cf.columns:
+                    yr = pd.Timestamp(col).year if not isinstance(col, int) else col
+                    try:
+                        ocf = float(cf.loc[ocf_row, col]) if ocf_row else None
+                        capex = float(cf.loc[capex_row, col]) if capex_row else 0.0
+                        shares = None
+                        if sh_row and bs is not None and col in bs.columns:
+                            shares = float(bs.loc[sh_row, col])
+                        if ocf and shares and shares > 0:
+                            out["fcf_ps"][int(yr)] = (ocf - abs(capex)) / shares
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        # Annual EPS from income statement
+        try:
+            inc = stk.income_stmt
+            if inc is not None and not inc.empty:
+                eps_row = next((r for r in ["Diluted EPS", "Basic EPS"] if r in inc.index), None)
+                if eps_row:
+                    for col in inc.columns:
+                        yr = pd.Timestamp(col).year if not isinstance(col, int) else col
+                        try:
+                            out["eps_annual"][int(yr)] = float(inc.loc[eps_row, col])
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return out
+
 @st.cache_data(ttl=86400)
 def load_quarterly_financials(ticker: str):
     """Lädt Quartalsdaten: Umsatz, Nettogewinn, EPS der letzten 8 Quartale."""
@@ -15494,7 +15548,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
 # Session-state-basierte Navigation (immun gegen st.rerun() und WebSocket-Reconnects)
 _TABS = [
     "📊 Kennzahlen", "📈 Wachstum", "🔮 Prognose", "📋 Fundamental", "⚖️ Bewertung",
-    "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News",
+    "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden",
 ]
 _at = st.session_state.get("active_tab", 0)
 _nav_cols = st.columns(len(_TABS))
@@ -18580,6 +18634,284 @@ elif _at == 5:
             Score 8–9: hohe Substanz · 4–7: gemischt · 0–3: Warnsignal.
             Datenquelle: Jahresabschlüsse via yFinance. Keine Anlageberatung.</em>
         </div>""", unsafe_allow_html=True)
+
+# ==================== TAB 10: DIVIDENDEN ====================
+elif _at == 10:
+    st.markdown("<div class='section-header'>💰 Dividenden-Analyse</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    with st.spinner("Lade Dividendenhistorie…"):
+        _dh = _load_dividend_history(ticker)
+
+    _dh_divs    = _dh.get("divs", pd.Series(dtype=float))
+    _dh_annual  = _dh.get("annual", {})   # {year: total_div}
+    _dh_fcf_ps  = _dh.get("fcf_ps", {})
+    _dh_eps_ann = _dh.get("eps_annual", {})
+
+    _dh_annual_div  = yf_info.get("trailingAnnualDividendRate") or 0
+    _dh_fwd_div     = yf_info.get("dividendRate") or 0
+    _dh_payout      = (yf_info.get("payoutRatio") or 0) * 100
+    _dh_ex_ts       = yf_info.get("exDividendDate")
+    _dh_ex_str      = ""
+    try:
+        if isinstance(_dh_ex_ts, (int, float)) and _dh_ex_ts > 0:
+            _dh_ex_str = _dt.datetime.fromtimestamp(_dh_ex_ts).strftime("%d.%m.%Y")
+    except Exception:
+        pass
+
+    # ── Kein Dividenden-Zahler ─────────────────────────────────────────
+    if _dh_annual_div == 0 and not _dh_annual:
+        st.info(f"**{company_name}** zahlt derzeit keine Dividende.")
+        _dh_peer_yield = SECTOR_BENCHMARKS.get(sector, {}).get("FCF Yield")
+        if _dh_peer_yield:
+            st.markdown(
+                f"<div class='insight-box'>💡 Sektorschnitt FCF-Rendite: <b>{_dh_peer_yield:.1f}%</b>. "
+                f"Unternehmen ohne Dividende reinvestieren oft in Wachstum — prüfe Free-Cashflow-Entwicklung im Fundamental-Tab.</div>",
+                unsafe_allow_html=True)
+    else:
+        # ── Kennzahlen-Karten ───────────────────────────────────────────
+        _dh_yield_fwd = (_dh_fwd_div / price * 100) if (_dh_fwd_div and price and price > 0) else dividend_yield
+        _k1, _k2, _k3, _k4, _k5 = st.columns(5)
+        with _k1:
+            _dh_yc = _dh_yield_fwd if _dh_yield_fwd else dividend_yield
+            _dh_yc_clr = _C_POSITIVE if _dh_yc >= 3 else (_C_NEUTRAL if _dh_yc >= 1 else _C_TEXT_MUTED)
+            st.markdown(
+                f"<div class='metric-card' style='text-align:center;'>"
+                f"<div class='metric-label'>Forward Yield</div>"
+                f"<div class='metric-value' style='color:{_dh_yc_clr};'>{_dh_yc:.2f}%</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-top:4px;'>jährl. Schätzung</div>"
+                f"</div>", unsafe_allow_html=True)
+        with _k2:
+            _dh_ann_str = f"{_cur_sym}{_dh_annual_div:.2f}" if _dh_annual_div else "N/A"
+            st.markdown(
+                f"<div class='metric-card' style='text-align:center;'>"
+                f"<div class='metric-label'>Jährl. Dividende</div>"
+                f"<div class='metric-value'>{_dh_ann_str}</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-top:4px;'>je Aktie (trailing)</div>"
+                f"</div>", unsafe_allow_html=True)
+        with _k3:
+            _dh_pr_clr = _C_NEGATIVE if _dh_payout > 90 else (_C_NEUTRAL if _dh_payout > 60 else _C_POSITIVE)
+            _dh_pr_str = f"{_dh_payout:.0f}%" if _dh_payout > 0 else "N/A"
+            st.markdown(
+                f"<div class='metric-card' style='text-align:center;'>"
+                f"<div class='metric-label'>Payout Ratio</div>"
+                f"<div class='metric-value' style='color:{_dh_pr_clr};'>{_dh_pr_str}</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-top:4px;'><60% nachhaltig</div>"
+                f"</div>", unsafe_allow_html=True)
+        with _k4:
+            # FCF coverage for latest year
+            _dh_cur_yr = max(_dh_fcf_ps.keys()) if _dh_fcf_ps else None
+            _dh_fcf_cov = None
+            if _dh_cur_yr and _dh_annual_div and _dh_fcf_ps.get(_dh_cur_yr, 0) > 0:
+                _dh_fcf_cov = _dh_fcf_ps[_dh_cur_yr] / _dh_annual_div
+            _dh_cov_clr = (_C_POSITIVE if _dh_fcf_cov and _dh_fcf_cov >= 1.5 else
+                           _C_NEUTRAL  if _dh_fcf_cov and _dh_fcf_cov >= 1.0 else _C_NEGATIVE)
+            _dh_cov_str = f"{_dh_fcf_cov:.1f}x" if _dh_fcf_cov else "N/A"
+            st.markdown(
+                f"<div class='metric-card' style='text-align:center;'>"
+                f"<div class='metric-label'>FCF-Deckung</div>"
+                f"<div class='metric-value' style='color:{_dh_cov_clr};'>{_dh_cov_str}</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-top:4px;'>FCF/Aktie ÷ Dividende</div>"
+                f"</div>", unsafe_allow_html=True)
+        with _k5:
+            _dh_streak = _DIVIDEND_POOL.get(ticker.upper())
+            if _dh_streak:
+                _dh_st_yrs = _dh_streak[1]
+                _dh_st_ttl = "👑 King" if _dh_st_yrs >= 50 else "🏆 Aristocrat" if _dh_st_yrs >= 25 else "📈 Wachstum"
+                _dh_st_clr = _C_NEUTRAL if _dh_st_yrs >= 50 else _C_POSITIVE if _dh_st_yrs >= 25 else "#64b5f6"
+                st.markdown(
+                    f"<div class='metric-card' style='text-align:center;'>"
+                    f"<div class='metric-label'>Dividenden-Serie</div>"
+                    f"<div class='metric-value' style='color:{_dh_st_clr};'>{_dh_st_yrs}J</div>"
+                    f"<div style='color:{_dh_st_clr};font-size:0.72rem;font-weight:700;margin-top:4px;'>{_dh_st_ttl}</div>"
+                    f"</div>", unsafe_allow_html=True)
+            elif _dh_ex_str:
+                st.markdown(
+                    f"<div class='metric-card' style='text-align:center;'>"
+                    f"<div class='metric-label'>Ex-Dividende</div>"
+                    f"<div class='metric-value' style='font-size:1.0rem;'>{_dh_ex_str}</div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-top:4px;'>letztes Datum</div>"
+                    f"</div>", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+
+        # ── Dividendenhistorie Chart ────────────────────────────────────
+        if _dh_annual:
+            st.markdown("<div class='section-header'>📊 Dividendenhistorie (jährlich)</div>", unsafe_allow_html=True)
+            _dh_years = sorted(_dh_annual.keys())
+            _dh_vals  = [_dh_annual[y] for y in _dh_years]
+
+            # Color bars: green = growth, red = cut, blue = stable
+            _dh_bar_colors = []
+            for _i, _v in enumerate(_dh_vals):
+                if _i == 0:
+                    _dh_bar_colors.append("#64b5f6")
+                elif _v > _dh_vals[_i-1] * 1.001:
+                    _dh_bar_colors.append(_C_POSITIVE)
+                elif _v < _dh_vals[_i-1] * 0.999:
+                    _dh_bar_colors.append(_C_NEGATIVE)
+                else:
+                    _dh_bar_colors.append("#64b5f6")
+
+            _dh_fig = go.Figure()
+            _dh_fig.add_trace(go.Bar(
+                x=_dh_years, y=_dh_vals,
+                marker_color=_dh_bar_colors,
+                text=[f"{_cur_sym}{v:.2f}" for v in _dh_vals],
+                textposition="outside",
+                textfont=dict(size=10, color=_C_TEXT_PRIMARY),
+                name="Dividende je Aktie",
+            ))
+            _dh_fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=_C_TEXT_PRIMARY, size=11),
+                xaxis=dict(gridcolor=_C_BORDER, zeroline=False, dtick=1),
+                yaxis=dict(gridcolor=_C_BORDER, zeroline=False,
+                           tickprefix=_cur_sym, title="Dividende je Aktie"),
+                margin=dict(t=30, b=10, l=60, r=10),
+                height=280,
+                showlegend=False,
+            )
+            st.plotly_chart(_dh_fig, use_container_width=True, config={"displayModeBar": False})
+
+            # ── CAGR ────────────────────────────────────────────────────
+            st.markdown("<div class='section-header'>📈 Dividendenwachstum (CAGR)</div>", unsafe_allow_html=True)
+            _dh_cagr_periods = [("1J", 1), ("3J", 3), ("5J", 5), ("10J", 10)]
+            _dh_cur_val = _dh_annual.get(max(_dh_years), 0)
+            _dh_cagr_cols = st.columns(4)
+            for (_dh_lbl, _dh_n), _col in zip(_dh_cagr_periods, _dh_cagr_cols):
+                _dh_past_yr = max(_dh_years) - _dh_n
+                _dh_past_val = _dh_annual.get(_dh_past_yr)
+                if _dh_past_val and _dh_past_val > 0 and _dh_cur_val > 0 and _dh_n > 0:
+                    _dh_cagr = ((_dh_cur_val / _dh_past_val) ** (1 / _dh_n) - 1) * 100
+                    _dh_cagr_clr = _C_POSITIVE if _dh_cagr >= 5 else _C_NEUTRAL if _dh_cagr >= 0 else _C_NEGATIVE
+                    _col.markdown(
+                        f"<div class='metric-card' style='text-align:center;'>"
+                        f"<div class='metric-label'>CAGR {_dh_lbl}</div>"
+                        f"<div class='metric-value' style='color:{_dh_cagr_clr};'>{_dh_cagr:+.1f}%</div>"
+                        f"</div>", unsafe_allow_html=True)
+                else:
+                    _col.markdown(
+                        f"<div class='metric-card' style='text-align:center;'>"
+                        f"<div class='metric-label'>CAGR {_dh_lbl}</div>"
+                        f"<div class='metric-value' style='color:{_C_TEXT_MUTED};'>N/A</div>"
+                        f"</div>", unsafe_allow_html=True)
+
+        # ── FCF & EPS Coverage Verlauf ──────────────────────────────────
+        if _dh_fcf_ps and _dh_annual:
+            _dh_cov_years = sorted(set(_dh_fcf_ps.keys()) & set(_dh_annual.keys()))
+            if len(_dh_cov_years) >= 2:
+                st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+                st.markdown("<div class='section-header'>🔍 FCF- & EPS-Deckungsquote</div>", unsafe_allow_html=True)
+                _dh_cov_vals = []
+                _dh_eps_cov_vals = []
+                for _cy in _dh_cov_years:
+                    _fcf = _dh_fcf_ps.get(_cy, 0)
+                    _eps = _dh_eps_ann.get(_cy)
+                    _div = _dh_annual.get(_cy, 0)
+                    _dh_cov_vals.append(_fcf / _div if _div > 0 else None)
+                    _dh_eps_cov_vals.append(_eps / _div if (_eps and _div > 0 and _eps > 0) else None)
+
+                _dh_cov_fig = go.Figure()
+                _dh_cov_fig.add_trace(go.Scatter(
+                    x=_dh_cov_years, y=_dh_cov_vals,
+                    mode="lines+markers", name="FCF-Deckung",
+                    line=dict(color=_C_POSITIVE, width=2),
+                    hovertemplate="%{y:.2f}x<extra>FCF-Deckung</extra>",
+                ))
+                if any(v is not None for v in _dh_eps_cov_vals):
+                    _dh_cov_fig.add_trace(go.Scatter(
+                        x=_dh_cov_years, y=_dh_eps_cov_vals,
+                        mode="lines+markers", name="EPS-Deckung",
+                        line=dict(color="#64b5f6", width=2, dash="dot"),
+                        hovertemplate="%{y:.2f}x<extra>EPS-Deckung</extra>",
+                    ))
+                _dh_cov_fig.add_hline(y=1.0, line_color=_C_NEGATIVE, line_width=1, line_dash="dash",
+                                      annotation_text="Mindestdeckung 1x",
+                                      annotation_font_color=_C_NEGATIVE, annotation_font_size=9)
+                _dh_cov_fig.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=_C_TEXT_PRIMARY, size=11),
+                    xaxis=dict(gridcolor=_C_BORDER, zeroline=False, dtick=1),
+                    yaxis=dict(gridcolor=_C_BORDER, zeroline=False, ticksuffix="x", title="Deckungsquote"),
+                    legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=10)),
+                    margin=dict(t=30, b=10, l=60, r=10),
+                    height=240,
+                )
+                st.plotly_chart(_dh_cov_fig, use_container_width=True, config={"displayModeBar": False})
+                st.caption("FCF-Deckung = FCF je Aktie ÷ Dividende je Aktie. >1.5x = sehr sicher, <1.0x = gefährdet.")
+
+        # ── Yield-on-Cost Rechner ──────────────────────────────────────
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-header'>🧮 Yield-on-Cost Rechner</div>", unsafe_allow_html=True)
+        _yoc_c1, _yoc_c2 = st.columns([1, 2])
+        with _yoc_c1:
+            _yoc_price = st.number_input(
+                "Kaufpreis je Aktie",
+                min_value=0.01, value=float(price or 100),
+                step=1.0, key="yoc_price",
+                format="%.2f",
+            )
+            _yoc_growth = st.slider(
+                "Angenommenes jährl. Dividendenwachstum (%)",
+                min_value=0, max_value=20, value=5, step=1, key="yoc_growth",
+            )
+        with _yoc_c2:
+            if _dh_annual_div and _yoc_price > 0:
+                _yoc_initial = _dh_annual_div / _yoc_price * 100
+                _yoc_rows = []
+                for _yy in [1, 3, 5, 10, 15, 20]:
+                    _yoc_div = _dh_annual_div * ((1 + _yoc_growth / 100) ** _yy)
+                    _yoc_val = _yoc_div / _yoc_price * 100
+                    _yoc_rows.append({"Jahr": f"+{_yy}J", "Dividende/Aktie": f"{_cur_sym}{_yoc_div:.2f}",
+                                      "Yield-on-Cost": f"{_yoc_val:.2f}%"})
+                import pandas as _pd_yoc
+                _yoc_df = _pd_yoc.DataFrame(_yoc_rows)
+                st.markdown(
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;margin-bottom:6px;'>"
+                    f"Aktueller YoC bei Kaufpreis {_cur_sym}{_yoc_price:.2f}: "
+                    f"<b style='color:{_C_POSITIVE};'>{_yoc_initial:.2f}%</b></div>",
+                    unsafe_allow_html=True)
+                st.dataframe(
+                    _yoc_df,
+                    hide_index=True,
+                    use_container_width=True,
+                )
+            else:
+                st.info("Kein Dividendensatz verfügbar.")
+
+        # ── Dividenden-Insight Box ─────────────────────────────────────
+        _dh_insights = []
+        if _dh_annual and len(_dh_annual) >= 3:
+            _dh_yrs_s = sorted(_dh_annual.keys())
+            _dh_cuts = sum(1 for i in range(1, len(_dh_yrs_s))
+                          if _dh_annual[_dh_yrs_s[i]] < _dh_annual[_dh_yrs_s[i-1]] * 0.99)
+            if _dh_cuts == 0:
+                _dh_insights.append(f"✅ Keine Dividendenkürzungen in den letzten {len(_dh_yrs_s)} Jahren.")
+            else:
+                _dh_insights.append(f"⚠️ {_dh_cuts} Dividendenkürzung(en) in den letzten {len(_dh_yrs_s)} Jahren.")
+        if _dh_payout > 90:
+            _dh_insights.append("🔴 Payout Ratio >90% — Dividende wenig nachhaltig, kaum Spielraum für Wachstum.")
+        elif _dh_payout > 60:
+            _dh_insights.append("🟡 Payout Ratio 60–90% — moderate Nachhaltigkeit, auf FCF-Trend achten.")
+        elif _dh_payout > 0:
+            _dh_insights.append(f"🟢 Payout Ratio {_dh_payout:.0f}% — nachhaltig, genug Spielraum für Erhöhungen.")
+        _dh_streak_d = _DIVIDEND_POOL.get(ticker.upper())
+        if _dh_streak_d:
+            _dh_insights.append(f"🏆 {_dh_streak_d[0]} — {_dh_streak_d[1]} Jahre konsekutive Dividendenzahlungen.")
+        if _dh_insights:
+            st.markdown(
+                f"<div class='insight-box' style='margin-top:12px;'>"
+                f"<strong>💡 Dividenden-Einschätzung:</strong><br>"
+                + "<br>".join(_dh_insights) +
+                "</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:14px;padding:8px 0;'>"
+        f"Datenquelle: yFinance · Dividenden versteuern sich je nach Depot und Wohnsitz unterschiedlich. Keine Anlageberatung.</div>",
+        unsafe_allow_html=True)
+
 
 # ==================== INSIGHTS ====================
 st.markdown("<div class='section-header'>💡 Investor Insights</div>", unsafe_allow_html=True)
