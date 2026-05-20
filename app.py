@@ -2777,6 +2777,13 @@ def _fetch_hist_monthly(tkr: str):
 def _fetch_hist_daily_5y(tkr: str):
     return yf.Ticker(tkr).history(period="5y", auto_adjust=True)
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch_index_hist(symbol: str, interval: str, days: int):
+    import datetime as _dt2
+    start = (_dt2.date.today() - _dt2.timedelta(days=days)).strftime("%Y-%m-%d")
+    end   = _dt2.date.today().strftime("%Y-%m-%d")
+    return yf.Ticker(symbol).history(start=start, end=end, interval=interval)
+
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def _load_bond_monitor() -> dict:
@@ -17287,6 +17294,11 @@ elif _at == 7:
         macd_row = (3 + (1 if show_rsi else 0)) if show_macd else None
 
         close = chart_data["Close"]
+        _ta_rsi_vals  = None
+        _ta_macd_line = None
+        _ta_macd_sig  = None
+        _sp_compare   = None
+        _nq_compare   = None
 
         # ── Price ──────────────────────────────────────────────────────
         ema_periods = {"EMA 20": 20, "EMA 50": 50, "EMA 100": 100, "EMA 200": 200}
@@ -17314,33 +17326,31 @@ elif _at == 7:
                 st.caption("ℹ️ S&P 500 Vergleich nur im Linie-Modus verfügbar")
             else:
                 try:
-                    _sp_days = 2*365+10 if "Wöchentlich" in chart_mode else 5*365+10
-                    _sp_start = (_dt.date.today() - _dt.timedelta(days=_sp_days)).strftime("%Y-%m-%d")
-                    _sp_end = _dt.date.today().strftime("%Y-%m-%d")
-                    _sp_hist = yf.Ticker("^GSPC").history(
-                        start=_sp_start, end=_sp_end,
-                        interval="1wk" if "Wöchentlich" in chart_mode else
-                                 "1mo" if "Monatlich"   in chart_mode else "1d"
-                    )
+                    _sp_interval  = ("1wk" if "Wöchentlich" in chart_mode else
+                                     "1mo" if "Monatlich"   in chart_mode else "1d")
+                    _sp_days_val  = 2*365+10 if "Wöchentlich" in chart_mode else 5*365+10
+                    _sp_hist = _fetch_index_hist("^GSPC", _sp_interval, _sp_days_val)
                     if not _sp_hist.empty:
-                        # Normalize both series to date-only to avoid tz mismatch
                         _sp_close = _sp_hist["Close"].copy()
                         _sp_close.index = pd.to_datetime(_sp_close.index).normalize().tz_localize(None)
                         _cd_index_norm  = pd.to_datetime(chart_data.index).normalize().tz_localize(None)
                         _sp_reindexed   = _sp_close.reindex(_cd_index_norm, method="ffill").dropna()
                         if not _sp_reindexed.empty and not close.empty:
-                            # Scale S&P so it starts at the same price as the stock
-                            _stock_start = float(close.iloc[0])
-                            _sp_start    = float(_sp_reindexed.iloc[0])
-                            _sp_scaled   = _sp_reindexed * (_stock_start / _sp_start)
-                            # Re-attach original chart_data dates for x-axis
-                            _valid_mask  = _cd_index_norm.isin(_sp_reindexed.index)
-                            _x_dates     = chart_data.index[_valid_mask]
+                            _stock_start_sp = float(close.iloc[0])
+                            _sp_start_val   = float(_sp_reindexed.iloc[0])
+                            _sp_scaled      = _sp_reindexed * (_stock_start_sp / _sp_start_val)
+                            _valid_mask     = _cd_index_norm.isin(_sp_reindexed.index)
+                            _x_dates        = chart_data.index[_valid_mask]
                             fig_ta.add_trace(go.Scatter(
                                 x=_x_dates, y=_sp_scaled.values,
                                 name="S&P 500 (relativ)",
                                 line=dict(color="#78909c", width=1.5, dash="dot"),
                             ), row=1, col=1)
+                            _sp_compare = {
+                                "name":      "S&P 500",
+                                "stock_ret": (float(close.iloc[-1]) / _stock_start_sp - 1) * 100,
+                                "idx_ret":   (float(_sp_reindexed.iloc[-1]) / _sp_start_val - 1) * 100,
+                            }
                 except Exception:
                     pass
 
@@ -17350,30 +17360,31 @@ elif _at == 7:
                 st.caption("ℹ️ NASDAQ Vergleich nur im Linie-Modus verfügbar")
             else:
                 try:
-                    _nq_days = 2*365+10 if "Wöchentlich" in chart_mode else 5*365+10
-                    _nq_start = (_dt.date.today() - _dt.timedelta(days=_nq_days)).strftime("%Y-%m-%d")
-                    _nq_end   = _dt.date.today().strftime("%Y-%m-%d")
-                    _nq_hist  = yf.Ticker("QQQ").history(
-                        start=_nq_start, end=_nq_end,
-                        interval="1wk" if "Wöchentlich" in chart_mode else
-                                 "1mo" if "Monatlich"   in chart_mode else "1d"
-                    )
+                    _nq_interval  = ("1wk" if "Wöchentlich" in chart_mode else
+                                     "1mo" if "Monatlich"   in chart_mode else "1d")
+                    _nq_days_val  = 2*365+10 if "Wöchentlich" in chart_mode else 5*365+10
+                    _nq_hist = _fetch_index_hist("QQQ", _nq_interval, _nq_days_val)
                     if not _nq_hist.empty:
                         _nq_close = _nq_hist["Close"].copy()
                         _nq_close.index = pd.to_datetime(_nq_close.index).normalize().tz_localize(None)
                         _cd_index_norm2 = pd.to_datetime(chart_data.index).normalize().tz_localize(None)
                         _nq_reindexed   = _nq_close.reindex(_cd_index_norm2, method="ffill").dropna()
                         if not _nq_reindexed.empty and not close.empty:
-                            _stock_start2 = float(close.iloc[0])
-                            _nq_start_val = float(_nq_reindexed.iloc[0])
-                            _nq_scaled    = _nq_reindexed * (_stock_start2 / _nq_start_val)
-                            _valid_mask2  = _cd_index_norm2.isin(_nq_reindexed.index)
-                            _x_dates2     = chart_data.index[_valid_mask2]
+                            _stock_start_nq = float(close.iloc[0])
+                            _nq_start_val   = float(_nq_reindexed.iloc[0])
+                            _nq_scaled      = _nq_reindexed * (_stock_start_nq / _nq_start_val)
+                            _valid_mask2    = _cd_index_norm2.isin(_nq_reindexed.index)
+                            _x_dates2       = chart_data.index[_valid_mask2]
                             fig_ta.add_trace(go.Scatter(
                                 x=_x_dates2, y=_nq_scaled.values,
                                 name="NASDAQ (relativ)",
                                 line=dict(color="#7c4dff", width=1.5, dash="dot"),
                             ), row=1, col=1)
+                            _nq_compare = {
+                                "name":      "NASDAQ (QQQ)",
+                                "stock_ret": (float(close.iloc[-1]) / _stock_start_nq - 1) * 100,
+                                "idx_ret":   (float(_nq_reindexed.iloc[-1]) / _nq_start_val - 1) * 100,
+                            }
                 except Exception:
                     pass
 
@@ -17411,8 +17422,12 @@ elif _at == 7:
 
         # ── Fibonacci ──────────────────────────────────────────────────
         if show_fib:
-            _fib_high = float(chart_data["High"].max())
-            _fib_low  = float(chart_data["Low"].min())
+            _fib_cutoff = pd.Timestamp.today().normalize() - pd.DateOffset(years=1)
+            _fib_view   = chart_data.loc[chart_data.index >= _fib_cutoff]
+            if _fib_view.empty:
+                _fib_view = chart_data
+            _fib_high = float(_fib_view["High"].max())
+            _fib_low  = float(_fib_view["Low"].min())
             _fib_levels = compute_fibonacci(_fib_high, _fib_low)
             _fib_colors = {
                 "0.0 %":   "rgba(255,255,255,0.25)",
@@ -17437,7 +17452,7 @@ elif _at == 7:
         # ── Analyst target ──────────────────────────────────────────────
         if target_mean:
             fig_ta.add_hline(y=target_mean, line_dash="dot", line_color=_C_NEUTRAL, line_width=1.5,
-                             annotation_text=f"Analyst Ziel ${target_mean:.0f}",
+                             annotation_text=f"Analyst Ziel {_cur_sym}{target_mean:.2f}",
                              annotation_font_color=_C_NEUTRAL, row=1, col=1)
 
         # ── Volume ──────────────────────────────────────────────────────
@@ -17450,9 +17465,9 @@ elif _at == 7:
 
         # ── RSI ─────────────────────────────────────────────────────────
         if show_rsi and rsi_row:
-            rsi_vals = compute_rsi(close)
+            _ta_rsi_vals = compute_rsi(close)
             fig_ta.add_trace(go.Scatter(
-                x=chart_data.index, y=rsi_vals,
+                x=chart_data.index, y=_ta_rsi_vals,
                 name="RSI", line=dict(color="#a78bfa", width=1.5), showlegend=False,
             ), row=rsi_row, col=1)
             for lvl, clr in [(70, "rgba(255,82,82,0.35)"), (30, "rgba(0,230,118,0.35)")]:
@@ -17462,18 +17477,18 @@ elif _at == 7:
 
         # ── MACD ────────────────────────────────────────────────────────
         if show_macd and macd_row:
-            macd_line, signal_line, macd_hist = compute_macd(close)
-            hist_colors = [_C_POSITIVE if v >= 0 else _C_NEGATIVE for v in macd_hist]
+            _ta_macd_line, _ta_macd_sig, _ta_macd_hist = compute_macd(close)
+            hist_colors = [_C_POSITIVE if v >= 0 else _C_NEGATIVE for v in _ta_macd_hist]
             fig_ta.add_trace(go.Bar(
-                x=chart_data.index, y=macd_hist,
+                x=chart_data.index, y=_ta_macd_hist,
                 name="MACD Hist", marker_color=hist_colors, opacity=0.6, showlegend=False,
             ), row=macd_row, col=1)
             fig_ta.add_trace(go.Scatter(
-                x=chart_data.index, y=macd_line,
+                x=chart_data.index, y=_ta_macd_line,
                 name="MACD", line=dict(color="#00e5ff", width=1.5), showlegend=False,
             ), row=macd_row, col=1)
             fig_ta.add_trace(go.Scatter(
-                x=chart_data.index, y=signal_line,
+                x=chart_data.index, y=_ta_macd_sig,
                 name="Signal", line=dict(color=_C_NEUTRAL, width=1.2), showlegend=False,
             ), row=macd_row, col=1)
 
@@ -17550,6 +17565,54 @@ elif _at == 7:
 
         st.plotly_chart(fig_ta, use_container_width=True)
 
+        # ── Performance-Rückblick ────────────────────────────────────────
+        _perf_close = hist["Close"] if not hist.empty else close
+        if not _perf_close.empty:
+            _perf_today_p = float(_perf_close.iloc[-1])
+            _perf_defs = [("1M", 21), ("3M", 63), ("6M", 126), ("YTD", None), ("1J", 252)]
+            _perf_cols = st.columns(len(_perf_defs))
+            for (_plabel, _pdays), _pcol in zip(_perf_defs, _perf_cols):
+                if _plabel == "YTD":
+                    _ytd_ser = _perf_close[_perf_close.index >= pd.Timestamp(f"{_dt.date.today().year}-01-01")]
+                    _pret = ((_perf_today_p / float(_ytd_ser.iloc[0]) - 1) * 100
+                             if len(_ytd_ser) > 1 else None)
+                elif len(_perf_close) >= _pdays:
+                    _pret = (_perf_today_p / float(_perf_close.iloc[-_pdays]) - 1) * 100
+                else:
+                    _pret = None
+                with _pcol:
+                    if _pret is not None:
+                        _pc = "#26a69a" if _pret > 0 else "#ef5350"
+                        st.markdown(f"""
+                        <div class="metric-card" style="text-align:center;padding:10px 6px;">
+                            <div class="metric-label">{_plabel}</div>
+                            <div class="metric-value" style="color:{_pc};font-size:1.2rem;">{_pret:+.1f}%</div>
+                        </div>""", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div class="metric-card" style="text-align:center;padding:10px 6px;">
+                            <div class="metric-label">{_plabel}</div>
+                            <div class="metric-value" style="color:#546e7a;font-size:1.2rem;">—</div>
+                        </div>""", unsafe_allow_html=True)
+
+        # ── Vergleichs-Ergebnis ──────────────────────────────────────────
+        _compare_rows = []
+        for _cmp in [_sp_compare, _nq_compare]:
+            if _cmp:
+                _cdiff = _cmp["stock_ret"] - _cmp["idx_ret"]
+                _csign = "+" if _cdiff >= 0 else ""
+                _ccol  = "#26a69a" if _cdiff >= 0 else "#ef5350"
+                _compare_rows.append(
+                    f"<b>{company_name}</b>: <span style='color:#00e5ff;'>{_cmp['stock_ret']:+.1f}%</span> &nbsp;|&nbsp; "
+                    f"<b>{_cmp['name']}</b>: <span style='color:#78909c;'>{_cmp['idx_ret']:+.1f}%</span> &nbsp;|&nbsp; "
+                    f"Differenz: <span style='color:{_ccol};'>{_csign}{_cdiff:.1f}%</span>")
+        if _compare_rows:
+            st.markdown(f"""
+            <div class="insight-box" style="margin-top:8px;">
+                <strong>📊 Performance-Vergleich ({title_suffix}):</strong><br>
+                {'<br>'.join(_compare_rows)}
+            </div>""", unsafe_allow_html=True)
+
         # ── EMA + RSI insight box ────────────────────────────────────────
         _insights = []
         current_price_c = close.iloc[-1]
@@ -17560,13 +17623,13 @@ elif _at == 7:
                 pct_diff = (current_price_c - ema_now) / ema_now * 100
                 status = "oberhalb ✅" if pct_diff > 0 else "unterhalb ⚠️"
                 _insights.append(f"{ema_name}: {status} ({pct_diff:+.1f}%)")
-        if show_rsi:
-            rsi_now = compute_rsi(close).iloc[-1]
+        if show_rsi and _ta_rsi_vals is not None:
+            rsi_now = float(_ta_rsi_vals.iloc[-1])
             rsi_status = "Überkauft 🔴" if rsi_now > 70 else "Überverkauft 🟢" if rsi_now < 30 else "Neutral ⚪"
             _insights.append(f"RSI: {rsi_now:.1f} — {rsi_status}")
-        if show_macd:
-            _ml, _sl, _ = compute_macd(close)
-            _cross = "Bullish ✅ (MACD > Signal)" if _ml.iloc[-1] > _sl.iloc[-1] else "Bearish ⚠️ (MACD < Signal)"
+        if show_macd and _ta_macd_line is not None and _ta_macd_sig is not None:
+            _cross = ("Bullish ✅ (MACD > Signal)" if float(_ta_macd_line.iloc[-1]) > float(_ta_macd_sig.iloc[-1])
+                      else "Bearish ⚠️ (MACD < Signal)")
             _insights.append(f"MACD: {_cross}")
         if show_bb and len(close) >= 20:
             _bb_m = close.rolling(20).mean().iloc[-1]
@@ -17589,8 +17652,11 @@ elif _at == 7:
             </div>""", unsafe_allow_html=True)
 
         if show_fib:
-            _fib_high_v = float(chart_data["High"].max())
-            _fib_low_v  = float(chart_data["Low"].min())
+            _fib_view_i = chart_data.loc[chart_data.index >= pd.Timestamp.today().normalize() - pd.DateOffset(years=1)]
+            if _fib_view_i.empty:
+                _fib_view_i = chart_data
+            _fib_high_v = float(_fib_view_i["High"].max())
+            _fib_low_v  = float(_fib_view_i["Low"].min())
             _curr_p     = float(close.iloc[-1])
             _fib_lvls_e = compute_fibonacci(_fib_high_v, _fib_low_v)
             _nearest    = min(_fib_lvls_e.items(), key=lambda kv: abs(kv[1] - _curr_p))
@@ -17599,15 +17665,15 @@ elif _at == 7:
                 <strong>📐 Fibonacci Retracement — Erklärung</strong><br>
                 Die Fibonacci-Levels markieren potenzielle <strong>Unterstützungs- und Widerstandszonen</strong>
                 basierend auf mathematischen Verhältnissen der Fibonacci-Folge.
-                Berechnet vom <strong>Hoch (${_fib_high_v:.2f})</strong> bis zum
-                <strong>Tief (${_fib_low_v:.2f})</strong> des dargestellten Zeitraums.<br><br>
+                Berechnet vom <strong>Hoch ({_cur_sym}{_fib_high_v:.2f})</strong> bis zum
+                <strong>Tief ({_cur_sym}{_fib_low_v:.2f})</strong> des dargestellten Zeitraums (1 Jahr).<br><br>
                 <span style="color:#ffd600;">▸ 23.6 %</span> — Schwache Korrektur, typisch bei starken Trends<br>
                 <span style="color:#00e676;">▸ 38.2 %</span> — Klassische erste Unterstützung nach Aufwärtstrend<br>
                 <span style="color:#00e5ff;">▸ 50.0 %</span> — Psychologisch wichtige Halbierungszone<br>
                 <span style="color:#00e676;">▸ 61.8 %</span> — Das <em>goldene Verhältnis</em> — stärkste Unterstützungszone<br>
                 <span style="color:#ff9100;">▸ 78.6 %</span> — Tiefe Korrektur; Unterschreitung deutet auf Trendumkehr<br><br>
-                Aktueller Kurs <strong>${_curr_p:.2f}</strong> liegt am nächsten zu
-                <strong>Fib {_nearest[0]} (${_nearest[1]:.2f})</strong>.
+                Aktueller Kurs <strong>{_cur_sym}{_curr_p:.2f}</strong> liegt am nächsten zu
+                <strong>Fib {_nearest[0]} ({_cur_sym}{_nearest[1]:.2f})</strong>.
             </div>""", unsafe_allow_html=True)
 
 # ==================== TAB 6: INSIDER & PEERS ====================
