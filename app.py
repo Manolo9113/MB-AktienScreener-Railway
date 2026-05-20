@@ -17576,7 +17576,7 @@ elif _at == 7:
             _perf_cols = st.columns(len(_perf_defs))
             for (_plabel, _pdays), _pcol in zip(_perf_defs, _perf_cols):
                 if _plabel == "YTD":
-                    _ytd_ser = _perf_close[_perf_close.index >= pd.Timestamp(f"{_dt.date.today().year}-01-01")]
+                    _ytd_ser = _perf_close[_perf_close.index.year == _dt.date.today().year]
                     _pret = ((_perf_today_p / float(_ytd_ser.iloc[0]) - 1) * 100
                              if len(_ytd_ser) > 1 else None)
                 elif len(_perf_close) >= _pdays:
