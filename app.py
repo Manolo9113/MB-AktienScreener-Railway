@@ -2111,6 +2111,7 @@ def load_watchlist_metrics(t: str) -> dict:
             "name":     info.get("shortName", t),
             "price":    info.get("currentPrice") or info.get("regularMarketPrice"),
             "mkt_cap":  mc,
+            "currency": info.get("currency", "USD") or "USD",
             "gm":       (info.get("grossMargins") or 0) * 100,
             "op_mg":    (info.get("operatingMargins") or 0) * 100,
             "net_mg":   (info.get("profitMargins") or 0) * 100,
@@ -14610,7 +14611,7 @@ st.markdown(f"""
         {logo_html}
         <div style="min-width:0; flex:1;">
             <div class="header-title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{_company_name_h}</div>
-            <div class="header-sub">{ticker} · {_sector_h} · {_industry_h}</div>
+            <div class="header-sub">{ticker} · {_sector_h} · {_industry_h} · {fmt_large(market_cap, _cur_sym)}</div>
             <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
                 <span style="background:#1a2744; color:{_C_ACCENT}; border-radius:6px; padding:3px 10px; font-size:0.8rem; font-weight:600;">{recommendation}</span>
                 {_earnings_badge}
@@ -14625,8 +14626,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-import datetime as _dtnow
-_now_str = _dtnow.datetime.now().strftime("%H:%M Uhr")
+_now_str = _dt.datetime.now().strftime("%H:%M Uhr")
 st.markdown(
     f"<div style='color:#37474f;font-size:0.7rem;margin:-8px 0 10px 0;'>"
     f"⏱ Kursdaten via Yahoo Finance · ca. 15–20 Min. verzögert · Keine Echtzeitkurse · "
@@ -14823,7 +14823,7 @@ with st.expander("📊 Score-Breakdown — Warum dieser Score?", expanded=False)
         _bd_rows.append((_icon, _lbl, _val_str, _thresh_str, _pts, _w, _rc))
     _bd_html = (
         '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;">'
-        '<tr style="color:{_C_TEXT_MUTED};border-bottom:1px solid #1e3a5f;">'
+        f'<tr style="color:{_C_TEXT_MUTED};border-bottom:1px solid #1e3a5f;">'
         '<th style="text-align:left;padding:4px 6px;"></th>'
         '<th style="text-align:left;padding:4px 6px;">Kriterium</th>'
         '<th style="text-align:right;padding:4px 6px;">Wert</th>'
@@ -14894,13 +14894,16 @@ if st.session_state.get("show_wl_compare") and len(st.session_state.get("watchli
         _wl_data = {t: load_watchlist_metrics(t) for t in _wl_tickers}
 
     # ── Vergleichstabelle ──
+    _SYM_MAP = {"USD":"$","EUR":"€","GBP":"£","JPY":"¥","CHF":"Fr.","HKD":"HK$",
+                "CAD":"CA$","AUD":"A$","KRW":"₩","SEK":"kr","NOK":"kr","SGD":"S$","INR":"₹"}
     _cmp_rows = []
     for _t, _d in _wl_data.items():
+        _dsym = _SYM_MAP.get(_d.get("currency", "USD"), _d.get("currency", "") + " ")
         _cmp_rows.append({
             "Ticker":       _t,
             "Name":         _d.get("name", _t)[:22],
-            "Kurs":         f"{_cur_sym}{_d['price']:.2f}" if _d.get("price") else "—",
-            "Mkt Cap":      fmt_large(_d.get("mkt_cap")),
+            "Kurs":         f"{_dsym}{_d['price']:.2f}" if _d.get("price") else "—",
+            "Mkt Cap":      fmt_large(_d.get("mkt_cap"), _dsym),
             "KGV":          f"{_d['pe']:.1f}x" if _d.get("pe") else "—",
             "Bruttomarge":  f"{_d['gm']:.1f}%",
             "Op. Marge":    f"{_d['op_mg']:.1f}%",
