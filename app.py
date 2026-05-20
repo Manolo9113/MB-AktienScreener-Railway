@@ -18214,10 +18214,16 @@ elif _at == 6:
         # Kürze auf ~4 Sätze
         _sentences = _summary.replace("  ", " ").split(". ")
         _short = ". ".join(_sentences[:4]) + ("." if len(_sentences) > 4 else "")
+        _details_html = (
+            f'<details style="margin-top:8px;"><summary style="color:{_C_ACCENT};cursor:pointer;'
+            f'font-size:0.82rem;">Vollständige Beschreibung</summary>'
+            f'<div style="margin-top:8px;">{_summary}</div></details>'
+            if len(_sentences) > 4 else ""
+        )
         st.markdown(f"""
         <div class="insight-box" style="line-height:1.7; color:{_C_TEXT_SEC}; font-size:0.92rem;">
             {_short}
-            {'<details style="margin-top:8px;"><summary style="color:{_C_ACCENT};cursor:pointer;font-size:0.82rem;">Vollständige Beschreibung</summary><div style="margin-top:8px;">' + _summary + '</div></details>' if len(_sentences) > 4 else ''}
+            {_details_html}
         </div>""", unsafe_allow_html=True)
 
     # ── Moat-Treiber ──────────────────────────────────────────────────
@@ -18295,7 +18301,7 @@ elif _at == 6:
         {"<br>".join(_moat_bullets)}
     </div>""", unsafe_allow_html=True)
 
-    st.markdown("""
+    st.markdown(f"""
     <div style="color:#37474f; font-size:0.75rem; margin-top:16px; padding:12px 16px;
                 background:{_C_CARD_BG}; border-radius:8px; border-left:3px solid #1e3a5f;">
         ⚠️ <em>Hinweis: Diese Einschätzung basiert auf quantitativen Finanzkennzahlen und Branchenheuristiken.
