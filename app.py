@@ -17676,6 +17676,108 @@ elif _at == 7:
                 <strong>Fib {_nearest[0]} ({_cur_sym}{_nearest[1]:.2f})</strong>.
             </div>""", unsafe_allow_html=True)
 
+        # ── KI Chart-Analyse ─────────────────────────────────────────────
+        st.markdown("<div style='margin-top:18px;'></div>", unsafe_allow_html=True)
+        _cka_col1, _cka_col2 = st.columns([2, 3])
+        with _cka_col1:
+            _run_chart_ki = st.button("🤖 KI-Chart-Analyse", key="btn_chart_ki",
+                                      use_container_width=True,
+                                      help="Gemini analysiert alle aktiven Indikatoren und gibt eine technische Einschätzung")
+        with _cka_col2:
+            if not GEMINI_API_KEY:
+                st.caption("⚠️ Kein GEMINI_API_KEY konfiguriert.")
+            else:
+                st.caption("Technische Analyse via Gemini · ca. 5–10 Sekunden")
+
+        # Reset bei Ticker-Wechsel
+        if st.session_state.get("chart_ki_ticker") != ticker:
+            st.session_state.pop("chart_ki_analysis", None)
+            st.session_state["chart_ki_ticker"] = ticker
+
+        if _run_chart_ki and GEMINI_API_KEY:
+            # Daten für Prompt zusammenstellen
+            _cka_price = float(close.iloc[-1])
+            _cka_lines = [f"Aktie: {company_name} ({ticker})",
+                          f"Kurs: {_cur_sym}{_cka_price:.2f}",
+                          f"Zeitrahmen: {title_suffix}"]
+
+            if len(chart_data) >= 50:
+                _52w_lb   = min(252, len(chart_data))
+                _cka_high = float(chart_data["High"].iloc[-_52w_lb:].max())
+                _cka_low  = float(chart_data["Low"].iloc[-_52w_lb:].min())
+                _cka_pct_h = (_cka_price / _cka_high - 1) * 100
+                _cka_pct_l = (_cka_price / _cka_low  - 1) * 100
+                _cka_lines.append(f"52W-Hoch: {_cur_sym}{_cka_high:.2f} ({_cka_pct_h:+.1f}% zum Kurs)")
+                _cka_lines.append(f"52W-Tief: {_cur_sym}{_cka_low:.2f}  ({_cka_pct_l:+.1f}% zum Kurs)")
+
+            for _en in ema_options:
+                _ep = ema_periods[_en]
+                if len(chart_data) >= _ep:
+                    _ev = float(compute_ema(close, _ep).iloc[-1])
+                    _ed = (_cka_price / _ev - 1) * 100
+                    _cka_lines.append(f"{_en}: {_cur_sym}{_ev:.2f} → Kurs {'+' if _ed>=0 else ''}{_ed:.1f}% {'oberhalb' if _ed>=0 else 'unterhalb'}")
+
+            if _ta_rsi_vals is not None:
+                _rsi_v = float(_ta_rsi_vals.iloc[-1])
+                _rsi_s = "überkauft (>70)" if _rsi_v > 70 else "überverkauft (<30)" if _rsi_v < 30 else "neutral"
+                _cka_lines.append(f"RSI (14): {_rsi_v:.1f} — {_rsi_s}")
+
+            if _ta_macd_line is not None and _ta_macd_sig is not None:
+                _mv, _sv = float(_ta_macd_line.iloc[-1]), float(_ta_macd_sig.iloc[-1])
+                _cka_lines.append(f"MACD: {_mv:.3f} | Signal: {_sv:.3f} → {'Bullish (MACD > Signal)' if _mv > _sv else 'Bearish (MACD < Signal)'}")
+
+            if show_bb and len(close) >= 20:
+                _bm = float(close.rolling(20).mean().iloc[-1])
+                _bs = float(close.rolling(20).std().iloc[-1])
+                _bu, _bl = _bm + 2*_bs, _bm - 2*_bs
+                _bw = (_bu - _bl) / _bm * 100
+                _bpos = (_cka_price - _bl) / (_bu - _bl) * 100 if (_bu - _bl) > 0 else 50
+                _cka_lines.append(f"Bollinger Bänder: Oben={_cur_sym}{_bu:.2f}, Mitte={_cur_sym}{_bm:.2f}, Unten={_cur_sym}{_bl:.2f}, Breite={_bw:.1f}%, Position={_bpos:.0f}%")
+
+            if show_fib:
+                _cka_lines.append(f"Fibonacci (1J): Hoch={_cur_sym}{_fib_high_v:.2f}, Tief={_cur_sym}{_fib_low_v:.2f}, nächstes Level={_nearest[0]} ({_cur_sym}{_nearest[1]:.2f})")
+
+            _perf_close_ki = hist["Close"] if not hist.empty else close
+            if not _perf_close_ki.empty:
+                _pp = float(_perf_close_ki.iloc[-1])
+                for _plbl, _pds in [("1M", 21), ("3M", 63), ("1J", 252)]:
+                    if len(_perf_close_ki) >= _pds:
+                        _pr = (_pp / float(_perf_close_ki.iloc[-_pds]) - 1) * 100
+                        _cka_lines.append(f"Performance {_plbl}: {_pr:+.1f}%")
+
+            if _sp_compare:
+                _cka_lines.append(f"vs. S&P 500 (Periode): Aktie {_sp_compare['stock_ret']:+.1f}% / Index {_sp_compare['idx_ret']:+.1f}%")
+            if _nq_compare:
+                _cka_lines.append(f"vs. NASDAQ (Periode): Aktie {_nq_compare['stock_ret']:+.1f}% / Index {_nq_compare['idx_ret']:+.1f}%")
+
+            _cka_sys = (
+                "Du bist ein erfahrener technischer Analyst. Analysiere die folgenden Indikator-Daten "
+                "einer Aktie und gib eine präzise, strukturierte technische Einschätzung auf Deutsch. "
+                "Identifiziere: Trendrichtung, wichtige Unterstützungs- und Widerstandszonen, "
+                "Überkauft-/Überverkauft-Signale, mögliche Entry-/Exit-Punkte und eine kurze Gesamtbewertung "
+                "(Bullisch / Neutral / Bärisch). Halte dich kurz und konkret — maximal 250 Wörter."
+            )
+            _cka_usr = "\n".join(_cka_lines)
+
+            with st.spinner("Gemini analysiert Chart-Indikatoren…"):
+                _cka_text, _cka_provider = call_ki_api(_cka_sys, _cka_usr, GEMINI_API_KEY, max_tokens=800)
+                st.session_state["chart_ki_analysis"] = _cka_text
+                st.session_state["chart_ki_provider"] = _cka_provider
+
+        if st.session_state.get("chart_ki_analysis"):
+            _cka_out = st.session_state["chart_ki_analysis"]
+            _cka_mdl = st.session_state.get("chart_ki_provider", "Gemini")
+            if _cka_out.startswith("⚠️"):
+                st.warning(_cka_out)
+            else:
+                st.markdown(f"""
+                <div class="insight-box" style="margin-top:10px;">
+                    <div style="color:#a78bfa;font-size:0.9rem;font-weight:700;margin-bottom:8px;">
+                        🤖 KI-Chart-Analyse · {company_name} · {_cka_mdl}
+                    </div>
+                    {_cka_out.replace(chr(10), '<br>')}
+                </div>""", unsafe_allow_html=True)
+
 # ==================== TAB 6: INSIDER & PEERS ====================
 elif _at == 8:
     col_ins, col_peers = st.columns(2)
