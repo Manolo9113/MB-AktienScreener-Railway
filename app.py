@@ -15924,7 +15924,7 @@ elif _at == 2:
         <div style="background:{_C_SURFACE};border:1px solid #1e2d45;border-radius:14px;padding:22px 28px;margin:20px 0 6px 0;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
                 <span style="color:{_C_TEXT_SEC};font-weight:700;font-size:0.85rem;letter-spacing:0.05em;">KURSZIEL-SPANNE DER ANALYSTEN</span>
-                <span style="color:{_C_TEXT_MUTED};font-size:0.78rem;">{_n_anal} Analysten · {_currency}</span>
+                <span style="color:{_C_TEXT_MUTED};font-size:0.78rem;">{_n_anal} Analysten · {_cur_sym}</span>
             </div>
             <div style="position:relative;height:14px;border-radius:7px;
                 background:linear-gradient(90deg,#ef5350 0%,#ffa726 35%,#26a69a 100%);margin-bottom:36px;">
@@ -15947,12 +15947,12 @@ elif _at == 2:
                 <div style="text-align:center;">
                     <div style="color:#26a69a;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_mean:.2f}</div>
                     <div style="color:{_C_TEXT_MUTED};font-size:0.7rem;">Ø Kursziel</div>
-                    <div style="color:#26a69a;font-size:0.78rem;">{f"{_upside:+.0f}%" if _upside else ""}</div>
+                    <div style="color:#26a69a;font-size:0.78rem;">{f"{_upside:+.0f}%" if _upside is not None else ""}</div>
                 </div>
                 <div style="text-align:center;">
                     <div style="color:#26a69a;font-weight:700;font-size:0.95rem;">{_cur_sym}{_t_high:.2f}</div>
                     <div style="color:{_C_TEXT_MUTED};font-size:0.7rem;">Bull-Ziel</div>
-                    <div style="color:#26a69a;font-size:0.78rem;">{f"{_upside_high:+.0f}%" if _upside_high else ""}</div>
+                    <div style="color:#26a69a;font-size:0.78rem;">{f"{_upside_high:+.0f}%" if _upside_high is not None else ""}</div>
                 </div>
             </div>
         </div>""", unsafe_allow_html=True)
@@ -15972,8 +15972,8 @@ elif _at == 2:
 
     if _years_sorted:
         st.markdown(
-            "<div style='color:{_C_TEXT_SEC};font-weight:700;font-size:0.88rem;"
-            "letter-spacing:0.05em;margin:26px 0 10px 0;'>JAHRES-PROGNOSEN IM ÜBERBLICK</div>",
+            f"<div style='color:{_C_TEXT_SEC};font-weight:700;font-size:0.88rem;"
+            f"letter-spacing:0.05em;margin:26px 0 10px 0;'>JAHRES-PROGNOSEN IM ÜBERBLICK</div>",
             unsafe_allow_html=True)
 
         _prev_eps = _trail_eps
@@ -16000,7 +16000,7 @@ elif _at == 2:
             _tbl_rows += f"""
             <tr style="border-bottom:1px solid #1a2744;">
                 <td style="padding:11px 14px;font-weight:700;color:{_C_TEXT_PRIMARY};white-space:nowrap;">{_yr}E&nbsp;{_an_txt}</td>
-                <td style="padding:11px 14px;text-align:right;color:{_C_TEXT_SEC};">{fmt_large(_rev_e) if _rev_e else "—"}</td>
+                <td style="padding:11px 14px;text-align:right;color:{_C_TEXT_SEC};">{fmt_large(_rev_e, _cur_sym) if _rev_e else "—"}</td>
                 <td style="padding:11px 14px;text-align:right;font-weight:600;color:{_gc(_rev_gr)};">{f"{_rev_gr:+.1f}%" if _rev_gr is not None else "—"}</td>
                 <td style="padding:11px 14px;text-align:right;color:{_C_TEXT_SEC};">{f"{_cur_sym}{_eps_e:.2f}" if _eps_e is not None else "—"}</td>
                 <td style="padding:11px 14px;text-align:right;font-weight:600;color:{_gc(_eps_gr)};">{f"{_eps_gr:+.1f}%" if _eps_gr is not None else "—"}</td>
@@ -16031,8 +16031,8 @@ elif _at == 2:
         </div>""", unsafe_allow_html=True)
     elif not _eps_est and not _rev_est:
         st.markdown(
-            '<div class="insight-box" style="color:{_C_TEXT_MUTED};margin-top:16px;">'
-            'ℹ️ Keine Forward-Schätzungen verfügbar — FMP_API_KEY setzen oder Ticker hat keine Analystencoverage.</div>',
+            f'<div class="insight-box" style="color:{_C_TEXT_MUTED};margin-top:16px;">'
+            f'ℹ️ Keine Forward-Schätzungen verfügbar — FMP_API_KEY setzen oder Ticker hat keine Analystencoverage.</div>',
             unsafe_allow_html=True)
 
     # ── ABSCHNITT 4: Investmentthese (auto-generiert) ─────────────────────────
@@ -16081,9 +16081,10 @@ elif _at == 2:
         _br_v = ("übertrifft die Erwartungen konsistent" if _beat_rate >= 75
                  else "trifft die Erwartungen meist" if _beat_rate >= 50
                  else "verfehlt die Erwartungen häufig")
+        _surp_str = f", Ø {_avg_surp:+.1f}% Überraschung" if _avg_surp is not None else ""
         _thesis.append(
             f"Das Management <strong>{_br_v}</strong> "
-            f"({_beat_rate:.0f}% Beat-Rate, Ø {_avg_surp:+.1f}% Überraschung).")
+            f"({_beat_rate:.0f}% Beat-Rate{_surp_str}).")
 
     if _thesis:
         st.markdown(f"""
@@ -16116,7 +16117,7 @@ elif _at == 2:
                 <td style="padding:9px 12px;text-align:right;color:{_C_TEXT_MUTED};">
                     {f"{_cur_sym}{_s['estimate']:.2f}" if _s.get("estimate") is not None else "—"}</td>
                 <td style="padding:9px 12px;text-align:right;color:{_C_TEXT_PRIMARY};font-weight:600;">
-                    {_cur_sym}{_s['actual']:.2f}</td>
+                    {f"{_cur_sym}{_s['actual']:.2f}" if _s.get("actual") is not None else "—"}</td>
                 <td style="padding:9px 12px;">
                     <div style="display:flex;align-items:center;gap:6px;">
                         <div style="background:#1e2d45;border-radius:3px;height:7px;width:70px;flex-shrink:0;">
