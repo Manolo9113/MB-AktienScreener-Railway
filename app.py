@@ -17567,6 +17567,9 @@ elif _at == 7:
 
         # ── Performance-Rückblick ────────────────────────────────────────
         _perf_close = hist["Close"] if not hist.empty else close
+        if not _perf_close.empty and getattr(_perf_close.index, 'tz', None) is not None:
+            _perf_close = _perf_close.copy()
+            _perf_close.index = _perf_close.index.tz_convert(None)
         if not _perf_close.empty:
             _perf_today_p = float(_perf_close.iloc[-1])
             _perf_defs = [("1M", 21), ("3M", 63), ("6M", 126), ("YTD", None), ("1J", 252)]
@@ -17738,6 +17741,9 @@ elif _at == 7:
                 _cka_lines.append(f"Fibonacci (1J): Hoch={_cur_sym}{_fib_high_v:.2f}, Tief={_cur_sym}{_fib_low_v:.2f}, nächstes Level={_nearest[0]} ({_cur_sym}{_nearest[1]:.2f})")
 
             _perf_close_ki = hist["Close"] if not hist.empty else close
+            if not _perf_close_ki.empty and getattr(_perf_close_ki.index, 'tz', None) is not None:
+                _perf_close_ki = _perf_close_ki.copy()
+                _perf_close_ki.index = _perf_close_ki.index.tz_convert(None)
             if not _perf_close_ki.empty:
                 _pp = float(_perf_close_ki.iloc[-1])
                 for _plbl, _pds in [("1M", 21), ("3M", 63), ("1J", 252)]:
