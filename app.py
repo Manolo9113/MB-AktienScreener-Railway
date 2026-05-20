@@ -4704,6 +4704,8 @@ if "show_etf_analyzer" not in st.session_state:
     st.session_state["show_etf_analyzer"] = False
 if "show_market_overview" not in st.session_state:
     st.session_state["show_market_overview"] = False
+if "show_compare" not in st.session_state:
+    st.session_state["show_compare"] = False
 if "etf_ticker_input" not in st.session_state:
     st.session_state["etf_ticker_input"] = ""
 if "portfolio_df" not in st.session_state:
@@ -4732,6 +4734,7 @@ def _go_to_ticker(t):
     st.session_state["show_etf_analyzer"] = False
     st.session_state["show_stocks"] = False
     st.session_state["show_market_overview"] = False
+    st.session_state["show_compare"] = False
     st.session_state["search_input"] = t
     st.session_state["search_msg"] = ""
     st.session_state["active_tab"] = 0
@@ -6080,6 +6083,15 @@ with st.sidebar:
         st.rerun()
     if not st.session_state.get("show_market_overview") and st.button("🌍 Marktüberblick", use_container_width=True):
         st.session_state["show_market_overview"] = True
+        st.session_state["show_etf_analyzer"] = False
+        st.session_state["show_portfolio"] = False
+        st.session_state["show_landing"] = False
+        st.session_state["show_stocks"] = False
+        st.session_state["show_compare"] = False
+        st.rerun()
+    if not st.session_state.get("show_compare") and st.button("⚖️ Aktien-Vergleich", use_container_width=True):
+        st.session_state["show_compare"] = True
+        st.session_state["show_market_overview"] = False
         st.session_state["show_etf_analyzer"] = False
         st.session_state["show_portfolio"] = False
         st.session_state["show_landing"] = False
@@ -7765,6 +7777,246 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
     else:
         st.markdown(f'<div class="metric-card" style="color:{_C_TEXT_MUTED}; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
 
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    st.stop()
+
+# ==================== VERGLEICH PAGE ====================
+elif st.session_state.get("show_compare"):
+    st.markdown("<div class='section-header'>⚖️ Aktien-Vergleich</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    # ── Ticker-Eingabe ─────────────────────────────────────────────────
+    _cmp_c1, _cmp_c2 = st.columns([3, 1])
+    with _cmp_c1:
+        _cmp_raw = st.text_input(
+            "Ticker eingeben (2–4, kommagetrennt)",
+            placeholder="z.B.  AAPL, MSFT, GOOGL, META",
+            key="cmp_tickers_input",
+        )
+    with _cmp_c2:
+        _cmp_btn = st.button("🔍 Vergleichen", use_container_width=True, type="primary", key="cmp_go")
+
+    _cmp_tickers = [t.strip().upper() for t in _cmp_raw.split(",") if t.strip()][:4]
+
+    if not _cmp_tickers or len(_cmp_tickers) < 2:
+        st.info("Gib mindestens 2 Ticker ein (z.B. AAPL, MSFT, NVDA).")
+        st.stop()
+
+    # ── Daten laden ────────────────────────────────────────────────────
+    _cmp_data = {}
+    with st.spinner("Lade Daten…"):
+        for _ct in _cmp_tickers:
+            try:
+                _ci, _ch, _ = load_yfinance(_ct)
+                _cmp_data[_ct] = {"info": _ci, "hist": _ch}
+            except Exception:
+                _cmp_data[_ct] = {"info": {}, "hist": pd.DataFrame()}
+
+    def _cv(info, key, default=None):
+        v = info.get(key)
+        return v if v is not None else default
+
+    # ── Normierte Performance Chart ────────────────────────────────────
+    st.markdown("<div class='section-header'>📈 Kursentwicklung (normiert, 1J)</div>", unsafe_allow_html=True)
+    _cmp_perf_fig = go.Figure()
+    _cmp_line_colors = ["#00e5ff", "#4caf50", "#ff9800", "#e91e63"]
+    _cmp_returns = {}
+    for _ci_idx, (_ct, _cd) in enumerate(_cmp_data.items()):
+        _ch = _cd["hist"]
+        if _ch is not None and not _ch.empty:
+            try:
+                _close = _ch["Close"].dropna()
+                if hasattr(_close.index, "tz") and _close.index.tz is not None:
+                    _close.index = _close.index.tz_convert(None)
+                _cutoff = pd.Timestamp.today() - pd.DateOffset(years=1)
+                _close = _close[_close.index >= _cutoff]
+                if len(_close) >= 2:
+                    _norm = (_close / _close.iloc[0] - 1) * 100
+                    _cmp_returns[_ct] = float(_norm.iloc[-1])
+                    _clr = _cmp_line_colors[_ci_idx % len(_cmp_line_colors)]
+                    _cmp_perf_fig.add_trace(go.Scatter(
+                        x=_norm.index, y=_norm.values,
+                        mode="lines", name=_ct,
+                        line=dict(color=_clr, width=2),
+                        hovertemplate=f"<b>{_ct}</b> %{{x|%d.%m.%Y}}: %{{y:+.1f}}%<extra></extra>",
+                    ))
+            except Exception:
+                pass
+    _cmp_perf_fig.add_hline(y=0, line_color=_C_BORDER, line_width=1, line_dash="dot")
+    _cmp_perf_fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=_C_TEXT_PRIMARY, size=11),
+        xaxis=dict(gridcolor=_C_BORDER, zeroline=False),
+        yaxis=dict(gridcolor=_C_BORDER, zeroline=False, ticksuffix="%"),
+        legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=_C_BORDER, borderwidth=1),
+        margin=dict(t=20, b=10, l=50, r=10),
+        height=300, hovermode="x unified",
+    )
+    st.plotly_chart(_cmp_perf_fig, use_container_width=True, config={"displayModeBar": False})
+
+    # Performance-Karten
+    if _cmp_returns:
+        _cr_cols = st.columns(len(_cmp_returns))
+        for (_ct, _ret), _col in zip(_cmp_returns.items(), _cr_cols):
+            _rc = _C_POSITIVE if _ret >= 0 else _C_NEGATIVE
+            _col.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+                f"padding:8px;text-align:center;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>{_ct}</div>"
+                f"<div style='color:{_rc};font-size:1.0rem;font-weight:700;'>{_ret:+.1f}%</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.62rem;'>1J Rendite</div>"
+                f"</div>", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # ── Kennzahlen-Tabelle ─────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📊 Kennzahlen-Vergleich</div>", unsafe_allow_html=True)
+
+    _CMP_METRICS = [
+        ("Unternehmen",         lambda i: i.get("longName") or i.get("shortName") or "—"),
+        ("Sektor",              lambda i: i.get("sector") or "—"),
+        ("Kurs",                lambda i: f"{i.get('currency','$')[:1]}{i.get('currentPrice') or i.get('regularMarketPrice') or 0:,.2f}"),
+        ("Marktkapitalisierung",lambda i: fmt_large(i.get("marketCap")) if i.get("marketCap") else "—"),
+        ("KGV (trailing)",      lambda i: f"{_cv(i,'trailingPE'):.1f}x" if _cv(i,'trailingPE') else "—"),
+        ("KGV (forward)",       lambda i: f"{_cv(i,'forwardPE'):.1f}x" if _cv(i,'forwardPE') else "—"),
+        ("KBV",                 lambda i: f"{_cv(i,'priceToBook'):.2f}x" if _cv(i,'priceToBook') else "—"),
+        ("KUV",                 lambda i: f"{_cv(i,'priceToSalesTrailing12Months'):.2f}x" if _cv(i,'priceToSalesTrailing12Months') else "—"),
+        ("EV/EBITDA",           lambda i: f"{_cv(i,'enterpriseToEbitda'):.1f}x" if _cv(i,'enterpriseToEbitda') else "—"),
+        ("Umsatz (ttm)",        lambda i: fmt_large(i.get("totalRevenue")) if i.get("totalRevenue") else "—"),
+        ("Umsatzwachstum",      lambda i: f"{_cv(i,'revenueGrowth',0)*100:+.1f}%" if _cv(i,'revenueGrowth') is not None else "—"),
+        ("Bruttomarge",         lambda i: f"{_cv(i,'grossMargins',0)*100:.1f}%" if _cv(i,'grossMargins') else "—"),
+        ("Operative Marge",     lambda i: f"{_cv(i,'operatingMargins',0)*100:.1f}%" if _cv(i,'operatingMargins') else "—"),
+        ("Nettomarge",          lambda i: f"{_cv(i,'profitMargins',0)*100:.1f}%" if _cv(i,'profitMargins') else "—"),
+        ("ROE",                 lambda i: f"{_cv(i,'returnOnEquity',0)*100:.1f}%" if _cv(i,'returnOnEquity') else "—"),
+        ("ROA",                 lambda i: f"{_cv(i,'returnOnAssets',0)*100:.1f}%" if _cv(i,'returnOnAssets') else "—"),
+        ("Div.-Rendite",        lambda i: f"{(_cv(i,'dividendYield') or 0)*100:.2f}%" if (_cv(i,'dividendYield') or 0) > 0 else "—"),
+        ("Beta",                lambda i: f"{_cv(i,'beta',1):.2f}" if _cv(i,'beta') else "—"),
+        ("52W Hoch",            lambda i: f"{i.get('currency','$')[:1]}{_cv(i,'fiftyTwoWeekHigh'):,.2f}" if _cv(i,'fiftyTwoWeekHigh') else "—"),
+        ("52W Tief",            lambda i: f"{i.get('currency','$')[:1]}{_cv(i,'fiftyTwoWeekLow'):,.2f}" if _cv(i,'fiftyTwoWeekLow') else "—"),
+        ("Analysten-Ziel",      lambda i: f"{i.get('currency','$')[:1]}{_cv(i,'targetMeanPrice'):,.2f}" if _cv(i,'targetMeanPrice') else "—"),
+        ("Analysten-Rating",    lambda i: i.get("recommendationKey","—").replace("strong_buy","Stark Kaufen").replace("buy","Kaufen").replace("hold","Halten").replace("sell","Verkaufen").replace("strong_sell","Stark Verkaufen")),
+    ]
+
+    _tbl_rows = []
+    for _label, _fn in _CMP_METRICS:
+        _row = {"Kennzahl": _label}
+        for _ct in _cmp_tickers:
+            try:
+                _row[_ct] = _fn(_cmp_data[_ct]["info"])
+            except Exception:
+                _row[_ct] = "—"
+        _tbl_rows.append(_row)
+
+    import pandas as _pd_cmp
+    _tbl_df = _pd_cmp.DataFrame(_tbl_rows).set_index("Kennzahl")
+    st.dataframe(_tbl_df, use_container_width=True, height=560)
+
+    # ── Radar-Chart (Qualitätsdimensionen) ────────────────────────────
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>🕸️ Qualitäts-Radar</div>", unsafe_allow_html=True)
+
+    def _cmp_score(info):
+        """Normiert 5 Qualitätsdimensionen auf 0–10."""
+        def _clamp(v, lo, hi): return max(0, min(10, (v - lo) / (hi - lo) * 10)) if hi > lo else 0
+        gm   = (info.get("grossMargins") or 0) * 100
+        om   = (info.get("operatingMargins") or 0) * 100
+        rg   = (info.get("revenueGrowth") or 0) * 100
+        roe  = (info.get("returnOnEquity") or 0) * 100
+        pe   = info.get("trailingPE") or info.get("forwardPE") or 50
+        dy   = (info.get("dividendYield") or 0) * 100
+        de   = (info.get("debtToEquity") or 0) / 100  # ratio
+        return {
+            "Bruttomarge":  _clamp(gm,  0, 80),
+            "Op. Marge":    _clamp(om, -10, 40),
+            "Wachstum":     _clamp(rg, -10, 40),
+            "Rentabilität": _clamp(roe,  0, 50),
+            "Bewertung":    _clamp(50 - pe, -100, 50),   # inverse: lower PE = better score
+            "Dividende":    _clamp(dy,  0,  6),
+        }
+
+    _radar_cats = ["Bruttomarge", "Op. Marge", "Wachstum", "Rentabilität", "Bewertung", "Dividende"]
+    _radar_fig = go.Figure()
+    for _ci_idx, _ct in enumerate(_cmp_tickers):
+        _sc = _cmp_score(_cmp_data[_ct]["info"])
+        _vals = [_sc[c] for c in _radar_cats] + [_sc[_radar_cats[0]]]  # close polygon
+        _clr = _cmp_line_colors[_ci_idx % len(_cmp_line_colors)]
+        _radar_fig.add_trace(go.Scatterpolar(
+            r=_vals,
+            theta=_radar_cats + [_radar_cats[0]],
+            fill="toself",
+            name=_ct,
+            line=dict(color=_clr, width=2),
+            fillcolor=f"rgba({int(_clr[1:3],16)},{int(_clr[3:5],16)},{int(_clr[5:7],16)},0.10)",
+            opacity=0.85,
+        ))
+    _radar_fig.update_layout(
+        polar=dict(
+            bgcolor="rgba(0,0,0,0)",
+            radialaxis=dict(visible=True, range=[0, 10], gridcolor=_C_BORDER,
+                            tickfont=dict(size=9, color=_C_TEXT_MUTED)),
+            angularaxis=dict(gridcolor=_C_BORDER, tickfont=dict(size=11, color=_C_TEXT_PRIMARY)),
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=_C_TEXT_PRIMARY),
+        legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=_C_BORDER, borderwidth=1),
+        margin=dict(t=40, b=20, l=60, r=60),
+        height=380,
+    )
+    st.plotly_chart(_radar_fig, use_container_width=True, config={"displayModeBar": False})
+    st.caption("Radar-Score: normierte Werte 0–10 auf Basis Bruttomarge, Op. Marge, Wachstum, ROE, Bewertung (inv. KGV), Dividendenrendite.")
+
+    # ── Balken-Vergleich für numerische KPIs ──────────────────────────
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>📉 Kennzahlen-Balken</div>", unsafe_allow_html=True)
+
+    _BAR_METRICS = [
+        ("KGV (trailing)",  lambda i: _cv(i, "trailingPE"),          "x",  True),
+        ("Bruttomarge %",   lambda i: (_cv(i,"grossMargins") or 0)*100, "%", False),
+        ("Op. Marge %",     lambda i: (_cv(i,"operatingMargins") or 0)*100, "%", False),
+        ("ROE %",           lambda i: (_cv(i,"returnOnEquity") or 0)*100, "%", False),
+        ("Umsatzwachstum %",lambda i: (_cv(i,"revenueGrowth") or 0)*100, "%", False),
+        ("Div.-Rendite %",  lambda i: (_cv(i,"dividendYield") or 0)*100,   "%", False),
+    ]
+
+    _bar_ncols = min(3, len(_BAR_METRICS))
+    for _bmi in range(0, len(_BAR_METRICS), _bar_ncols):
+        _bm_row = _BAR_METRICS[_bmi:_bmi + _bar_ncols]
+        _bm_cols = st.columns(len(_bm_row))
+        for (_bm_label, _bm_fn, _bm_sfx, _bm_inv), _bcol in zip(_bm_row, _bm_cols):
+            _bm_vals = []
+            _bm_names = []
+            for _ct in _cmp_tickers:
+                try:
+                    _v = _bm_fn(_cmp_data[_ct]["info"])
+                    if _v is not None:
+                        _bm_vals.append(float(_v))
+                        _bm_names.append(_ct)
+                except Exception:
+                    pass
+            if _bm_vals:
+                _best_idx = _bm_vals.index(min(_bm_vals) if _bm_inv else max(_bm_vals))
+                _bm_colors = [_C_POSITIVE if i == _best_idx else "#64b5f6"
+                              for i in range(len(_bm_vals))]
+                _bf = go.Figure(go.Bar(
+                    x=_bm_names, y=_bm_vals,
+                    marker_color=_bm_colors,
+                    text=[f"{v:.1f}{_bm_sfx}" for v in _bm_vals],
+                    textposition="outside",
+                    textfont=dict(size=10, color=_C_TEXT_PRIMARY),
+                ))
+                _bf.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font=dict(color=_C_TEXT_PRIMARY, size=10),
+                    title=dict(text=_bm_label, font=dict(size=11, color=_C_TEXT_MUTED)),
+                    xaxis=dict(gridcolor=_C_BORDER, zeroline=False),
+                    yaxis=dict(gridcolor=_C_BORDER, zeroline=False,
+                               ticksuffix=_bm_sfx if _bm_sfx == "%" else ""),
+                    margin=dict(t=35, b=10, l=40, r=10),
+                    height=200, showlegend=False,
+                )
+                _bcol.plotly_chart(_bf, use_container_width=True, config={"displayModeBar": False})
+
+    st.caption("Grün = bester Wert im Vergleich. Keine Anlageberatung.")
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     st.stop()
 
