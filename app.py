@@ -15662,7 +15662,7 @@ elif _at == 1:
     _gc3, _gc4 = st.columns(2)
     with _gc3:
         _show_chart(_bar_chart(a_rev, "Umsatz absolut", "#1565c0", "#1565c0",
-                               is_growth=False, value_fmt=lambda v: fmt_large(v)),
+                               is_growth=False, value_fmt=lambda v: fmt_large(v, _cur_sym)),
                     "revenue", "Umsatz absolut", "#1565c0", "#1565c0")
     with _gc4:
         if not a_eps.empty and len(a_eps) >= 2:
@@ -15671,24 +15671,25 @@ elif _at == 1:
                         "eps", "EPS (Diluted)", "#00e5ff", _C_NEGATIVE)
         elif not a_net.empty:
             _show_chart(_bar_chart(a_net, "Nettogewinn absolut", "#64b5f6", _C_NEGATIVE,
-                                   is_growth=False, value_fmt=lambda v: fmt_large(v)),
+                                   is_growth=False, value_fmt=lambda v: fmt_large(v, _cur_sym)),
                         "net", "Nettogewinn absolut", "#64b5f6", _C_NEGATIVE)
 
     _gc5, _gc6 = st.columns(2)
     with _gc5:
         _show_chart(_bar_chart(a_fcf, "Free Cash Flow absolut", "#26a69a", "#ef5350",
-                               is_growth=False, value_fmt=lambda v: fmt_large(v)),
+                               is_growth=False, value_fmt=lambda v: fmt_large(v, _cur_sym)),
                     "fcf", "Free Cash Flow absolut", "#26a69a", "#ef5350",
                     "Keine FCF-Daten verfügbar.")
     with _gc6:
         _show_chart(_bar_chart(a_fcf, "Free Cash Flow Wachstum YoY", _C_POSITIVE, _C_NEGATIVE),
-                    "fcf_growth", "FCF Wachstum YoY", _C_POSITIVE, _C_NEGATIVE)
+                    "fcf_growth", "FCF Wachstum YoY", _C_POSITIVE, _C_NEGATIVE,
+                    "Keine FCF-Wachstumsdaten verfügbar.")
 
     # EBITDA-Zeile
     _gc7, _gc8 = st.columns(2)
     with _gc7:
         _show_chart(_bar_chart(a_ebitda, "EBITDA absolut", "#7986cb", "#ef5350",
-                               is_growth=False, value_fmt=lambda v: fmt_large(v)),
+                               is_growth=False, value_fmt=lambda v: fmt_large(v, _cur_sym)),
                     "ebitda", "EBITDA absolut", "#7986cb", "#ef5350",
                     "Keine EBITDA-Daten verfügbar.")
     with _gc8:
@@ -15729,7 +15730,7 @@ elif _at == 1:
         if not entries:
             return
         latest = entries[-1]
-        segs = {k: v for k, v in latest["segments"].items() if v > 0}
+        segs = {k: v for k, v in latest["segments"].items() if v is not None and v > 0}
         if not segs:
             return
         # Merge segment names consistent across all years (use latest as reference)
@@ -15747,13 +15748,13 @@ elif _at == 1:
                 marker=dict(colors=clrs, line=dict(color="#0a1628", width=2)),
                 textinfo="label+percent", textfont=dict(size=11 if expanded else 10),
                 hovertemplate="<b>%{label}</b><br>%{customdata}<br>%{percent}<extra></extra>",
-                customdata=[fmt_large(segs[n]) for n in all_names],
+                customdata=[fmt_large(segs[n], _cur_sym) for n in all_names],
             ))
             fig_donut.update_layout(
                 template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
                 height=chart_h, margin=dict(l=0, r=0, t=10, b=0),
                 showlegend=True, legend=dict(font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
-                annotations=[dict(text=fmt_large(total), x=0.5, y=0.5,
+                annotations=[dict(text=fmt_large(total, _cur_sym), x=0.5, y=0.5,
                                   font=dict(size=14, color="#b0bec5"), showarrow=False)],
             )
             st.plotly_chart(fig_donut, use_container_width=True)
@@ -15794,6 +15795,7 @@ elif _at == 1:
             with _slc:
                 if st.button("✕ Schließen", key="close_seg_exp"):
                     st.session_state["seg_expanded"] = None
+                    st.rerun()
             with _stl:
                 st.markdown(
                     f"<h4 style='color:{_C_ACCENT};margin:4px 0;'>🥧 {_seg_label} — alle {len(_seg_all)} Jahre</h4>",
