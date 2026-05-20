@@ -15383,6 +15383,19 @@ if _at == 0:
         </div>
         """, unsafe_allow_html=True)
 
+    # ── Bewertungs-Multiples ──────────────────────────────────────────
+    st.markdown("<div class='section-header'>📊 Bewertung</div>", unsafe_allow_html=True)
+    _kgv_c1, _kgv_c2, _kgv_c3 = st.columns(3)
+    with _kgv_c1:
+        st.markdown(mini_card("KGV (TTM)", trailing_pe, 15, 25, ".1f", "x", inverse=True,
+                              tooltip="Kurs-Gewinn-Verhältnis (letzte 12 Monate). <15x günstig, 15–25x fair, >25x teuer."), unsafe_allow_html=True)
+    with _kgv_c2:
+        st.markdown(mini_card("Forward KGV", forward_pe, 15, 20, ".1f", "x", inverse=True,
+                              tooltip="Geschätztes KGV auf Basis Analysten-EPS-Prognose. Zeigt Markterwartung für kommendes Jahr."), unsafe_allow_html=True)
+    with _kgv_c3:
+        st.markdown(mini_card("PEG Ratio", peg_ratio, 1, 2, ".2f", "x", inverse=True,
+                              tooltip="Price/Earnings to Growth. <1 = günstig relativ zum Wachstum, >2 = teuer."), unsafe_allow_html=True)
+
     st.markdown("<div class='section-header'>Margen</div>", unsafe_allow_html=True)
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
@@ -15463,11 +15476,10 @@ if _at == 0:
                     f'<div style="margin-top:6px;"><span class="metric-badge-gray">–</span></div>'
                     f'</div>', unsafe_allow_html=True)
     else:
-        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        _dy_c1, _dy_c2 = st.columns([1, 4])
-        with _dy_c1:
-            st.markdown(mini_card("Dividend Yield", None, 3, 1, ".2f", "%",
-                                  tooltip="Keine Dividende bekannt."), unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.80rem;padding:2px 0 10px 0;'>"
+            f"💡 Keine Dividendenausschüttung bekannt.</div>",
+            unsafe_allow_html=True)
 
     # ── Branchenvergleich ──────────────────────────────────────────────
     st.markdown("<div class='section-header'>🌍 Branchenvergleich</div>", unsafe_allow_html=True)
@@ -15484,13 +15496,14 @@ if _at == 0:
         _mnames  = list(_bench.keys())
         _svals   = [_stock_vals.get(m) for m in _mnames]
         _bvals   = [_bench[m] for m in _mnames]
+        _BH, _BL = 1.10, 0.85
         _colors  = []
         for _sv, _bv in zip(_svals, _bvals):
             if _sv is None:
                 _colors.append("rgba(100,100,100,0.5)")
-            elif _sv >= _bv * 1.1:
+            elif _sv >= _bv * _BH:
                 _colors.append(_C_POSITIVE)
-            elif _sv >= _bv * 0.85:
+            elif _sv >= _bv * _BL:
                 _colors.append(_C_NEUTRAL)
             else:
                 _colors.append(_C_NEGATIVE)
@@ -15499,10 +15512,10 @@ if _at == 0:
         _fig_b.add_trace(go.Bar(
             name=ticker,
             y=_mnames,
-            x=[v if v is not None else 0 for v in _svals],
+            x=_svals,
             orientation="h",
             marker_color=_colors,
-            text=[f"{v:.1f}%" if v is not None else "N/A" for v in _svals],
+            text=[f"{v:.1f}%" if v is not None else "–" for v in _svals],
             textposition="outside",
             textfont=dict(size=11),
         ))
@@ -15533,8 +15546,8 @@ if _at == 0:
         )
         st.plotly_chart(_fig_b, use_container_width=True)
 
-        _above = [m for m, sv, bv in zip(_mnames, _svals, _bvals) if sv is not None and sv >= bv * 1.1]
-        _below = [m for m, sv, bv in zip(_mnames, _svals, _bvals) if sv is not None and sv < bv * 0.85]
+        _above = [m for m, sv, bv in zip(_mnames, _svals, _bvals) if sv is not None and sv >= bv * _BH]
+        _below = [m for m, sv, bv in zip(_mnames, _svals, _bvals) if sv is not None and sv < bv * _BL]
         if _above:
             st.markdown(f'<div class="insight-box">✅ <strong>Über Sektordurchschnitt ({sector}):</strong> {", ".join(_above)}</div>', unsafe_allow_html=True)
         if _below:
