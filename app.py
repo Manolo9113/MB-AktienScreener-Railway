@@ -18414,7 +18414,7 @@ elif _at == 5:
             {"<br>".join(vigilance)}
         </div>""", unsafe_allow_html=True)
 
-        st.markdown("""
+        st.markdown(f"""
         <div style="color:#37474f; font-size:0.73rem; margin-top:12px; padding:10px 14px;
                     background:{_C_CARD_BG}; border-radius:8px; border-left:3px solid #1e3a5f;">
             ℹ️ <em>Der Piotroski F-Score wurde 2000 von Joseph Piotroski (Stanford) entwickelt.
@@ -18464,7 +18464,7 @@ with st.expander("🔍 Debug: Rohdaten"):
         st.caption("FMP Metrics")
         st.json(fmp_metrics)
 
-st.markdown("""
+st.markdown(f"""
 <div style="margin-top:60px; border-top:1px solid #1e2d45; padding:28px 0 16px 0;">
     <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:16px;">
         <div>
