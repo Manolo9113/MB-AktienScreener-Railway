@@ -16516,7 +16516,7 @@ elif _at == 3:
 
     c5, c6 = st.columns(2)
     with c5:
-        ncp_str = f"${net_cash_per_share:.2f}" if net_cash_per_share is not None else "N/A"
+        ncp_str = f"{_cur_sym}{net_cash_per_share:.2f}" if net_cash_per_share is not None else "N/A"
         ncp_color = _C_POSITIVE if net_cash_per_share and net_cash_per_share > 0 else _C_NEGATIVE
         ncp_badge = f'<span style="color:{ncp_color}; font-weight:700;">{ncp_str}</span>'
         st.markdown(f"""
@@ -16580,13 +16580,13 @@ elif _at == 3:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">Trailing EPS</div>
-            <div class="metric-value">${safe_float(trailing_eps)}</div>
+            <div class="metric-value">{_cur_sym}{safe_float(trailing_eps)}</div>
         </div>""", unsafe_allow_html=True)
     with c2:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">Forward EPS</div>
-            <div class="metric-value">${safe_float(forward_eps)}</div>
+            <div class="metric-value">{_cur_sym}{safe_float(forward_eps)}</div>
         </div>""", unsafe_allow_html=True)
     with c3:
         eps_growth = ((forward_eps - trailing_eps) / abs(trailing_eps) * 100) if trailing_eps and forward_eps else None
@@ -16626,7 +16626,7 @@ elif _at == 3:
             _clr = _C_POSITIVE if _v == "Beat" else _C_NEGATIVE if _v == "Miss" else _C_NEUTRAL
             _bg  = "rgba(0,230,118,0.08)" if _v == "Beat" else "rgba(255,82,82,0.08)" if _v == "Miss" else "rgba(255,214,0,0.08)"
             _icon = "✅" if _v == "Beat" else "❌" if _v == "Miss" else "➖"
-            _surp_str = f"{_es['surp_pct']:+.1f}%"
+            _surp_str = f"{_es['surp_pct']:+.1f}%" if _es['surp_pct'] is not None else "N/A"
             _col.markdown(f"""
             <div style='background:{_bg};border:1px solid {_clr}33;border-top:3px solid {_clr};
                  border-radius:12px;padding:12px 14px;text-align:center;'>
@@ -16634,14 +16634,14 @@ elif _at == 3:
               <div style='color:{_clr};font-size:1.1rem;font-weight:800;'>{_icon} {_v}</div>
               <div style='color:{_C_TEXT_PRIMARY};font-size:0.88rem;font-weight:700;margin:4px 0;'>{_surp_str}</div>
               <div style='color:{_C_TEXT_MUTED};font-size:0.7rem;'>
-                {'Est: $' + f"{_es['estimate']:.2f} · " if _es['estimate'] is not None else ''}Act: ${_es["actual"]:.2f}
+                {f"Est: {_cur_sym}{_es['estimate']:.2f} · " if _es['estimate'] is not None else ''}{f"Act: {_cur_sym}{_es['actual']:.2f}" if _es['actual'] is not None else 'Act: N/A'}
               </div>
             </div>""", unsafe_allow_html=True)
 
         # Surprise % bar chart (all 8 quarters)
         if len(earnings_surprises) > 1:
-            _dates  = [e["date"]     for e in reversed(earnings_surprises)]
-            _surps  = [e["surp_pct"] for e in reversed(earnings_surprises)]
+            _dates  = [e["date"] for e in reversed(earnings_surprises)]
+            _surps  = [e["surp_pct"] if e["surp_pct"] is not None else 0.0 for e in reversed(earnings_surprises)]
             _colors = [_C_POSITIVE if s > 2 else _C_NEGATIVE if s < -2 else _C_NEUTRAL for s in _surps]
             _fig_es = go.Figure(go.Bar(
                 x=_dates, y=_surps,
@@ -16668,9 +16668,9 @@ elif _at == 3:
         _trail_eps = yf_info.get("trailingEps")
         _eps_hint = ""
         if _trail_eps:
-            _eps_hint += f"&nbsp;·&nbsp;Trailing EPS: <strong>${_trail_eps:.2f}</strong>"
+            _eps_hint += f"&nbsp;·&nbsp;Trailing EPS: <strong>{_cur_sym}{_trail_eps:.2f}</strong>"
         if _fwd_eps:
-            _eps_hint += f"&nbsp;·&nbsp;Forward EPS (Schätzung): <strong>${_fwd_eps:.2f}</strong>"
+            _eps_hint += f"&nbsp;·&nbsp;Forward EPS (Schätzung): <strong>{_cur_sym}{_fwd_eps:.2f}</strong>"
         _no_fmp_hint = " &nbsp;·&nbsp; <em>Tipp: FMP_API_KEY in Railway setzen für zuverlässige Daten.</em>" if not FMP_API_KEY else ""
         st.markdown(
             f'<div class="insight-box" style="color:#78909c;">'
@@ -16688,9 +16688,9 @@ elif _at == 3:
             horizontal_spacing=0.08,
         )
         def _qfmt(v):
-            if abs(v) >= 1e9: return f"${v/1e9:.1f}B"
-            if abs(v) >= 1e6: return f"${v/1e6:.0f}M"
-            return f"${v:.0f}"
+            if abs(v) >= 1e9: return f"{_cur_sym}{v/1e9:.1f}B"
+            if abs(v) >= 1e6: return f"{_cur_sym}{v/1e6:.0f}M"
+            return f"{_cur_sym}{v:.0f}"
         if not q_rev.empty:
             _labels = [d.strftime("Q%q '%y") if hasattr(d, 'strftime') else str(d)[:7]
                        for d in q_rev.index]
@@ -16700,7 +16700,7 @@ elif _at == 3:
             _qfig.add_trace(go.Bar(
                 x=_labels, y=_rev_b,
                 marker_color=_rev_cl, name="Umsatz",
-                text=[f"${v:.1f}B" for v in _rev_b],
+                text=[f"{_cur_sym}{v:.1f}B" for v in _rev_b],
                 textposition="outside", textfont=dict(size=9, color="#90a4ae"),
             ), row=1, col=1)
         if not q_net.empty:
@@ -16711,7 +16711,7 @@ elif _at == 3:
             _qfig.add_trace(go.Bar(
                 x=_labels2, y=_net_b,
                 marker_color=_net_cl, name="Nettogewinn",
-                text=[f"${v:.2f}B" for v in _net_b],
+                text=[f"{_cur_sym}{v:.2f}B" for v in _net_b],
                 textposition="outside", textfont=dict(size=9, color="#90a4ae"),
             ), row=1, col=2)
         _qfig.update_layout(
@@ -16765,9 +16765,9 @@ elif _at == 3:
         if _fig_capex:
             st.plotly_chart(_fig_capex, use_container_width=True)
             st.markdown(
-                '<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:-8px;">'
-                '⬆ Hohe CapEx = starke Investitionen (Hyperscaler, Industrie) · '
-                'Als % des Umsatzes oder FCF einordnen</div>',
+                f'<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:-8px;">'
+                f'⬆ Hohe CapEx = starke Investitionen (Hyperscaler, Industrie) · '
+                f'Als % des Umsatzes oder FCF einordnen</div>',
                 unsafe_allow_html=True)
         else:
             st.markdown(f'<div class="insight-box" style="color:{_C_TEXT_MUTED};">Keine CapEx-Daten verfügbar</div>',
@@ -16778,9 +16778,9 @@ elif _at == 3:
         if _fig_gw:
             st.plotly_chart(_fig_gw, use_container_width=True)
             st.markdown(
-                '<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:-8px;">'
-                '⚠ Stark steigender Goodwill = viele Akquisitionen · '
-                'Abschreibungsrisiko (Impairment) beachten</div>',
+                f'<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:-8px;">'
+                f'⚠ Stark steigender Goodwill = viele Akquisitionen · '
+                f'Abschreibungsrisiko (Impairment) beachten</div>',
                 unsafe_allow_html=True)
         else:
             st.markdown(f'<div class="insight-box" style="color:{_C_TEXT_MUTED};">Keine Goodwill-Daten verfügbar</div>',
@@ -16812,9 +16812,9 @@ elif _at == 3:
                 )
                 st.plotly_chart(_fig_cp, use_container_width=True)
                 st.markdown(
-                    '<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:-8px;">'
-                    'Benchmark: Hyperscaler (AWS/Azure/GCP) >10% · Industrie 5–10% · '
-                    'Software/Asset-light &lt;3%</div>',
+                    f'<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:-8px;">'
+                    f'Benchmark: Hyperscaler (AWS/Azure/GCP) >10% · Industrie 5–10% · '
+                    f'Software/Asset-light &lt;3%</div>',
                     unsafe_allow_html=True)
 
     # ── Verschuldung & Cash-Position ──────────────────────────────────────
@@ -16841,7 +16841,7 @@ elif _at == 3:
                     _fig_dc.add_trace(go.Bar(
                         name="Gesamtschulden", x=_labels_dc, y=_dv,
                         marker_color="#ef5350",
-                        text=[fmt_large(v) if v else "" for v in _dv],
+                        text=[fmt_large(v, _cur_sym) if v else "" for v in _dv],
                         textposition="outside", textfont=dict(size=9, color="#90a4ae"),
                     ))
                 if _has_cash:
@@ -16849,7 +16849,7 @@ elif _at == 3:
                     _fig_dc.add_trace(go.Bar(
                         name="Cash & Äquivalente", x=_labels_dc, y=_cv,
                         marker_color=_C_POSITIVE,
-                        text=[fmt_large(v) if v else "" for v in _cv],
+                        text=[fmt_large(v, _cur_sym) if v else "" for v in _cv],
                         textposition="outside", textfont=dict(size=9, color="#90a4ae"),
                     ))
                 _fig_dc.update_layout(
@@ -16866,9 +16866,9 @@ elif _at == 3:
                 )
                 st.plotly_chart(_fig_dc, use_container_width=True)
                 st.markdown(
-                    '<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:-8px;">'
-                    '🔴 Hohe Schulden bei niedrigem Cash = Refinanzierungsrisiko · '
-                    '🟢 Cash > Schulden = Nettocash-Position</div>',
+                    f'<div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:-8px;">'
+                    f'🔴 Hohe Schulden bei niedrigem Cash = Refinanzierungsrisiko · '
+                    f'🟢 Cash > Schulden = Nettocash-Position</div>',
                     unsafe_allow_html=True)
 
         # ── Rechte Spalte: Nettoverschuldung + Debt/EBITDA ──
@@ -16883,7 +16883,7 @@ elif _at == 3:
                     _fig_nd = go.Figure(go.Bar(
                         x=_labels_nd, y=_net_debt.values,
                         marker_color=_colors_nd,
-                        text=[fmt_large(v) for v in _net_debt.values],
+                        text=[fmt_large(v, _cur_sym) for v in _net_debt.values],
                         textposition="outside", textfont=dict(size=9, color="#90a4ae"),
                     ))
                     _fig_nd.add_hline(y=0, line_color="#546e7a", line_width=1)
