@@ -4844,6 +4844,8 @@ if "show_compare" not in st.session_state:
     st.session_state["show_compare"] = False
 if "show_screener" not in st.session_state:
     st.session_state["show_screener"] = False
+if "show_wissen" not in st.session_state:
+    st.session_state["show_wissen"] = False
 if "etf_ticker_input" not in st.session_state:
     st.session_state["etf_ticker_input"] = ""
 if "portfolio_df" not in st.session_state:
@@ -4874,6 +4876,7 @@ def _go_to_ticker(t):
     st.session_state["show_market_overview"] = False
     st.session_state["show_compare"] = False
     st.session_state["show_screener"] = False
+    st.session_state["show_wissen"] = False
     st.session_state["search_input"] = t
     st.session_state["search_msg"] = ""
     st.session_state["active_tab"] = 0
@@ -6198,32 +6201,32 @@ with st.sidebar:
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     if not st.session_state["show_landing"] and st.button("🏠 Startseite", use_container_width=True):
-        for _k in ("show_portfolio","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener"):
+        for _k in ("show_portfolio","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen"):
             st.session_state[_k] = False
         st.session_state["show_landing"] = True
         st.rerun()
     if not st.session_state.get("show_stocks") and st.button("💡 Aktienideen", use_container_width=True):
-        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener"):
+        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen"):
             st.session_state[_k] = False
         st.session_state["show_stocks"] = True
         st.rerun()
     if st.button("📁 Mein Portfolio", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener"):
+        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen"):
             st.session_state[_k] = False
         st.session_state["show_portfolio"] = True
         st.rerun()
     if st.button("🔎 ETF-Analyzer", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener","show_wissen"):
             st.session_state[_k] = False
         st.session_state["show_etf_analyzer"] = True
         st.rerun()
     if not st.session_state.get("show_market_overview") and st.button("🌍 Marktüberblick", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener","show_wissen"):
             st.session_state[_k] = False
         st.session_state["show_market_overview"] = True
         st.rerun()
     if not st.session_state.get("show_compare") and st.button("⚖️ Aktien-Vergleich", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener","show_wissen"):
             st.session_state[_k] = False
         st.session_state["show_compare"] = True
         st.rerun()
@@ -6231,6 +6234,11 @@ with st.sidebar:
         for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare"):
             st.session_state[_k] = False
         st.session_state["show_screener"] = True
+        st.rerun()
+    if not st.session_state.get("show_wissen") and st.button("📚 Wissenswertes", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener"):
+            st.session_state[_k] = False
+        st.session_state["show_wissen"] = True
         st.rerun()
 
     st.markdown("<div class='section-header'>⚙️ Einstellungen</div>", unsafe_allow_html=True)
@@ -6377,7 +6385,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
     # ── Schnellnavigation ───────────────────────────────────────────
     st.markdown("<div class='section-header'>⚡ Zur Übersicht navigieren</div>", unsafe_allow_html=True)
     _nav_c1, _nav_c2 = st.columns(2)
-    _all_pages = ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener")
+    _all_pages = ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen")
     with _nav_c1:
         if st.button("🌍 Marktüberblick", use_container_width=True, type="primary", key="land_nav_markt"):
             for _k in _all_pages: st.session_state[_k] = False
@@ -8221,6 +8229,435 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
         st.markdown(f'<div class="metric-card" style="color:{_C_TEXT_MUTED}; text-align:center;">Keine Nachrichten verfügbar</div>', unsafe_allow_html=True)
 
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    st.stop()
+
+
+# ==================== WISSENSWERTES PAGE ====================
+elif st.session_state.get("show_wissen"):
+    st.markdown("<div class='section-header'>📚 Wissenswertes — Investieren & Finanzmärkte</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='color:{_C_TEXT_MUTED};font-size:0.82rem;margin-bottom:18px;'>"
+        f"Kompaktes Finanzwissen — von Kennzahlen über wissenschaftliche Grundlagen bis zu Steuern. "
+        f"Kein Ersatz für professionelle Beratung.</div>",
+        unsafe_allow_html=True,
+    )
+
+    def _w_card(title, body, color=None):
+        c = color or _C_BORDER
+        return (f"<div style='background:{_C_CARD_BG};border:1px solid {c}44;"
+                f"border-left:3px solid {c};border-radius:10px;"
+                f"padding:11px 14px;margin-bottom:8px;'>"
+                f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:700;margin-bottom:4px;'>{title}</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.6;'>{body}</div>"
+                f"</div>")
+
+    def _w_metric(name, formula, good, bad, note):
+        return (f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-radius:8px;padding:10px 12px;margin-bottom:6px;'>"
+                f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:700;'>{name}</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.73rem;margin-top:3px;'><b>Formel:</b> {formula}</div>"
+                f"<div style='margin-top:5px;display:flex;gap:8px;flex-wrap:wrap;'>"
+                f"<span style='background:rgba(76,175,80,0.15);color:{_C_POSITIVE};border-radius:4px;padding:2px 7px;font-size:0.70rem;'>✓ {good}</span>"
+                f"<span style='background:rgba(244,67,54,0.12);color:{_C_NEGATIVE};border-radius:4px;padding:2px 7px;font-size:0.70rem;'>✗ {bad}</span>"
+                f"</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.71rem;margin-top:4px;font-style:italic;'>{note}</div>"
+                f"</div>")
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 1. KENNZAHLEN-GLOSSAR
+    # ─────────────────────────────────────────────────────────────────────
+    with st.expander("📐 Kennzahlen-Glossar", expanded=True):
+        st.markdown("<div style='color:#64b5f6;font-size:0.75rem;font-weight:700;margin-bottom:8px;'>BEWERTUNG</div>", unsafe_allow_html=True)
+        _kz1, _kz2 = st.columns(2)
+        with _kz1:
+            st.markdown(_w_metric("KGV (Kurs-Gewinn-Verhältnis)", "Kurs ÷ Gewinn/Aktie",
+                "15–20 = historischer Marktschnitt", ">40 ohne hohes Wachstum",
+                "Vergleich nur sinnvoll innerhalb derselben Branche. Growth-Aktien legal teurer."), unsafe_allow_html=True)
+            st.markdown(_w_metric("EV/EBITDA", "Enterprise Value ÷ EBITDA",
+                "<12 = günstig, branchenunabhängig", ">25 ohne Wachstumsprämie",
+                "Berücksichtigt Schulden — besser als KGV für kapitalintensive Firmen."), unsafe_allow_html=True)
+            st.markdown(_w_metric("KBV (Kurs-Buchwert-Verhältnis)", "Kurs ÷ Buchwert/Aktie",
+                "<1 = unter Substanzwert", ">10 ohne hohe Renditen",
+                "Wenig aussagekräftig bei Asset-Light Firmen (Software, Pharma)."), unsafe_allow_html=True)
+        with _kz2:
+            st.markdown(_w_metric("PEG-Ratio", "KGV ÷ Gewinnwachstum (%)",
+                "<1 = günstig für Wachstum", ">2 = teuer relativ zum Wachstum",
+                "Verbindet Bewertung mit Wachstum — fair für Growth-Aktien."), unsafe_allow_html=True)
+            st.markdown(_w_metric("FCF-Yield (Free Cashflow-Rendite)", "Freier Cashflow ÷ Marktkapitalisierung",
+                "≥5% = sehr attraktiv", "<0% = verbrennt Cash",
+                "Zeigt echte Cash-Generierung — unabhängig von Bilanz-Tricks."), unsafe_allow_html=True)
+            st.markdown(_w_metric("Dividendenrendite", "Jährliche Dividende ÷ Aktienkurs",
+                "2–4% mit nachhaltigem Payout", ">8% kann auf Kursschwäche hindeuten",
+                "Payout Ratio prüfen: <60% gilt als nachhaltig."), unsafe_allow_html=True)
+
+        st.markdown("<div style='color:#64b5f6;font-size:0.75rem;font-weight:700;margin:12px 0 8px 0;'>RENTABILITÄT & QUALITÄT</div>", unsafe_allow_html=True)
+        _kz3, _kz4 = st.columns(2)
+        with _kz3:
+            st.markdown(_w_metric("ROE (Return on Equity)", "Nettogewinn ÷ Eigenkapital",
+                "≥15% exzellent", "Negativ = Verluste; hohe Schulden blähen ROE auf",
+                "Warren Buffett sucht >15% über mehrere Jahre."), unsafe_allow_html=True)
+            st.markdown(_w_metric("ROIC (Return on Invested Capital)", "EBIT(1-t) ÷ investiertes Kapital",
+                "ROIC > WACC = Werterzeugung", "ROIC < WACC = Kapitalvernichtung",
+                "Der wichtigste Renditekeindikator. Zeigt ob ein Unternehmen Mehrwert schafft."), unsafe_allow_html=True)
+            st.markdown(_w_metric("Bruttomarge", "(Umsatz − COGS) ÷ Umsatz",
+                "≥60% = Pricing Power (Software)", "<20% = Commodity-Geschäft",
+                "Stabile oder steigende Bruttomargen = Burggraben-Indikator."), unsafe_allow_html=True)
+        with _kz4:
+            st.markdown(_w_metric("Op.-Marge (EBIT-Marge)", "EBIT ÷ Umsatz",
+                "≥20% = sehr profitabel", "<5% = anfällig für Konjunktur",
+                "Zeigt operative Effizienz vor Zinsen und Steuern."), unsafe_allow_html=True)
+            st.markdown(_w_metric("Rule of 40 (SaaS)", "Umsatzwachstum % + FCF-Marge %",
+                "≥40 = gesundes SaaS-Unternehmen", "<20 = Wachstum kauft sich zu teuer",
+                "Standard-Benchmark für Software/SaaS-Unternehmen."), unsafe_allow_html=True)
+            st.markdown(_w_metric("Beta", "Korrelation mit Markt (S&P 500)",
+                "0.5–0.8 = defensiv", ">1.5 = hochvolatil",
+                "β=1 = marktkonform. Sinkt im Crash tiefer als β<1-Werte."), unsafe_allow_html=True)
+
+        st.markdown("<div style='color:#64b5f6;font-size:0.75rem;font-weight:700;margin:12px 0 8px 0;'>SCHULDEN & SICHERHEIT</div>", unsafe_allow_html=True)
+        _kz5, _kz6 = st.columns(2)
+        with _kz5:
+            st.markdown(_w_metric("Debt/Equity", "Gesamtschulden ÷ Eigenkapital",
+                "<0.5 = konservativ finanziert", ">2 = hohes Zinsrisiko",
+                "Kontext wichtig: Versorger/REITs strukturell höher verschuldet."), unsafe_allow_html=True)
+        with _kz6:
+            st.markdown(_w_metric("Piotroski F-Score (0–9)", "9 binäre Kriterien aus Bilanz/GuV/CF",
+                "≥7 = starke Bilanzqualität", "≤2 = Schwächezeichen",
+                "Akademisch validiertes Signal für Bilanzgesundheit."), unsafe_allow_html=True)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 2. WISSENSCHAFTLICHE GRUNDLAGEN
+    # ─────────────────────────────────────────────────────────────────────
+    with st.expander("🔬 Wissenschaftliche Grundlagen des Investierens"):
+        _ws1, _ws2 = st.columns(2)
+        with _ws1:
+            st.markdown(_w_card("Effizienzmarkthypothese (EMH) — Fama 1970",
+                "Märkte verarbeiten alle öffentlichen Informationen sofort im Kurs. "
+                "<b>Schwache Form</b>: Kursmuster nicht vorhersagbar. "
+                "<b>Halbstarke Form</b>: Fundamentalanalyse schlägt den Markt nicht systematisch. "
+                "<b>Starke Form</b>: Auch Insiderwissen ist bereits eingepreist. "
+                "→ Empirisch: Die meisten aktiven Fonds schlagen ihre Benchmark nicht.",
+                "#4fc3f7"), unsafe_allow_html=True)
+            st.markdown(_w_card("Fama-French Faktormodell",
+                "Erweiterung des CAPM: Renditen werden nicht nur durch Marktbeta erklärt, "
+                "sondern durch 5 Faktoren: <b>Markt (MKT), Größe (SMB), Value (HML), "
+                "Profitabilität (RMW), Investment (CMA)</b>. "
+                "Momentum (Carhart) als 6. Faktor. "
+                "→ Basis für alle modernen Factor-ETFs (Value, Quality, Momentum …).",
+                "#ab47bc"), unsafe_allow_html=True)
+            st.markdown(_w_card("Warum Langfrist-Investoren gewinnen",
+                "S&P 500: historisch +10,5% p.a. (nominal) seit 1926. "
+                "Kein einziger 20-Jahres-Zeitraum war negativ. "
+                "70% der Jahresrendite entsteht an den 10 besten Handelstagen/Jahr — "
+                "wer diese verpasst (durch Market Timing), verliert die halbe Rendite.",
+                "#4caf50"), unsafe_allow_html=True)
+        with _ws2:
+            st.markdown(_w_card("CAPM — Capital Asset Pricing Model",
+                "Renditeerwartung = Risikofreier Zins + β × Marktrisikoprämie. "
+                "Grundlage: Nur systematisches Risiko (Beta) wird vergütet — "
+                "diversifizierbares Risiko nicht. "
+                "→ Kernaussage: Diversifikation eliminiert unnötiges Risiko kostenlos.",
+                "#ff9800"), unsafe_allow_html=True)
+            st.markdown(_w_card("Evidence-Based Investing",
+                "Investitionsentscheidungen basieren auf peer-reviewter Forschung, nicht Meinungen. "
+                "Kernprinzipien: <b>1.</b> Breite Diversifikation. <b>2.</b> Kosten minimieren. "
+                "<b>3.</b> Faktorprämien gezielt ernten (Value, Quality, Low Vol). "
+                "<b>4.</b> Behavioral Biases vermeiden. <b>5.</b> Rebalancing. "
+                "→ Vertreter: Vanguard, DFA, Dimensional Fund Advisors.",
+                "#64b5f6"), unsafe_allow_html=True)
+            st.markdown(_w_card("Aktiv vs. Passiv — Die Datenlage",
+                "SPIVA-Studie (S&P): Über 15 Jahre schlagen <b>>90% der aktiven Fonds</b> "
+                "ihre Benchmark nicht. Hauptgrund: Kosten (TER 1–2% vs. ETF 0,07–0,2%). "
+                "Ausnahme: Nischenmärkte (Small Cap EM) wo Informationsineffizienz größer ist.",
+                "#ef5350"), unsafe_allow_html=True)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 3. WAS MACHT EIN GROSSARTIGES UNTERNEHMEN?
+    # ─────────────────────────────────────────────────────────────────────
+    with st.expander("🏆 Was macht ein großartiges Unternehmen?"):
+        st.markdown(_w_card("Das Burggraben-Konzept (Economic Moat — Warren Buffett)",
+            "Ein Burggraben ist ein dauerhafter Wettbewerbsvorteil, der Konkurrenten fernhält. "
+            "<b>Typen:</b> Netzwerkeffekte (mehr Nutzer = mehr Wert, z.B. Visa, Meta) · "
+            "Wechselkosten (hohe Kosten beim Wechsel, z.B. SAP, Salesforce) · "
+            "Kostenvorteile (strukturell günstiger, z.B. Amazon, Costco) · "
+            "Immaterielle Assets (Marken, Patente, z.B. LVMH, Novo Nordisk) · "
+            "Effizienter Maßstab (natürliches Monopol, z.B. Eisenbahn, Flughäfen).",
+            "#ff9800"), unsafe_allow_html=True)
+
+        _gu1, _gu2, _gu3 = st.columns(3)
+        with _gu1:
+            st.markdown(_w_card("Pricing Power",
+                "Kann das Unternehmen Preise erhöhen ohne Kunden zu verlieren? "
+                "Beste Prüfung: Wurden Margen in Inflationsphasen gehalten? "
+                "Beispiele: Apple, Hermès, Coca-Cola.",
+                "#4caf50"), unsafe_allow_html=True)
+        with _gu2:
+            st.markdown(_w_card("Kapitalallokation",
+                "Wie setzt das Management freien Cashflow ein? "
+                "Rangfolge: Reinvestition mit hohem ROIC > Dividenden/Buybacks > Akquisitionen. "
+                "Regel: Nur reinvestieren wenn ROIC > WACC.",
+                "#64b5f6"), unsafe_allow_html=True)
+        with _gu3:
+            st.markdown(_w_card("Wiederkehrende Umsätze",
+                "Subscription-Modelle, Verbrauchsmaterialien oder regulatorische Pflichten "
+                "erzeugen vorhersehbare Cashflows. "
+                "Bewertungsprämie gerechtfertigt (geringeres Risiko).",
+                "#ab47bc"), unsafe_allow_html=True)
+
+        st.markdown(_w_card("Buffetts ideales Unternehmen — 4 Kriterien",
+            "<b>1. Verständliches Geschäftsmodell</b> (Circle of Competence) · "
+            "<b>2. Dauerhafte Wettbewerbsvorteile</b> (Burggraben) · "
+            "<b>3. Kompetentes, ehrliches Management</b> (Kapitalallokation, Insider-Ownership) · "
+            "<b>4. Faire Bewertung</b> (lieber gutes Unternehmen zu fairem Preis als schlechtes zu günstigem). "
+            "→ 'It's far better to buy a wonderful company at a fair price than a fair company at a wonderful price.'",
+            "#ffc107"), unsafe_allow_html=True)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 4. ETFs VS. EINZELAKTIEN
+    # ─────────────────────────────────────────────────────────────────────
+    with st.expander("⚖️ ETFs vs. Einzelaktien"):
+        _etf1, _etf2 = st.columns(2)
+        with _etf1:
+            st.markdown(f"<div style='color:{_C_POSITIVE};font-size:0.80rem;font-weight:700;margin-bottom:8px;'>📦 ETFs — Vorteile</div>", unsafe_allow_html=True)
+            for _pro in [
+                "Sofortige Diversifikation über hunderte Unternehmen",
+                "Minimaler Zeitaufwand — keine Unternehmensanalyse nötig",
+                "Geringe Kosten (TER 0,07–0,20% p.a.)",
+                "Wissenschaftlich belegt: schlagen >90% der aktiven Fonds",
+                "Psychologisch einfacher — kein Einzeltitel-Stress",
+                "Ideal als Kerninvestment (Core): MSCI World + EM ≈ Weltportfolio",
+            ]:
+                st.markdown(f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;padding:3px 0;'>✓ {_pro}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:{_C_NEGATIVE};font-size:0.80rem;font-weight:700;margin:10px 0 8px 0;'>📦 ETFs — Nachteile</div>", unsafe_allow_html=True)
+            for _con in [
+                "Immer Marktrendite minus Kosten — kein Alpha möglich",
+                "Konzentration in Megacaps (MSCI World: 20%+ US-Tech)",
+                "Keine Einflussnahme auf einzelne Positionen",
+            ]:
+                st.markdown(f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;padding:3px 0;'>✗ {_con}</div>", unsafe_allow_html=True)
+        with _etf2:
+            st.markdown(f"<div style='color:{_C_POSITIVE};font-size:0.80rem;font-weight:700;margin-bottom:8px;'>📈 Einzelaktien — Vorteile</div>", unsafe_allow_html=True)
+            for _pro in [
+                "Alpha möglich bei echter Informations-Edge",
+                "Konzentration auf Convictions — kein Verwässern",
+                "Steuerliche Verlustverrechnung flexibler",
+                "Tiefes Verständnis der eigenen Investments",
+                "Keine Verwaltungsgebühren",
+            ]:
+                st.markdown(f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;padding:3px 0;'>✓ {_pro}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:{_C_NEGATIVE};font-size:0.80rem;font-weight:700;margin:10px 0 8px 0;'>📈 Einzelaktien — Nachteile</div>", unsafe_allow_html=True)
+            for _con in [
+                "Hoher Zeitaufwand für Recherche & Monitoring",
+                "Klumpenrisiko ohne breite Diversifikation",
+                "Psychologisch schwieriger (eigene Fehler, Verluste)",
+                "Statistisch schlagen <10% der Privatanleger langfristig den Markt",
+                "Transaktionskosten bei kleinen Positionen",
+            ]:
+                st.markdown(f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;padding:3px 0;'>✗ {_con}</div>", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        st.markdown(_w_card("Empfehlung: Core-Satellite-Strategie",
+            "<b>Core (70–90%)</b>: Breite ETFs — MSCI World (URTH/IWDA) + EM (EEM/EIMI). "
+            "Günstig, diversifiziert, passiv. Sorgt für Marktrendite. "
+            "<b>Satellite (10–30%)</b>: Einzelaktien mit echter Conviction und Burggraben-Analyse. "
+            "Nur wenn man bereit ist, das Unternehmen tiefer zu analysieren als der Markt. "
+            "Faustregel: Mindestens 20 Einzelwerte für ausreichende Diversifikation im Satellite-Teil.",
+            "#00e5ff"), unsafe_allow_html=True)
+        st.markdown(_w_card("Weltportfolio nach Gerd Kommer",
+            "BIP-gewichtete Aufteilung statt Marktkapitalisierung: "
+            "ca. 30% Nordamerika · 25% Europa · 25% Emerging Markets · 20% Rest. "
+            "Begründung: USA macht ~65% der Weltmarktkapitalisierung, aber nur ~25% des Welt-BIP — "
+            "BIP-Gewichtung reduziert US-Klumpenrisiko. "
+            "Umsetzen mit: MSCI World + MSCI EM + ggf. Small Cap Value ETF.",
+            "#4fc3f7"), unsafe_allow_html=True)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 5. BEHAVIORAL FINANCE
+    # ─────────────────────────────────────────────────────────────────────
+    with st.expander("🧠 Behavioral Finance — Die 8 teuersten Anlegerfehler"):
+        _bf_items = [
+            ("Loss Aversion (Verlustaversion)", "#ef5350",
+             "Verluste schmerzen psychologisch doppelt so stark wie Gewinne befriedigen (Kahneman/Tversky). "
+             "Folge: Verlierer zu lang halten (Hoffnung), Gewinner zu früh verkaufen. "
+             "→ Lösung: Vorab Exit-Regeln definieren — unabhängig von Einstiegskurs."),
+            ("FOMO — Fear of Missing Out", "#ff9800",
+             "Nach starken Rallyes kaufen Anleger auf Höchstständen aus Angst, etwas zu verpassen. "
+             "Historisch folgen auf FOMO-getriebene Blasen tiefe Korrekturen (Dotcom 2000, Krypto 2021). "
+             "→ Lösung: Sparplan/DCA statt Timing. Kaufentscheid von Bewertung abhängig machen."),
+            ("Recency Bias (Rückschaufehler)", "#ffc107",
+             "Anleger extrapolieren die jüngste Performance in die Zukunft: "
+             "Nach +30% erwarten sie +30%, nach -20% Totalverlust. "
+             "→ Lösung: Langfristige historische Daten konsultieren. Mean Reversion beachten."),
+            ("Overconfidence (Überschätzung)", "#ab47bc",
+             "Studien zeigen: Privatanleger schätzen ihre Trefferquote auf ~65%, tatsächlich liegt sie bei ~45%. "
+             "Exzessives Trading kostet durchschnittlich 3–4% p.a. durch Transaktionskosten und Timing-Fehler. "
+             "→ Lösung: Rendite-Tagebuch führen. Alle Entscheidungen dokumentieren."),
+            ("Market Timing Illusion", "#64b5f6",
+             "'Time in the market beats timing the market' — kein Investor schafft es dauerhaft, "
+             "Ein- und Ausstiegszeitpunkte richtig zu wählen. "
+             "Wer 1995–2014 die 10 besten S&P-500-Tage verpasste, hatte nur halbe Marktrendite. "
+             "→ Lösung: Investiert bleiben. Sparplan automatisieren."),
+            ("Home Bias (Heimatmarkt-Klumpen)", "#4caf50",
+             "Deutsche Anleger halten im Schnitt 50–60% in deutschen Aktien — obwohl Deutschland "
+             "nur ~3% der Weltmarktkapitalisierung ausmacht. "
+             "→ Lösung: Weltportfolio. MSCI World als Basis."),
+            ("Confirmation Bias (Bestätigungsfehler)", "#4fc3f7",
+             "Anleger suchen nach Informationen, die ihre bestehende Meinung bestätigen. "
+             "Gegenargumente werden ignoriert oder abgetan. "
+             "→ Lösung: Aktiv den Bären-Case suchen. Devil's Advocate spielen."),
+            ("Disposition-Effekt", "#ff6b35",
+             "Kombination aus Loss Aversion und Overconfidence: Gewinner zu früh verkaufen "
+             "(Gewinne sichern), Verlierer ewig halten (Verluste nicht realisieren). "
+             "→ Lösung: Bewertungsbasiert handeln, nicht emotionsbasiert."),
+        ]
+        _bf1, _bf2 = st.columns(2)
+        for _i, (_title, _clr, _body) in enumerate(_bf_items):
+            with (_bf1 if _i % 2 == 0 else _bf2):
+                st.markdown(_w_card(f"{_i+1}. {_title}", _body, _clr), unsafe_allow_html=True)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 6. ZINSESZINS & ZEIT
+    # ─────────────────────────────────────────────────────────────────────
+    with st.expander("💰 Zinseszins & Zeit — Die 8. Weltwunder"):
+        st.markdown(_w_card("Was ist Zinseszins?",
+            "Zinseszins bedeutet: Renditen werden reinvestiert, sodass man auch auf den Gewinnen Gewinne erzielt. "
+            "Einstein soll gesagt haben: 'Der Zinseszins ist die stärkste Kraft im Universum.' "
+            "Formel: <b>Endwert = Startkapital × (1 + r)<sup>n</sup></b> — "
+            "r = jährliche Rendite, n = Jahre.",
+            "#ffc107"), unsafe_allow_html=True)
+
+        _zz_data = [
+            ("€100/Monat ab 20", 40, 7, 100*12*40, None),
+            ("€100/Monat ab 30", 30, 7, 100*12*30, None),
+            ("€100/Monat ab 40", 20, 7, 100*12*20, None),
+            ("€500/Monat ab 25", 35, 7, 500*12*35, None),
+            ("€10.000 Einmalinvest ab 30", 30, 10, 10000, None),
+        ]
+        _zz_cols = st.columns(len(_zz_data))
+        for _zi, (_label, _years, _rate, _total_in, _) in enumerate(_zz_data):
+            if "Einmalinvest" in _label:
+                import math
+                _end = round(10000 * (1 + _rate/100) ** _years)
+                _einz = 10000
+            else:
+                _m = int(_label.split("€")[1].split("/")[0].replace(".",""))
+                _end = round(_m * 12 * ((((1+_rate/100)**(1/12))-1) and (((1+_rate/100))**_years - 1) / (((1+_rate/100)**(1/12))-1) or _years*12))
+                _einz = _total_in
+            _gain = _end - _einz
+            _mult = round(_end / _einz, 1)
+            _zz_cols[_zi].markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+                f"padding:10px 8px;text-align:center;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.65rem;margin-bottom:4px;'>{_label}</div>"
+                f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.72rem;'>{_years}J · {_rate}% p.a.</div>"
+                f"<div style='color:{_C_POSITIVE};font-size:1.1rem;font-weight:700;margin:4px 0;'>€{_end:,.0f}</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.65rem;'>Eingezahlt: €{_einz:,.0f}</div>"
+                f"<div style='color:{_C_POSITIVE};font-size:0.72rem;font-weight:600;'>×{_mult} Faktor</div>"
+                f"</div>", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        st.markdown(_w_card("Die wichtigste Regel: Früh anfangen",
+            "10 Jahre früher investieren verdoppelt in der Regel das Endvermögen. "
+            "Wer mit 20 statt 30 beginnt (gleiche €100/Monat, 7% p.a.): "
+            "~€260k vs. ~€122k bei Renteneintritt mit 67. "
+            "Die ersten Jahre sind die wertvollsten — wegen des längeren Zinseszins-Horizonts.",
+            "#4caf50"), unsafe_allow_html=True)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 7. BÖRSE, WIRTSCHAFT & ZYKLEN
+    # ─────────────────────────────────────────────────────────────────────
+    with st.expander("🌍 Börse, Wirtschaft & Zyklen"):
+        _bw1, _bw2 = st.columns(2)
+        with _bw1:
+            st.markdown(_w_card("Wie funktioniert eine Aktie?",
+                "Eine Aktie ist ein Eigentumsanteil an einem Unternehmen. "
+                "Der Kurs spiegelt die kollektive Schätzung aller Marktteilnehmer über den "
+                "<b>Barwert aller zukünftigen Cashflows</b> wider. "
+                "Kurzfristig: Sentiment und Momentum. Langfristig: Unternehmensgewinne.",
+                "#64b5f6"), unsafe_allow_html=True)
+            st.markdown(_w_card("Wirtschaftszyklen (Konjunkturzyklus)",
+                "<b>Aufschwung:</b> Wachstum, steigende Beschäftigung, Tech/Zykliker outperformen. "
+                "<b>Hochkonjunktur:</b> Inflation steigt, Fed erhöht Zinsen. "
+                "<b>Abschwung:</b> Gewinnrevisionen, Value/Defensiv outperformen. "
+                "<b>Rezession:</b> Zinssenkungen, Consumer Staples/Healthcare als Anker. "
+                "→ Sektoren rotieren mit dem Zyklus.",
+                "#ff9800"), unsafe_allow_html=True)
+            st.markdown(_w_card("Zinsen & Aktien — der Zusammenhang",
+                "Steigende Zinsen = höherer Diskontierungssatz = niedrigere Barwerte (KGVs sinken). "
+                "Besonders schmerzhaft für Growth-Aktien (Cash Flows weit in der Zukunft). "
+                "Sinkende Zinsen = Gegenteil. "
+                "→ Deshalb reagiert Tech sensitiv auf Fed-Entscheidungen.",
+                "#ef5350"), unsafe_allow_html=True)
+        with _bw2:
+            st.markdown(_w_card("Bullen- und Bärenmärkte",
+                "<b>Bullenmarkt</b>: Anstieg ≥20% vom Tief. Historisch ~5,5 Jahre, +180% Rendite. "
+                "<b>Bärenmarkt</b>: Rückgang ≥20% vom Hoch. Historisch ~1,4 Jahre, −36%. "
+                "Wichtig: Bärenmärkte fühlen sich schlimmer an als sie statistisch sind. "
+                "Jeder Bärenmarkt endete bisher in einem neuen Allzeithoch.",
+                "#4caf50"), unsafe_allow_html=True)
+            st.markdown(_w_card("Inflation & Aktien",
+                "Moderat (1–3%): Aktien profitieren — Unternehmen erhöhen Preise, Gewinne steigen. "
+                "Hoch (>4%): Belastend — Zinserhöhungen drücken Bewertungen, Konsument leidet. "
+                "<b>Beste Inflation-Hedge</b>: Unternehmen mit Pricing Power, REITs, Rohstoffe, TIPS. "
+                "<b>Schlechtester Hedge</b>: Anleihen mit festem Kupon.",
+                "#ab47bc"), unsafe_allow_html=True)
+            st.markdown(_w_card("Historische Krisen & Erholung",
+                "<b>1929 Crash</b>: −89% · Erholung: 25 Jahre. "
+                "<b>Dotcom 2000</b>: −49% (S&P) · Erholung: 7 Jahre. "
+                "<b>Finanzkrise 2008</b>: −57% · Erholung: 5 Jahre. "
+                "<b>Corona 2020</b>: −34% · Erholung: 5 Monate (!). "
+                "→ Breite Diversifikation + investiert bleiben übersteht alle Krisen.",
+                "#ffc107"), unsafe_allow_html=True)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # 8. STEUERN & PRAXIS (DE)
+    # ─────────────────────────────────────────────────────────────────────
+    with st.expander("🇩🇪 Steuern & Praxis (Deutschland)"):
+        st.markdown(
+            f"<div style='background:rgba(255,152,0,0.10);border:1px solid #ff980044;border-radius:8px;"
+            f"padding:8px 12px;margin-bottom:10px;color:{_C_TEXT_MUTED};font-size:0.75rem;'>"
+            f"⚠️ Keine Steuerberatung — individuelle Situation immer mit Steuerberater klären.</div>",
+            unsafe_allow_html=True)
+        _st1, _st2 = st.columns(2)
+        with _st1:
+            st.markdown(_w_card("Abgeltungssteuer",
+                "Auf Kapitalerträge (Zinsen, Dividenden, realisierte Kursgewinne) fallen an: "
+                "<b>25% Abgeltungssteuer + 5,5% Solidaritätszuschlag + ggf. Kirchensteuer</b> "
+                "= effektiv ~26,375% (ohne Kirchensteuer). "
+                "Verrechnung von Verlusten mit Gewinnen möglich (innerhalb Depot-Bank automatisch).",
+                "#64b5f6"), unsafe_allow_html=True)
+            st.markdown(_w_card("Freistellungsauftrag",
+                "Seit 2023: <b>€1.000 pro Person, €2.000 bei Zusammenveranlagung</b> steuerfrei. "
+                "Verteilung auf mehrere Banken möglich (Summe darf €1.000 nicht überschreiten). "
+                "→ Wichtig: Freistellungsauftrag bei jeder Depotbank einrichten!",
+                "#4caf50"), unsafe_allow_html=True)
+            st.markdown(_w_card("Verlustverrechnung",
+                "Aktienverluste können nur mit Aktiengewinnen verrechnet werden (Verlustverrechnungstopf). "
+                "ETF-/Fonds-Verluste hingegen mit allen Kapitalerträgen. "
+                "Nicht verrechnete Verluste werden ins nächste Jahr vorgetragen — kein Verfall.",
+                "#ef5350"), unsafe_allow_html=True)
+        with _st2:
+            st.markdown(_w_card("Vorabpauschale (ETF)",
+                "Thesaurierende ETFs zahlen keine Dividende aus — trotzdem fällt jährlich "
+                "eine fiktive Steuer auf den 'Basisertrag' an (Grundlage: 70% des Basiszinses). "
+                "2024: Basiszins 2,29% → geringe aber relevante Pauschale. "
+                "→ Freistellungsauftrag nutzen um Vorabpauschale abzudecken.",
+                "#ff9800"), unsafe_allow_html=True)
+            st.markdown(_w_card("Depot-Standort & Steuer",
+                "<b>Inländisches Depot</b>: Bank führt Steuern automatisch ab — kein Handlungsbedarf. "
+                "<b>Ausländisches Depot</b> (z.B. Interactive Brokers): Eigenverantwortliche "
+                "Steuererklärung nötig (Anlage KAP). "
+                "<b>Tipp</b>: Aktien-GmbH oder Holding erst ab ~€500k sinnvoll (Kosten vs. Vorteil).",
+                "#ab47bc"), unsafe_allow_html=True)
+            st.markdown(_w_card("Spar-Tipps",
+                "<b>1.</b> Freistellungsauftrag maximal nutzen (€1.000 p.a.). "
+                "<b>2.</b> Verluste aktiv realisieren zum Jahresende (Tax Loss Harvesting). "
+                "<b>3.</b> Thesaurierende ETFs für Steuerstundung (Zinseszins auf unversteuerte Gewinne). "
+                "<b>4.</b> Haltefristen: Keine (Abgeltungssteuer gilt ab 1. Tag).",
+                "#4fc3f7"), unsafe_allow_html=True)
+
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    st.caption("Inhalte dienen der allgemeinen Bildung. Keine Anlage- oder Steuerberatung. Quellen: Fama/French (1992), SPIVA S&P Reports, Kahneman/Tversky (1979), Kommer (2018).")
     st.stop()
 
 # ==================== VERGLEICH PAGE ====================
