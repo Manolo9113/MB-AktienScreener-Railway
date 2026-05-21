@@ -9402,7 +9402,7 @@ elif st.session_state.get("show_screener"):
     with _dl_col:
         st.download_button(
             label=f"⬇️ CSV exportieren ({len(_scr_hits)} Aktien)",
-            data=_scr_df.to_csv(index=False).encode("utf-8"),
+            data=_scr_df.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig"),
             file_name="screener_ergebnisse.csv",
             mime="text/csv",
             use_container_width=True,
@@ -9583,15 +9583,11 @@ elif st.session_state.get("show_stocks"):
         for _qi, _qs in enumerate(_QG_STOCKS):
             _qcol = _qg1 if _qi % 2 == 0 else _qg2
             with _qcol:
-                try:
-                    _qinf = yf.Ticker(_qs["ticker"]).fast_info
-                    _qprice = getattr(_qinf, 'last_price', None)
-                    _qmc    = getattr(_qinf, 'market_cap', None)
-                    _qmc_str = f"$ {_qmc/1e9:.0f} Mrd." if _qmc else ""
-                    _qprice_str = f"$ {_qprice:,.2f}" if _qprice else ""
-                except Exception:
-                    _qprice_str = ""
-                    _qmc_str = ""
+                _qdata = load_watchlist_metrics(_qs["ticker"])
+                _qprice = _qdata.get("price")
+                _qmc    = _qdata.get("mkt_cap")
+                _qprice_str = f"$ {_qprice:,.2f}" if _qprice else ""
+                _qmc_str    = f"$ {_qmc/1e9:.0f} Mrd." if _qmc else ""
                 st.markdown(
                     f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
                     f"border-left:3px solid #4caf50;border-radius:12px;padding:13px 15px;margin-bottom:10px;'>"
@@ -11187,39 +11183,33 @@ if st.session_state.get("show_portfolio"):
 
             # ── Portfolio Export ─────────────────────────────────────────────────
             with st.expander("📤 Portfolio exportieren — CSV & HTML-Report"):
-                # Build rows for export
                 _exp_rows = []
-                for _, _er in stocks_etf.iterrows():
-                    _ep   = prices.get(_er['ISIN'])
-                    _ev   = round(_ep * _er['shares'], 2) if _ep else None
-                    _epnl = round(_ev - _er['cost_basis'], 2) if _ev else None
-                    _epct = round(_epnl / _er['cost_basis'] * 100, 1) if (_epnl is not None and _er['cost_basis'] > 0) else None
-                    _ei   = _alloc_infos.get(_er['ISIN'], {})
-                    _etkr = isin_map.get(_er['ISIN'], "")
-                    _is_etf_e = (_ei.get('quote_type') == 'ETF' or _etkr in _ETF_CW or _etkr in _ETF_SW)
-                    _exp_rows.append({
-                        "Name": _er['name'], "Ticker": _etkr, "ISIN": _er['ISIN'],
-                        "Anteile": _er['shares'], "Ø Kurs (€)": round(_er['avg_cost'], 2),
-                        "Akt. Kurs (€)": round(_ep, 2) if _ep else "",
-                        "Wert (€)": _ev if _ev else "",
-                        "G/V (€)": _epnl if _epnl is not None else "",
-                        "G/V (%)": _epct if _epct is not None else "",
-                        "Sektor": _ei.get('sector', ''), "Asset": "ETF" if _is_etf_e else "Aktie",
-                    })
-                for _, _er in crypto.iterrows():
-                    _ep   = _crypto_prices.get(_er['ISIN'])
-                    _ev   = round(_ep * _er['shares'], 2) if _ep else None
-                    _epnl = round(_ev - _er['cost_basis'], 2) if _ev else None
-                    _epct = round(_epnl / _er['cost_basis'] * 100, 1) if (_epnl is not None and _er['cost_basis'] > 0) else None
-                    _exp_rows.append({
-                        "Name": _er['name'], "Ticker": "", "ISIN": _er['ISIN'],
-                        "Anteile": _er['shares'], "Ø Kurs (€)": round(_er['avg_cost'], 2),
-                        "Akt. Kurs (€)": round(_ep, 2) if _ep else "",
-                        "Wert (€)": _ev if _ev else "",
-                        "G/V (€)": _epnl if _epnl is not None else "",
-                        "G/V (%)": _epct if _epct is not None else "",
-                        "Sektor": "Krypto", "Asset": "Krypto",
-                    })
+                _exp_sources = [
+                    (stocks_etf, prices, None),
+                    (crypto,     _crypto_prices, "Krypto"),
+                ]
+                for _edf, _eprice_dict, _fixed_asset in _exp_sources:
+                    for _, _er in _edf.iterrows():
+                        _ep   = _eprice_dict.get(_er['ISIN'])
+                        _ev   = round(_ep * _er['shares'], 2) if _ep else None
+                        _epnl = round(_ev - _er['cost_basis'], 2) if _ev else None
+                        _epct = round(_epnl / _er['cost_basis'] * 100, 1) if (_epnl is not None and _er['cost_basis'] > 0) else None
+                        if _fixed_asset:
+                            _etkr, _sektor, _asset = "", "Krypto", "Krypto"
+                        else:
+                            _ei   = _alloc_infos.get(_er['ISIN'], {})
+                            _etkr = isin_map.get(_er['ISIN'], "")
+                            _sektor = _ei.get('sector', '')
+                            _asset  = "ETF" if (_ei.get('quote_type') == 'ETF' or _etkr in _ETF_CW or _etkr in _ETF_SW) else "Aktie"
+                        _exp_rows.append({
+                            "Name": _er['name'], "Ticker": _etkr, "ISIN": _er['ISIN'],
+                            "Anteile": _er['shares'], "Ø Kurs (€)": round(_er['avg_cost'], 2),
+                            "Akt. Kurs (€)": round(_ep, 2) if _ep else "",
+                            "Wert (€)": _ev if _ev else "",
+                            "G/V (€)": _epnl if _epnl is not None else "",
+                            "G/V (%)": _epct if _epct is not None else "",
+                            "Sektor": _sektor, "Asset": _asset,
+                        })
                 _exp_df = pd.DataFrame(_exp_rows)
 
                 _exc1, _exc2 = st.columns(2)
