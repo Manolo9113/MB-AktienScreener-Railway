@@ -8107,6 +8107,91 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
     else:
         st.warning("Saisonale Daten konnten nicht geladen werden — yFinance-Verbindung prüfen.")
 
+    # ── Faktor-Prämien ────────────────────────────────────────────────────
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>🧮 Faktor-Prämien</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:10px 14px;margin-bottom:12px;color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.6;'>"
+        f"<b style='color:{_C_TEXT_PRIMARY};'>Welcher Faktor liefert gerade Prämie?</b> "
+        f"Faktor-ETFs bündeln Aktien mit bestimmten Charakteristiken: "
+        f"<b>MTUM</b> = Momentum · <b>VLUE</b> = Value · <b>QUAL</b> = Qualität/Profitabilität · "
+        f"<b>USMV</b> = geringe Volatilität · <b>IWM</b> = Small Caps (Size-Prämie). "
+        f"Der Vergleich zur Benchmark (SPY) zeigt, welche Faktor-Strategie in der aktuellen Marktphase belohnt wird. "
+        f"Typische Muster: Value outperformt in Aufwärtszinsphasen, Momentum in Trendbörsen, Low-Vol in Krisen.</div>",
+        unsafe_allow_html=True,
+    )
+    _fP_MAP = {
+        "S&P 500 (SPY)":          ("SPY",  "#546e7a", "solid",  2.5),
+        "Momentum (MTUM)":        ("MTUM", "#00e5ff", "solid",  2.0),
+        "Value (VLUE)":           ("VLUE", "#ff9800", "solid",  2.0),
+        "Quality (QUAL)":         ("QUAL", "#4caf50", "solid",  2.0),
+        "Low Volatility (USMV)":  ("USMV", "#9c27b0", "solid",  2.0),
+        "Small Cap (IWM)":        ("IWM",  "#e91e63", "dash",   1.8),
+    }
+    _fP_c1, _fP_c2 = st.columns([5, 1])
+    with _fP_c2:
+        _fP_period = st.selectbox(
+            "Zeitraum",
+            options=["1M", "3M", "6M", "1J", "3J", "5J"],
+            index=2,
+            key="faktor_period_sel",
+        )
+    _fP_days_map = {"1M": 35, "3M": 95, "6M": 185, "1J": 370, "3J": 1100, "5J": 1850}
+    _fP_days = _fP_days_map.get(_fP_period, 185)
+    _fP_fig   = go.Figure()
+    _fP_rets  = {}
+    with st.spinner("Lade Faktor-ETF Daten…"):
+        for _fP_lbl, (_fP_sym, _fP_clr, _fP_dash, _fP_wid) in _fP_MAP.items():
+            try:
+                _fPh = _fetch_index_hist(_fP_sym, "1d", _fP_days)
+                if _fPh is not None and not _fPh.empty and len(_fPh) >= 2:
+                    _fPc = _fPh["Close"].dropna()
+                    if hasattr(_fPc.index, "tz") and _fPc.index.tz:
+                        _fPc.index = _fPc.index.tz_convert(None)
+                    _fPn = (_fPc / _fPc.iloc[0] - 1) * 100
+                    _fP_rets[_fP_lbl] = float(_fPn.iloc[-1])
+                    _fP_fig.add_trace(go.Scatter(
+                        x=_fPn.index, y=_fPn.values,
+                        mode="lines", name=_fP_lbl,
+                        line=dict(color=_fP_clr, width=_fP_wid, dash=_fP_dash),
+                        hovertemplate=f"<b>{_fP_lbl}</b><br>%{{x|%d.%m.%Y}}<br>%{{y:+.2f}}%<extra></extra>",
+                    ))
+            except Exception:
+                pass
+    if _fP_rets:
+        _fP_fig.add_hline(y=0, line_color=_C_BORDER, line_width=1, line_dash="dot")
+        _fP_fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=_C_TEXT_PRIMARY, size=11),
+            xaxis=dict(gridcolor=_C_BORDER, zeroline=False),
+            yaxis=dict(gridcolor=_C_BORDER, zeroline=False,
+                       ticksuffix="%", title="Rendite (normiert auf Startdatum)"),
+            legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=_C_BORDER,
+                        borderwidth=1, font=dict(size=10)),
+            margin=dict(t=20, b=10, l=65, r=10),
+            height=340,
+            hovermode="x unified",
+        )
+        with _fP_c1:
+            st.plotly_chart(_fP_fig, use_container_width=True, config={"displayModeBar": False})
+        # Mini-Rangliste
+        _fP_sorted = sorted(_fP_rets.items(), key=lambda x: x[1], reverse=True)
+        _fP_cols   = st.columns(len(_fP_sorted))
+        for _fPi, (_fPl, _fPr) in enumerate(_fP_sorted):
+            _sym, _clr, *_ = _fP_MAP[_fPl]
+            _rc = _C_POSITIVE if _fPr >= 0 else _C_NEGATIVE
+            _fP_cols[_fPi].markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-top:3px solid {_clr};border-radius:8px;padding:7px 8px;text-align:center;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.60rem;margin-bottom:2px;'>{_fPl[:20]}</div>"
+                f"<div style='color:{_rc};font-size:0.90rem;font-weight:700;'>{_fPr:+.1f}%</div>"
+                f"</div>", unsafe_allow_html=True)
+        st.caption(f"Normiert auf Startdatum (Basis 0%). Quelle: yFinance. Zeitraum: {_fP_period}.")
+    else:
+        st.warning("Faktor-ETF Daten konnten nicht geladen werden.")
+
+
     # ── Marktschlagzeilen ────────────────────────────────────────────────
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown("<div class='section-header'>📰 Aktuelle Marktschlagzeilen</div>", unsafe_allow_html=True)
@@ -16369,7 +16454,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
 # Session-state-basierte Navigation (immun gegen st.rerun() und WebSocket-Reconnects)
 _TABS = [
     "📊 Kennzahlen", "📈 Wachstum", "🔮 Prognose", "📋 Fundamental", "⚖️ Bewertung",
-    "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden",
+    "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden", "📐 Faktor-Profil",
 ]
 _at = st.session_state.get("active_tab", 0)
 _nav_cols = st.columns(len(_TABS))
@@ -19732,6 +19817,221 @@ elif _at == 10:
         f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:14px;padding:8px 0;'>"
         f"Datenquelle: yFinance · Dividenden versteuern sich je nach Depot und Wohnsitz unterschiedlich. Keine Anlageberatung.</div>",
         unsafe_allow_html=True)
+
+
+elif _at == 11:
+    st.markdown("<div class='section-header'>📐 Faktor-Profil</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    # Intro
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:10px 14px;margin-bottom:14px;color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.6;'>"
+        f"<b style='color:{_C_TEXT_PRIMARY};'>Was sind Faktor-Exposures?</b> "
+        f"Die akademische Forschung (Fama/French, Carhart) zeigt, dass Aktienrenditen durch systematische "
+        f"<i>Risikofaktoren</i> erklärt werden — nicht nur durch den Markt. Wer seine Faktor-Exposures kennt, "
+        f"versteht warum eine Aktie läuft wie sie läuft: "
+        f"<b>Beta</b> misst Marktsensitivität · <b>Value</b> (günstige Bewertung) · "
+        f"<b>Quality</b> (Bilanzstärke) · <b>Momentum</b> (Kursperformance) · "
+        f"<b>Low Vol</b> (defensive Charakteristik) · <b>Size</b> (Small- vs. Large-Cap Tilt). "
+        f"Die Scores sind relativ normiert (0 = schwach / 100 = stark ausgeprägt).</div>",
+        unsafe_allow_html=True,
+    )
+
+    import numpy as _np_fak
+
+    _fak_info = info  # already loaded on this page
+
+    # ── Beta (Markt-Sensitivität) ─────────────────────────────────────────
+    _fak_beta_raw = None
+    _fak_beta_sc  = 50
+    try:
+        _fak_stk_h = _fetch_hist_daily_5y(ticker)
+        _fak_spy_h = _fetch_index_hist("SPY", "1d", 380)
+        if _fak_stk_h is not None and _fak_spy_h is not None and len(_fak_stk_h) > 60:
+            _fak_sc_s = _fak_stk_h["Close"].pct_change().dropna()
+            _fak_sp_s = _fak_spy_h["Close"].pct_change().dropna()
+            if hasattr(_fak_sc_s.index, "tz") and _fak_sc_s.index.tz:
+                _fak_sc_s.index = _fak_sc_s.index.tz_convert(None)
+            if hasattr(_fak_sp_s.index, "tz") and _fak_sp_s.index.tz:
+                _fak_sp_s.index = _fak_sp_s.index.tz_convert(None)
+            _fak_idx = _fak_sc_s.index.intersection(_fak_sp_s.index)[-252:]
+            if len(_fak_idx) > 50:
+                _fak_a = _fak_sc_s.reindex(_fak_idx).values
+                _fak_b = _fak_sp_s.reindex(_fak_idx).values
+                _fak_cov = _np_fak.cov(_fak_a, _fak_b)
+                _fak_beta_raw = round(_fak_cov[0, 1] / _fak_cov[1, 1], 2)
+                _fak_beta_sc  = int(max(0, min(100, _fak_beta_raw * 50)))
+    except Exception:
+        pass
+
+    # ── Value Score ────────────────────────────────────────────────────────
+    _fak_val_sc = 50
+    try:
+        _pb = _fak_info.get("priceToBook") or 0
+        _pe = _fak_info.get("trailingPE")  or 0
+        _ps = _fak_info.get("priceToSalesTrailingTwelveMonths") or 0
+        _pb_sc = max(0, min(100, 100 - (_pb - 1) * 8))  if _pb > 0 else 50
+        _pe_sc = max(0, min(100, 100 - (_pe - 10) * 2)) if _pe > 0 else 50
+        _ps_sc = max(0, min(100, 100 - (_ps - 1) * 7))  if _ps > 0 else 50
+        _cnt   = sum(1 for x in [_pb, _pe, _ps] if x > 0)
+        _fak_val_sc = int(round(sum([_pb_sc if _pb > 0 else 0,
+                                     _pe_sc if _pe > 0 else 0,
+                                     _ps_sc if _ps > 0 else 0]) / max(1, _cnt)))
+    except Exception:
+        pass
+
+    # ── Quality Score ──────────────────────────────────────────────────────
+    _fak_qual_sc = _sc_score(info)  # existing 0–100 quality helper
+
+    # ── Momentum Score ─────────────────────────────────────────────────────
+    _fak_mom_sc  = 50
+    _fak_mom_raw = None
+    try:
+        if _fak_stk_h is not None and len(_fak_stk_h) > 260:
+            _fak_cl = _fak_stk_h["Close"].dropna()
+            _ret_12m = (_fak_cl.iloc[-1] / _fak_cl.iloc[-252] - 1) * 100
+            _ret_1m  = (_fak_cl.iloc[-1] / _fak_cl.iloc[-21]  - 1) * 100
+            _fak_mom_raw = round(_ret_12m - _ret_1m, 1)   # standard 12-1 momentum
+            _fak_mom_sc  = int(max(0, min(100, 50 + _fak_mom_raw * 0.8)))
+    except Exception:
+        pass
+
+    # ── Low-Volatility Score ───────────────────────────────────────────────
+    _fak_lvol_sc  = 50
+    _fak_lvol_raw = None
+    try:
+        if _fak_stk_h is not None and len(_fak_stk_h) > 50:
+            _fak_rets = _fak_stk_h["Close"].pct_change().dropna()
+            _fak_lvol_raw = round(_fak_rets[-252:].std() * (252 ** 0.5) * 100, 1)
+            _fak_lvol_sc  = int(max(0, min(100, 100 - _fak_lvol_raw * 1.9)))
+    except Exception:
+        pass
+
+    # ── Size Score (SmallCap-Tilt) ─────────────────────────────────────────
+    _fak_size_sc = 50
+    try:
+        _mcap = _fak_info.get("marketCap") or 0
+        if   _mcap > 500e9:  _fak_size_sc = 5    # Mega Cap → kaum Small-Cap-Tilt
+        elif _mcap > 100e9:  _fak_size_sc = 20
+        elif _mcap > 10e9:   _fak_size_sc = 45
+        elif _mcap > 2e9:    _fak_size_sc = 70
+        elif _mcap > 0:      _fak_size_sc = 90   # Small Cap → maximaler Tilt
+    except Exception:
+        pass
+
+    # ── KPI-Karten ────────────────────────────────────────────────────────
+    _fak_defs = [
+        ("Beta",       _fak_beta_sc,  f"β = {_fak_beta_raw:.2f}" if _fak_beta_raw else "—",
+         "Markt­sensitivität: > 1 = volatiler als S&P 500, < 1 = defensiver."),
+        ("Value",      _fak_val_sc,   f"{_fak_val_sc}/100",
+         "Bewertungs-Tilt: hoch = günstig bewertet (P/B, P/E, P/S niedrig)."),
+        ("Quality",    _fak_qual_sc,  f"{_fak_qual_sc}/100",
+         "Bilanzqualität: Margen, FCF, ROE, Wachstum, geringe Verschuldung."),
+        ("Momentum",   _fak_mom_sc,   f"{_fak_mom_raw:+.1f}% (12M−1M)" if _fak_mom_raw else "—",
+         "Kurs-Momentum (12M minus 1M Rendite). Hoch = starker Aufwärtstrend."),
+        ("Low Vol",    _fak_lvol_sc,  f"σ = {_fak_lvol_raw:.1f}%" if _fak_lvol_raw else "—",
+         "Niedrige Volatilität: hoch = ruhige Kursentwicklung, defensiv."),
+        ("Size (SC)",  _fak_size_sc,  f"{_fak_size_sc}/100",
+         "Small-Cap-Tilt: hoch = kleine Marktkapitalisierung (SMB-Prämie)."),
+    ]
+    _fk_cols = st.columns(6)
+    for _fki, (_fk_label, _fk_sc, _fk_disp, _fk_tip) in enumerate(_fak_defs):
+        _fk_clr = _C_POSITIVE if _fk_sc >= 65 else (_C_NEGATIVE if _fk_sc < 35 else _C_NEUTRAL)
+        _tip_html = (f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                     f'<span class="tt-box">{_fk_tip}</span></span>')
+        _fk_cols[_fki].markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+            f"text-align:center;padding:10px 6px;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.65rem;margin-bottom:3px;'>{_fk_label}{_tip_html}</div>"
+            f"<div style='color:{_fk_clr};font-size:1.0rem;font-weight:700;'>{_fk_disp}</div>"
+            f"<div style='margin-top:5px;background:{_C_BORDER};border-radius:3px;height:4px;'>"
+            f"<div style='background:{_fk_clr};width:{_fk_sc}%;height:4px;border-radius:3px;'></div>"
+            f"</div></div>", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+    # ── Radar-Chart ───────────────────────────────────────────────────────
+    _rad_labels = ["Beta", "Value", "Quality", "Momentum", "Low Vol", "Size"]
+    _rad_values = [_fak_beta_sc, _fak_val_sc, _fak_qual_sc, _fak_mom_sc, _fak_lvol_sc, _fak_size_sc]
+    _rad_values_closed = _rad_values + [_rad_values[0]]
+    _rad_labels_closed = _rad_labels + [_rad_labels[0]]
+
+    _rad_fig = go.Figure()
+    _rad_fig.add_trace(go.Scatterpolar(
+        r=_rad_values_closed,
+        theta=_rad_labels_closed,
+        fill="toself",
+        fillcolor=f"rgba(0,229,255,0.10)",
+        line=dict(color="#00e5ff", width=2),
+        name=ticker,
+        hovertemplate="<b>%{theta}</b><br>Score: %{r}/100<extra></extra>",
+    ))
+    # Market benchmark (all 50)
+    _rad_fig.add_trace(go.Scatterpolar(
+        r=[50] * 7,
+        theta=_rad_labels_closed,
+        mode="lines",
+        line=dict(color=_C_BORDER, width=1, dash="dot"),
+        name="Markt-Median (50)",
+        hoverinfo="skip",
+    ))
+    _rad_fig.update_layout(
+        polar=dict(
+            bgcolor="rgba(0,0,0,0)",
+            radialaxis=dict(visible=True, range=[0, 100], gridcolor=_C_BORDER,
+                            tickfont=dict(size=8, color=_C_TEXT_MUTED), tickvals=[25, 50, 75, 100]),
+            angularaxis=dict(gridcolor=_C_BORDER, tickfont=dict(size=11, color=_C_TEXT_PRIMARY)),
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        showlegend=True,
+        legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=_C_BORDER, borderwidth=1,
+                    font=dict(size=10), x=1.05, y=1.0),
+        margin=dict(t=20, b=20, l=60, r=80),
+        height=360,
+    )
+    st.plotly_chart(_rad_fig, use_container_width=True, config={"displayModeBar": False})
+
+    # ── Interpretation ────────────────────────────────────────────────────
+    _fak_top = sorted(zip(_rad_labels, _rad_values), key=lambda x: x[1], reverse=True)
+    _fak_strong  = [n for n, s in _fak_top if s >= 65]
+    _fak_weak    = [n for n, s in _fak_top if s < 35]
+    _fak_profile_parts = []
+    if _fak_strong:
+        _fak_profile_parts.append(
+            f"<b style='color:{_C_POSITIVE};'>Ausgeprägte Faktoren:</b> "
+            + ", ".join(f"<b>{n}</b>" for n in _fak_strong)
+        )
+    if _fak_weak:
+        _fak_profile_parts.append(
+            f"<b style='color:{_C_NEGATIVE};'>Schwach ausgeprägt:</b> "
+            + ", ".join(f"<b>{n}</b>" for n in _fak_weak)
+        )
+
+    # Build profile label
+    _has_q = _fak_qual_sc >= 65
+    _has_v = _fak_val_sc  >= 65
+    _has_m = _fak_mom_sc  >= 65
+    _has_lv = _fak_lvol_sc >= 65
+    if _has_q and _has_m:      _fak_profile_lbl = "GARP / Wachstum mit Qualität"
+    elif _has_q and _has_lv:   _fak_profile_lbl = "Defensiv-Quality"
+    elif _has_q and _has_v:    _fak_profile_lbl = "Deep Quality Value"
+    elif _has_m and not _has_v: _fak_profile_lbl = "Momentum / Growth"
+    elif _has_v and not _has_m: _fak_profile_lbl = "Value / Contrarian"
+    elif _has_lv:               _fak_profile_lbl = "Low Volatility / Defensiv"
+    else:                       _fak_profile_lbl = "Ausgewogenes Profil"
+
+    _fak_profile_parts.insert(0, f"<b style='color:{_C_ACCENT};'>Profil: {_fak_profile_lbl}</b>")
+
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-left:3px solid {_C_ACCENT};"
+        f"border-radius:10px;padding:10px 14px;color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.7;margin-top:4px;'>"
+        + " &nbsp;·&nbsp; ".join(_fak_profile_parts) +
+        f"<br><span style='font-size:0.70rem;'>Scores sind approximative Relative-Werte auf Basis öffentlicher Finanzkennzahlen. "
+        f"Keine Anlageberatung. Für exakte Faktorladungen empfiehlt sich eine OLS-Regression gegen Fama-French-Faktoren.</span>"
+        f"</div>", unsafe_allow_html=True)
+
+    st.caption("Datenquellen: yFinance (Preis/Fundamentaldaten). Berechnung: rolling 252-Tage-Regression (Beta), normierte Kennzahlen (Value, Quality), 12M−1M Return (Momentum), ann. Volatilität (Low Vol), Marktkapitalisierung (Size).")
 
 
 # ==================== INSIGHTS ====================
