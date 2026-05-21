@@ -16471,15 +16471,16 @@ _TABS = [
     "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden", "📐 Faktor-Profil",
 ]
 _at = st.session_state.get("active_tab", 0)
-_nav_cols = st.columns(len(_TABS))
-_tab_clicked = False
-for _ni, (_nc, _nl) in enumerate(zip(_nav_cols, _TABS)):
-    if _nc.button(_nl, key=f"_nav_{_ni}", use_container_width=True,
-                  type="primary" if _at == _ni else "secondary"):
-        if _at != _ni:
-            st.session_state["active_tab"] = _ni
-            _tab_clicked = True
-if _tab_clicked:
+_tab_sel = st.selectbox(
+    "Tab",
+    options=list(range(len(_TABS))),
+    format_func=lambda i: _TABS[i],
+    index=min(_at, len(_TABS) - 1),
+    key="tab_selectbox",
+    label_visibility="collapsed",
+)
+if _tab_sel != _at:
+    st.session_state["active_tab"] = _tab_sel
     st.rerun()
 _at = st.session_state.get("active_tab", 0)
 st.markdown(f"<div style='border-top:2px solid {_C_BORDER};margin:-6px 0 12px 0;'></div>",
