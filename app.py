@@ -9499,6 +9499,27 @@ elif st.session_state.get("show_stocks"):
         st.caption(f"Modell: {_ki_model} · Generiert: {_ki_time} · "
                    f"Keine Anlageberatung — eigene Recherche empfohlen.")
 
+    # ── Screener-Link ──────────────────────────────────────────────────
+    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:12px;"
+        f"padding:16px 20px;text-align:center;'>"
+        f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.95rem;font-weight:700;margin-bottom:4px;'>"
+        f"🔬 Eigene Kriterien anlegen?</div>"
+        f"<div style='color:{_C_TEXT_MUTED};font-size:0.80rem;margin-bottom:12px;'>"
+        f"Im Aktien-Screener kannst du KGV, Wachstum, Margen, Rule&nbsp;of&nbsp;40 und mehr frei filtern — "
+        f"mit 6 vorgefertigten Presets (Growth, Value, SaaS, Quality …) oder eigenen gespeicherten Filtern.</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    if st.button("🔬 Zum Aktien-Screener →", use_container_width=False, key="aktienideen_to_screener"):
+        for _k in ("show_landing", "show_stocks", "show_portfolio", "show_etf_analyzer",
+                   "show_market_overview", "show_compare"):
+            st.session_state[_k] = False
+        st.session_state["show_screener"] = True
+        st.rerun()
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
     st.stop()
 
 @st.cache_data(ttl=43200, show_spinner=False)
@@ -19867,7 +19888,7 @@ elif _at == 11:
 
     import numpy as _np_fak
 
-    _fak_info = info  # already loaded on this page
+    _fak_info = yf_info
 
     # ── Beta (Markt-Sensitivität) ─────────────────────────────────────────
     _fak_beta_raw = None
@@ -19909,7 +19930,7 @@ elif _at == 11:
         pass
 
     # ── Quality Score ──────────────────────────────────────────────────────
-    _fak_qual_sc = _sc_score(info)  # existing 0–100 quality helper
+    _fak_qual_sc = _sc_score(yf_info)
 
     # ── Momentum Score ─────────────────────────────────────────────────────
     _fak_mom_sc  = 50
