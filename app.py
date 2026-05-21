@@ -9557,6 +9557,57 @@ elif st.session_state.get("show_stocks"):
             "⚠️ Keine Anlageberatung · Daten via Yahoo Finance · Aktualisierung alle 12 Std.</div>",
             unsafe_allow_html=True)
 
+    # ── Quality Growth Ideen ──────────────────────────────────────────
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    with st.expander("🌱 Quality Growth — Hochrentable Compounder mit Wachstum", expanded=False):
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-bottom:14px;line-height:1.6;'>"
+            "Unternehmen mit <b>ROE ≥ 20%</b>, <b>Bruttomarge ≥ 50%</b>, "
+            "<b>Umsatzwachstum ≥ 15%</b> und <b>positivem FCF</b> — die klassischen 'Compounder' "
+            "im Stil von Terry Smith (Fundsmith) oder Chuck Akre. "
+            "Kein Turnaround, kein Value-Trap — echte Qualität mit echtem Wachstum.</div>",
+            unsafe_allow_html=True)
+
+        _QG_STOCKS = [
+            {"ticker": "MSFT", "name": "Microsoft", "thesis": "Cloud (Azure #2 weltweit), AI-Monetarisierung via Copilot, Office-Monopol — ROIC >30%. Marktführer in Enterprise-Software mit starkem Moat."},
+            {"ticker": "V",    "name": "Visa",      "thesis": "Globales Zahlungsnetzwerk mit 40%+ Nettomarge, kein Kreditrisiko, strukturelles Wachstum durch Bargeld-zu-Digital-Shift."},
+            {"ticker": "MA",   "name": "Mastercard", "thesis": "Duopol mit Visa. Höhere EM-Exposure, etwas mehr Wachstum. Asset-light, extrem skalierbar. FCF-Conversion >100%."},
+            {"ticker": "ASML", "name": "ASML",      "thesis": "Weltweites Monopol auf EUV-Lithographiemaschinen. Ohne ASML kein KI-Chip. 20J+ Burggraben. Pricing Power ohne Konkurrenz."},
+            {"ticker": "ADBE", "name": "Adobe",     "thesis": "Creative-Cloud-Monopol. Switching Costs extrem hoch. AI-Integration (Firefly) stärkt Moat weiter. Bruttomarge >88%."},
+            {"ticker": "COST", "name": "Costco",    "thesis": "Membership-Modell generiert stabilen Gewinn unabhängig vom Handelsumsatz. ROIC >20%, extrem loyale Kundenbasis, Expansion läuft."},
+            {"ticker": "IDEXY","name": "IDEXX Laboratories", "thesis": "Monopolist für veterinärdiagnostische Instrumente. Verbrauchsmaterial-Umsatz recurring. Bruttomarge ~57%, ROIC >80%."},
+            {"ticker": "ELF",  "name": "e.l.f. Beauty", "thesis": "Schnellstwachsende US-Kosmetikmarke, Quality+Growth kombiniert. Umsatz +77% in 2023, ROE >40%. Affordable Luxury."},
+        ]
+
+        _qg1, _qg2 = st.columns(2)
+        for _qi, _qs in enumerate(_QG_STOCKS):
+            _qcol = _qg1 if _qi % 2 == 0 else _qg2
+            with _qcol:
+                try:
+                    _qinf = yf.Ticker(_qs["ticker"]).fast_info
+                    _qprice = getattr(_qinf, 'last_price', None)
+                    _qmc    = getattr(_qinf, 'market_cap', None)
+                    _qmc_str = f"$ {_qmc/1e9:.0f} Mrd." if _qmc else ""
+                    _qprice_str = f"$ {_qprice:,.2f}" if _qprice else ""
+                except Exception:
+                    _qprice_str = ""
+                    _qmc_str = ""
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-left:3px solid #4caf50;border-radius:12px;padding:13px 15px;margin-bottom:10px;'>"
+                    f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>"
+                    f"<span style='color:#4caf50;font-size:1.02rem;font-weight:800;'>{_qs['ticker']}</span>"
+                    f"<span style='color:{_C_TEXT_SEC};font-size:0.82rem;'>{_qprice_str}</span></div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-bottom:6px;'>{_qs['name']}"
+                    f"{' · ' + _qmc_str if _qmc_str else ''}</div>"
+                    f"<div style='color:{_C_TEXT_MUTED2};font-size:0.78rem;line-height:1.5;'>{_qs['thesis']}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True)
+        st.markdown(
+            "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
+            "⚠️ Keine Anlageberatung · Kurse via Yahoo Finance · Manuell kuratiert</div>",
+            unsafe_allow_html=True)
+
     # ── Mid- & Small-Cap Ideen ─────────────────────────────────────────
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     with st.expander("🏗️  Mid- & Small-Cap Ideen — Nischenführer mit Qualitätsfilter  (12h Cache)", expanded=False):
@@ -11134,6 +11185,162 @@ if st.session_state.get("show_portfolio"):
 
             st.caption("Kurse in EUR umgerechnet (Wechselkurs via yFinance). P&L basiert auf dem Ø-Kaufkurs aus der Orderhistorie.")
 
+            # ── Portfolio Export ─────────────────────────────────────────────────
+            with st.expander("📤 Portfolio exportieren — CSV & HTML-Report"):
+                # Build rows for export
+                _exp_rows = []
+                for _, _er in stocks_etf.iterrows():
+                    _ep   = prices.get(_er['ISIN'])
+                    _ev   = round(_ep * _er['shares'], 2) if _ep else None
+                    _epnl = round(_ev - _er['cost_basis'], 2) if _ev else None
+                    _epct = round(_epnl / _er['cost_basis'] * 100, 1) if (_epnl is not None and _er['cost_basis'] > 0) else None
+                    _ei   = _alloc_infos.get(_er['ISIN'], {})
+                    _etkr = isin_map.get(_er['ISIN'], "")
+                    _is_etf_e = (_ei.get('quote_type') == 'ETF' or _etkr in _ETF_CW or _etkr in _ETF_SW)
+                    _exp_rows.append({
+                        "Name": _er['name'], "Ticker": _etkr, "ISIN": _er['ISIN'],
+                        "Anteile": _er['shares'], "Ø Kurs (€)": round(_er['avg_cost'], 2),
+                        "Akt. Kurs (€)": round(_ep, 2) if _ep else "",
+                        "Wert (€)": _ev if _ev else "",
+                        "G/V (€)": _epnl if _epnl is not None else "",
+                        "G/V (%)": _epct if _epct is not None else "",
+                        "Sektor": _ei.get('sector', ''), "Asset": "ETF" if _is_etf_e else "Aktie",
+                    })
+                for _, _er in crypto.iterrows():
+                    _ep   = _crypto_prices.get(_er['ISIN'])
+                    _ev   = round(_ep * _er['shares'], 2) if _ep else None
+                    _epnl = round(_ev - _er['cost_basis'], 2) if _ev else None
+                    _epct = round(_epnl / _er['cost_basis'] * 100, 1) if (_epnl is not None and _er['cost_basis'] > 0) else None
+                    _exp_rows.append({
+                        "Name": _er['name'], "Ticker": "", "ISIN": _er['ISIN'],
+                        "Anteile": _er['shares'], "Ø Kurs (€)": round(_er['avg_cost'], 2),
+                        "Akt. Kurs (€)": round(_ep, 2) if _ep else "",
+                        "Wert (€)": _ev if _ev else "",
+                        "G/V (€)": _epnl if _epnl is not None else "",
+                        "G/V (%)": _epct if _epct is not None else "",
+                        "Sektor": "Krypto", "Asset": "Krypto",
+                    })
+                _exp_df = pd.DataFrame(_exp_rows)
+
+                _exc1, _exc2 = st.columns(2)
+                with _exc1:
+                    st.download_button(
+                        "⬇️ CSV exportieren",
+                        data=_exp_df.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig"),
+                        file_name=f"portfolio_{_today}.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                        help="Semikolon-getrennt, Komma als Dezimalzeichen — öffnet direkt in Excel",
+                    )
+                with _exc2:
+                    # Build HTML report
+                    _rep_date = _today.strftime("%d.%m.%Y") if hasattr(_today, 'strftime') else str(_today)
+                    _pnl_col_rep = "#3fb950" if (pnl_eur or 0) >= 0 else "#f85149"
+                    _pnl_str_rep = (f"{pnl_eur:+,.0f} ({pnl_pct:+.1f}%)"
+                                    if pnl_eur is not None else "—")
+                    _total_str_rep = f"€ {current_total:,.0f}" if current_total else "—"
+                    # Build holdings table rows
+                    _tbl_rows_html = ""
+                    for _rr in _exp_rows:
+                        _gpct_v = _rr["G/V (%)"]
+                        _gc = "#3fb950" if (isinstance(_gpct_v, (int, float)) and _gpct_v >= 0) else "#f85149"
+                        _g_pct_str = (f'<span style="color:{_gc}">{_gpct_v:+.1f}%</span>'
+                                      if isinstance(_gpct_v, (int, float)) else "—")
+                        _g_eur_v = _rr["G/V (€)"]
+                        _g_eur_str = (f'<span style="color:{_gc}">{_g_eur_v:+,.2f}</span>'
+                                      if isinstance(_g_eur_v, (int, float)) else "—")
+                        _ak_v = _rr["Akt. Kurs (€)"]
+                        _wert_v = _rr["Wert (€)"]
+                        _tbl_rows_html += (
+                            f"<tr><td><b>{str(_rr['Name'])[:38]}</b>"
+                            f"<br><small style='color:#8b949e'>{_rr['ISIN']}</small></td>"
+                            f"<td>{_rr['Ticker'] or '—'}</td>"
+                            f"<td style='text-align:right'>{_rr['Anteile']:.4f}</td>"
+                            f"<td style='text-align:right'>€ {_rr['Ø Kurs (€)']:.2f}</td>"
+                            f"<td style='text-align:right'>"
+                            f"{'€ '+str(round(_ak_v,2)) if isinstance(_ak_v,(int,float)) else '—'}</td>"
+                            f"<td style='text-align:right'>"
+                            f"{'€ '+f'{_wert_v:,.2f}' if isinstance(_wert_v,(int,float)) else '—'}</td>"
+                            f"<td style='text-align:right'>{_g_eur_str}</td>"
+                            f"<td style='text-align:right'>{_g_pct_str}</td>"
+                            f"<td>{_rr['Sektor'] or '—'}</td>"
+                            f"<td>{_rr['Asset']}</td></tr>\n"
+                        )
+                    # Embed position donut chart if available
+                    _chart_section = ""
+                    try:
+                        if _dn_labels:
+                            _chart_section = (
+                                "<div class='sec'>🥧 Portfolio-Aufteilung nach Position</div>"
+                                + _dn_fig.to_html(
+                                    full_html=False, include_plotlyjs='cdn',
+                                    config={"displayModeBar": False}
+                                )
+                            )
+                    except Exception:
+                        pass
+                    _html_report = (
+                        "<!DOCTYPE html>\n"
+                        "<html lang='de'><head>\n"
+                        "<meta charset='utf-8'>"
+                        "<meta name='viewport' content='width=device-width,initial-scale=1'>\n"
+                        f"<title>Portfolio Report — {_rep_date}</title>\n"
+                        "<style>\n"
+                        "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
+                        "background:#0d1117;color:#e6edf3;margin:0;padding:24px}\n"
+                        "h1{font-size:1.8rem;margin:0 0 4px}\n"
+                        ".sub{color:#8b949e;font-size:.9rem;margin-bottom:28px}\n"
+                        ".metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));"
+                        "gap:12px;margin-bottom:28px}\n"
+                        ".m{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px}\n"
+                        ".ml{color:#8b949e;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em}\n"
+                        ".mv{font-size:1.3rem;font-weight:700;margin-top:4px}\n"
+                        ".sec{font-size:.95rem;font-weight:700;margin:20px 0 10px;"
+                        "border-bottom:1px solid #30363d;padding-bottom:6px}\n"
+                        "table{width:100%;border-collapse:collapse;font-size:.8rem;margin-bottom:28px}\n"
+                        "th{background:#161b22;color:#8b949e;padding:7px 10px;text-align:left;"
+                        "border-bottom:1px solid #30363d;font-weight:600;white-space:nowrap}\n"
+                        "td{padding:7px 10px;border-bottom:1px solid #21262d;vertical-align:middle}\n"
+                        "tr:hover td{background:#161b22}\n"
+                        ".foot{color:#8b949e;font-size:.72rem;margin-top:24px;"
+                        "border-top:1px solid #30363d;padding-top:12px}\n"
+                        "@media print{body{background:#fff;color:#000}"
+                        ".m,.sec{background:#f6f8fa;border-color:#d0d7de}"
+                        "th{background:#f6f8fa;color:#57606a}td{border-color:#d0d7de}}\n"
+                        "</style></head><body>\n"
+                        "<h1>📁 Portfolio Report</h1>\n"
+                        f"<div class='sub'>Erstellt am {_rep_date} · MB-AktienScreener · Keine Anlageberatung</div>\n"
+                        "<div class='metrics'>\n"
+                        f"  <div class='m'><div class='ml'>Positionen</div><div class='mv'>{len(df_port)}</div></div>\n"
+                        f"  <div class='m'><div class='ml'>Einstandswert</div><div class='mv'>€ {total_invested:,.0f}</div></div>\n"
+                        f"  <div class='m'><div class='ml'>Gesamtwert</div><div class='mv'>{_total_str_rep}</div></div>\n"
+                        f"  <div class='m'><div class='ml'>G / V gesamt</div>\n"
+                        f"    <div class='mv' style='color:{_pnl_col_rep}'>{_pnl_str_rep}</div></div>\n"
+                        "</div>\n"
+                        "<div class='sec'>📊 Positionen im Detail</div>\n"
+                        "<table><thead><tr>\n"
+                        "  <th>Name / ISIN</th><th>Ticker</th><th style='text-align:right'>Anteile</th>\n"
+                        "  <th style='text-align:right'>Ø Kurs</th><th style='text-align:right'>Akt. Kurs</th>\n"
+                        "  <th style='text-align:right'>Wert (€)</th><th style='text-align:right'>G/V (€)</th>\n"
+                        "  <th style='text-align:right'>G/V (%)</th><th>Sektor</th><th>Asset</th>\n"
+                        "</tr></thead><tbody>\n"
+                        + _tbl_rows_html
+                        + "</tbody></table>\n"
+                        + _chart_section
+                        + "\n<div class='foot'>\n"
+                        f"  Datenquelle: Yahoo Finance (yFinance) · Kurse in EUR · Stand: {_rep_date}<br>\n"
+                        "  <b>Als PDF speichern:</b> Browser-Menü → Datei → Drucken → Ziel: Als PDF speichern\n"
+                        "</div>\n"
+                        "</body></html>"
+                    )
+                    st.download_button(
+                        "📄 HTML-Report (→ PDF druckbar)",
+                        data=_html_report.encode("utf-8"),
+                        file_name=f"portfolio_report_{_today}.html",
+                        mime="text/html",
+                        use_container_width=True,
+                        help="Im Browser öffnen → Datei → Drucken → Als PDF speichern",
+                    )
 
           except Exception as _e_pos:
               st.error(f"Fehler im Positionen-Tab: {_e_pos}")
