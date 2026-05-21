@@ -8333,10 +8333,13 @@ elif st.session_state.get("show_wissen"):
 
 
 
-    def _w_metric(name, formula, good, bad, note):
+    def _w_metric(name, formula, good, bad, note, alias=""):
+        _alias_html = (f"<div style='color:#78909c;font-size:0.70rem;margin-top:1px;font-style:italic;'>"
+                       f"🇩🇪/🇬🇧 {alias}</div>") if alias else ""
         return (f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
                 f"border-radius:8px;padding:10px 12px;margin-bottom:6px;'>"
                 f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:700;'>{name}</div>"
+                f"{_alias_html}"
                 f"<div style='color:{_C_TEXT_MUTED};font-size:0.73rem;margin-top:3px;'><b>Formel:</b> {formula}</div>"
                 f"<div style='margin-top:5px;display:flex;gap:8px;flex-wrap:wrap;'>"
                 f"<span style='background:rgba(76,175,80,0.15);color:{_C_POSITIVE};border-radius:4px;padding:2px 7px;font-size:0.70rem;'>✓ {good}</span>"
@@ -8352,59 +8355,73 @@ elif st.session_state.get("show_wissen"):
         st.markdown("<div style='color:#64b5f6;font-size:0.75rem;font-weight:700;margin-bottom:8px;'>BEWERTUNG</div>", unsafe_allow_html=True)
         _kz1, _kz2 = st.columns(2)
         with _kz1:
-            st.markdown(_w_metric("KGV (Kurs-Gewinn-Verhältnis)", "Kurs ÷ Gewinn/Aktie",
+            st.markdown(_w_metric("KGV — Kurs-Gewinn-Verhältnis", "Kurs ÷ Gewinn/Aktie",
                 "15–20 = historischer Marktschnitt", ">40 ohne hohes Wachstum",
-                "Vergleich nur sinnvoll innerhalb derselben Branche. Growth-Aktien legal teurer."), unsafe_allow_html=True)
+                "Vergleich nur sinnvoll innerhalb derselben Branche. Growth-Aktien legal teurer.",
+                alias="Price-to-Earnings Ratio (P/E)"), unsafe_allow_html=True)
             st.markdown(_w_metric("EV/EBITDA", "Enterprise Value ÷ EBITDA",
                 "<12 = günstig, branchenunabhängig", ">25 ohne Wachstumsprämie",
-                "Berücksichtigt Schulden — besser als KGV für kapitalintensive Firmen."), unsafe_allow_html=True)
-            st.markdown(_w_metric("KBV (Kurs-Buchwert-Verhältnis)", "Kurs ÷ Buchwert/Aktie",
+                "Berücksichtigt Schulden — besser als KGV für kapitalintensive Firmen.",
+                alias="Unternehmenswert ÷ Betr. Ergebnis vor Abschreibungen / Enterprise Value to EBITDA"), unsafe_allow_html=True)
+            st.markdown(_w_metric("KBV — Kurs-Buchwert-Verhältnis", "Kurs ÷ Buchwert/Aktie",
                 "<1 = unter Substanzwert", ">10 ohne hohe Renditen",
-                "Wenig aussagekräftig bei Asset-Light Firmen (Software, Pharma)."), unsafe_allow_html=True)
+                "Wenig aussagekräftig bei Asset-Light Firmen (Software, Pharma).",
+                alias="Price-to-Book Ratio (P/B)"), unsafe_allow_html=True)
         with _kz2:
             st.markdown(_w_metric("PEG-Ratio", "KGV ÷ Gewinnwachstum (%)",
                 "<1 = günstig für Wachstum", ">2 = teuer relativ zum Wachstum",
-                "Verbindet Bewertung mit Wachstum — fair für Growth-Aktien."), unsafe_allow_html=True)
-            st.markdown(_w_metric("FCF-Yield (Free Cashflow-Rendite)", "Freier Cashflow ÷ Marktkapitalisierung",
+                "Verbindet Bewertung mit Wachstum — fair für Growth-Aktien.",
+                alias="Wachstumsbereinigte Bewertung / Price/Earnings-to-Growth"), unsafe_allow_html=True)
+            st.markdown(_w_metric("FCF-Yield — Freie Cashflow-Rendite", "Freier Cashflow ÷ Marktkapitalisierung",
                 "≥5% = sehr attraktiv", "<0% = verbrennt Cash",
-                "Zeigt echte Cash-Generierung — unabhängig von Bilanz-Tricks."), unsafe_allow_html=True)
+                "Zeigt echte Cash-Generierung — unabhängig von Bilanz-Tricks.",
+                alias="Free Cash Flow Yield"), unsafe_allow_html=True)
             st.markdown(_w_metric("Dividendenrendite", "Jährliche Dividende ÷ Aktienkurs",
                 "2–4% mit nachhaltigem Payout", ">8% kann auf Kursschwäche hindeuten",
-                "Payout Ratio prüfen: <60% gilt als nachhaltig."), unsafe_allow_html=True)
+                "Payout Ratio prüfen: <60% gilt als nachhaltig.",
+                alias="Dividend Yield"), unsafe_allow_html=True)
 
         st.markdown("<div style='color:#64b5f6;font-size:0.75rem;font-weight:700;margin:12px 0 8px 0;'>RENTABILITÄT & QUALITÄT</div>", unsafe_allow_html=True)
         _kz3, _kz4 = st.columns(2)
         with _kz3:
-            st.markdown(_w_metric("ROE (Return on Equity)", "Nettogewinn ÷ Eigenkapital",
+            st.markdown(_w_metric("ROE — Eigenkapitalrendite", "Nettogewinn ÷ Eigenkapital",
                 "≥15% exzellent", "Negativ = Verluste; hohe Schulden blähen ROE auf",
-                "Warren Buffett sucht >15% über mehrere Jahre."), unsafe_allow_html=True)
-            st.markdown(_w_metric("ROIC (Return on Invested Capital)", "EBIT(1-t) ÷ investiertes Kapital",
+                "Warren Buffett sucht >15% über mehrere Jahre.",
+                alias="Return on Equity"), unsafe_allow_html=True)
+            st.markdown(_w_metric("ROIC — Gesamtkapitalrendite", "EBIT(1-t) ÷ investiertes Kapital",
                 "ROIC > WACC = Werterzeugung", "ROIC < WACC = Kapitalvernichtung",
-                "Der wichtigste Renditekeindikator. Zeigt ob ein Unternehmen Mehrwert schafft."), unsafe_allow_html=True)
+                "Der wichtigste Renditekeindikator. Zeigt ob ein Unternehmen Mehrwert schafft.",
+                alias="Return on Invested Capital"), unsafe_allow_html=True)
             st.markdown(_w_metric("Bruttomarge", "(Umsatz − COGS) ÷ Umsatz",
                 "≥60% = Pricing Power (Software)", "<20% = Commodity-Geschäft",
-                "Stabile oder steigende Bruttomargen = Burggraben-Indikator."), unsafe_allow_html=True)
+                "Stabile oder steigende Bruttomargen = Burggraben-Indikator.",
+                alias="Gross Margin"), unsafe_allow_html=True)
         with _kz4:
-            st.markdown(_w_metric("Op.-Marge (EBIT-Marge)", "EBIT ÷ Umsatz",
+            st.markdown(_w_metric("Operative Marge — EBIT-Marge", "EBIT ÷ Umsatz",
                 "≥20% = sehr profitabel", "<5% = anfällig für Konjunktur",
-                "Zeigt operative Effizienz vor Zinsen und Steuern."), unsafe_allow_html=True)
+                "Zeigt operative Effizienz vor Zinsen und Steuern.",
+                alias="Operating Margin / EBIT Margin"), unsafe_allow_html=True)
             st.markdown(_w_metric("Rule of 40 (SaaS)", "Umsatzwachstum % + FCF-Marge %",
                 "≥40 = gesundes SaaS-Unternehmen", "<20 = Wachstum kauft sich zu teuer",
-                "Standard-Benchmark für Software/SaaS-Unternehmen."), unsafe_allow_html=True)
-            st.markdown(_w_metric("Beta", "Korrelation mit Markt (S&P 500)",
+                "Standard-Benchmark für Software/SaaS-Unternehmen.",
+                alias="Wachstum + Profitabilität ≥ 40 (SaaS-Gesundheitstest)"), unsafe_allow_html=True)
+            st.markdown(_w_metric("Beta — Marktrisiko-Koeffizient", "Korrelation mit Markt (S&P 500)",
                 "0.5–0.8 = defensiv", ">1.5 = hochvolatil",
-                "β=1 = marktkonform. Sinkt im Crash tiefer als β<1-Werte."), unsafe_allow_html=True)
+                "β=1 = marktkonform. Sinkt im Crash tiefer als β<1-Werte.",
+                alias="Beta Coefficient / Market Sensitivity"), unsafe_allow_html=True)
 
         st.markdown("<div style='color:#64b5f6;font-size:0.75rem;font-weight:700;margin:12px 0 8px 0;'>SCHULDEN & SICHERHEIT</div>", unsafe_allow_html=True)
         _kz5, _kz6 = st.columns(2)
         with _kz5:
-            st.markdown(_w_metric("Debt/Equity", "Gesamtschulden ÷ Eigenkapital",
+            st.markdown(_w_metric("Debt/Equity — Verschuldungsgrad", "Gesamtschulden ÷ Eigenkapital",
                 "<0.5 = konservativ finanziert", ">2 = hohes Zinsrisiko",
-                "Kontext wichtig: Versorger/REITs strukturell höher verschuldet."), unsafe_allow_html=True)
+                "Kontext wichtig: Versorger/REITs strukturell höher verschuldet.",
+                alias="Debt-to-Equity Ratio (D/E)"), unsafe_allow_html=True)
         with _kz6:
             st.markdown(_w_metric("Piotroski F-Score (0–9)", "9 binäre Kriterien aus Bilanz/GuV/CF",
                 "≥7 = starke Bilanzqualität", "≤2 = Schwächezeichen",
-                "Akademisch validiertes Signal für Bilanzgesundheit."), unsafe_allow_html=True)
+                "Akademisch validiertes Signal für Bilanzgesundheit.",
+                alias="Piotroski Financial Health Score"), unsafe_allow_html=True)
 
     # ─────────────────────────────────────────────────────────────────────
     # 2. WISSENSCHAFTLICHE GRUNDLAGEN
