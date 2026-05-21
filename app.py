@@ -6216,40 +6216,40 @@ with st.sidebar:
             st.session_state[_k] = False
         st.session_state["show_landing"] = True
         st.rerun()
-    if not st.session_state.get("show_stocks") and st.button("💡 Aktienideen", use_container_width=True):
-        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen"):
-            st.session_state[_k] = False
-        st.session_state["show_stocks"] = True
-        st.rerun()
-    if st.button("📁 Mein Portfolio", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen"):
-            st.session_state[_k] = False
-        st.session_state["show_portfolio"] = True
-        st.rerun()
-    if st.button("🔎 ETF-Analyzer", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener","show_wissen"):
-            st.session_state[_k] = False
-        st.session_state["show_etf_analyzer"] = True
-        st.rerun()
     if not st.session_state.get("show_market_overview") and st.button("🌍 Marktüberblick", use_container_width=True):
         for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener","show_wissen"):
             st.session_state[_k] = False
         st.session_state["show_market_overview"] = True
         st.rerun()
-    if not st.session_state.get("show_compare") and st.button("⚖️ Aktien-Vergleich", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener","show_wissen"):
+    if not st.session_state.get("show_stocks") and st.button("💡 Aktienideen", use_container_width=True):
+        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen"):
             st.session_state[_k] = False
-        st.session_state["show_compare"] = True
+        st.session_state["show_stocks"] = True
         st.rerun()
     if not st.session_state.get("show_screener") and st.button("🔬 Aktien-Screener", use_container_width=True):
         for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare"):
             st.session_state[_k] = False
         st.session_state["show_screener"] = True
         st.rerun()
+    if not st.session_state.get("show_compare") and st.button("⚖️ Aktien-Vergleich", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener","show_wissen"):
+            st.session_state[_k] = False
+        st.session_state["show_compare"] = True
+        st.rerun()
+    if st.button("🔎 ETF-Analyzer", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener","show_wissen"):
+            st.session_state[_k] = False
+        st.session_state["show_etf_analyzer"] = True
+        st.rerun()
     if not st.session_state.get("show_wissen") and st.button("📚 Wissenswertes", use_container_width=True):
         for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener"):
             st.session_state[_k] = False
         st.session_state["show_wissen"] = True
+        st.rerun()
+    if st.button("📁 Mein Portfolio", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen"):
+            st.session_state[_k] = False
+        st.session_state["show_portfolio"] = True
         st.rerun()
 
     st.markdown("<div class='section-header'>⚙️ Einstellungen</div>", unsafe_allow_html=True)
