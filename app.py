@@ -6504,12 +6504,30 @@ elif st.session_state.get("show_market_overview"):
     # ── Normierte Index-Performance ─────────────────────────────────────
     st.markdown("<div class='section-header'>📈 Normierte Index-Performance</div>", unsafe_allow_html=True)
     _PERF_ETF_MAP = {
-        "MSCI World (URTH)": "URTH",
+        # ── USA ──────────────────────────────────────────────────────────
+        "Dow Jones (DIA)": "DIA",
         "S&P 500 (SPY)": "SPY",
         "S&P 500 Equal-Weight (RSP)": "RSP",
         "NASDAQ-100 (QQQ)": "QQQ",
         "NASDAQ-100 EW (QQQE)": "QQQE",
+        "Russell 2000 (IWM)": "IWM",
+        # ── WELT ─────────────────────────────────────────────────────────
+        "MSCI World (URTH)": "URTH",
+        "FTSE All-World (VT)": "VT",
         "MSCI ex-USA (EFA)": "EFA",
+        "MSCI EM (EEM)": "EEM",
+        # ── EUROPA ───────────────────────────────────────────────────────
+        "DAX (EXS1.DE)": "EXS1.DE",
+        "EuroStoxx 50 (FEZ)": "FEZ",
+        "FTSE Europe / Stoxx 600 (VGK)": "VGK",
+        # ── ASIEN ────────────────────────────────────────────────────────
+        "Japan / Nikkei (EWJ)": "EWJ",
+        "Hang Seng / HK (EWH)": "EWH",
+        # ── FAKTOR / SMART BETA ──────────────────────────────────────────
+        "MSCI Momentum (MTUM)": "MTUM",
+        "MSCI Quality (QUAL)": "QUAL",
+        "MSCI Value (VLUE)": "VLUE",
+        "MSCI Min Vol (USMV)": "USMV",
     }
     _MAG7_MAP = {
         "Apple (AAPL)": "AAPL",
