@@ -523,25 +523,35 @@ if st.session_state.get("light_mode"):
 
     /* Horizontal-Tab-Buttons (Kennzahlen / Wachstum / Chart etc.) */
     div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-secondary"] {
-        background: #f1f5f9 !important;
-        background-color: #f1f5f9 !important;
-        border: 1px solid #e2e8f0 !important;
-        color: #64748b !important;
-        border-radius: 6px 6px 0 0 !important;
+        background: #1e293b !important;
+        background-color: #1e293b !important;
+        border: 1px solid #334155 !important;
+        color: #94a3b8 !important;
+        border-radius: 6px !important;
+        font-size: 0.78rem !important;
+        padding: 4px 4px !important;
+        min-height: 36px !important;
     }
     div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-secondary"]:hover {
-        background: #e2e8f0 !important;
-        background-color: #e2e8f0 !important;
-        color: #334155 !important;
-        border-color: #c7d2fe !important;
+        background: #273549 !important;
+        background-color: #273549 !important;
+        color: #cbd5e1 !important;
+        border-color: #64b5f6 !important;
     }
     div[data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-primary"] {
-        background: #2563eb !important;
-        background-color: #2563eb !important;
-        border: 1px solid #2563eb !important;
+        background: #1565c0 !important;
+        background-color: #1565c0 !important;
+        border: 1px solid #64b5f6 !important;
         color: #ffffff !important;
-        border-radius: 6px 6px 0 0 !important;
+        border-radius: 6px !important;
         font-weight: 700 !important;
+        font-size: 0.78rem !important;
+        padding: 4px 4px !important;
+        min-height: 36px !important;
+    }
+    /* Tighten the gap between consecutive button rows (nav bar + screener presets) */
+    div[data-testid="stHorizontalBlock"] + div[data-testid="stHorizontalBlock"] {
+        margin-top: -8px !important;
     }
 
     /* ═══════════════════════════════════════════════════════
@@ -17419,25 +17429,31 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
 
 
 # ==================== NAVIGATION ====================
-# Session-state-basierte Navigation (immun gegen st.rerun() und WebSocket-Reconnects)
 _TABS = [
     "📊 Kennzahlen", "📈 Wachstum", "🔮 Prognose", "📋 Fundamental", "⚖️ Bewertung",
     "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden", "📐 Faktor-Profil",
 ]
 _at = st.session_state.get("active_tab", 0)
-_tab_sel = st.selectbox(
-    "Tab",
-    options=list(range(len(_TABS))),
-    format_func=lambda i: _TABS[i],
-    index=min(_at, len(_TABS) - 1),
-    key="tab_selectbox",
-    label_visibility="collapsed",
+st.markdown(
+    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;font-weight:600;text-transform:uppercase;"
+    f"letter-spacing:.09em;margin-bottom:4px;'>Analyse-Bereich wählen</div>",
+    unsafe_allow_html=True,
 )
-if _tab_sel != _at:
-    st.session_state["active_tab"] = _tab_sel
-    st.rerun()
+_nav_row1 = st.columns(6)
+_nav_row2 = st.columns(6)
+_nav_cols = _nav_row1 + _nav_row2
+for _ni, _nlabel in enumerate(_TABS):
+    _is_active = (_ni == _at)
+    if _nav_cols[_ni].button(
+        _nlabel,
+        key=f"nav_tab_{_ni}",
+        type="primary" if _is_active else "secondary",
+        use_container_width=True,
+    ):
+        st.session_state["active_tab"] = _ni
+        st.rerun()
 _at = st.session_state.get("active_tab", 0)
-st.markdown(f"<div style='border-top:2px solid {_C_BORDER};margin:-6px 0 12px 0;'></div>",
+st.markdown(f"<div style='border-top:2px solid {_C_BORDER};margin:4px 0 14px 0;'></div>",
             unsafe_allow_html=True)
 
 if _at == 0:
