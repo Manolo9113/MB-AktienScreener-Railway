@@ -4011,6 +4011,77 @@ def load_screener_data() -> list[dict]:
     return results[:8]
 
 
+@st.cache_data(ttl=21600, show_spinner=False)
+def _load_screener_universe() -> list[dict]:
+    """Fetches metrics for ~90 quality stocks universe for the advanced screener (6h cache)."""
+    _div_tickers = [k for k, v in _DIVIDEND_POOL.items() if isinstance(v, tuple)]
+    _universe = list(dict.fromkeys(
+        _SCREENER_WATCHLIST +
+        list(_GROWTH_POOL.keys()) +
+        list(_VALUE_POOL.keys()) +
+        _div_tickers +
+        list(_MIDCAP_POOL.keys())
+    ))
+    results = []
+    for tkr in _universe:
+        try:
+            info  = yf.Ticker(tkr).info
+            price = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+            if not price:
+                continue
+            mktcap = info.get("marketCap") or 0
+            fcf    = info.get("freeCashflow") or 0
+            gm     = (info.get("grossMargins") or 0) * 100
+            om     = (info.get("operatingMargins") or 0) * 100
+            nm     = (info.get("profitMargins") or 0) * 100
+            roe    = (info.get("returnOnEquity") or 0) * 100
+            roa    = (info.get("returnOnAssets") or 0) * 100
+            rg     = (info.get("revenueGrowth") or 0) * 100
+            dy     = (info.get("dividendYield") or 0) * 100
+            de     = info.get("debtToEquity") or 0
+            sec    = info.get("sector") or ""
+            ind    = info.get("industry") or ""
+            moat   = compute_moat(sec, ind, gm, roe, om, nm, rg, mktcap, de)
+            results.append({
+                "ticker":       tkr,
+                "name":         (info.get("shortName") or info.get("longName") or tkr)[:32],
+                "price":        round(price, 2),
+                "currency":     info.get("currency", "USD"),
+                "sector":       sec,
+                "marketcap":    mktcap,
+                "pe_fwd":       info.get("forwardPE"),
+                "pe_trail":     info.get("trailingPE"),
+                "pb":           info.get("priceToBook"),
+                "rev_growth":   round(rg, 1),
+                "gross_margin": round(gm, 1),
+                "op_margin":    round(om, 1),
+                "roe":          round(roe, 1),
+                "roa":          round(roa, 1),
+                "fcf_yield":    round(fcf / mktcap * 100, 1) if (fcf and mktcap > 0) else 0.0,
+                "div_yield":    round(dy, 2),
+                "payout":       round((info.get("payoutRatio") or 0) * 100, 1),
+                "beta":         round(info.get("beta") or 1.0, 2),
+                "debt_equity":  round(de, 1),
+                "quality":      _sc_score(info),
+                "moat_width":   moat.get("moat_width", "Kein Moat"),
+                "moat_score":   moat.get("moat_score", 0),
+                "analyst_up":   round((info.get("targetMeanPrice", price) / price - 1) * 100, 1) if price else 0.0,
+            })
+        except Exception:
+            pass
+    return sorted(results, key=lambda x: x["quality"], reverse=True)
+
+
+_SCREENER_PRESETS = {
+    "🚀 Growth":    {"rev_growth_min": 15.0, "gross_margin_min": 40.0, "pe_fwd_max": 60.0, "roe_min": 10.0, "quality_min": 50},
+    "💎 Value":     {"pe_fwd_max": 18.0, "roe_min": 15.0, "fcf_yield_min": 3.0, "quality_min": 55},
+    "💰 Dividende": {"div_yield_min": 2.0, "payout_max": 75.0, "roe_min": 10.0},
+    "🏆 Quality":   {"quality_min": 70, "gross_margin_min": 45.0, "roe_min": 15.0, "fcf_yield_min": 2.0},
+    "🛡️ Defensiv":  {"beta_max": 0.8, "div_yield_min": 1.0, "gross_margin_min": 30.0},
+    "⚡ GARP":      {"rev_growth_min": 10.0, "pe_fwd_max": 30.0, "roe_min": 15.0, "gross_margin_min": 35.0},
+}
+
+
 _DAYTRADING_POOL = [
     "TQQQ","SQQQ","UPRO","SPXU","QQQ","SPY","NVDA","TSLA","AMD","META",
     "AAPL","MSFT","AMZN","GOOGL","NFLX","SMCI","ARM","PLTR","COIN","MSTR",
@@ -4706,6 +4777,8 @@ if "show_market_overview" not in st.session_state:
     st.session_state["show_market_overview"] = False
 if "show_compare" not in st.session_state:
     st.session_state["show_compare"] = False
+if "show_screener" not in st.session_state:
+    st.session_state["show_screener"] = False
 if "etf_ticker_input" not in st.session_state:
     st.session_state["etf_ticker_input"] = ""
 if "portfolio_df" not in st.session_state:
@@ -4735,6 +4808,7 @@ def _go_to_ticker(t):
     st.session_state["show_stocks"] = False
     st.session_state["show_market_overview"] = False
     st.session_state["show_compare"] = False
+    st.session_state["show_screener"] = False
     st.session_state["search_input"] = t
     st.session_state["search_msg"] = ""
     st.session_state["active_tab"] = 0
@@ -6059,43 +6133,39 @@ with st.sidebar:
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     if not st.session_state["show_landing"] and st.button("🏠 Startseite", use_container_width=True):
+        for _k in ("show_portfolio","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener"):
+            st.session_state[_k] = False
         st.session_state["show_landing"] = True
-        st.session_state["show_portfolio"] = False
-        st.session_state["show_stocks"] = False
         st.rerun()
     if not st.session_state.get("show_stocks") and st.button("💡 Aktienideen", use_container_width=True):
+        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener"):
+            st.session_state[_k] = False
         st.session_state["show_stocks"] = True
-        st.session_state["show_landing"] = False
-        st.session_state["show_portfolio"] = False
-        st.session_state["show_etf_analyzer"] = False
         st.rerun()
     if st.button("📁 Mein Portfolio", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener"):
+            st.session_state[_k] = False
         st.session_state["show_portfolio"] = True
-        st.session_state["show_landing"] = False
-        st.session_state["show_etf_analyzer"] = False
-        st.session_state["show_stocks"] = False
         st.rerun()
     if st.button("🔎 ETF-Analyzer", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener"):
+            st.session_state[_k] = False
         st.session_state["show_etf_analyzer"] = True
-        st.session_state["show_portfolio"] = False
-        st.session_state["show_landing"] = False
-        st.session_state["show_stocks"] = False
         st.rerun()
     if not st.session_state.get("show_market_overview") and st.button("🌍 Marktüberblick", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener"):
+            st.session_state[_k] = False
         st.session_state["show_market_overview"] = True
-        st.session_state["show_etf_analyzer"] = False
-        st.session_state["show_portfolio"] = False
-        st.session_state["show_landing"] = False
-        st.session_state["show_stocks"] = False
-        st.session_state["show_compare"] = False
         st.rerun()
     if not st.session_state.get("show_compare") and st.button("⚖️ Aktien-Vergleich", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener"):
+            st.session_state[_k] = False
         st.session_state["show_compare"] = True
-        st.session_state["show_market_overview"] = False
-        st.session_state["show_etf_analyzer"] = False
-        st.session_state["show_portfolio"] = False
-        st.session_state["show_landing"] = False
-        st.session_state["show_stocks"] = False
+        st.rerun()
+    if not st.session_state.get("show_screener") and st.button("🔬 Aktien-Screener", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare"):
+            st.session_state[_k] = False
+        st.session_state["show_screener"] = True
         st.rerun()
 
     st.markdown("<div class='section-header'>⚙️ Einstellungen</div>", unsafe_allow_html=True)
@@ -6242,26 +6312,27 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
     # ── Schnellnavigation ───────────────────────────────────────────
     st.markdown("<div class='section-header'>⚡ Zur Übersicht navigieren</div>", unsafe_allow_html=True)
     _nav_c1, _nav_c2 = st.columns(2)
+    _all_pages = ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener")
     with _nav_c1:
-        if st.button("🌍 Marktüberblick", use_container_width=True, type="primary"):
+        if st.button("🌍 Marktüberblick", use_container_width=True, type="primary", key="land_nav_markt"):
+            for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_market_overview"] = True
-            st.session_state["show_landing"] = False
             st.rerun()
     with _nav_c2:
-        if st.button("💡 Aktienideen & Screener", use_container_width=True):
+        if st.button("💡 Aktienideen & Screener", use_container_width=True, key="land_nav_stocks"):
+            for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_stocks"] = True
-            st.session_state["show_landing"] = False
             st.rerun()
     _nav_c3, _nav_c4 = st.columns(2)
     with _nav_c3:
-        if st.button("📁 Mein Portfolio", use_container_width=True):
+        if st.button("📁 Mein Portfolio", use_container_width=True, key="land_nav_pf"):
+            for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_portfolio"] = True
-            st.session_state["show_landing"] = False
             st.rerun()
     with _nav_c4:
-        if st.button("🔎 ETF-Analyzer", use_container_width=True):
+        if st.button("🔎 ETF-Analyzer", use_container_width=True, key="land_nav_etf"):
+            for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_etf_analyzer"] = True
-            st.session_state["show_landing"] = False
             st.rerun()
 
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
@@ -7785,21 +7856,42 @@ elif st.session_state.get("show_compare"):
     st.markdown("<div class='section-header'>⚖️ Aktien-Vergleich</div>", unsafe_allow_html=True)
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # ── Ticker-Eingabe ─────────────────────────────────────────────────
-    _cmp_c1, _cmp_c2 = st.columns([3, 1])
-    with _cmp_c1:
-        _cmp_raw = st.text_input(
-            "Ticker eingeben (2–4, kommagetrennt)",
-            placeholder="z.B.  AAPL, MSFT, GOOGL, META",
-            key="cmp_tickers_input",
-        )
-    with _cmp_c2:
-        _cmp_btn = st.button("🔍 Vergleichen", use_container_width=True, type="primary", key="cmp_go")
+    # ── Suche: bis zu 4 Aktien per Name oder Ticker ───────────────────
+    st.markdown(
+        f"<div style='color:{_C_TEXT_MUTED};font-size:0.80rem;margin-bottom:8px;'>"
+        f"Gib Ticker-Symbole <b>oder</b> Firmennamen ein. Tippe Namen → Vorschläge erscheinen.</div>",
+        unsafe_allow_html=True)
 
-    _cmp_tickers = [t.strip().upper() for t in _cmp_raw.split(",") if t.strip()][:4]
+    if "cmp_resolved" not in st.session_state:
+        st.session_state["cmp_resolved"] = []
 
-    if not _cmp_tickers or len(_cmp_tickers) < 2:
-        st.info("Gib mindestens 2 Ticker ein (z.B. AAPL, MSFT, NVDA).")
+    _cmp_slots = st.columns(4)
+    for _si in range(4):
+        with _cmp_slots[_si]:
+            _cmp_q = st.text_input(
+                f"Aktie {_si+1}" + (" *" if _si < 2 else " (opt.)"),
+                key=f"cmp_q_{_si}",
+                placeholder="Ticker / Name",
+            )
+            if _cmp_q and len(_cmp_q) >= 2:
+                _cmp_ac = search_by_name(_cmp_q)
+                if _cmp_ac:
+                    for _sa in _cmp_ac[:3]:
+                        _lbl = f"{_sa['ticker']} — {_sa['name'][:22]}"
+                        if st.button(_lbl, key=f"cmp_ac_{_si}_{_sa['ticker']}", use_container_width=True):
+                            st.session_state[f"cmp_q_{_si}"] = _sa["ticker"]
+                            st.rerun()
+
+    # Resolve typed values → ticker symbols
+    _cmp_tickers = []
+    for _si in range(4):
+        _val = st.session_state.get(f"cmp_q_{_si}", "").strip().upper()
+        if _val:
+            _cmp_tickers.append(_val)
+    _cmp_tickers = list(dict.fromkeys(_cmp_tickers))[:4]
+
+    if len(_cmp_tickers) < 2:
+        st.info("Gib mindestens 2 Aktien ein (Ticker oder Name).")
         st.stop()
 
     # ── Daten laden ────────────────────────────────────────────────────
@@ -8017,6 +8109,208 @@ elif st.session_state.get("show_compare"):
                 _bcol.plotly_chart(_bf, use_container_width=True, config={"displayModeBar": False})
 
     st.caption("Grün = bester Wert im Vergleich. Keine Anlageberatung.")
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    st.stop()
+
+# ==================== SCREENER PAGE ====================
+elif st.session_state.get("show_screener"):
+    st.markdown("<div class='section-header'>🔬 Aktien-Screener</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+    # ── Preset-Buttons ─────────────────────────────────────────────────
+    if "scr_filters" not in st.session_state:
+        st.session_state["scr_filters"] = {}
+    if "scr_saved" not in st.session_state:
+        st.session_state["scr_saved"] = {}
+
+    st.markdown(f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;margin-bottom:6px;'>Schnell-Presets:</div>", unsafe_allow_html=True)
+    _pr_cols = st.columns(len(_SCREENER_PRESETS) + 1)
+    for _pi, (_pname, _pvals) in enumerate(_SCREENER_PRESETS.items()):
+        if _pr_cols[_pi].button(_pname, key=f"scr_pre_{_pi}", use_container_width=True):
+            st.session_state["scr_filters"] = dict(_pvals)
+            st.rerun()
+    if _pr_cols[-1].button("🗑️ Zurücksetzen", key="scr_reset", use_container_width=True):
+        st.session_state["scr_filters"] = {}
+        st.rerun()
+
+    # Load saved user presets
+    if st.session_state["scr_saved"]:
+        _sv_names = list(st.session_state["scr_saved"].keys())
+        _sv_sel = st.selectbox("💾 Gespeicherte Presets", ["— auswählen —"] + _sv_names, key="scr_sv_sel")
+        if _sv_sel != "— auswählen —":
+            if st.button(f"Preset '{_sv_sel}' laden", key="scr_sv_load"):
+                st.session_state["scr_filters"] = dict(st.session_state["scr_saved"][_sv_sel])
+                st.rerun()
+
+    # ── Filter-Panel ───────────────────────────────────────────────────
+    _f = st.session_state["scr_filters"]
+    with st.expander("⚙️ Filter einstellen", expanded=True):
+        _fc1, _fc2, _fc3 = st.columns(3)
+
+        with _fc1:
+            st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.78rem;font-weight:700;margin-bottom:4px;'>📊 Bewertung</div>", unsafe_allow_html=True)
+            _pe_max = st.slider("KGV (forward) max", 0, 120, int(_f.get("pe_fwd_max", 120)), 1, key="scr_pe_max",
+                                help="Forward KGV: Kurs ÷ geschätzter Gewinn. 0 = kein Filter")
+            _pb_max = st.slider("KBV max", 0.0, 30.0, float(_f.get("pb_max", 30.0)), 0.5, key="scr_pb_max",
+                                help="Kurs-Buchwert-Verhältnis. 30 = kein Filter")
+            _eu_max = st.slider("EV/EBITDA max (0=kein Filter)", 0, 60, int(_f.get("ev_ebitda_max", 60)), 1, key="scr_eu_max")
+
+        with _fc2:
+            st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.78rem;font-weight:700;margin-bottom:4px;'>📈 Wachstum & Qualität</div>", unsafe_allow_html=True)
+            _rg_min = st.slider("Umsatzwachstum min (%)", -20, 60, int(_f.get("rev_growth_min", -20)), 1, key="scr_rg_min")
+            _gm_min = st.slider("Bruttomarge min (%)", 0, 90, int(_f.get("gross_margin_min", 0)), 1, key="scr_gm_min")
+            _om_min = st.slider("Op. Marge min (%)", -20, 60, int(_f.get("op_margin_min", -20)), 1, key="scr_om_min")
+
+        with _fc3:
+            st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.78rem;font-weight:700;margin-bottom:4px;'>💰 Rentabilität & Risiko</div>", unsafe_allow_html=True)
+            _roe_min    = st.slider("ROE min (%)", -30, 80, int(_f.get("roe_min", -30)), 1, key="scr_roe_min")
+            _fcf_min    = st.slider("FCF-Yield min (%)", -10, 20, int(_f.get("fcf_yield_min", -10)), 1, key="scr_fcf_min")
+            _beta_max   = st.slider("Beta max", 0.0, 4.0, float(_f.get("beta_max", 4.0)), 0.1, key="scr_beta_max")
+
+        _fd1, _fd2, _fd3 = st.columns(3)
+        with _fd1:
+            _dy_min  = st.slider("Dividendenrendite min (%)", 0.0, 10.0, float(_f.get("div_yield_min", 0.0)), 0.25, key="scr_dy_min")
+            _pay_max = st.slider("Payout Ratio max (%)", 10, 110, int(_f.get("payout_max", 110)), 5, key="scr_pay_max",
+                                 help="110 = kein Filter")
+        with _fd2:
+            _qual_min = st.slider("Quality Score min", 0, 100, int(_f.get("quality_min", 0)), 5, key="scr_qual_min",
+                                  help="Composite Score aus Margen, FCF, ROE, Wachstum, Verschuldung")
+            _moat_filter = st.selectbox("Burggraben", ["Alle", "Schmal oder breiter", "Breit", "Sehr breit"],
+                                        index=["Alle","Schmal oder breiter","Breit","Sehr breit"].index(_f.get("moat_filter","Alle")),
+                                        key="scr_moat")
+        with _fd3:
+            _sectors = ["Alle", "Technology", "Healthcare", "Financials", "Consumer Cyclical",
+                        "Industrials", "Communication Services", "Consumer Defensive",
+                        "Energy", "Basic Materials", "Real Estate", "Utilities"]
+            _sector_sel = st.selectbox("Sektor", _sectors,
+                                       index=_sectors.index(_f.get("sector_filter","Alle")) if _f.get("sector_filter","Alle") in _sectors else 0,
+                                       key="scr_sector")
+            _mcap_sel = st.selectbox("Marktkapitalisierung", ["Alle", "Large (>$10B)", "Mid ($1–10B)", "Small (<$1B)"],
+                                     index=["Alle","Large (>$10B)","Mid ($1–10B)","Small (<$1B)"].index(_f.get("mcap_filter","Alle")),
+                                     key="scr_mcap")
+
+        # Save preset row
+        _sav_c1, _sav_c2 = st.columns([3, 1])
+        with _sav_c1:
+            _preset_name = st.text_input("Preset-Name zum Speichern", placeholder="z.B. Mein Value-Filter", key="scr_save_name")
+        with _sav_c2:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            if st.button("💾 Speichern", key="scr_save_btn", use_container_width=True):
+                if _preset_name.strip():
+                    _cur_f = {
+                        "pe_fwd_max": _pe_max, "pb_max": _pb_max, "ev_ebitda_max": _eu_max,
+                        "rev_growth_min": _rg_min, "gross_margin_min": _gm_min, "op_margin_min": _om_min,
+                        "roe_min": _roe_min, "fcf_yield_min": _fcf_min, "beta_max": _beta_max,
+                        "div_yield_min": _dy_min, "payout_max": _pay_max, "quality_min": _qual_min,
+                        "moat_filter": _moat_filter, "sector_filter": _sector_sel, "mcap_filter": _mcap_sel,
+                    }
+                    st.session_state["scr_saved"][_preset_name.strip()] = _cur_f
+                    st.success(f"Preset '{_preset_name.strip()}' gespeichert!")
+
+    # ── Daten laden & filtern ──────────────────────────────────────────
+    with st.spinner("Lade Screener-Universum (90 Qualitäts-Aktien, gecacht 6h)…"):
+        _scr_all = _load_screener_universe()
+
+    if not _scr_all:
+        st.warning("Daten konnten nicht geladen werden. Bitte erneut versuchen.")
+        st.stop()
+
+    # Apply filters
+    def _scr_match(r):
+        if _pe_max < 120 and (r["pe_fwd"] is None or r["pe_fwd"] > _pe_max): return False
+        if _pb_max < 30  and (r["pb"]     is None or r["pb"]     > _pb_max): return False
+        if _eu_max < 60:
+            pass  # ev_ebitda not stored in universe — skip
+        if _rg_min  > -20 and r["rev_growth"]   < _rg_min:  return False
+        if _gm_min  >   0 and r["gross_margin"]  < _gm_min:  return False
+        if _om_min  > -20 and r["op_margin"]     < _om_min:  return False
+        if _roe_min > -30 and r["roe"]           < _roe_min: return False
+        if _fcf_min > -10 and r["fcf_yield"]     < _fcf_min: return False
+        if _beta_max < 4.0 and r["beta"]         > _beta_max: return False
+        if _dy_min  >  0  and r["div_yield"]     < _dy_min:  return False
+        if _pay_max < 110 and r["payout"] > 0    and r["payout"] > _pay_max: return False
+        if _qual_min > 0  and r["quality"]        < _qual_min: return False
+        if _moat_filter == "Sehr breit" and r["moat_width"] != "Sehr breiter Moat": return False
+        if _moat_filter == "Breit" and r["moat_width"] not in ("Breiter Moat","Sehr breiter Moat"): return False
+        if _moat_filter == "Schmal oder breiter" and r["moat_width"] == "Kein Moat": return False
+        if _sector_sel != "Alle" and r["sector"] != _sector_sel: return False
+        if _mcap_sel == "Large (>$10B)"  and r["marketcap"] <  10e9: return False
+        if _mcap_sel == "Mid ($1–10B)"   and not (1e9 <= r["marketcap"] < 10e9): return False
+        if _mcap_sel == "Small (<$1B)"   and r["marketcap"] >= 1e9: return False
+        return True
+
+    _scr_hits = [r for r in _scr_all if _scr_match(r)]
+
+    # ── Ergebnis-Zusammenfassung ───────────────────────────────────────
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    _sm1, _sm2, _sm3, _sm4 = st.columns(4)
+    _sm1.metric("Treffer", len(_scr_hits))
+    _sm2.metric("Universum", len(_scr_all))
+    _sm3.metric("Ø Quality Score", f"{sum(r['quality'] for r in _scr_hits)/len(_scr_hits):.0f}" if _scr_hits else "—")
+    _sm4.metric("Ø Umsatzwachstum", f"{sum(r['rev_growth'] for r in _scr_hits)/len(_scr_hits):.1f}%" if _scr_hits else "—")
+
+    if not _scr_hits:
+        st.info("Keine Aktien erfüllen alle Filter-Kriterien. Filter lockern?")
+        st.stop()
+
+    # ── Sortierung ─────────────────────────────────────────────────────
+    _sort_by = st.selectbox(
+        "Sortieren nach",
+        ["Quality Score ↓", "Umsatzwachstum ↓", "Bruttomarge ↓", "ROE ↓",
+         "FCF-Yield ↓", "KGV fwd ↑", "Dividendenrendite ↓", "Beta ↑"],
+        key="scr_sort",
+    )
+    _sort_map = {
+        "Quality Score ↓":    (lambda r: r["quality"],      True),
+        "Umsatzwachstum ↓":   (lambda r: r["rev_growth"],   True),
+        "Bruttomarge ↓":      (lambda r: r["gross_margin"],  True),
+        "ROE ↓":              (lambda r: r["roe"],           True),
+        "FCF-Yield ↓":        (lambda r: r["fcf_yield"],     True),
+        "KGV fwd ↑":          (lambda r: r["pe_fwd"] or 999, False),
+        "Dividendenrendite ↓":(lambda r: r["div_yield"],     True),
+        "Beta ↑":             (lambda r: r["beta"],          False),
+    }
+    _sort_fn, _sort_rev = _sort_map[_sort_by]
+    _scr_hits = sorted(_scr_hits, key=_sort_fn, reverse=_sort_rev)
+
+    # ── Ergebnis-Tabelle ───────────────────────────────────────────────
+    import pandas as _pd_scr
+    _scr_rows = []
+    for r in _scr_hits:
+        _cur = r["currency"][:1] if r["currency"] else "$"
+        _scr_rows.append({
+            "Ticker":        r["ticker"],
+            "Name":          r["name"],
+            "Kurs":          f"{_cur}{r['price']:,.2f}",
+            "Sektor":        r["sector"][:20] if r["sector"] else "—",
+            "KGV fwd":       f"{r['pe_fwd']:.1f}x"  if r["pe_fwd"]  else "—",
+            "UW-Wachstum":   f"{r['rev_growth']:+.1f}%",
+            "Bruttomarge":   f"{r['gross_margin']:.1f}%",
+            "Op. Marge":     f"{r['op_margin']:.1f}%",
+            "ROE":           f"{r['roe']:.1f}%",
+            "FCF-Yield":     f"{r['fcf_yield']:.1f}%",
+            "Div.-Yield":    f"{r['div_yield']:.2f}%" if r["div_yield"] > 0 else "—",
+            "Beta":          f"{r['beta']:.2f}",
+            "Quality":       r["quality"],
+            "Burggraben":    r["moat_width"].replace(" Moat","").replace("Sehr breiter","⭐⭐").replace("Breiter","⭐").replace("Schmaler","〜").replace("Kein","—"),
+            "Upside":        f"{r['analyst_up']:+.0f}%" if r["analyst_up"] else "—",
+        })
+    _scr_df = _pd_scr.DataFrame(_scr_rows)
+    st.dataframe(_scr_df, hide_index=True, use_container_width=True, height=min(60 + 36 * len(_scr_hits), 600))
+
+    # ── Zur Analyse ────────────────────────────────────────────────────
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;margin-bottom:6px;'>Aktie direkt analysieren:</div>", unsafe_allow_html=True)
+    _goto_cols = st.columns(min(len(_scr_hits), 8))
+    for _gi, r in enumerate(_scr_hits[:8]):
+        if _goto_cols[_gi].button(r["ticker"], key=f"scr_goto_{r['ticker']}", use_container_width=True):
+            _go_to_ticker(r["ticker"])
+            st.rerun()
+
+    st.caption(
+        f"Universum: ~90 kuratierte Qualitäts-Aktien · Daten: yFinance (gecacht 6h) · "
+        f"Piotroski-Score verfügbar im Einzelaktien-Tab 🔬 · Keine Anlageberatung."
+    )
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     st.stop()
 
