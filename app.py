@@ -8555,46 +8555,203 @@ elif st.session_state.get("show_wissen"):
     # ─────────────────────────────────────────────────────────────────────
     # 5. BEHAVIORAL FINANCE
     # ─────────────────────────────────────────────────────────────────────
-    with st.expander("🧠 Behavioral Finance — Die 8 teuersten Anlegerfehler"):
-        _bf_items = [
-            ("Loss Aversion (Verlustaversion)", "#ef5350",
-             "Verluste schmerzen psychologisch doppelt so stark wie Gewinne befriedigen (Kahneman/Tversky). "
-             "Folge: Verlierer zu lang halten (Hoffnung), Gewinner zu früh verkaufen. "
-             "→ Lösung: Vorab Exit-Regeln definieren — unabhängig von Einstiegskurs."),
-            ("FOMO — Fear of Missing Out", "#ff9800",
-             "Nach starken Rallyes kaufen Anleger auf Höchstständen aus Angst, etwas zu verpassen. "
-             "Historisch folgen auf FOMO-getriebene Blasen tiefe Korrekturen (Dotcom 2000, Krypto 2021). "
-             "→ Lösung: Sparplan/DCA statt Timing. Kaufentscheid von Bewertung abhängig machen."),
-            ("Recency Bias (Rückschaufehler)", "#ffc107",
-             "Anleger extrapolieren die jüngste Performance in die Zukunft: "
-             "Nach +30% erwarten sie +30%, nach -20% Totalverlust. "
-             "→ Lösung: Langfristige historische Daten konsultieren. Mean Reversion beachten."),
-            ("Overconfidence (Überschätzung)", "#ab47bc",
-             "Studien zeigen: Privatanleger schätzen ihre Trefferquote auf ~65%, tatsächlich liegt sie bei ~45%. "
-             "Exzessives Trading kostet durchschnittlich 3–4% p.a. durch Transaktionskosten und Timing-Fehler. "
-             "→ Lösung: Rendite-Tagebuch führen. Alle Entscheidungen dokumentieren."),
-            ("Market Timing Illusion", "#64b5f6",
-             "'Time in the market beats timing the market' — kein Investor schafft es dauerhaft, "
-             "Ein- und Ausstiegszeitpunkte richtig zu wählen. "
-             "Wer 1995–2014 die 10 besten S&P-500-Tage verpasste, hatte nur halbe Marktrendite. "
-             "→ Lösung: Investiert bleiben. Sparplan automatisieren."),
-            ("Home Bias (Heimatmarkt-Klumpen)", "#4caf50",
-             "Deutsche Anleger halten im Schnitt 50–60% in deutschen Aktien — obwohl Deutschland "
-             "nur ~3% der Weltmarktkapitalisierung ausmacht. "
-             "→ Lösung: Weltportfolio. MSCI World als Basis."),
-            ("Confirmation Bias (Bestätigungsfehler)", "#4fc3f7",
-             "Anleger suchen nach Informationen, die ihre bestehende Meinung bestätigen. "
-             "Gegenargumente werden ignoriert oder abgetan. "
-             "→ Lösung: Aktiv den Bären-Case suchen. Devil's Advocate spielen."),
-            ("Disposition-Effekt", "#ff6b35",
-             "Kombination aus Loss Aversion und Overconfidence: Gewinner zu früh verkaufen "
-             "(Gewinne sichern), Verlierer ewig halten (Verluste nicht realisieren). "
-             "→ Lösung: Bewertungsbasiert handeln, nicht emotionsbasiert."),
+    with st.expander("🧠 Behavioral Finance — Wirtschaftspsychologie für Anleger"):
+        st.markdown(_w_card(
+            "Warum schlägt die Psychologie die meisten Anleger?",
+            "Der DALBAR-Bericht (2023) zeigt: Der durchschnittliche US-Privatanleger erzielte über 30 Jahre "
+            "nur <b>~4,0% p.a.</b> — der S&P 500 leistete <b>~10,2% p.a.</b> Der Unterschied ist keine Gebührenfrage, "
+            "sondern eine <b>Verhaltensfrage</b>. Anleger kaufen zu spät (nach Rallyes) und verkaufen zu früh (in Panik). "
+            "Daniel Kahneman erhielt 2002 den Wirtschafts-Nobelpreis für die Erkenntnis, dass Menschen "
+            "keine rationalen Nutzenmaximierer sind — sondern von <b>Heuristiken und Verzerrungen</b> gesteuert werden. "
+            "Wer diese Mechanismen kennt, kann gezielt gegensteuern.",
+            "#37474f"
+        ), unsafe_allow_html=True)
+
+        st.markdown("#### 🔵 Kognitive Verzerrungen — Fehler im Denken")
+        st.caption("Das Gehirn verarbeitet Informationen mit Abkürzungen (Heuristiken). Diese sind im Alltag nützlich, im Depot gefährlich.")
+
+        _bf_kognitive = [
+            ("🎯 Anchoring — Ankereffekt", "#5c6bc0",
+             "<b>Was es ist:</b> Das Gehirn fixiert sich auf den ersten verfügbaren Zahlenwert — den 'Anker' — "
+             "und passt alle späteren Urteile nur unzureichend davon weg an.<br><br>"
+             "<b>Im Depot:</b> Der Einstiegskurs wird zum Anker. Eine Aktie 'muss erst wieder auf 100€ zurück', "
+             "bevor man verkauft — obwohl der faire Wert heute bei 70€ liegt. "
+             "Oder: Ein KGV von 30 wirkt 'günstig', wenn der Sektor-Durchschnitt 50 war — obwohl 30 absolut teuer ist.<br><br>"
+             "<b>Studie:</b> Kahneman & Tversky (1974) zeigten, dass zufällige Zahlen (sogar vom Glücksrad) "
+             "spätere Schätzungen von Versuchspersonen stark beeinflussten.<br><br>"
+             "<b>Gegenmittel:</b> Bewertung immer relativ zu <i>mehreren</i> Referenzpunkten prüfen "
+             "(historischer Schnitt, Peers, DCF). Den Einstiegskurs bewusst ausblenden — er ist für die Zukunft irrelevant."),
+            ("📰 Availability Heuristic — Verfügbarkeitsheuristik", "#1565c0",
+             "<b>Was es ist:</b> Was leicht erinnerbar ist, wird als wahrscheinlicher eingeschätzt. "
+             "Lebhafte, medial präsente Ereignisse verzerren die Risikowahrnehmung.<br><br>"
+             "<b>Im Depot:</b> Nach dem Absturz einer prominenten Aktie (z.B. Wirecard) werden alle deutschen "
+             "Technologieaktien gemieden. Nach einer Flugzeugkatastrophe meidet man Flugaktien — "
+             "obwohl Fliegen statistisch sicherer ist als Autofahren. Medial gehypte Aktien werden übergewichtet.<br><br>"
+             "<b>Studie:</b> Schwartz et al. (1991): Menschen, die sich viele eigene Fehler erinnern sollen, "
+             "bewerten sich als kompetenter — weil das Erinnern schwer fällt und als Signal 'ich mache keine Fehler' "
+             "interpretiert wird. Erinnerbarkeit ≠ Häufigkeit.<br><br>"
+             "<b>Gegenmittel:</b> Entscheidungen auf Basis von Daten und Basisraten treffen, nicht auf Basis "
+             "von Schlagzeilen. Fragen: 'Was sagen die historischen Häufigkeiten — unabhängig von diesem Ereignis?'"),
+            ("🔄 Recency Bias — Rückschaufehler", "#ffc107",
+             "<b>Was es ist:</b> Jüngste Ereignisse werden übergewichtet, weil sie lebhafter im Gedächtnis sind. "
+             "Das Gehirn extrapoliert die unmittelbare Vergangenheit linear in die Zukunft.<br><br>"
+             "<b>Im Depot:</b> Nach drei Jahren Bullenmarkt gehen Anleger von weiter steigenden Kursen aus "
+             "und erhöhen ihr Aktienengagement auf dem Höhepunkt — genau dann, wenn das Risiko maximal ist. "
+             "Nach Crashs erwarten viele den nächsten Crash und bleiben cash — und verpassen die Erholung.<br><br>"
+             "<b>Studie:</b> Dalbar (2023): Nettozuflüsse in Aktienfonds sind nach langen Rallyes am höchsten, "
+             "Abflüsse nach Crashs am stärksten — der klassische 'Buy High, Sell Low'-Kreislauf.<br><br>"
+             "<b>Gegenmittel:</b> Historische Daten über vollständige Zyklen studieren (1929, 1987, 2000, 2008, 2020). "
+             "Valuations-Modelle (CAPE/Shiller-KGV) helfen, überhitzte Märkte zu erkennen. Mean Reversion beachten."),
+            ("💬 Confirmation Bias — Bestätigungsfehler", "#4fc3f7",
+             "<b>Was es ist:</b> Menschen suchen bevorzugt Informationen, die ihre bestehende Meinung bestätigen, "
+             "und ignorieren oder entwerten widersprüchliche Daten.<br><br>"
+             "<b>Im Depot:</b> Man kauft eine Aktie und liest fortan nur noch Bull-Cases. "
+             "Kritische Analysen werden als 'Short-Seller-Propaganda' abgetan. "
+             "In Foren umgibt man sich mit Gleichgesinnten ('echo chambers').<br><br>"
+             "<b>Studie:</b> Lord, Ross & Lepper (1979) zeigten, dass Menschen nach der Lektüre von "
+             "identischen Pro- und Kontra-Studien ihre Ursprungsmeinung stärker vertraten als zuvor — "
+             "beide Seiten 'fanden' in denselben Daten Bestätigung.<br><br>"
+             "<b>Gegenmittel:</b> Aktiv den <i>besten</i> Gegenargument suchen. 'Pre-Mortem'-Analyse: "
+             "'Warum könnte dieses Investment in 3 Jahren gescheitert sein?' "
+             "Bearishe Analysten und Short-Seller-Reports bewusst lesen."),
+            ("⚓ Mental Accounting — Mentale Buchführung", "#78909c",
+             "<b>Was es ist:</b> Menschen führen im Kopf separate 'Konten' für verschiedenes Geld — "
+             "obwohl ein Euro immer gleich viel wert ist, unabhängig von seiner Herkunft.<br><br>"
+             "<b>Im Depot:</b> 'Mit Bonus-Geld darf ich spekulieren' — Geld aus Gehaltserhöhungen oder "
+             "Erbschaften wird riskanter investiert als reguläres Erspartes. "
+             "Dividenden werden als 'Gratisgeld' behandelt und leichtfertig ausgegeben. "
+             "Buchgewinne und Buchverluste werden getrennt mentalisiert, obwohl nur der Gesamtwert zählt.<br><br>"
+             "<b>Studie:</b> Thaler (1985, Nobelpreis 2017): Versuchspersonen reagierten auf 10€-Verluste "
+             "anders, je nachdem ob sie als Verlust 'von eigenem Geld' oder 'nicht gewonnenes Bonus-Geld' "
+             "geframt wurden — obwohl der wirtschaftliche Effekt identisch war.<br><br>"
+             "<b>Gegenmittel:</b> Gesamtportfolio-Sicht. Alle Positionen nach denselben Regeln bewerten, "
+             "unabhängig von Herkunft des eingesetzten Kapitals."),
         ]
-        _bf1, _bf2 = st.columns(2)
-        for _i, (_title, _clr, _body) in enumerate(_bf_items):
-            with (_bf1 if _i % 2 == 0 else _bf2):
+
+        _bf_c1, _bf_c2 = st.columns(2)
+        for _i, (_title, _clr, _body) in enumerate(_bf_kognitive):
+            with (_bf_c1 if _i % 2 == 0 else _bf_c2):
                 st.markdown(_w_card(f"{_i+1}. {_title}", _body, _clr), unsafe_allow_html=True)
+
+        st.markdown("#### 🔴 Emotionale Verzerrungen — Fehler durch Gefühle")
+        st.caption("Emotionen überlagern das rationale Denken — besonders in Extremphasen (Euphorie & Panik).")
+
+        _bf_emotional = [
+            ("😰 Loss Aversion — Verlustaversion", "#ef5350",
+             "<b>Was es ist:</b> Der Schmerz eines Verlusts wiegt psychologisch etwa <b>2–2,5× so schwer</b> "
+             "wie die Freude eines gleichgroßen Gewinns — eine der robustesten Erkenntnisse der Verhaltensökonomik "
+             "(Kahneman & Tversky, Prospect Theory, 1979).<br><br>"
+             "<b>Im Depot:</b> Verlierer werden gehalten, obwohl das Kapital besser woanders eingesetzt wäre "
+             "('Ich verkaufe erst, wenn ich wieder bei null bin'). "
+             "Gewinner werden zu früh realisiert, um den Gewinn zu 'sichern'. "
+             "Portfolios werden in Crashs zu 100% in Cash umgeschichtet — genau am Tiefpunkt.<br><br>"
+             "<b>Studie:</b> Shefrin & Statman (1985) dokumentierten den 'Disposition Effect': "
+             "Privatanleger halten Verlierer 1,7× länger als Gewinner — trotz gegenteiliger Steueroptimierung.<br><br>"
+             "<b>Gegenmittel:</b> Exit-Regeln <i>vor</i> dem Kauf schriftlich festlegen "
+             "(-20% = Verkaufssignal oder Nachkauf-Entscheid). "
+             "Steuervorteil nutzen: Verluste realisieren senkt die Steuerlast auf Gewinne."),
+            ("🚀 FOMO — Fear of Missing Out", "#ff9800",
+             "<b>Was es ist:</b> Die Angst, eine lukrative Gelegenheit zu verpassen, treibt Anleger dazu, "
+             "auf Hochs zu kaufen — aus Emotion statt aus Analyse.<br><br>"
+             "<b>Im Depot:</b> Bitcoin 2017 und 2021: Millionen Erstkäufer auf dem Allzeithoch, danach -80%. "
+             "Nvidia 2024: Privatanleger kauften massiv nach +200% — kurz vor der ersten Korrektur. "
+             "FOMO verstärkt Blasen und sorgt für maximale Verluste bei Nicht-Profis.<br><br>"
+             "<b>Studie:</b> Barber & Odean (2000): Männliche Anleger handeln 45% mehr als weibliche — "
+             "und erzielen 1,4% weniger Rendite p.a. Häufiges Trading ist oft FOMO-getrieben.<br><br>"
+             "<b>Gegenmittel:</b> DCA (Cost Averaging): Jeden Monat fester Betrag, unabhängig vom Kursstand. "
+             "Selbstregel: 'Ich kaufe nur, wenn ich die Aktie auch nach -30% noch kaufen würde.'"),
+            ("🎯 Overconfidence — Überschätzung", "#ab47bc",
+             "<b>Was es ist:</b> Die systematische Überschätzung der eigenen Fähigkeiten, Informationsvorteile "
+             "und Trefferquoten — besonders ausgeprägt bei erfahrenen Anlegern.<br><br>"
+             "<b>Im Depot:</b> 90% der Anleger halten sich für überdurchschnittlich gut — "
+             "was mathematisch unmöglich ist. Zu enge Konfidenzintervalle bei Prognosen: "
+             "'Die Aktie wird auf 150€ steigen' statt 'irgendwo zwischen 90€ und 200€'. "
+             "Übermäßiges Trading und zu große Einzelpositionen sind Folgen.<br><br>"
+             "<b>Studie:</b> Svenson (1981): 93% der US-Autofahrer glauben, besser als der Durchschnitt "
+             "zu fahren. Bei Anlegern zeigt Barber & Odean (1999): je mehr Handelsaktivität, "
+             "desto schlechter die Nettorendite.<br><br>"
+             "<b>Gegenmittel:</b> Entscheidungs-Tagebuch: Jeden Trade mit Thesis und Erwartung dokumentieren. "
+             "Tatsächliche vs. prognostizierte Performance quartalsweise vergleichen. "
+             "Demut vor Profis: Wer ist die Gegenseite beim Trade?"),
+            ("⏳ Market Timing Illusion", "#64b5f6",
+             "<b>Was es ist:</b> Der Glaube, den richtigen Ein- und Ausstiegszeitpunkt zu kennen — "
+             "obwohl dies selbst Profis dauerhaft nicht gelingt.<br><br>"
+             "<b>Im Depot:</b> Wer von 1995–2014 investiert war, aber die <b>10 besten Handelstage</b> verpasste, "
+             "hatte nur die <b>halbe Marktrendite</b>. Die besten Tage folgen häufig auf die schlimmsten Crashs — "
+             "genau wenn Angst-gesteuerte Anleger noch in Cash sitzen. "
+             "99% der Zeit sieht ein Market Timer 'den Markt als zu hoch an'.<br><br>"
+             "<b>Studie:</b> CXO Advisory (2012): 68 bekannte Markt-Gurus lagen in ihren Prognosen "
+             "nur in 47% der Fälle richtig — schlechter als Münzwurf.<br><br>"
+             "<b>Gegenmittel:</b> 'Time in the market beats timing the market.' "
+             "Automatischer Sparplan nimmt Timing-Entscheidung komplett heraus. "
+             "In Crashs: Investitionsplan fortführen oder sogar erhöhen."),
+            ("🏠 Home Bias — Heimatmarkt-Klumpenrisiko", "#4caf50",
+             "<b>Was es ist:</b> Anleger übergewichten systematisch Aktien des eigenen Heimatmarkts — "
+             "aus Vertrautheit, nicht aus Analyse.<br><br>"
+             "<b>Im Depot:</b> Deutsche Privatanleger halten durchschnittlich 50–60% in deutschen Aktien, "
+             "obwohl Deutschland nur ~3% der Weltmarktkapitalisierung ausmacht. "
+             "US-Anleger halten ~80% US-Aktien (ca. 65% Weltmarkt-Anteil — leicht weniger verzerrt, "
+             "aber immer noch zu viel). Die Folge: Klumpenrisiko durch zu geringe Diversifikation.<br><br>"
+             "<b>Studie:</b> French & Poterba (1991): Investoren in Frankreich, Japan, UK und USA "
+             "hielten alle >90% in Heimataktien — eine globale Anomalie ohne rationale Begründung.<br><br>"
+             "<b>Gegenmittel:</b> MSCI World oder FTSE All-World als Kernportfolio. "
+             "Zielgewichtung: max. 5–10% in einem einzelnen Land, wenn fundamental nicht begründet."),
+            ("🗑️ Sunk Cost Fallacy — Versunkene Kosten", "#ff6b35",
+             "<b>Was es ist:</b> Vergangene Kosten (Zeit, Geld, Energie) beeinflussen zukünftige Entscheidungen — "
+             "obwohl sie unwiderruflich verloren und damit für rationale Entscheidungen irrelevant sind.<br><br>"
+             "<b>Im Depot:</b> 'Ich habe schon so viel in diese Aktie gesteckt, ich kann jetzt nicht verkaufen.' "
+             "Eine Position mit -60% wird gehalten, weil man '+60% bräuchte, um wieder bei null zu sein' — "
+             "statt zu fragen: 'Würde ich diese Aktie heute neu kaufen?' "
+             "Das ist die häufigste Begründung für das Festhalten an Totalverlustkandidaten.<br><br>"
+             "<b>Studie:</b> Arkes & Blumer (1985): Probanden, die mehr für ein Skiticket bezahlt hatten, "
+             "fuhren auch bei schlechtem Wetter — nur um 'den Kauf zu rechtfertigen'. Identisch im Depot.<br><br>"
+             "<b>Gegenmittel:</b> Die Eine Frage: <i>'Würde ich diese Position heute, neu, zu diesem Kurs kaufen?'</i> "
+             "Wenn Nein → Position überdenken. Der Einstiegskurs ist für künftige Renditen vollständig irrelevant."),
+            ("🔃 Disposition-Effekt (kombiniert)", "#e91e63",
+             "<b>Was es ist:</b> Kombination aus Loss Aversion und Overconfidence: Systematisches zu-früh-Verkaufen "
+             "von Gewinnern und zu-lang-Halten von Verlierern — der bekannteste Anlegerfehler überhaupt.<br><br>"
+             "<b>Im Depot:</b> Studie von Odean (1998) an 10.000 Broker-Konten: Anleger realisierten Gewinne "
+             "1,5× häufiger als Verluste — und die gehaltenen Verlierer schnitten danach schlechter ab "
+             "als die verkauften Gewinner. Der Disposition-Effekt kostet im Schnitt ~1,5% p.a.<br><br>"
+             "<b>Ursache:</b> Gewinnmitnahme gibt sofortiges Belohnungsgefühl (Dopamin). "
+             "Verlust realisieren schmerzt sofort und fühlt sich wie 'Niederlage eingestehen' an.<br><br>"
+             "<b>Gegenmittel:</b> Trailing Stop-Loss oder regelmäßiges Rebalancing — nicht Emotion — "
+             "entscheidet über Verkauf. Portfolio nach Fundamentaldaten bewerten, nicht nach Einstand."),
+            ("🏛️ Status Quo Bias — Trägheitsfehler", "#607d8b",
+             "<b>Was es ist:</b> Menschen bevorzugen den gegenwärtigen Zustand und empfinden Veränderungen "
+             "als Verlust — selbst wenn die Veränderung objektiv vorteilhaft wäre.<br><br>"
+             "<b>Im Depot:</b> Ererbte Aktien werden nicht verkauft, obwohl man sie nie neu kaufen würde. "
+             "Das Portfolio aus dem Jahr 2015 wurde seit Jahren nicht rebalanciert. "
+             "Wechsel zu einem besseren Broker scheitert an 'zu viel Aufwand'. "
+             "Erbschaften von Firmenbeteiligungen werden als 'sicher' gehalten — Klumpenrisiko ignoriert.<br><br>"
+             "<b>Studie:</b> Samuelson & Zeckhauser (1988): In Pensionsfondsumfragen wählten Teilnehmer "
+             "fast immer die Standardoption — selbst wenn sie explizit als zufällig eingeführt wurde.<br><br>"
+             "<b>Gegenmittel:</b> Jährlicher 'Portfolio-Audit': Jede Position rechtfertigen müssen, "
+             "als würde man sie heute neu aufnehmen. 'Was würde ich tun, wenn ich dieses Portfolio "
+             "heute zum ersten Mal aufbauen würde?'"),
+        ]
+
+        _bf_e1, _bf_e2 = st.columns(2)
+        for _i, (_title, _clr, _body) in enumerate(_bf_emotional):
+            with (_bf_e1 if _i % 2 == 0 else _bf_e2):
+                st.markdown(_w_card(f"{_i+1}. {_title}", _body, _clr), unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.markdown(_w_card(
+            "🛡️ Selbst-Check — Bin ich gerade irrational?",
+            "Vor jeder Kauf- oder Verkaufsentscheidung: <b>Stell dir diese 5 Fragen.</b><br><br>"
+            "1️⃣ <b>Anker-Check:</b> Beeinflusst mich der Einstiegskurs oder ein früherer Höchststand? "
+            "(Nur der faire Wert zählt.)<br>"
+            "2️⃣ <b>Emotion-Check:</b> Kaufe ich aus FOMO oder verkaufe ich aus Panik? "
+            "(Entscheidungen im emotionalen Ausnahmezustand vertagen.)<br>"
+            "3️⃣ <b>Sunk-Cost-Check:</b> Würde ich diese Position heute neu kaufen? "
+            "(Wenn Nein: überdenken.)<br>"
+            "4️⃣ <b>Confirmation-Check:</b> Habe ich aktiv nach dem besten Gegenargument gesucht? "
+            "(Den Bären-Case ernst nehmen.)<br>"
+            "5️⃣ <b>Overconfidence-Check:</b> Wer ist die Gegenseite beim Trade — und warum könnte "
+            "der Smarter sein als ich?",
+            "#1a237e"
+        ), unsafe_allow_html=True)
 
     # ─────────────────────────────────────────────────────────────────────
     # 6. ZINSESZINS & ZEIT
