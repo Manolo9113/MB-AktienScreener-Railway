@@ -6343,115 +6343,6 @@ elif st.session_state.get("show_market_overview"):
     st.markdown("<div class='section-header'>🌍 Marktüberblick</div>", unsafe_allow_html=True)
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # ── Normierte Index-Performance ─────────────────────────────────────
-    st.markdown("<div class='section-header'>📈 Normierte Index-Performance</div>", unsafe_allow_html=True)
-    _PERF_ETF_MAP = {
-        "MSCI World (URTH)": "URTH",
-        "S&P 500 (SPY)": "SPY",
-        "S&P 500 Equal-Weight (RSP)": "RSP",
-        "NASDAQ-100 (QQQ)": "QQQ",
-        "NASDAQ-100 EW (QQQE)": "QQQE",
-        "MSCI ex-USA (EFA)": "EFA",
-    }
-    _MAG7_MAP = {
-        "Apple (AAPL)": "AAPL",
-        "Microsoft (MSFT)": "MSFT",
-        "NVIDIA (NVDA)": "NVDA",
-        "Amazon (AMZN)": "AMZN",
-        "Alphabet (GOOGL)": "GOOGL",
-        "Meta (META)": "META",
-        "Tesla (TSLA)": "TSLA",
-    }
-    _pc1, _pc2, _pc3 = st.columns([2, 2, 1])
-    with _pc1:
-        _perf_indices = st.multiselect(
-            "Indizes / ETFs auswählen",
-            options=list(_PERF_ETF_MAP.keys()),
-            default=["MSCI World (URTH)", "S&P 500 (SPY)", "NASDAQ-100 (QQQ)"],
-            key="perf_indices_sel",
-        )
-    with _pc2:
-        _perf_mag7 = st.multiselect(
-            "Mag7 Einzelwerte hinzufügen",
-            options=list(_MAG7_MAP.keys()),
-            default=[],
-            key="perf_mag7_sel",
-        )
-    with _pc3:
-        _perf_period = st.selectbox(
-            "Zeitraum",
-            options=["1M", "3M", "6M", "1J", "3J", "5J"],
-            index=2,
-            key="perf_period_sel",
-        )
-    _period_days_map = {"1M": 35, "3M": 95, "6M": 185, "1J": 370, "3J": 1100, "5J": 1850}
-    _perf_days = _period_days_map.get(_perf_period, 185)
-    _perf_symbols = {n: _PERF_ETF_MAP[n] for n in _perf_indices}
-    _perf_symbols.update({n: _MAG7_MAP[n] for n in _perf_mag7})
-    _PERF_COLORS = [
-        "#00e5ff", "#4caf50", "#ff9800", "#e91e63", "#9c27b0",
-        "#2196f3", "#ff5722", "#00bcd4", "#8bc34a", "#ffc107",
-        "#f44336", "#3f51b5", "#009688",
-    ]
-    if _perf_symbols:
-        _perf_fig = go.Figure()
-        _perf_returns = {}
-        with st.spinner("Lade Performance-Daten…"):
-            for _ci, (label, sym) in enumerate(_perf_symbols.items()):
-                try:
-                    _ph = _fetch_index_hist(sym, "1d", _perf_days)
-                    if _ph is not None and not _ph.empty and len(_ph) >= 2:
-                        _ph_close = _ph["Close"].dropna()
-                        if hasattr(_ph_close.index, "tz") and _ph_close.index.tz is not None:
-                            _ph_close.index = _ph_close.index.tz_convert(None)
-                        _norm = (_ph_close / _ph_close.iloc[0] - 1) * 100
-                        _perf_returns[label] = float(_norm.iloc[-1])
-                        _clr = _PERF_COLORS[_ci % len(_PERF_COLORS)]
-                        _perf_fig.add_trace(go.Scatter(
-                            x=_norm.index,
-                            y=_norm.values,
-                            mode="lines",
-                            name=label,
-                            line=dict(color=_clr, width=2),
-                            hovertemplate=f"<b>{label}</b><br>%{{x|%d.%m.%Y}}<br>%{{y:+.2f}}%<extra></extra>",
-                        ))
-                except Exception:
-                    pass
-        if _perf_returns:
-            _perf_fig.add_hline(y=0, line_color=_C_BORDER, line_width=1, line_dash="dot")
-            _perf_fig.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color=_C_TEXT_PRIMARY, size=11),
-                xaxis=dict(gridcolor=_C_BORDER, zeroline=False),
-                yaxis=dict(gridcolor=_C_BORDER, zeroline=False,
-                           ticksuffix="%", title="Rendite (normiert auf Startdatum)"),
-                legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=_C_BORDER,
-                            borderwidth=1, font=dict(size=10)),
-                margin=dict(t=30, b=10, l=70, r=10),
-                height=380,
-                hovermode="x unified",
-            )
-            st.plotly_chart(_perf_fig, use_container_width=True,
-                            config={"displayModeBar": False})
-            _pr_sorted = sorted(_perf_returns.items(), key=lambda x: x[1], reverse=True)
-            _pr_n = min(len(_pr_sorted), 6)
-            _pr_cols = st.columns(_pr_n)
-            for _pri, (lbl, ret) in enumerate(_pr_sorted[:_pr_n]):
-                _clr = _C_POSITIVE if ret >= 0 else _C_NEGATIVE
-                _pr_cols[_pri].markdown(
-                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
-                    f"border-radius:8px;padding:8px 10px;text-align:center;'>"
-                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.62rem;margin-bottom:3px;'>{lbl[:24]}</div>"
-                    f"<div style='color:{_clr};font-size:0.95rem;font-weight:700;'>{ret:+.1f}%</div>"
-                    f"</div>", unsafe_allow_html=True)
-            st.caption(f"Start = erster Handelstag im Zeitraum (Basis 0%). Quelle: yFinance. Zeitraum: {_perf_period}.")
-        else:
-            st.warning("Performance-Daten konnten nicht geladen werden.")
-    else:
-        st.info("Bitte mindestens einen Index oder Mag7-Wert auswählen.")
-
-
     # ── S&P 500 Heatmap (Treemap) ────────────────────────────────────────
     st.markdown("<div class='section-header'>🌡️ S&P 500 Heatmap — Heute</div>", unsafe_allow_html=True)
     _tm_data = _load_treemap_data()
@@ -6536,6 +6427,177 @@ elif st.session_state.get("show_market_overview"):
             st.caption("Sektor-ETFs als Fallback.")
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # ── Normierte Index-Performance ─────────────────────────────────────
+    st.markdown("<div class='section-header'>📈 Normierte Index-Performance</div>", unsafe_allow_html=True)
+    _PERF_ETF_MAP = {
+        "MSCI World (URTH)": "URTH",
+        "S&P 500 (SPY)": "SPY",
+        "S&P 500 Equal-Weight (RSP)": "RSP",
+        "NASDAQ-100 (QQQ)": "QQQ",
+        "NASDAQ-100 EW (QQQE)": "QQQE",
+        "MSCI ex-USA (EFA)": "EFA",
+    }
+    _MAG7_MAP = {
+        "Apple (AAPL)": "AAPL",
+        "Microsoft (MSFT)": "MSFT",
+        "NVIDIA (NVDA)": "NVDA",
+        "Amazon (AMZN)": "AMZN",
+        "Alphabet (GOOGL)": "GOOGL",
+        "Meta (META)": "META",
+        "Tesla (TSLA)": "TSLA",
+    }
+    _pc1, _pc2, _pc3, _pc4 = st.columns([2, 2, 1.5, 1])
+    with _pc1:
+        _perf_indices = st.multiselect(
+            "Indizes / ETFs auswählen",
+            options=list(_PERF_ETF_MAP.keys()),
+            default=["MSCI World (URTH)", "S&P 500 (SPY)", "NASDAQ-100 (QQQ)"],
+            key="perf_indices_sel",
+        )
+    with _pc2:
+        _perf_mag7 = st.multiselect(
+            "Mag7 Einzelwerte hinzufügen",
+            options=list(_MAG7_MAP.keys()),
+            default=[],
+            key="perf_mag7_sel",
+        )
+    with _pc3:
+        _perf_ex = st.multiselect(
+            "S&P 500 Varianten",
+            options=["S&P 500 ex Tech", "S&P 500 ex Mag7"],
+            default=[],
+            key="perf_ex_sel",
+        )
+    with _pc4:
+        _perf_period = st.selectbox(
+            "Zeitraum",
+            options=["1M", "3M", "6M", "1J", "3J", "5J"],
+            index=2,
+            key="perf_period_sel",
+        )
+    _period_days_map = {"1M": 35, "3M": 95, "6M": 185, "1J": 370, "3J": 1100, "5J": 1850}
+    _perf_days = _period_days_map.get(_perf_period, 185)
+    _perf_symbols = {n: _PERF_ETF_MAP[n] for n in _perf_indices}
+    _perf_symbols.update({n: _MAG7_MAP[n] for n in _perf_mag7})
+    _PERF_COLORS = [
+        "#00e5ff", "#4caf50", "#ff9800", "#e91e63", "#9c27b0",
+        "#2196f3", "#ff5722", "#00bcd4", "#8bc34a", "#ffc107",
+        "#f44336", "#3f51b5", "#009688",
+    ]
+    if _perf_symbols or _perf_ex:
+        _perf_fig = go.Figure()
+        _perf_returns = {}
+        with st.spinner("Lade Performance-Daten…"):
+            for _ci, (label, sym) in enumerate(_perf_symbols.items()):
+                try:
+                    _ph = _fetch_index_hist(sym, "1d", _perf_days)
+                    if _ph is not None and not _ph.empty and len(_ph) >= 2:
+                        _ph_close = _ph["Close"].dropna()
+                        if hasattr(_ph_close.index, "tz") and _ph_close.index.tz is not None:
+                            _ph_close.index = _ph_close.index.tz_convert(None)
+                        _norm = (_ph_close / _ph_close.iloc[0] - 1) * 100
+                        _perf_returns[label] = float(_norm.iloc[-1])
+                        _clr = _PERF_COLORS[_ci % len(_PERF_COLORS)]
+                        _perf_fig.add_trace(go.Scatter(
+                            x=_norm.index,
+                            y=_norm.values,
+                            mode="lines",
+                            name=label,
+                            line=dict(color=_clr, width=2),
+                            hovertemplate=f"<b>{label}</b><br>%{{x|%d.%m.%Y}}<br>%{{y:+.2f}}%<extra></extra>",
+                        ))
+                except Exception:
+                    pass
+            if _perf_ex:
+                _spy_base = None
+                try:
+                    _spyh = _fetch_index_hist("SPY", "1d", _perf_days)
+                    if _spyh is not None and not _spyh.empty:
+                        _spy_base = _spyh["Close"].dropna()
+                        if hasattr(_spy_base.index, "tz") and _spy_base.index.tz is not None:
+                            _spy_base.index = _spy_base.index.tz_convert(None)
+                except Exception:
+                    pass
+                if _spy_base is not None and "S&P 500 ex Tech" in _perf_ex:
+                    try:
+                        _xlkh = _fetch_index_hist("XLK", "1d", _perf_days)
+                        if _xlkh is not None and not _xlkh.empty:
+                            _xlk_c = _xlkh["Close"].dropna()
+                            if hasattr(_xlk_c.index, "tz") and _xlk_c.index.tz is not None:
+                                _xlk_c.index = _xlk_c.index.tz_convert(None)
+                            _idx = _spy_base.index.intersection(_xlk_c.index)
+                            _s = _spy_base.reindex(_idx) / _spy_base.reindex(_idx).iloc[0]
+                            _x = _xlk_c.reindex(_idx) / _xlk_c.reindex(_idx).iloc[0]
+                            _ex_t_pct = ((_s - 0.28 * _x) / 0.72 - 1) * 100
+                            _perf_fig.add_trace(go.Scatter(
+                                x=_ex_t_pct.index, y=_ex_t_pct.values,
+                                mode="lines", name="S&P 500 ex Tech (≈)",
+                                line=dict(color="#ff6b35", width=2, dash="dash"),
+                                hovertemplate="<b>S&P 500 ex Tech (≈)</b><br>%{x|%d.%m.%Y}<br>%{y:+.2f}%<extra></extra>",
+                            ))
+                            _perf_returns["S&P 500 ex Tech (≈)"] = float(_ex_t_pct.iloc[-1])
+                    except Exception:
+                        pass
+                if _spy_base is not None and "S&P 500 ex Mag7" in _perf_ex:
+                    try:
+                        _m7c = []
+                        for _ms in ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA"]:
+                            _mh = _fetch_index_hist(_ms, "1d", _perf_days)
+                            if _mh is not None and not _mh.empty:
+                                _mc = _mh["Close"].dropna()
+                                if hasattr(_mc.index, "tz") and _mc.index.tz is not None:
+                                    _mc.index = _mc.index.tz_convert(None)
+                                _m7c.append(_mc)
+                        if len(_m7c) >= 5:
+                            _m7df = pd.concat(_m7c, axis=1).dropna()
+                            _idx2 = _spy_base.index.intersection(_m7df.index)
+                            _s2 = _spy_base.reindex(_idx2) / _spy_base.reindex(_idx2).iloc[0]
+                            _m7n = _m7df.reindex(_idx2).div(_m7df.reindex(_idx2).iloc[0])
+                            _ex_m_pct = ((_s2 - 0.32 * _m7n.mean(axis=1)) / 0.68 - 1) * 100
+                            _perf_fig.add_trace(go.Scatter(
+                                x=_ex_m_pct.index, y=_ex_m_pct.values,
+                                mode="lines", name="S&P 500 ex Mag7 (≈)",
+                                line=dict(color="#ab47bc", width=2, dash="dash"),
+                                hovertemplate="<b>S&P 500 ex Mag7 (≈)</b><br>%{x|%d.%m.%Y}<br>%{y:+.2f}%<extra></extra>",
+                            ))
+                            _perf_returns["S&P 500 ex Mag7 (≈)"] = float(_ex_m_pct.iloc[-1])
+                    except Exception:
+                        pass
+        if _perf_returns:
+            _perf_fig.add_hline(y=0, line_color=_C_BORDER, line_width=1, line_dash="dot")
+            _perf_fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=_C_TEXT_PRIMARY, size=11),
+                xaxis=dict(gridcolor=_C_BORDER, zeroline=False),
+                yaxis=dict(gridcolor=_C_BORDER, zeroline=False,
+                           ticksuffix="%", title="Rendite (normiert auf Startdatum)"),
+                legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=_C_BORDER,
+                            borderwidth=1, font=dict(size=10)),
+                margin=dict(t=30, b=10, l=70, r=10),
+                height=380,
+                hovermode="x unified",
+            )
+            st.plotly_chart(_perf_fig, use_container_width=True,
+                            config={"displayModeBar": False})
+            _pr_sorted = sorted(_perf_returns.items(), key=lambda x: x[1], reverse=True)
+            _pr_n = min(len(_pr_sorted), 6)
+            _pr_cols = st.columns(_pr_n)
+            for _pri, (lbl, ret) in enumerate(_pr_sorted[:_pr_n]):
+                _clr = _C_POSITIVE if ret >= 0 else _C_NEGATIVE
+                _pr_cols[_pri].markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:8px;padding:8px 10px;text-align:center;'>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.62rem;margin-bottom:3px;'>{lbl[:24]}</div>"
+                    f"<div style='color:{_clr};font-size:0.95rem;font-weight:700;'>{ret:+.1f}%</div>"
+                    f"</div>", unsafe_allow_html=True)
+            st.caption(f"Start = erster Handelstag im Zeitraum (Basis 0%). Quelle: yFinance. Zeitraum: {_perf_period}. (≈) = synthetisch berechnet, Gewichte approximiert.")
+        else:
+            st.warning("Performance-Daten konnten nicht geladen werden.")
+    else:
+        st.info("Bitte mindestens einen Index, Mag7-Wert oder ex-Variante auswählen.")
+
 
     # ── Marktüberblick ──
     st.markdown("<div class='section-header'>🌍 Marktüberblick</div>", unsafe_allow_html=True)
