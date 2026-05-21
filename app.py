@@ -16677,10 +16677,10 @@ _sector_h       = _he(sector)
 _industry_h     = _he(industry)
 
 # Logo HTML — FMP Image-Endpoint direkt einbinden
-initials = "".join(w[0] for w in company_name.split()[:2]).upper() if company_name else ticker[:2]
+_initials_raw = "".join(w[0] for w in company_name.split() if w and w[0].isalpha())[:2].upper() if company_name else ticker[:2]
 logo_html = f"""
 <div style="position:relative;height:52px;width:52px;margin-right:16px;flex-shrink:0;">
-    <div style="position:absolute;inset:0;background:#1a3a5c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:{_C_ACCENT};">{initials}</div>
+    <div style="position:absolute;inset:0;background:#1a3a5c;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:{_C_ACCENT};">{_he(_initials_raw)}</div>
     <img src="{logo_url}" style="position:absolute;inset:0;height:52px;width:52px;border-radius:8px;background:#fff;padding:4px;object-fit:contain;"
          onerror="this.style.visibility='hidden'">
 </div>"""
@@ -16693,7 +16693,7 @@ st.markdown(f"""
             <div class="header-title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{_company_name_h}</div>
             <div class="header-sub">{ticker} · {_sector_h} · {_industry_h} · {fmt_large(market_cap, _cur_sym)}</div>
             <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                <span style="background:#1a2744; color:{_C_ACCENT}; border-radius:6px; padding:3px 10px; font-size:0.8rem; font-weight:600;">{recommendation}</span>
+                <span style="background:#1a2744; color:{_C_ACCENT}; border-radius:6px; padding:3px 10px; font-size:0.8rem; font-weight:600;">{_he(recommendation)}</span>
                 {_earnings_badge}
                 {_target_badge}
             </div>
