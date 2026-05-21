@@ -2820,6 +2820,65 @@ def _fred_last(series_id: str, n: int = 1) -> list[float]:
         return []
 
 
+@st.cache_data(ttl=14400, show_spinner=False)
+def _load_yield_curve_data() -> dict:
+    """US-Zinsstrukturkurve: heute + vor 6M + vor 1J + T10Y2Y Spread-Zeitreihe (5J)."""
+    import datetime as _dtYC
+    _MATS = [
+        ("1M", "DGS1MO"), ("3M", "DGS3MO"), ("6M", "DGS6MO"),
+        ("1J", "DGS1"),   ("2J", "DGS2"),   ("3J", "DGS3"),
+        ("5J", "DGS5"),   ("7J", "DGS7"),   ("10J", "DGS10"),
+        ("20J", "DGS20"), ("30J", "DGS30"),
+    ]
+    out = {"today": {}, "m6": {}, "m12": {}, "spread": []}
+    _today = _dtYC.date.today()
+    _m6  = _today - _dtYC.timedelta(days=183)
+    _m12 = _today - _dtYC.timedelta(days=366)
+    _start = (_today - _dtYC.timedelta(days=400)).isoformat()
+    for label, sid in _MATS:
+        try:
+            r = requests.get(
+                f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}&cosd={_start}",
+                timeout=10,
+            )
+            if not r.ok:
+                continue
+            rows = []
+            for line in r.text.strip().split("\n")[1:]:
+                parts = line.split(",")
+                if len(parts) == 2 and parts[1].strip() not in (".", ""):
+                    try:
+                        rows.append((_dtYC.date.fromisoformat(parts[0].strip()), float(parts[1].strip())))
+                    except (ValueError, IndexError):
+                        pass
+            if not rows:
+                continue
+            rows.sort(key=lambda x: x[0])
+            out["today"][label] = rows[-1][1]
+            out["m6"][label]    = min(rows, key=lambda x: abs((x[0] - _m6).days))[1]
+            out["m12"][label]   = min(rows, key=lambda x: abs((x[0] - _m12).days))[1]
+        except Exception:
+            pass
+    # T10Y2Y spread time series (last 5 years)
+    try:
+        _sp_start = (_today - _dtYC.timedelta(days=5 * 366)).isoformat()
+        r2 = requests.get(
+            f"https://fred.stlouisfed.org/graph/fredgraph.csv?id=T10Y2Y&cosd={_sp_start}",
+            timeout=10,
+        )
+        if r2.ok:
+            for line in r2.text.strip().split("\n")[1:]:
+                parts = line.split(",")
+                if len(parts) == 2 and parts[1].strip() not in (".", ""):
+                    try:
+                        out["spread"].append((_dtYC.date.fromisoformat(parts[0].strip()), float(parts[1].strip())))
+                    except (ValueError, IndexError):
+                        pass
+    except Exception:
+        pass
+    return out
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def _fetch_income_stmt(tkr: str):
     return yf.Ticker(tkr).income_stmt
@@ -6763,6 +6822,160 @@ elif st.session_state.get("show_market_overview"):
                     {_kdisp}
                 </div>
             </div>""", unsafe_allow_html=True)
+
+    # ── Zinsstrukturkurve ─────────────────────────────────────────────
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>📉 Zinsstrukturkurve (US Treasuries)</div>", unsafe_allow_html=True)
+
+    # Einordnung
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:10px 14px;margin-bottom:12px;color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.6;'>"
+        f"<b style='color:{_C_TEXT_PRIMARY};'>Was zeigt die Zinskurve?</b> "
+        f"Die Zinsstrukturkurve stellt die Renditen von US-Staatsanleihen aller Laufzeiten (1 Monat bis 30 Jahre) dar. "
+        f"Normalerweise steigt sie von links nach rechts — Investoren fordern für längere Bindung mehr Rendite. "
+        f"Wenn sich die Kurve <b style='color:{_C_NEGATIVE};'>invertiert</b> (kurze Laufzeiten rentieren höher als lange), "
+        f"signalisiert der Markt Pessimismus: die Fed wird gezwungen sein, die Zinsen bald zu senken. "
+        f"Historisch folgte einer Inversion in 7 von 8 Fällen innerhalb von 6–18 Monaten eine Rezession. "
+        f"Die Kurve im Zeitverlauf zeigt, ob sich die Lage verbessert oder verschlechtert hat.</div>",
+        unsafe_allow_html=True,
+    )
+
+    with st.spinner("Lade Zinskurve…"):
+        _yc_data = _load_yield_curve_data()
+
+    _YC_MATS = ["1M", "3M", "6M", "1J", "2J", "3J", "5J", "7J", "10J", "20J", "30J"]
+
+    if _yc_data["today"]:
+        _yc_today = [_yc_data["today"].get(m) for m in _YC_MATS]
+        _yc_m6    = [_yc_data["m6"].get(m)    for m in _YC_MATS]
+        _yc_m12   = [_yc_data["m12"].get(m)   for m in _YC_MATS]
+
+        _yc_t2  = _yc_data["today"].get("2J")
+        _yc_t10 = _yc_data["today"].get("10J")
+        _yc_t30 = _yc_data["today"].get("30J")
+        _yc_sp  = round(_yc_t10 - _yc_t2, 3) if (_yc_t10 and _yc_t2) else None
+
+        # Kurvenform-Interpretation
+        if _yc_sp is not None:
+            if _yc_sp < 0:
+                _yc_sig, _yc_sig_clr = "🔴 Invertiert", _C_NEGATIVE
+                _yc_sig_txt = (
+                    "Die Kurve ist invertiert — kurzfristige Zinsen liegen über langfristigen. "
+                    "Der Markt erwartet, dass die Fed die Zinsen senken muss. "
+                    "Historisch zuverlässigstes Rezessionssignal mit 6–18 Monaten Vorlauf."
+                )
+            elif _yc_sp < 0.5:
+                _yc_sig, _yc_sig_clr = "🟡 Flach", _C_NEUTRAL
+                _yc_sig_txt = (
+                    "Die Kurve ist ungewöhnlich flach — der Renditeunterschied zwischen kurz und lang ist gering. "
+                    "Märkte preisen eine wirtschaftliche Verlangsamung oder baldige Zinssenkungen ein."
+                )
+            else:
+                _yc_sig, _yc_sig_clr = "🟢 Normal", _C_POSITIVE
+                _yc_sig_txt = (
+                    "Normale, aufwärts geneigte Zinskurve — langfristige Anleihen bieten höhere Renditen. "
+                    "Gesunde Wachstums- und moderate Inflationserwartungen."
+                )
+        else:
+            _yc_sig, _yc_sig_clr, _yc_sig_txt = "—", _C_TEXT_MUTED, ""
+
+        # KPI-Karten
+        _yk1, _yk2, _yk3, _yk4 = st.columns(4)
+        for _col, _lbl, _val in [(_yk1, "2J Rendite", _yc_t2), (_yk2, "10J Rendite", _yc_t10), (_yk3, "30J Rendite", _yc_t30)]:
+            _col.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+                f"text-align:center;padding:10px 8px;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:3px;'>{_lbl}</div>"
+                f"<div style='color:#64b5f6;font-size:1.05rem;font-weight:700;'>{f'{_val:.2f}%' if _val else '—'}</div>"
+                f"</div>", unsafe_allow_html=True)
+        _yk4.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_yc_sig_clr}55;"
+            f"border-left:3px solid {_yc_sig_clr};border-radius:8px;"
+            f"text-align:center;padding:10px 8px;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:3px;'>10J–2J Spread</div>"
+            f"<div style='color:{_yc_sig_clr};font-size:1.05rem;font-weight:700;'>{f'{_yc_sp:+.2f}%' if _yc_sp is not None else '—'}</div>"
+            f"<div style='color:{_yc_sig_clr};font-size:0.68rem;font-weight:600;margin-top:2px;'>{_yc_sig}</div>"
+            f"</div>", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        # Zinskurven-Chart
+        _yc_fig = go.Figure()
+        _yc_fig.add_trace(go.Scatter(
+            x=_YC_MATS, y=_yc_m12,
+            mode="lines+markers", name="vor 1 Jahr",
+            line=dict(color="#546e7a", width=1.5, dash="dash"),
+            marker=dict(size=4, color="#546e7a"),
+            hovertemplate="%{x}: <b>%{y:.2f}%</b><extra>vor 1 Jahr</extra>",
+        ))
+        _yc_fig.add_trace(go.Scatter(
+            x=_YC_MATS, y=_yc_m6,
+            mode="lines+markers", name="vor 6 Monaten",
+            line=dict(color="#4fc3f7", width=1.5, dash="dot"),
+            marker=dict(size=4, color="#4fc3f7"),
+            hovertemplate="%{x}: <b>%{y:.2f}%</b><extra>vor 6 Monaten</extra>",
+        ))
+        _yc_fig.add_trace(go.Scatter(
+            x=_YC_MATS, y=_yc_today,
+            mode="lines+markers", name="Heute",
+            line=dict(color="#00e5ff", width=2.5),
+            marker=dict(size=7, color="#00e5ff"),
+            hovertemplate="%{x}: <b>%{y:.2f}%</b><extra>Heute</extra>",
+        ))
+        _yc_fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=_C_TEXT_PRIMARY, size=11),
+            xaxis=dict(gridcolor=_C_BORDER, zeroline=False, title="Laufzeit"),
+            yaxis=dict(gridcolor=_C_BORDER, zeroline=False, ticksuffix="%", title="Rendite p.a."),
+            legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=_C_BORDER, borderwidth=1,
+                        font=dict(size=10), orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            margin=dict(t=40, b=10, l=60, r=10),
+            height=300,
+            hovermode="x unified",
+        )
+        st.plotly_chart(_yc_fig, use_container_width=True, config={"displayModeBar": False})
+
+        # Einordnungsbox
+        if _yc_sig_txt:
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_yc_sig_clr}44;"
+                f"border-left:3px solid {_yc_sig_clr};border-radius:10px;padding:10px 14px;"
+                f"color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.55;margin-top:4px;'>"
+                f"<b style='color:{_yc_sig_clr};'>{_yc_sig}:</b> {_yc_sig_txt}"
+                f"</div>", unsafe_allow_html=True)
+
+        # Spread-Zeitreihe
+        if _yc_data.get("spread"):
+            st.markdown(
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin:14px 0 6px 0;'>"
+                f"📊 10J–2J Spread-Verlauf (5 Jahre) — <span style='color:{_C_NEGATIVE};'>rot = invertiert</span></div>",
+                unsafe_allow_html=True)
+            _sp_dates = [r[0] for r in _yc_data["spread"]]
+            _sp_vals  = [r[1] for r in _yc_data["spread"]]
+            _sp_clrs  = [_C_NEGATIVE if v < 0 else "#4caf50" for v in _sp_vals]
+            _sp_fig = go.Figure()
+            _sp_fig.add_trace(go.Bar(
+                x=_sp_dates, y=_sp_vals,
+                marker_color=_sp_clrs,
+                hovertemplate="%{x|%d.%m.%Y}  <b>%{y:+.2f}%</b><extra></extra>",
+            ))
+            _sp_fig.add_hline(y=0, line_color=_C_TEXT_MUTED, line_width=1)
+            _sp_fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=_C_TEXT_PRIMARY, size=10),
+                xaxis=dict(gridcolor=_C_BORDER, zeroline=False),
+                yaxis=dict(gridcolor=_C_BORDER, zeroline=False, ticksuffix="%"),
+                margin=dict(t=5, b=10, l=50, r=10),
+                height=175,
+                showlegend=False,
+                hovermode="x unified",
+                bargap=0.05,
+            )
+            st.plotly_chart(_sp_fig, use_container_width=True, config={"displayModeBar": False})
+        st.caption("Quelle: FRED (Federal Reserve St. Louis) · DGS1MO–DGS30 · T10Y2Y · 4h-Cache · Tageswerte.")
+    else:
+        st.info("Zinskurve konnte nicht geladen werden.")
 
     # ── Bond Monitor ─────────────────────────────────────────────────
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
