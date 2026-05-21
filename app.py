@@ -4101,6 +4101,9 @@ def _load_screener_universe() -> list[dict]:
             sec    = info.get("sector") or ""
             ind    = info.get("industry") or ""
             moat   = compute_moat(sec, ind, gm, roe, om, nm, rg, mktcap, de)
+            rev    = info.get("totalRevenue") or 0
+            fcf_m  = round(fcf / rev * 100, 1) if (fcf and rev > 0) else None
+            r40    = round(rg + (fcf_m if fcf_m is not None else om), 1)
             results.append({
                 "ticker":       tkr,
                 "name":         (info.get("shortName") or info.get("longName") or tkr)[:32],
@@ -4125,6 +4128,8 @@ def _load_screener_universe() -> list[dict]:
                 "moat_width":   moat.get("moat_width", "Kein Moat"),
                 "moat_score":   moat.get("moat_score", 0),
                 "analyst_up":   round((info.get("targetMeanPrice", price) / price - 1) * 100, 1) if price else 0.0,
+                "fcf_margin":   fcf_m,
+                "r40":          r40,
             })
         except Exception:
             pass
@@ -4138,6 +4143,7 @@ _SCREENER_PRESETS = {
     "🏆 Quality":   {"quality_min": 70, "gross_margin_min": 45.0, "roe_min": 15.0, "fcf_yield_min": 2.0},
     "🛡️ Defensiv":  {"beta_max": 0.8, "div_yield_min": 1.0, "gross_margin_min": 30.0},
     "⚡ GARP":      {"rev_growth_min": 10.0, "pe_fwd_max": 30.0, "roe_min": 15.0, "gross_margin_min": 35.0},
+    "☁️ SaaS/Tech": {"r40_min": 40, "gross_margin_min": 60.0, "rev_growth_min": 10.0, "quality_min": 40},
 }
 
 
@@ -8549,6 +8555,8 @@ elif st.session_state.get("show_screener"):
         with _fd2:
             _qual_min = st.slider("Quality Score min", 0, 100, int(_f.get("quality_min", 20)), 5, key="scr_qual_min",
                                   help="Composite Score (0–100) aus Bruttomarge, FCF-Yield, ROE, Umsatzwachstum und Verschuldung. ≥50 = überdurchschnittlich, ≥70 = Top-Qualität.")
+            _r40_min  = st.slider("Rule of 40 min", -50, 100, int(_f.get("r40_min", -50)), 5, key="scr_r40_min",
+                                  help="SaaS-Kennzahl: Umsatzwachstum % + FCF-Marge % (Fallback: Op.-Marge). ≥40 = gesundes SaaS-Unternehmen. ≥60 = Ausnahme-Performance. -50 = kein Filter.")
             _moat_filter = st.selectbox("Burggraben", ["Alle", "Schmal oder breiter", "Breit", "Sehr breit"],
                                         index=["Alle","Schmal oder breiter","Breit","Sehr breit"].index(_f.get("moat_filter","Alle")),
                                         key="scr_moat")
@@ -8575,6 +8583,7 @@ elif st.session_state.get("show_screener"):
                         "pe_fwd_max": _pe_max, "pb_max": _pb_max, "ev_ebitda_max": _eu_max,
                         "rev_growth_min": _rg_min, "gross_margin_min": _gm_min, "op_margin_min": _om_min,
                         "roe_min": _roe_min, "fcf_yield_min": _fcf_min, "beta_max": _beta_max,
+                        "r40_min": _r40_min,
                         "div_yield_min": _dy_min, "payout_max": _pay_max, "quality_min": _qual_min,
                         "moat_filter": _moat_filter, "sector_filter": _sector_sel, "mcap_filter": _mcap_sel,
                     }
@@ -8604,6 +8613,7 @@ elif st.session_state.get("show_screener"):
         if _dy_min  >  0  and r["div_yield"]     < _dy_min:  return False
         if _pay_max < 110 and r["payout"] > 0    and r["payout"] > _pay_max: return False
         if _qual_min > 0  and r["quality"]        < _qual_min: return False
+        if _r40_min  > -50 and r.get("r40", -99) < _r40_min:  return False
         if _moat_filter == "Sehr breit" and r["moat_width"] != "Sehr breiter Moat": return False
         if _moat_filter == "Breit" and r["moat_width"] not in ("Breiter Moat","Sehr breiter Moat"): return False
         if _moat_filter == "Schmal oder breiter" and r["moat_width"] == "Kein Moat": return False
@@ -8630,19 +8640,20 @@ elif st.session_state.get("show_screener"):
     # ── Sortierung ─────────────────────────────────────────────────────
     _sort_by = st.selectbox(
         "Sortieren nach",
-        ["Quality Score ↓", "Umsatzwachstum ↓", "Bruttomarge ↓", "ROE ↓",
+        ["Quality Score ↓", "Umsatzwachstum ↓", "Rule of 40 ↓", "Bruttomarge ↓", "ROE ↓",
          "FCF-Yield ↓", "KGV fwd ↑", "Dividendenrendite ↓", "Beta ↑"],
         key="scr_sort",
     )
     _sort_map = {
-        "Quality Score ↓":    (lambda r: r["quality"],      True),
-        "Umsatzwachstum ↓":   (lambda r: r["rev_growth"],   True),
-        "Bruttomarge ↓":      (lambda r: r["gross_margin"],  True),
-        "ROE ↓":              (lambda r: r["roe"],           True),
-        "FCF-Yield ↓":        (lambda r: r["fcf_yield"],     True),
-        "KGV fwd ↑":          (lambda r: r["pe_fwd"] or 999, False),
-        "Dividendenrendite ↓":(lambda r: r["div_yield"],     True),
-        "Beta ↑":             (lambda r: r["beta"],          False),
+        "Quality Score ↓":    (lambda r: r["quality"],           True),
+        "Umsatzwachstum ↓":   (lambda r: r["rev_growth"],        True),
+        "Rule of 40 ↓":       (lambda r: r.get("r40", -99),      True),
+        "Bruttomarge ↓":      (lambda r: r["gross_margin"],       True),
+        "ROE ↓":              (lambda r: r["roe"],                True),
+        "FCF-Yield ↓":        (lambda r: r["fcf_yield"],          True),
+        "KGV fwd ↑":          (lambda r: r["pe_fwd"] or 999,      False),
+        "Dividendenrendite ↓":(lambda r: r["div_yield"],          True),
+        "Beta ↑":             (lambda r: r["beta"],               False),
     }
     _sort_fn, _sort_rev = _sort_map[_sort_by]
     _scr_hits = sorted(_scr_hits, key=_sort_fn, reverse=_sort_rev)
@@ -8663,6 +8674,7 @@ elif st.session_state.get("show_screener"):
             "Op. Marge":     f"{r['op_margin']:.1f}%",
             "ROE":           f"{r['roe']:.1f}%",
             "FCF-Yield":     f"{r['fcf_yield']:.1f}%",
+            "Rule of 40":    f"{r['r40']:+.0f}" if r.get("r40") is not None else "—",
             "Div.-Yield":    f"{r['div_yield']:.2f}%" if r["div_yield"] > 0 else "—",
             "Beta":          f"{r['beta']:.2f}",
             "Quality":       r["quality"],
