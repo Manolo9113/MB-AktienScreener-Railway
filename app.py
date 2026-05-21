@@ -4137,13 +4137,14 @@ def _load_screener_universe() -> list[dict]:
 
 
 _SCREENER_PRESETS = {
-    "🚀 Growth":    {"rev_growth_min": 15.0, "gross_margin_min": 40.0, "pe_fwd_max": 60.0, "roe_min": 10.0, "quality_min": 50},
-    "💎 Value":     {"pe_fwd_max": 18.0, "roe_min": 15.0, "fcf_yield_min": 3.0, "quality_min": 55},
-    "💰 Dividende": {"div_yield_min": 2.0, "payout_max": 75.0, "roe_min": 10.0},
-    "🏆 Quality":   {"quality_min": 70, "gross_margin_min": 45.0, "roe_min": 15.0, "fcf_yield_min": 2.0},
-    "🛡️ Defensiv":  {"beta_max": 0.8, "div_yield_min": 1.0, "gross_margin_min": 30.0},
-    "⚡ GARP":      {"rev_growth_min": 10.0, "pe_fwd_max": 30.0, "roe_min": 15.0, "gross_margin_min": 35.0},
-    "☁️ SaaS/Tech": {"r40_min": 40, "gross_margin_min": 60.0, "rev_growth_min": 10.0, "quality_min": 40},
+    "🚀 Growth":         {"rev_growth_min": 15.0, "gross_margin_min": 40.0, "pe_fwd_max": 60.0, "roe_min": 10.0, "quality_min": 50},
+    "💎 Value":          {"pe_fwd_max": 18.0, "roe_min": 15.0, "fcf_yield_min": 3.0, "quality_min": 55},
+    "💰 Dividende":      {"div_yield_min": 2.0, "payout_max": 75.0, "roe_min": 10.0},
+    "🏆 Quality":        {"quality_min": 70, "gross_margin_min": 45.0, "roe_min": 15.0, "fcf_yield_min": 2.0},
+    "🌱 Quality Growth": {"rev_growth_min": 15.0, "gross_margin_min": 50.0, "roe_min": 20.0, "fcf_yield_min": 1.5, "quality_min": 65, "pe_fwd_max": 50.0},
+    "🛡️ Defensiv":       {"beta_max": 0.8, "div_yield_min": 1.0, "gross_margin_min": 30.0},
+    "⚡ GARP":           {"rev_growth_min": 10.0, "pe_fwd_max": 30.0, "roe_min": 15.0, "gross_margin_min": 35.0},
+    "☁️ SaaS/Tech":      {"r40_min": 40, "gross_margin_min": 60.0, "rev_growth_min": 10.0, "quality_min": 40},
 }
 
 
@@ -9206,12 +9207,15 @@ elif st.session_state.get("show_screener"):
         st.session_state["scr_saved"] = {}
 
     st.markdown(f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;margin-bottom:6px;'>Schnell-Presets:</div>", unsafe_allow_html=True)
-    _pr_cols = st.columns(len(_SCREENER_PRESETS) + 1)
-    for _pi, (_pname, _pvals) in enumerate(_SCREENER_PRESETS.items()):
-        if _pr_cols[_pi].button(_pname, key=f"scr_pre_{_pi}", use_container_width=True):
+    _preset_list = list(_SCREENER_PRESETS.items())
+    _pr_row1 = st.columns(4)
+    _pr_row2 = st.columns(5)
+    _pr_all_cols = _pr_row1 + _pr_row2
+    for _pi, (_pname, _pvals) in enumerate(_preset_list):
+        if _pr_all_cols[_pi].button(_pname, key=f"scr_pre_{_pi}", use_container_width=True):
             st.session_state["scr_filters"] = dict(_pvals)
             st.rerun()
-    if _pr_cols[-1].button("🗑️ Zurücksetzen", key="scr_reset", use_container_width=True):
+    if _pr_all_cols[-1].button("🗑️ Zurücksetzen", key="scr_reset", use_container_width=True):
         st.session_state["scr_filters"] = {}
         st.rerun()
 
