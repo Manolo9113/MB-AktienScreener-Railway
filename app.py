@@ -6506,7 +6506,7 @@ elif st.session_state.get("show_market_overview"):
         "Meta (META)": "META",
         "Tesla (TSLA)": "TSLA",
     }
-    _pc1, _pc2, _pc3, _pc4 = st.columns([2, 2, 1.5, 1])
+    _pc1, _pc2, _pc3 = st.columns([3, 3, 1])
     with _pc1:
         _perf_indices = st.multiselect(
             "Indizes / ETFs auswählen",
@@ -6522,19 +6522,25 @@ elif st.session_state.get("show_market_overview"):
             key="perf_mag7_sel",
         )
     with _pc3:
-        _perf_ex = st.multiselect(
-            "S&P 500 Varianten",
-            options=["S&P 500 ex Tech", "S&P 500 ex Mag7"],
-            default=[],
-            key="perf_ex_sel",
-        )
-    with _pc4:
         _perf_period = st.selectbox(
             "Zeitraum",
             options=["1M", "3M", "6M", "1J", "3J", "5J"],
             index=2,
             key="perf_period_sel",
         )
+    _perf_ex = st.multiselect(
+        "📊 S&P 500 Vergleichs-Varianten — zeigt den S&P 500 synthetisch ohne Tech-Sektor bzw. ohne Magnificent 7",
+        options=["S&P 500 ex Tech (≈28% XLK)", "S&P 500 ex Mag7 (≈32% Ø-Gewicht)"],
+        default=[],
+        key="perf_ex_sel",
+    )
+    # normalize option keys to internal names
+    _perf_ex_norm = []
+    if any("ex Tech" in o for o in _perf_ex):
+        _perf_ex_norm.append("S&P 500 ex Tech")
+    if any("ex Mag7" in o for o in _perf_ex):
+        _perf_ex_norm.append("S&P 500 ex Mag7")
+    _perf_ex = _perf_ex_norm
     _period_days_map = {"1M": 35, "3M": 95, "6M": 185, "1J": 370, "3J": 1100, "5J": 1850}
     _perf_days = _period_days_map.get(_perf_period, 185)
     _perf_symbols = {n: _PERF_ETF_MAP[n] for n in _perf_indices}
@@ -8509,32 +8515,40 @@ elif st.session_state.get("show_screener"):
 
         with _fc1:
             st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.78rem;font-weight:700;margin-bottom:4px;'>📊 Bewertung</div>", unsafe_allow_html=True)
-            _pe_max = st.slider("KGV (forward) max", 0, 120, int(_f.get("pe_fwd_max", 120)), 1, key="scr_pe_max",
-                                help="Forward KGV: Kurs ÷ geschätzter Gewinn. 0 = kein Filter")
-            _pb_max = st.slider("KBV max", 0.0, 30.0, float(_f.get("pb_max", 30.0)), 0.5, key="scr_pb_max",
-                                help="Kurs-Buchwert-Verhältnis. 30 = kein Filter")
-            _eu_max = st.slider("EV/EBITDA max (0=kein Filter)", 0, 60, int(_f.get("ev_ebitda_max", 60)), 1, key="scr_eu_max")
+            _pe_max = st.slider("KGV (forward) max", 0, 120, int(_f.get("pe_fwd_max", 60)), 1, key="scr_pe_max",
+                                help="Forward KGV: Kurs ÷ geschätzter Gewinn nächstes Jahr. Typisch: Value <15, GARP 15–30, Growth 30–60. 120 = kein Filter.")
+            _pb_max = st.slider("KBV max", 0.0, 30.0, float(_f.get("pb_max", 15.0)), 0.5, key="scr_pb_max",
+                                help="Kurs-Buchwert-Verhältnis: Kurs ÷ Eigenkapital/Aktie. <1 = unter Buchwert (selten, oft Substanzwert). 30 = kein Filter.")
+            _eu_max = st.slider("EV/EBITDA max", 0, 60, int(_f.get("ev_ebitda_max", 35)), 1, key="scr_eu_max",
+                                help="Enterprise Value ÷ EBITDA. Branchenunabhängiger Bewertungsindikator: <10 günstig, 10–20 normal, >25 teuer. 0 = kein Filter.")
 
         with _fc2:
             st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.78rem;font-weight:700;margin-bottom:4px;'>📈 Wachstum & Qualität</div>", unsafe_allow_html=True)
-            _rg_min = st.slider("Umsatzwachstum min (%)", -20, 60, int(_f.get("rev_growth_min", -20)), 1, key="scr_rg_min")
-            _gm_min = st.slider("Bruttomarge min (%)", 0, 90, int(_f.get("gross_margin_min", 0)), 1, key="scr_gm_min")
-            _om_min = st.slider("Op. Marge min (%)", -20, 60, int(_f.get("op_margin_min", -20)), 1, key="scr_om_min")
+            _rg_min = st.slider("Umsatzwachstum min (%)", -20, 60, int(_f.get("rev_growth_min", 0)), 1, key="scr_rg_min",
+                                help="Umsatzwachstum YoY (Jahr-über-Jahr). 0% = kein schrumpfendes Unternehmen. Growth ≥15%, Stabil ≥0%.")
+            _gm_min = st.slider("Bruttomarge min (%)", 0, 90, int(_f.get("gross_margin_min", 20)), 1, key="scr_gm_min",
+                                help="Bruttomarge = (Umsatz − COGS) / Umsatz. ≥40% deutet auf Pricing Power hin (Software, Pharma). Handel oft <30%.")
+            _om_min = st.slider("Op. Marge min (%)", -20, 60, int(_f.get("op_margin_min", 0)), 1, key="scr_om_min",
+                                help="EBIT-Marge: operativer Gewinn vor Zinsen und Steuern. ≥10% solide, ≥20% sehr gut. 0% = mind. operativ break-even.")
 
         with _fc3:
             st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.78rem;font-weight:700;margin-bottom:4px;'>💰 Rentabilität & Risiko</div>", unsafe_allow_html=True)
-            _roe_min    = st.slider("ROE min (%)", -30, 80, int(_f.get("roe_min", -30)), 1, key="scr_roe_min")
-            _fcf_min    = st.slider("FCF-Yield min (%)", -10, 20, int(_f.get("fcf_yield_min", -10)), 1, key="scr_fcf_min")
-            _beta_max   = st.slider("Beta max", 0.0, 4.0, float(_f.get("beta_max", 4.0)), 0.1, key="scr_beta_max")
+            _roe_min    = st.slider("ROE min (%)", -30, 80, int(_f.get("roe_min", 0)), 1, key="scr_roe_min",
+                                    help="Return on Equity: Nettogewinn ÷ Eigenkapital. ≥15% exzellent, ≥8% solide. Negativ bei Verlusten. Achtung: hohe Verschuldung bläht ROE auf.")
+            _fcf_min    = st.slider("FCF-Yield min (%)", -10, 20, int(_f.get("fcf_yield_min", 0)), 1, key="scr_fcf_min",
+                                    help="Freier Cashflow ÷ Marktkapitalisierung. ≥3% attraktiv, ≥5% sehr günstig. Zeigt echte Cash-Generierung unabhängig vom Bilanzgewinn.")
+            _beta_max   = st.slider("Beta max", 0.0, 4.0, float(_f.get("beta_max", 2.5)), 0.1, key="scr_beta_max",
+                                    help="Markt-Sensitivität ggü. S&P 500. β=1.0 = marktkonform, β<0.8 = defensiv, β>1.5 = sehr volatil. 4.0 = kein Filter.")
 
         _fd1, _fd2, _fd3 = st.columns(3)
         with _fd1:
-            _dy_min  = st.slider("Dividendenrendite min (%)", 0.0, 10.0, float(_f.get("div_yield_min", 0.0)), 0.25, key="scr_dy_min")
-            _pay_max = st.slider("Payout Ratio max (%)", 10, 110, int(_f.get("payout_max", 110)), 5, key="scr_pay_max",
-                                 help="110 = kein Filter")
+            _dy_min  = st.slider("Dividendenrendite min (%)", 0.0, 10.0, float(_f.get("div_yield_min", 0.0)), 0.25, key="scr_dy_min",
+                                 help="Dividende ÷ Aktienkurs. 0% = auch nicht-zahlende Aktien. ≥2% für Dividenden-Fokus. Achtung: sehr hohe Yield kann auf Kursschwäche hindeuten.")
+            _pay_max = st.slider("Payout Ratio max (%)", 10, 110, int(_f.get("payout_max", 90)), 5, key="scr_pay_max",
+                                 help="Dividende ÷ Gewinn. <60% gilt als nachhaltig. >80% Risiko einer Kürzung. REITs zahlen strukturbedingt oft >90%. 110 = kein Filter.")
         with _fd2:
-            _qual_min = st.slider("Quality Score min", 0, 100, int(_f.get("quality_min", 0)), 5, key="scr_qual_min",
-                                  help="Composite Score aus Margen, FCF, ROE, Wachstum, Verschuldung")
+            _qual_min = st.slider("Quality Score min", 0, 100, int(_f.get("quality_min", 20)), 5, key="scr_qual_min",
+                                  help="Composite Score (0–100) aus Bruttomarge, FCF-Yield, ROE, Umsatzwachstum und Verschuldung. ≥50 = überdurchschnittlich, ≥70 = Top-Qualität.")
             _moat_filter = st.selectbox("Burggraben", ["Alle", "Schmal oder breiter", "Breit", "Sehr breit"],
                                         index=["Alle","Schmal oder breiter","Breit","Sehr breit"].index(_f.get("moat_filter","Alle")),
                                         key="scr_moat")
