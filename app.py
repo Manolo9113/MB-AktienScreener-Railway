@@ -9398,6 +9398,16 @@ elif st.session_state.get("show_screener"):
     _scr_df = _pd_scr.DataFrame(_scr_rows)
     st.dataframe(_scr_df, hide_index=True, use_container_width=True, height=min(60 + 36 * len(_scr_hits), 600))
 
+    _dl_col, _ = st.columns([1, 3])
+    with _dl_col:
+        st.download_button(
+            label=f"⬇️ CSV exportieren ({len(_scr_hits)} Aktien)",
+            data=_scr_df.to_csv(index=False).encode("utf-8"),
+            file_name="screener_ergebnisse.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
     # ── Zur Analyse ────────────────────────────────────────────────────
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
     st.markdown(f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;margin-bottom:6px;'>Aktie direkt analysieren:</div>", unsafe_allow_html=True)
