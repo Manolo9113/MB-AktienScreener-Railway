@@ -8252,6 +8252,87 @@ elif st.session_state.get("show_wissen"):
                 f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.6;'>{body}</div>"
                 f"</div>")
 
+    # ─────────────────────────────────────────────────────────────────────
+    # 0. APP-GUIDE — Tipps, Workflow & Grenzen
+    # ─────────────────────────────────────────────────────────────────────
+    with st.expander("🗺️ App-Guide — Wie du diese App optimal nutzt", expanded=True):
+        st.markdown(
+            f"<div style='background:rgba(0,229,255,0.07);border:1px solid {_C_ACCENT}33;"
+            f"border-radius:10px;padding:12px 16px;margin-bottom:14px;"
+            f"color:{_C_TEXT_MUTED};font-size:0.80rem;line-height:1.7;'>"
+            f"<b style='color:{_C_TEXT_PRIMARY};'>Was diese App kann — und was nicht.</b> "
+            f"Der MB-AktienScreener ist ein <b>Research-Assistent</b>, kein Signalgeber. "
+            f"Er liefert strukturierte Daten und Kontext für fundierte Eigenentscheidungen. "
+            f"Er ersetzt keine professionelle Anlageberatung und keine eigene Urteilsbildung.</div>",
+            unsafe_allow_html=True,
+        )
+
+        # ── Empfohlener Workflow ──────────────────────────────────────────
+        st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.75rem;font-weight:700;margin-bottom:8px;'>🔄 EMPFOHLENER WORKFLOW</div>", unsafe_allow_html=True)
+        _wf_steps = [
+            ("1", "🌍 Marktüberblick", "Jeden Morgen: Heatmap für Marktlage, Zinsstrukturkurve für Makro-Kontext, Faktor-Prämien für aktuelle Marktrotation."),
+            ("2", "🔬 Aktien-Screener", "Universum einengen: Preset wählen (z.B. ☁️ SaaS/Tech oder 🏆 Quality), dann manuell verfeinern. Ergebnis: 5–15 Kandidaten."),
+            ("3", "⚖️ Aktien-Vergleich", "2–4 Screener-Kandidaten nebeneinander stellen: Performance-Chart, Kennzahlen-Tabelle, Radar-Chart auf einen Blick."),
+            ("4", "📊 Einzelaktie — Tabs", "Tiefenanalyse: Kennzahlen → Wachstum → Burggraben → Piotroski → Faktor-Profil → Dividenden. Erst dann entscheiden."),
+            ("5", "💼 Portfolio", "Eingekaufte Positionen tracken: Performance, Diversifikation, Sektor-Gewichtung, ETF Look-Through."),
+        ]
+        for _wn, _wt, _wb in _wf_steps:
+            st.markdown(
+                f"<div style='display:flex;gap:10px;align-items:flex-start;margin-bottom:6px;'>"
+                f"<span style='background:{_C_ACCENT};color:#000;border-radius:50%;width:20px;height:20px;"
+                f"display:flex;align-items:center;justify-content:center;font-size:0.68rem;"
+                f"font-weight:700;flex-shrink:0;margin-top:1px;'>{_wn}</span>"
+                f"<div><b style='color:{_C_TEXT_PRIMARY};font-size:0.80rem;'>{_wt}</b> "
+                f"<span style='color:{_C_TEXT_MUTED};font-size:0.78rem;'>{_wb}</span></div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        # ── Tipps & Tricks ─────────────────────────────────────────────────
+        st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.75rem;font-weight:700;margin-bottom:8px;'>💡 TIPPS & TRICKS</div>", unsafe_allow_html=True)
+        _tt1, _tt2 = st.columns(2)
+        _tips_left = [
+            ("Quality Score ≥ 70 als Schnellfilter", "Im Screener Quality ≥ 70 setzen — filtert sofort auf die ~20% besten Bilanzen im Universum. Guter Startpunkt für jede Strategie."),
+            ("Piotroski-Score für Bilanzgesundheit", "Score 7–9 auf dem Piotroski-Tab = starkes Signal. Besonders wertvoll bei Value-Aktien, die optisch günstig aussehen — schützt vor Value-Traps."),
+            ("Faktor-Profil erklärt das Warum", "Wenn eine Aktie trotz guter Zahlen schwächelt: Faktor-Profil prüfen. Momentum-Score niedrig = Markt glaubt den Zahlen noch nicht."),
+            ("ex-Tech / ex-Mag7 im Performance-Chart", "Im Marktüberblick einschalten um zu sehen wie viel S&P-Rendite wirklich von 7 Aktien getrieben wird. Zeigt Konzentrationsrisiko."),
+        ]
+        _tips_right = [
+            ("Screener-Presets als Ausgangspunkt", "Nie bei 0 beginnen — Preset laden (z.B. ⚡ GARP), dann einzelne Slider anpassen. Spart Zeit und verhindert Parametritis."),
+            ("Vergleich-Seite für finale Auswahl", "Wenn 2–3 Kandidaten im Kopf: Vergleichsseite öffnen und alle gleichzeitig analysieren. Radar-Chart zeigt Stärken/Schwächen visuell."),
+            ("Zinsstrukturkurve täglich prüfen", "Invertiert seit > 12 Monaten? Historisch erhöhtes Rezessionsrisiko. Dann defensivere Sektoren und Quality-Tilt im Portfolio prüfen."),
+            ("Rule of 40 für SaaS-Bewertung", "SaaS-Unternehmen mit KGV > 40 klingen teuer — Rule of 40 zeigt ob das Wachstum diese Bewertung rechtfertigt. < 40 = kritisch hinterfragen."),
+        ]
+        with _tt1:
+            for _th, _tb in _tips_left:
+                st.markdown(_w_card(f"💡 {_th}", _tb, "#00e5ff"), unsafe_allow_html=True)
+        with _tt2:
+            for _th, _tb in _tips_right:
+                st.markdown(_w_card(f"💡 {_th}", _tb, "#00e5ff"), unsafe_allow_html=True)
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        # ── Grenzen der App ────────────────────────────────────────────────
+        st.markdown(f"<div style='color:{_C_NEGATIVE};font-size:0.75rem;font-weight:700;margin-bottom:8px;'>⚠️ GRENZEN DIESER APP — Was du wissen musst</div>", unsafe_allow_html=True)
+        _lim1, _lim2 = st.columns(2)
+        _limits = [
+            ("Datenquelle: yFinance (kostenlos)", "Daten können verzögert (15–30 Min.), unvollständig oder fehlerhaft sein. Für Handelsentscheidungen immer Broker-Daten nutzen. Historische Kurse können adjustiert sein."),
+            ("Screener-Universum: ~90 Aktien", "Die Datenbank enthält kuratierte Large/Mid-Caps — kein vollständiger Markt. Viele interessante Nebenwerte fehlen. Kein Ersatz für einen echten Multi-Datenbanken-Screener."),
+            ("Faktor-Scores: Approximationen", "Beta, Value, Momentum etc. werden aus öffentlichen Kennzahlen abgeleitet, nicht durch OLS-Regression gegen Fama-French-Faktordaten. Richtungsweisend, nicht präzise."),
+            ("Moat-Analyse: Algorithmus, kein Analyst", "Der Burggraben-Score basiert auf Margen, ROIC und Wachstumsmustern. Er ersetzt keine qualitative Branchenanalyse. Grenzfälle können falsch klassifiziert werden."),
+            ("KI-Analyse kann halluzinieren", "Die KI-generierte Zusammenfassung (Grok/Gemini) kann sachlich falsche Aussagen enthalten. Immer eigenständig verifizieren — nie als Primärquelle nutzen."),
+            ("Kein Backtesting, keine Optimierung", "Die App zeigt historische Daten, optimiert aber kein Portfolio. Kein Monte-Carlo, kein Mean-Variance-Optimierungsmodell. Für Portfolio-Konstruktion zusätzliche Tools nötig."),
+            ("DCF: extrem annahmen-sensitiv", "Kleine Änderungen bei Wachstumsrate oder Diskontierungssatz verändern den fairen Wert massiv. DCF-Ergebnisse als Bandbreite verstehen, nicht als Punktschätzung."),
+            ("Keine Anlage- oder Steuerberatung", "Alle Inhalte dienen ausschließlich der Information und Bildung. Investitionsentscheidungen immer auf Basis eigener Recherche und ggf. professioneller Beratung treffen."),
+        ]
+        for _i, (_lh, _lb) in enumerate(_limits):
+            with (_lim1 if _i % 2 == 0 else _lim2):
+                st.markdown(_w_card(f"⚠️ {_lh}", _lb, _C_NEGATIVE), unsafe_allow_html=True)
+
+
+
     def _w_metric(name, formula, good, bad, note):
         return (f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
                 f"border-radius:8px;padding:10px 12px;margin-bottom:6px;'>"
