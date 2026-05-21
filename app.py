@@ -2820,6 +2820,65 @@ def _fred_last(series_id: str, n: int = 1) -> list[float]:
         return []
 
 
+@st.cache_data(ttl=14400, show_spinner=False)
+def _load_yield_curve_data() -> dict:
+    """US-Zinsstrukturkurve: heute + vor 6M + vor 1J + T10Y2Y Spread-Zeitreihe (5J)."""
+    import datetime as _dtYC
+    _MATS = [
+        ("1M", "DGS1MO"), ("3M", "DGS3MO"), ("6M", "DGS6MO"),
+        ("1J", "DGS1"),   ("2J", "DGS2"),   ("3J", "DGS3"),
+        ("5J", "DGS5"),   ("7J", "DGS7"),   ("10J", "DGS10"),
+        ("20J", "DGS20"), ("30J", "DGS30"),
+    ]
+    out = {"today": {}, "m6": {}, "m12": {}, "spread": []}
+    _today = _dtYC.date.today()
+    _m6  = _today - _dtYC.timedelta(days=183)
+    _m12 = _today - _dtYC.timedelta(days=366)
+    _start = (_today - _dtYC.timedelta(days=400)).isoformat()
+    for label, sid in _MATS:
+        try:
+            r = requests.get(
+                f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}&cosd={_start}",
+                timeout=10,
+            )
+            if not r.ok:
+                continue
+            rows = []
+            for line in r.text.strip().split("\n")[1:]:
+                parts = line.split(",")
+                if len(parts) == 2 and parts[1].strip() not in (".", ""):
+                    try:
+                        rows.append((_dtYC.date.fromisoformat(parts[0].strip()), float(parts[1].strip())))
+                    except (ValueError, IndexError):
+                        pass
+            if not rows:
+                continue
+            rows.sort(key=lambda x: x[0])
+            out["today"][label] = rows[-1][1]
+            out["m6"][label]    = min(rows, key=lambda x: abs((x[0] - _m6).days))[1]
+            out["m12"][label]   = min(rows, key=lambda x: abs((x[0] - _m12).days))[1]
+        except Exception:
+            pass
+    # T10Y2Y spread time series (last 5 years)
+    try:
+        _sp_start = (_today - _dtYC.timedelta(days=5 * 366)).isoformat()
+        r2 = requests.get(
+            f"https://fred.stlouisfed.org/graph/fredgraph.csv?id=T10Y2Y&cosd={_sp_start}",
+            timeout=10,
+        )
+        if r2.ok:
+            for line in r2.text.strip().split("\n")[1:]:
+                parts = line.split(",")
+                if len(parts) == 2 and parts[1].strip() not in (".", ""):
+                    try:
+                        out["spread"].append((_dtYC.date.fromisoformat(parts[0].strip()), float(parts[1].strip())))
+                    except (ValueError, IndexError):
+                        pass
+    except Exception:
+        pass
+    return out
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def _fetch_income_stmt(tkr: str):
     return yf.Ticker(tkr).income_stmt
@@ -6343,115 +6402,6 @@ elif st.session_state.get("show_market_overview"):
     st.markdown("<div class='section-header'>🌍 Marktüberblick</div>", unsafe_allow_html=True)
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # ── Normierte Index-Performance ─────────────────────────────────────
-    st.markdown("<div class='section-header'>📈 Normierte Index-Performance</div>", unsafe_allow_html=True)
-    _PERF_ETF_MAP = {
-        "MSCI World (URTH)": "URTH",
-        "S&P 500 (SPY)": "SPY",
-        "S&P 500 Equal-Weight (RSP)": "RSP",
-        "NASDAQ-100 (QQQ)": "QQQ",
-        "NASDAQ-100 EW (QQQE)": "QQQE",
-        "MSCI ex-USA (EFA)": "EFA",
-    }
-    _MAG7_MAP = {
-        "Apple (AAPL)": "AAPL",
-        "Microsoft (MSFT)": "MSFT",
-        "NVIDIA (NVDA)": "NVDA",
-        "Amazon (AMZN)": "AMZN",
-        "Alphabet (GOOGL)": "GOOGL",
-        "Meta (META)": "META",
-        "Tesla (TSLA)": "TSLA",
-    }
-    _pc1, _pc2, _pc3 = st.columns([2, 2, 1])
-    with _pc1:
-        _perf_indices = st.multiselect(
-            "Indizes / ETFs auswählen",
-            options=list(_PERF_ETF_MAP.keys()),
-            default=["MSCI World (URTH)", "S&P 500 (SPY)", "NASDAQ-100 (QQQ)"],
-            key="perf_indices_sel",
-        )
-    with _pc2:
-        _perf_mag7 = st.multiselect(
-            "Mag7 Einzelwerte hinzufügen",
-            options=list(_MAG7_MAP.keys()),
-            default=[],
-            key="perf_mag7_sel",
-        )
-    with _pc3:
-        _perf_period = st.selectbox(
-            "Zeitraum",
-            options=["1M", "3M", "6M", "1J", "3J", "5J"],
-            index=2,
-            key="perf_period_sel",
-        )
-    _period_days_map = {"1M": 35, "3M": 95, "6M": 185, "1J": 370, "3J": 1100, "5J": 1850}
-    _perf_days = _period_days_map.get(_perf_period, 185)
-    _perf_symbols = {n: _PERF_ETF_MAP[n] for n in _perf_indices}
-    _perf_symbols.update({n: _MAG7_MAP[n] for n in _perf_mag7})
-    _PERF_COLORS = [
-        "#00e5ff", "#4caf50", "#ff9800", "#e91e63", "#9c27b0",
-        "#2196f3", "#ff5722", "#00bcd4", "#8bc34a", "#ffc107",
-        "#f44336", "#3f51b5", "#009688",
-    ]
-    if _perf_symbols:
-        _perf_fig = go.Figure()
-        _perf_returns = {}
-        with st.spinner("Lade Performance-Daten…"):
-            for _ci, (label, sym) in enumerate(_perf_symbols.items()):
-                try:
-                    _ph = _fetch_index_hist(sym, "1d", _perf_days)
-                    if _ph is not None and not _ph.empty and len(_ph) >= 2:
-                        _ph_close = _ph["Close"].dropna()
-                        if hasattr(_ph_close.index, "tz") and _ph_close.index.tz is not None:
-                            _ph_close.index = _ph_close.index.tz_convert(None)
-                        _norm = (_ph_close / _ph_close.iloc[0] - 1) * 100
-                        _perf_returns[label] = float(_norm.iloc[-1])
-                        _clr = _PERF_COLORS[_ci % len(_PERF_COLORS)]
-                        _perf_fig.add_trace(go.Scatter(
-                            x=_norm.index,
-                            y=_norm.values,
-                            mode="lines",
-                            name=label,
-                            line=dict(color=_clr, width=2),
-                            hovertemplate=f"<b>{label}</b><br>%{{x|%d.%m.%Y}}<br>%{{y:+.2f}}%<extra></extra>",
-                        ))
-                except Exception:
-                    pass
-        if _perf_returns:
-            _perf_fig.add_hline(y=0, line_color=_C_BORDER, line_width=1, line_dash="dot")
-            _perf_fig.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color=_C_TEXT_PRIMARY, size=11),
-                xaxis=dict(gridcolor=_C_BORDER, zeroline=False),
-                yaxis=dict(gridcolor=_C_BORDER, zeroline=False,
-                           ticksuffix="%", title="Rendite (normiert auf Startdatum)"),
-                legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=_C_BORDER,
-                            borderwidth=1, font=dict(size=10)),
-                margin=dict(t=30, b=10, l=70, r=10),
-                height=380,
-                hovermode="x unified",
-            )
-            st.plotly_chart(_perf_fig, use_container_width=True,
-                            config={"displayModeBar": False})
-            _pr_sorted = sorted(_perf_returns.items(), key=lambda x: x[1], reverse=True)
-            _pr_n = min(len(_pr_sorted), 6)
-            _pr_cols = st.columns(_pr_n)
-            for _pri, (lbl, ret) in enumerate(_pr_sorted[:_pr_n]):
-                _clr = _C_POSITIVE if ret >= 0 else _C_NEGATIVE
-                _pr_cols[_pri].markdown(
-                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
-                    f"border-radius:8px;padding:8px 10px;text-align:center;'>"
-                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.62rem;margin-bottom:3px;'>{lbl[:24]}</div>"
-                    f"<div style='color:{_clr};font-size:0.95rem;font-weight:700;'>{ret:+.1f}%</div>"
-                    f"</div>", unsafe_allow_html=True)
-            st.caption(f"Start = erster Handelstag im Zeitraum (Basis 0%). Quelle: yFinance. Zeitraum: {_perf_period}.")
-        else:
-            st.warning("Performance-Daten konnten nicht geladen werden.")
-    else:
-        st.info("Bitte mindestens einen Index oder Mag7-Wert auswählen.")
-
-
     # ── S&P 500 Heatmap (Treemap) ────────────────────────────────────────
     st.markdown("<div class='section-header'>🌡️ S&P 500 Heatmap — Heute</div>", unsafe_allow_html=True)
     _tm_data = _load_treemap_data()
@@ -6536,6 +6486,183 @@ elif st.session_state.get("show_market_overview"):
             st.caption("Sektor-ETFs als Fallback.")
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # ── Normierte Index-Performance ─────────────────────────────────────
+    st.markdown("<div class='section-header'>📈 Normierte Index-Performance</div>", unsafe_allow_html=True)
+    _PERF_ETF_MAP = {
+        "MSCI World (URTH)": "URTH",
+        "S&P 500 (SPY)": "SPY",
+        "S&P 500 Equal-Weight (RSP)": "RSP",
+        "NASDAQ-100 (QQQ)": "QQQ",
+        "NASDAQ-100 EW (QQQE)": "QQQE",
+        "MSCI ex-USA (EFA)": "EFA",
+    }
+    _MAG7_MAP = {
+        "Apple (AAPL)": "AAPL",
+        "Microsoft (MSFT)": "MSFT",
+        "NVIDIA (NVDA)": "NVDA",
+        "Amazon (AMZN)": "AMZN",
+        "Alphabet (GOOGL)": "GOOGL",
+        "Meta (META)": "META",
+        "Tesla (TSLA)": "TSLA",
+    }
+    _pc1, _pc2, _pc3 = st.columns([3, 3, 1])
+    with _pc1:
+        _perf_indices = st.multiselect(
+            "Indizes / ETFs auswählen",
+            options=list(_PERF_ETF_MAP.keys()),
+            default=["MSCI World (URTH)", "S&P 500 (SPY)", "NASDAQ-100 (QQQ)"],
+            key="perf_indices_sel",
+        )
+    with _pc2:
+        _perf_mag7 = st.multiselect(
+            "Mag7 Einzelwerte hinzufügen",
+            options=list(_MAG7_MAP.keys()),
+            default=[],
+            key="perf_mag7_sel",
+        )
+    with _pc3:
+        _perf_period = st.selectbox(
+            "Zeitraum",
+            options=["1M", "3M", "6M", "1J", "3J", "5J"],
+            index=2,
+            key="perf_period_sel",
+        )
+    _perf_ex = st.multiselect(
+        "📊 S&P 500 Vergleichs-Varianten — zeigt den S&P 500 synthetisch ohne Tech-Sektor bzw. ohne Magnificent 7",
+        options=["S&P 500 ex Tech (≈28% XLK)", "S&P 500 ex Mag7 (≈32% Ø-Gewicht)"],
+        default=[],
+        key="perf_ex_sel",
+    )
+    # normalize option keys to internal names
+    _perf_ex_norm = []
+    if any("ex Tech" in o for o in _perf_ex):
+        _perf_ex_norm.append("S&P 500 ex Tech")
+    if any("ex Mag7" in o for o in _perf_ex):
+        _perf_ex_norm.append("S&P 500 ex Mag7")
+    _perf_ex = _perf_ex_norm
+    _period_days_map = {"1M": 35, "3M": 95, "6M": 185, "1J": 370, "3J": 1100, "5J": 1850}
+    _perf_days = _period_days_map.get(_perf_period, 185)
+    _perf_symbols = {n: _PERF_ETF_MAP[n] for n in _perf_indices}
+    _perf_symbols.update({n: _MAG7_MAP[n] for n in _perf_mag7})
+    _PERF_COLORS = [
+        "#00e5ff", "#4caf50", "#ff9800", "#e91e63", "#9c27b0",
+        "#2196f3", "#ff5722", "#00bcd4", "#8bc34a", "#ffc107",
+        "#f44336", "#3f51b5", "#009688",
+    ]
+    if _perf_symbols or _perf_ex:
+        _perf_fig = go.Figure()
+        _perf_returns = {}
+        with st.spinner("Lade Performance-Daten…"):
+            for _ci, (label, sym) in enumerate(_perf_symbols.items()):
+                try:
+                    _ph = _fetch_index_hist(sym, "1d", _perf_days)
+                    if _ph is not None and not _ph.empty and len(_ph) >= 2:
+                        _ph_close = _ph["Close"].dropna()
+                        if hasattr(_ph_close.index, "tz") and _ph_close.index.tz is not None:
+                            _ph_close.index = _ph_close.index.tz_convert(None)
+                        _norm = (_ph_close / _ph_close.iloc[0] - 1) * 100
+                        _perf_returns[label] = float(_norm.iloc[-1])
+                        _clr = _PERF_COLORS[_ci % len(_PERF_COLORS)]
+                        _perf_fig.add_trace(go.Scatter(
+                            x=_norm.index,
+                            y=_norm.values,
+                            mode="lines",
+                            name=label,
+                            line=dict(color=_clr, width=2),
+                            hovertemplate=f"<b>{label}</b><br>%{{x|%d.%m.%Y}}<br>%{{y:+.2f}}%<extra></extra>",
+                        ))
+                except Exception:
+                    pass
+            if _perf_ex:
+                _spy_base = None
+                try:
+                    _spyh = _fetch_index_hist("SPY", "1d", _perf_days)
+                    if _spyh is not None and not _spyh.empty:
+                        _spy_base = _spyh["Close"].dropna()
+                        if hasattr(_spy_base.index, "tz") and _spy_base.index.tz is not None:
+                            _spy_base.index = _spy_base.index.tz_convert(None)
+                except Exception:
+                    pass
+                if _spy_base is not None and "S&P 500 ex Tech" in _perf_ex:
+                    try:
+                        _xlkh = _fetch_index_hist("XLK", "1d", _perf_days)
+                        if _xlkh is not None and not _xlkh.empty:
+                            _xlk_c = _xlkh["Close"].dropna()
+                            if hasattr(_xlk_c.index, "tz") and _xlk_c.index.tz is not None:
+                                _xlk_c.index = _xlk_c.index.tz_convert(None)
+                            _idx = _spy_base.index.intersection(_xlk_c.index)
+                            _s = _spy_base.reindex(_idx) / _spy_base.reindex(_idx).iloc[0]
+                            _x = _xlk_c.reindex(_idx) / _xlk_c.reindex(_idx).iloc[0]
+                            _ex_t_pct = ((_s - 0.28 * _x) / 0.72 - 1) * 100
+                            _perf_fig.add_trace(go.Scatter(
+                                x=_ex_t_pct.index, y=_ex_t_pct.values,
+                                mode="lines", name="S&P 500 ex Tech (≈)",
+                                line=dict(color="#ff6b35", width=2, dash="dash"),
+                                hovertemplate="<b>S&P 500 ex Tech (≈)</b><br>%{x|%d.%m.%Y}<br>%{y:+.2f}%<extra></extra>",
+                            ))
+                            _perf_returns["S&P 500 ex Tech (≈)"] = float(_ex_t_pct.iloc[-1])
+                    except Exception:
+                        pass
+                if _spy_base is not None and "S&P 500 ex Mag7" in _perf_ex:
+                    try:
+                        _m7c = []
+                        for _ms in ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA"]:
+                            _mh = _fetch_index_hist(_ms, "1d", _perf_days)
+                            if _mh is not None and not _mh.empty:
+                                _mc = _mh["Close"].dropna()
+                                if hasattr(_mc.index, "tz") and _mc.index.tz is not None:
+                                    _mc.index = _mc.index.tz_convert(None)
+                                _m7c.append(_mc)
+                        if len(_m7c) >= 5:
+                            _m7df = pd.concat(_m7c, axis=1).dropna()
+                            _idx2 = _spy_base.index.intersection(_m7df.index)
+                            _s2 = _spy_base.reindex(_idx2) / _spy_base.reindex(_idx2).iloc[0]
+                            _m7n = _m7df.reindex(_idx2).div(_m7df.reindex(_idx2).iloc[0])
+                            _ex_m_pct = ((_s2 - 0.32 * _m7n.mean(axis=1)) / 0.68 - 1) * 100
+                            _perf_fig.add_trace(go.Scatter(
+                                x=_ex_m_pct.index, y=_ex_m_pct.values,
+                                mode="lines", name="S&P 500 ex Mag7 (≈)",
+                                line=dict(color="#ab47bc", width=2, dash="dash"),
+                                hovertemplate="<b>S&P 500 ex Mag7 (≈)</b><br>%{x|%d.%m.%Y}<br>%{y:+.2f}%<extra></extra>",
+                            ))
+                            _perf_returns["S&P 500 ex Mag7 (≈)"] = float(_ex_m_pct.iloc[-1])
+                    except Exception:
+                        pass
+        if _perf_returns:
+            _perf_fig.add_hline(y=0, line_color=_C_BORDER, line_width=1, line_dash="dot")
+            _perf_fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=_C_TEXT_PRIMARY, size=11),
+                xaxis=dict(gridcolor=_C_BORDER, zeroline=False),
+                yaxis=dict(gridcolor=_C_BORDER, zeroline=False,
+                           ticksuffix="%", title="Rendite (normiert auf Startdatum)"),
+                legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=_C_BORDER,
+                            borderwidth=1, font=dict(size=10)),
+                margin=dict(t=30, b=10, l=70, r=10),
+                height=380,
+                hovermode="x unified",
+            )
+            st.plotly_chart(_perf_fig, use_container_width=True,
+                            config={"displayModeBar": False})
+            _pr_sorted = sorted(_perf_returns.items(), key=lambda x: x[1], reverse=True)
+            _pr_n = min(len(_pr_sorted), 6)
+            _pr_cols = st.columns(_pr_n)
+            for _pri, (lbl, ret) in enumerate(_pr_sorted[:_pr_n]):
+                _clr = _C_POSITIVE if ret >= 0 else _C_NEGATIVE
+                _pr_cols[_pri].markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:8px;padding:8px 10px;text-align:center;'>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.62rem;margin-bottom:3px;'>{lbl[:24]}</div>"
+                    f"<div style='color:{_clr};font-size:0.95rem;font-weight:700;'>{ret:+.1f}%</div>"
+                    f"</div>", unsafe_allow_html=True)
+            st.caption(f"Start = erster Handelstag im Zeitraum (Basis 0%). Quelle: yFinance. Zeitraum: {_perf_period}. (≈) = synthetisch berechnet, Gewichte approximiert.")
+        else:
+            st.warning("Performance-Daten konnten nicht geladen werden.")
+    else:
+        st.info("Bitte mindestens einen Index, Mag7-Wert oder ex-Variante auswählen.")
+
 
     # ── Marktüberblick ──
     st.markdown("<div class='section-header'>🌍 Marktüberblick</div>", unsafe_allow_html=True)
@@ -6701,6 +6828,160 @@ elif st.session_state.get("show_market_overview"):
                     {_kdisp}
                 </div>
             </div>""", unsafe_allow_html=True)
+
+    # ── Zinsstrukturkurve ─────────────────────────────────────────────
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>📉 Zinsstrukturkurve (US Treasuries)</div>", unsafe_allow_html=True)
+
+    # Einordnung
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:10px 14px;margin-bottom:12px;color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.6;'>"
+        f"<b style='color:{_C_TEXT_PRIMARY};'>Was zeigt die Zinskurve?</b> "
+        f"Die Zinsstrukturkurve stellt die Renditen von US-Staatsanleihen aller Laufzeiten (1 Monat bis 30 Jahre) dar. "
+        f"Normalerweise steigt sie von links nach rechts — Investoren fordern für längere Bindung mehr Rendite. "
+        f"Wenn sich die Kurve <b style='color:{_C_NEGATIVE};'>invertiert</b> (kurze Laufzeiten rentieren höher als lange), "
+        f"signalisiert der Markt Pessimismus: die Fed wird gezwungen sein, die Zinsen bald zu senken. "
+        f"Historisch folgte einer Inversion in 7 von 8 Fällen innerhalb von 6–18 Monaten eine Rezession. "
+        f"Die Kurve im Zeitverlauf zeigt, ob sich die Lage verbessert oder verschlechtert hat.</div>",
+        unsafe_allow_html=True,
+    )
+
+    with st.spinner("Lade Zinskurve…"):
+        _yc_data = _load_yield_curve_data()
+
+    _YC_MATS = ["1M", "3M", "6M", "1J", "2J", "3J", "5J", "7J", "10J", "20J", "30J"]
+
+    if _yc_data["today"]:
+        _yc_today = [_yc_data["today"].get(m) for m in _YC_MATS]
+        _yc_m6    = [_yc_data["m6"].get(m)    for m in _YC_MATS]
+        _yc_m12   = [_yc_data["m12"].get(m)   for m in _YC_MATS]
+
+        _yc_t2  = _yc_data["today"].get("2J")
+        _yc_t10 = _yc_data["today"].get("10J")
+        _yc_t30 = _yc_data["today"].get("30J")
+        _yc_sp  = round(_yc_t10 - _yc_t2, 3) if (_yc_t10 and _yc_t2) else None
+
+        # Kurvenform-Interpretation
+        if _yc_sp is not None:
+            if _yc_sp < 0:
+                _yc_sig, _yc_sig_clr = "🔴 Invertiert", _C_NEGATIVE
+                _yc_sig_txt = (
+                    "Die Kurve ist invertiert — kurzfristige Zinsen liegen über langfristigen. "
+                    "Der Markt erwartet, dass die Fed die Zinsen senken muss. "
+                    "Historisch zuverlässigstes Rezessionssignal mit 6–18 Monaten Vorlauf."
+                )
+            elif _yc_sp < 0.5:
+                _yc_sig, _yc_sig_clr = "🟡 Flach", _C_NEUTRAL
+                _yc_sig_txt = (
+                    "Die Kurve ist ungewöhnlich flach — der Renditeunterschied zwischen kurz und lang ist gering. "
+                    "Märkte preisen eine wirtschaftliche Verlangsamung oder baldige Zinssenkungen ein."
+                )
+            else:
+                _yc_sig, _yc_sig_clr = "🟢 Normal", _C_POSITIVE
+                _yc_sig_txt = (
+                    "Normale, aufwärts geneigte Zinskurve — langfristige Anleihen bieten höhere Renditen. "
+                    "Gesunde Wachstums- und moderate Inflationserwartungen."
+                )
+        else:
+            _yc_sig, _yc_sig_clr, _yc_sig_txt = "—", _C_TEXT_MUTED, ""
+
+        # KPI-Karten
+        _yk1, _yk2, _yk3, _yk4 = st.columns(4)
+        for _col, _lbl, _val in [(_yk1, "2J Rendite", _yc_t2), (_yk2, "10J Rendite", _yc_t10), (_yk3, "30J Rendite", _yc_t30)]:
+            _col.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+                f"text-align:center;padding:10px 8px;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:3px;'>{_lbl}</div>"
+                f"<div style='color:#64b5f6;font-size:1.05rem;font-weight:700;'>{f'{_val:.2f}%' if _val else '—'}</div>"
+                f"</div>", unsafe_allow_html=True)
+        _yk4.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_yc_sig_clr}55;"
+            f"border-left:3px solid {_yc_sig_clr};border-radius:8px;"
+            f"text-align:center;padding:10px 8px;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:3px;'>10J–2J Spread</div>"
+            f"<div style='color:{_yc_sig_clr};font-size:1.05rem;font-weight:700;'>{f'{_yc_sp:+.2f}%' if _yc_sp is not None else '—'}</div>"
+            f"<div style='color:{_yc_sig_clr};font-size:0.68rem;font-weight:600;margin-top:2px;'>{_yc_sig}</div>"
+            f"</div>", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        # Zinskurven-Chart
+        _yc_fig = go.Figure()
+        _yc_fig.add_trace(go.Scatter(
+            x=_YC_MATS, y=_yc_m12,
+            mode="lines+markers", name="vor 1 Jahr",
+            line=dict(color="#546e7a", width=1.5, dash="dash"),
+            marker=dict(size=4, color="#546e7a"),
+            hovertemplate="%{x}: <b>%{y:.2f}%</b><extra>vor 1 Jahr</extra>",
+        ))
+        _yc_fig.add_trace(go.Scatter(
+            x=_YC_MATS, y=_yc_m6,
+            mode="lines+markers", name="vor 6 Monaten",
+            line=dict(color="#4fc3f7", width=1.5, dash="dot"),
+            marker=dict(size=4, color="#4fc3f7"),
+            hovertemplate="%{x}: <b>%{y:.2f}%</b><extra>vor 6 Monaten</extra>",
+        ))
+        _yc_fig.add_trace(go.Scatter(
+            x=_YC_MATS, y=_yc_today,
+            mode="lines+markers", name="Heute",
+            line=dict(color="#00e5ff", width=2.5),
+            marker=dict(size=7, color="#00e5ff"),
+            hovertemplate="%{x}: <b>%{y:.2f}%</b><extra>Heute</extra>",
+        ))
+        _yc_fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=_C_TEXT_PRIMARY, size=11),
+            xaxis=dict(gridcolor=_C_BORDER, zeroline=False, title="Laufzeit"),
+            yaxis=dict(gridcolor=_C_BORDER, zeroline=False, ticksuffix="%", title="Rendite p.a."),
+            legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=_C_BORDER, borderwidth=1,
+                        font=dict(size=10), orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            margin=dict(t=40, b=10, l=60, r=10),
+            height=300,
+            hovermode="x unified",
+        )
+        st.plotly_chart(_yc_fig, use_container_width=True, config={"displayModeBar": False})
+
+        # Einordnungsbox
+        if _yc_sig_txt:
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_yc_sig_clr}44;"
+                f"border-left:3px solid {_yc_sig_clr};border-radius:10px;padding:10px 14px;"
+                f"color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.55;margin-top:4px;'>"
+                f"<b style='color:{_yc_sig_clr};'>{_yc_sig}:</b> {_yc_sig_txt}"
+                f"</div>", unsafe_allow_html=True)
+
+        # Spread-Zeitreihe
+        if _yc_data.get("spread"):
+            st.markdown(
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin:14px 0 6px 0;'>"
+                f"📊 10J–2J Spread-Verlauf (5 Jahre) — <span style='color:{_C_NEGATIVE};'>rot = invertiert</span></div>",
+                unsafe_allow_html=True)
+            _sp_dates = [r[0] for r in _yc_data["spread"]]
+            _sp_vals  = [r[1] for r in _yc_data["spread"]]
+            _sp_clrs  = [_C_NEGATIVE if v < 0 else "#4caf50" for v in _sp_vals]
+            _sp_fig = go.Figure()
+            _sp_fig.add_trace(go.Bar(
+                x=_sp_dates, y=_sp_vals,
+                marker_color=_sp_clrs,
+                hovertemplate="%{x|%d.%m.%Y}  <b>%{y:+.2f}%</b><extra></extra>",
+            ))
+            _sp_fig.add_hline(y=0, line_color=_C_TEXT_MUTED, line_width=1)
+            _sp_fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=_C_TEXT_PRIMARY, size=10),
+                xaxis=dict(gridcolor=_C_BORDER, zeroline=False),
+                yaxis=dict(gridcolor=_C_BORDER, zeroline=False, ticksuffix="%"),
+                margin=dict(t=5, b=10, l=50, r=10),
+                height=175,
+                showlegend=False,
+                hovermode="x unified",
+                bargap=0.05,
+            )
+            st.plotly_chart(_sp_fig, use_container_width=True, config={"displayModeBar": False})
+        st.caption("Quelle: FRED (Federal Reserve St. Louis) · DGS1MO–DGS30 · T10Y2Y · 4h-Cache · Tageswerte.")
+    else:
+        st.info("Zinskurve konnte nicht geladen werden.")
 
     # ── Bond Monitor ─────────────────────────────────────────────────
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
@@ -7832,6 +8113,91 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
     else:
         st.warning("Saisonale Daten konnten nicht geladen werden — yFinance-Verbindung prüfen.")
 
+    # ── Faktor-Prämien ────────────────────────────────────────────────────
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>🧮 Faktor-Prämien</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:10px 14px;margin-bottom:12px;color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.6;'>"
+        f"<b style='color:{_C_TEXT_PRIMARY};'>Welcher Faktor liefert gerade Prämie?</b> "
+        f"Faktor-ETFs bündeln Aktien mit bestimmten Charakteristiken: "
+        f"<b>MTUM</b> = Momentum · <b>VLUE</b> = Value · <b>QUAL</b> = Qualität/Profitabilität · "
+        f"<b>USMV</b> = geringe Volatilität · <b>IWM</b> = Small Caps (Size-Prämie). "
+        f"Der Vergleich zur Benchmark (SPY) zeigt, welche Faktor-Strategie in der aktuellen Marktphase belohnt wird. "
+        f"Typische Muster: Value outperformt in Aufwärtszinsphasen, Momentum in Trendbörsen, Low-Vol in Krisen.</div>",
+        unsafe_allow_html=True,
+    )
+    _fP_MAP = {
+        "S&P 500 (SPY)":          ("SPY",  "#546e7a", "solid",  2.5),
+        "Momentum (MTUM)":        ("MTUM", "#00e5ff", "solid",  2.0),
+        "Value (VLUE)":           ("VLUE", "#ff9800", "solid",  2.0),
+        "Quality (QUAL)":         ("QUAL", "#4caf50", "solid",  2.0),
+        "Low Volatility (USMV)":  ("USMV", "#9c27b0", "solid",  2.0),
+        "Small Cap (IWM)":        ("IWM",  "#e91e63", "dash",   1.8),
+    }
+    _fP_c1, _fP_c2 = st.columns([5, 1])
+    with _fP_c2:
+        _fP_period = st.selectbox(
+            "Zeitraum",
+            options=["1M", "3M", "6M", "1J", "3J", "5J"],
+            index=2,
+            key="faktor_period_sel",
+        )
+    _fP_days_map = {"1M": 35, "3M": 95, "6M": 185, "1J": 370, "3J": 1100, "5J": 1850}
+    _fP_days = _fP_days_map.get(_fP_period, 185)
+    _fP_fig   = go.Figure()
+    _fP_rets  = {}
+    with st.spinner("Lade Faktor-ETF Daten…"):
+        for _fP_lbl, (_fP_sym, _fP_clr, _fP_dash, _fP_wid) in _fP_MAP.items():
+            try:
+                _fPh = _fetch_index_hist(_fP_sym, "1d", _fP_days)
+                if _fPh is not None and not _fPh.empty and len(_fPh) >= 2:
+                    _fPc = _fPh["Close"].dropna()
+                    if hasattr(_fPc.index, "tz") and _fPc.index.tz:
+                        _fPc.index = _fPc.index.tz_convert(None)
+                    _fPn = (_fPc / _fPc.iloc[0] - 1) * 100
+                    _fP_rets[_fP_lbl] = float(_fPn.iloc[-1])
+                    _fP_fig.add_trace(go.Scatter(
+                        x=_fPn.index, y=_fPn.values,
+                        mode="lines", name=_fP_lbl,
+                        line=dict(color=_fP_clr, width=_fP_wid, dash=_fP_dash),
+                        hovertemplate=f"<b>{_fP_lbl}</b><br>%{{x|%d.%m.%Y}}<br>%{{y:+.2f}}%<extra></extra>",
+                    ))
+            except Exception:
+                pass
+    if _fP_rets:
+        _fP_fig.add_hline(y=0, line_color=_C_BORDER, line_width=1, line_dash="dot")
+        _fP_fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=_C_TEXT_PRIMARY, size=11),
+            xaxis=dict(gridcolor=_C_BORDER, zeroline=False),
+            yaxis=dict(gridcolor=_C_BORDER, zeroline=False,
+                       ticksuffix="%", title="Rendite (normiert auf Startdatum)"),
+            legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=_C_BORDER,
+                        borderwidth=1, font=dict(size=10)),
+            margin=dict(t=20, b=10, l=65, r=10),
+            height=340,
+            hovermode="x unified",
+        )
+        with _fP_c1:
+            st.plotly_chart(_fP_fig, use_container_width=True, config={"displayModeBar": False})
+        # Mini-Rangliste
+        _fP_sorted = sorted(_fP_rets.items(), key=lambda x: x[1], reverse=True)
+        _fP_cols   = st.columns(len(_fP_sorted))
+        for _fPi, (_fPl, _fPr) in enumerate(_fP_sorted):
+            _sym, _clr, *_ = _fP_MAP[_fPl]
+            _rc = _C_POSITIVE if _fPr >= 0 else _C_NEGATIVE
+            _fP_cols[_fPi].markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-top:3px solid {_clr};border-radius:8px;padding:7px 8px;text-align:center;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.60rem;margin-bottom:2px;'>{_fPl[:20]}</div>"
+                f"<div style='color:{_rc};font-size:0.90rem;font-weight:700;'>{_fPr:+.1f}%</div>"
+                f"</div>", unsafe_allow_html=True)
+        st.caption(f"Normiert auf Startdatum (Basis 0%). Quelle: yFinance. Zeitraum: {_fP_period}.")
+    else:
+        st.warning("Faktor-ETF Daten konnten nicht geladen werden.")
+
+
     # ── Marktschlagzeilen ────────────────────────────────────────────────
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown("<div class='section-header'>📰 Aktuelle Marktschlagzeilen</div>", unsafe_allow_html=True)
@@ -8149,32 +8515,40 @@ elif st.session_state.get("show_screener"):
 
         with _fc1:
             st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.78rem;font-weight:700;margin-bottom:4px;'>📊 Bewertung</div>", unsafe_allow_html=True)
-            _pe_max = st.slider("KGV (forward) max", 0, 120, int(_f.get("pe_fwd_max", 120)), 1, key="scr_pe_max",
-                                help="Forward KGV: Kurs ÷ geschätzter Gewinn. 0 = kein Filter")
-            _pb_max = st.slider("KBV max", 0.0, 30.0, float(_f.get("pb_max", 30.0)), 0.5, key="scr_pb_max",
-                                help="Kurs-Buchwert-Verhältnis. 30 = kein Filter")
-            _eu_max = st.slider("EV/EBITDA max (0=kein Filter)", 0, 60, int(_f.get("ev_ebitda_max", 60)), 1, key="scr_eu_max")
+            _pe_max = st.slider("KGV (forward) max", 0, 120, int(_f.get("pe_fwd_max", 60)), 1, key="scr_pe_max",
+                                help="Forward KGV: Kurs ÷ geschätzter Gewinn nächstes Jahr. Typisch: Value <15, GARP 15–30, Growth 30–60. 120 = kein Filter.")
+            _pb_max = st.slider("KBV max", 0.0, 30.0, float(_f.get("pb_max", 15.0)), 0.5, key="scr_pb_max",
+                                help="Kurs-Buchwert-Verhältnis: Kurs ÷ Eigenkapital/Aktie. <1 = unter Buchwert (selten, oft Substanzwert). 30 = kein Filter.")
+            _eu_max = st.slider("EV/EBITDA max", 0, 60, int(_f.get("ev_ebitda_max", 35)), 1, key="scr_eu_max",
+                                help="Enterprise Value ÷ EBITDA. Branchenunabhängiger Bewertungsindikator: <10 günstig, 10–20 normal, >25 teuer. 0 = kein Filter.")
 
         with _fc2:
             st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.78rem;font-weight:700;margin-bottom:4px;'>📈 Wachstum & Qualität</div>", unsafe_allow_html=True)
-            _rg_min = st.slider("Umsatzwachstum min (%)", -20, 60, int(_f.get("rev_growth_min", -20)), 1, key="scr_rg_min")
-            _gm_min = st.slider("Bruttomarge min (%)", 0, 90, int(_f.get("gross_margin_min", 0)), 1, key="scr_gm_min")
-            _om_min = st.slider("Op. Marge min (%)", -20, 60, int(_f.get("op_margin_min", -20)), 1, key="scr_om_min")
+            _rg_min = st.slider("Umsatzwachstum min (%)", -20, 60, int(_f.get("rev_growth_min", 0)), 1, key="scr_rg_min",
+                                help="Umsatzwachstum YoY (Jahr-über-Jahr). 0% = kein schrumpfendes Unternehmen. Growth ≥15%, Stabil ≥0%.")
+            _gm_min = st.slider("Bruttomarge min (%)", 0, 90, int(_f.get("gross_margin_min", 20)), 1, key="scr_gm_min",
+                                help="Bruttomarge = (Umsatz − COGS) / Umsatz. ≥40% deutet auf Pricing Power hin (Software, Pharma). Handel oft <30%.")
+            _om_min = st.slider("Op. Marge min (%)", -20, 60, int(_f.get("op_margin_min", 0)), 1, key="scr_om_min",
+                                help="EBIT-Marge: operativer Gewinn vor Zinsen und Steuern. ≥10% solide, ≥20% sehr gut. 0% = mind. operativ break-even.")
 
         with _fc3:
             st.markdown(f"<div style='color:{_C_ACCENT};font-size:0.78rem;font-weight:700;margin-bottom:4px;'>💰 Rentabilität & Risiko</div>", unsafe_allow_html=True)
-            _roe_min    = st.slider("ROE min (%)", -30, 80, int(_f.get("roe_min", -30)), 1, key="scr_roe_min")
-            _fcf_min    = st.slider("FCF-Yield min (%)", -10, 20, int(_f.get("fcf_yield_min", -10)), 1, key="scr_fcf_min")
-            _beta_max   = st.slider("Beta max", 0.0, 4.0, float(_f.get("beta_max", 4.0)), 0.1, key="scr_beta_max")
+            _roe_min    = st.slider("ROE min (%)", -30, 80, int(_f.get("roe_min", 0)), 1, key="scr_roe_min",
+                                    help="Return on Equity: Nettogewinn ÷ Eigenkapital. ≥15% exzellent, ≥8% solide. Negativ bei Verlusten. Achtung: hohe Verschuldung bläht ROE auf.")
+            _fcf_min    = st.slider("FCF-Yield min (%)", -10, 20, int(_f.get("fcf_yield_min", 0)), 1, key="scr_fcf_min",
+                                    help="Freier Cashflow ÷ Marktkapitalisierung. ≥3% attraktiv, ≥5% sehr günstig. Zeigt echte Cash-Generierung unabhängig vom Bilanzgewinn.")
+            _beta_max   = st.slider("Beta max", 0.0, 4.0, float(_f.get("beta_max", 2.5)), 0.1, key="scr_beta_max",
+                                    help="Markt-Sensitivität ggü. S&P 500. β=1.0 = marktkonform, β<0.8 = defensiv, β>1.5 = sehr volatil. 4.0 = kein Filter.")
 
         _fd1, _fd2, _fd3 = st.columns(3)
         with _fd1:
-            _dy_min  = st.slider("Dividendenrendite min (%)", 0.0, 10.0, float(_f.get("div_yield_min", 0.0)), 0.25, key="scr_dy_min")
-            _pay_max = st.slider("Payout Ratio max (%)", 10, 110, int(_f.get("payout_max", 110)), 5, key="scr_pay_max",
-                                 help="110 = kein Filter")
+            _dy_min  = st.slider("Dividendenrendite min (%)", 0.0, 10.0, float(_f.get("div_yield_min", 0.0)), 0.25, key="scr_dy_min",
+                                 help="Dividende ÷ Aktienkurs. 0% = auch nicht-zahlende Aktien. ≥2% für Dividenden-Fokus. Achtung: sehr hohe Yield kann auf Kursschwäche hindeuten.")
+            _pay_max = st.slider("Payout Ratio max (%)", 10, 110, int(_f.get("payout_max", 90)), 5, key="scr_pay_max",
+                                 help="Dividende ÷ Gewinn. <60% gilt als nachhaltig. >80% Risiko einer Kürzung. REITs zahlen strukturbedingt oft >90%. 110 = kein Filter.")
         with _fd2:
-            _qual_min = st.slider("Quality Score min", 0, 100, int(_f.get("quality_min", 0)), 5, key="scr_qual_min",
-                                  help="Composite Score aus Margen, FCF, ROE, Wachstum, Verschuldung")
+            _qual_min = st.slider("Quality Score min", 0, 100, int(_f.get("quality_min", 20)), 5, key="scr_qual_min",
+                                  help="Composite Score (0–100) aus Bruttomarge, FCF-Yield, ROE, Umsatzwachstum und Verschuldung. ≥50 = überdurchschnittlich, ≥70 = Top-Qualität.")
             _moat_filter = st.selectbox("Burggraben", ["Alle", "Schmal oder breiter", "Breit", "Sehr breit"],
                                         index=["Alle","Schmal oder breiter","Breit","Sehr breit"].index(_f.get("moat_filter","Alle")),
                                         key="scr_moat")
@@ -16094,18 +16468,19 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
 # Session-state-basierte Navigation (immun gegen st.rerun() und WebSocket-Reconnects)
 _TABS = [
     "📊 Kennzahlen", "📈 Wachstum", "🔮 Prognose", "📋 Fundamental", "⚖️ Bewertung",
-    "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden",
+    "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden", "📐 Faktor-Profil",
 ]
 _at = st.session_state.get("active_tab", 0)
-_nav_cols = st.columns(len(_TABS))
-_tab_clicked = False
-for _ni, (_nc, _nl) in enumerate(zip(_nav_cols, _TABS)):
-    if _nc.button(_nl, key=f"_nav_{_ni}", use_container_width=True,
-                  type="primary" if _at == _ni else "secondary"):
-        if _at != _ni:
-            st.session_state["active_tab"] = _ni
-            _tab_clicked = True
-if _tab_clicked:
+_tab_sel = st.selectbox(
+    "Tab",
+    options=list(range(len(_TABS))),
+    format_func=lambda i: _TABS[i],
+    index=min(_at, len(_TABS) - 1),
+    key="tab_selectbox",
+    label_visibility="collapsed",
+)
+if _tab_sel != _at:
+    st.session_state["active_tab"] = _tab_sel
     st.rerun()
 _at = st.session_state.get("active_tab", 0)
 st.markdown(f"<div style='border-top:2px solid {_C_BORDER};margin:-6px 0 12px 0;'></div>",
@@ -19457,6 +19832,221 @@ elif _at == 10:
         f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:14px;padding:8px 0;'>"
         f"Datenquelle: yFinance · Dividenden versteuern sich je nach Depot und Wohnsitz unterschiedlich. Keine Anlageberatung.</div>",
         unsafe_allow_html=True)
+
+
+elif _at == 11:
+    st.markdown("<div class='section-header'>📐 Faktor-Profil</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    # Intro
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:10px 14px;margin-bottom:14px;color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.6;'>"
+        f"<b style='color:{_C_TEXT_PRIMARY};'>Was sind Faktor-Exposures?</b> "
+        f"Die akademische Forschung (Fama/French, Carhart) zeigt, dass Aktienrenditen durch systematische "
+        f"<i>Risikofaktoren</i> erklärt werden — nicht nur durch den Markt. Wer seine Faktor-Exposures kennt, "
+        f"versteht warum eine Aktie läuft wie sie läuft: "
+        f"<b>Beta</b> misst Marktsensitivität · <b>Value</b> (günstige Bewertung) · "
+        f"<b>Quality</b> (Bilanzstärke) · <b>Momentum</b> (Kursperformance) · "
+        f"<b>Low Vol</b> (defensive Charakteristik) · <b>Size</b> (Small- vs. Large-Cap Tilt). "
+        f"Die Scores sind relativ normiert (0 = schwach / 100 = stark ausgeprägt).</div>",
+        unsafe_allow_html=True,
+    )
+
+    import numpy as _np_fak
+
+    _fak_info = info  # already loaded on this page
+
+    # ── Beta (Markt-Sensitivität) ─────────────────────────────────────────
+    _fak_beta_raw = None
+    _fak_beta_sc  = 50
+    try:
+        _fak_stk_h = _fetch_hist_daily_5y(ticker)
+        _fak_spy_h = _fetch_index_hist("SPY", "1d", 380)
+        if _fak_stk_h is not None and _fak_spy_h is not None and len(_fak_stk_h) > 60:
+            _fak_sc_s = _fak_stk_h["Close"].pct_change().dropna()
+            _fak_sp_s = _fak_spy_h["Close"].pct_change().dropna()
+            if hasattr(_fak_sc_s.index, "tz") and _fak_sc_s.index.tz:
+                _fak_sc_s.index = _fak_sc_s.index.tz_convert(None)
+            if hasattr(_fak_sp_s.index, "tz") and _fak_sp_s.index.tz:
+                _fak_sp_s.index = _fak_sp_s.index.tz_convert(None)
+            _fak_idx = _fak_sc_s.index.intersection(_fak_sp_s.index)[-252:]
+            if len(_fak_idx) > 50:
+                _fak_a = _fak_sc_s.reindex(_fak_idx).values
+                _fak_b = _fak_sp_s.reindex(_fak_idx).values
+                _fak_cov = _np_fak.cov(_fak_a, _fak_b)
+                _fak_beta_raw = round(_fak_cov[0, 1] / _fak_cov[1, 1], 2)
+                _fak_beta_sc  = int(max(0, min(100, _fak_beta_raw * 50)))
+    except Exception:
+        pass
+
+    # ── Value Score ────────────────────────────────────────────────────────
+    _fak_val_sc = 50
+    try:
+        _pb = _fak_info.get("priceToBook") or 0
+        _pe = _fak_info.get("trailingPE")  or 0
+        _ps = _fak_info.get("priceToSalesTrailingTwelveMonths") or 0
+        _pb_sc = max(0, min(100, 100 - (_pb - 1) * 8))  if _pb > 0 else 50
+        _pe_sc = max(0, min(100, 100 - (_pe - 10) * 2)) if _pe > 0 else 50
+        _ps_sc = max(0, min(100, 100 - (_ps - 1) * 7))  if _ps > 0 else 50
+        _cnt   = sum(1 for x in [_pb, _pe, _ps] if x > 0)
+        _fak_val_sc = int(round(sum([_pb_sc if _pb > 0 else 0,
+                                     _pe_sc if _pe > 0 else 0,
+                                     _ps_sc if _ps > 0 else 0]) / max(1, _cnt)))
+    except Exception:
+        pass
+
+    # ── Quality Score ──────────────────────────────────────────────────────
+    _fak_qual_sc = _sc_score(info)  # existing 0–100 quality helper
+
+    # ── Momentum Score ─────────────────────────────────────────────────────
+    _fak_mom_sc  = 50
+    _fak_mom_raw = None
+    try:
+        if _fak_stk_h is not None and len(_fak_stk_h) > 260:
+            _fak_cl = _fak_stk_h["Close"].dropna()
+            _ret_12m = (_fak_cl.iloc[-1] / _fak_cl.iloc[-252] - 1) * 100
+            _ret_1m  = (_fak_cl.iloc[-1] / _fak_cl.iloc[-21]  - 1) * 100
+            _fak_mom_raw = round(_ret_12m - _ret_1m, 1)   # standard 12-1 momentum
+            _fak_mom_sc  = int(max(0, min(100, 50 + _fak_mom_raw * 0.8)))
+    except Exception:
+        pass
+
+    # ── Low-Volatility Score ───────────────────────────────────────────────
+    _fak_lvol_sc  = 50
+    _fak_lvol_raw = None
+    try:
+        if _fak_stk_h is not None and len(_fak_stk_h) > 50:
+            _fak_rets = _fak_stk_h["Close"].pct_change().dropna()
+            _fak_lvol_raw = round(_fak_rets[-252:].std() * (252 ** 0.5) * 100, 1)
+            _fak_lvol_sc  = int(max(0, min(100, 100 - _fak_lvol_raw * 1.9)))
+    except Exception:
+        pass
+
+    # ── Size Score (SmallCap-Tilt) ─────────────────────────────────────────
+    _fak_size_sc = 50
+    try:
+        _mcap = _fak_info.get("marketCap") or 0
+        if   _mcap > 500e9:  _fak_size_sc = 5    # Mega Cap → kaum Small-Cap-Tilt
+        elif _mcap > 100e9:  _fak_size_sc = 20
+        elif _mcap > 10e9:   _fak_size_sc = 45
+        elif _mcap > 2e9:    _fak_size_sc = 70
+        elif _mcap > 0:      _fak_size_sc = 90   # Small Cap → maximaler Tilt
+    except Exception:
+        pass
+
+    # ── KPI-Karten ────────────────────────────────────────────────────────
+    _fak_defs = [
+        ("Beta",       _fak_beta_sc,  f"β = {_fak_beta_raw:.2f}" if _fak_beta_raw else "—",
+         "Markt­sensitivität: > 1 = volatiler als S&P 500, < 1 = defensiver."),
+        ("Value",      _fak_val_sc,   f"{_fak_val_sc}/100",
+         "Bewertungs-Tilt: hoch = günstig bewertet (P/B, P/E, P/S niedrig)."),
+        ("Quality",    _fak_qual_sc,  f"{_fak_qual_sc}/100",
+         "Bilanzqualität: Margen, FCF, ROE, Wachstum, geringe Verschuldung."),
+        ("Momentum",   _fak_mom_sc,   f"{_fak_mom_raw:+.1f}% (12M−1M)" if _fak_mom_raw else "—",
+         "Kurs-Momentum (12M minus 1M Rendite). Hoch = starker Aufwärtstrend."),
+        ("Low Vol",    _fak_lvol_sc,  f"σ = {_fak_lvol_raw:.1f}%" if _fak_lvol_raw else "—",
+         "Niedrige Volatilität: hoch = ruhige Kursentwicklung, defensiv."),
+        ("Size (SC)",  _fak_size_sc,  f"{_fak_size_sc}/100",
+         "Small-Cap-Tilt: hoch = kleine Marktkapitalisierung (SMB-Prämie)."),
+    ]
+    _fk_cols = st.columns(6)
+    for _fki, (_fk_label, _fk_sc, _fk_disp, _fk_tip) in enumerate(_fak_defs):
+        _fk_clr = _C_POSITIVE if _fk_sc >= 65 else (_C_NEGATIVE if _fk_sc < 35 else _C_NEUTRAL)
+        _tip_html = (f'<span class="tt" tabindex="0"> <span class="tt-icon">ⓘ</span>'
+                     f'<span class="tt-box">{_fk_tip}</span></span>')
+        _fk_cols[_fki].markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:8px;"
+            f"text-align:center;padding:10px 6px;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.65rem;margin-bottom:3px;'>{_fk_label}{_tip_html}</div>"
+            f"<div style='color:{_fk_clr};font-size:1.0rem;font-weight:700;'>{_fk_disp}</div>"
+            f"<div style='margin-top:5px;background:{_C_BORDER};border-radius:3px;height:4px;'>"
+            f"<div style='background:{_fk_clr};width:{_fk_sc}%;height:4px;border-radius:3px;'></div>"
+            f"</div></div>", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+    # ── Radar-Chart ───────────────────────────────────────────────────────
+    _rad_labels = ["Beta", "Value", "Quality", "Momentum", "Low Vol", "Size"]
+    _rad_values = [_fak_beta_sc, _fak_val_sc, _fak_qual_sc, _fak_mom_sc, _fak_lvol_sc, _fak_size_sc]
+    _rad_values_closed = _rad_values + [_rad_values[0]]
+    _rad_labels_closed = _rad_labels + [_rad_labels[0]]
+
+    _rad_fig = go.Figure()
+    _rad_fig.add_trace(go.Scatterpolar(
+        r=_rad_values_closed,
+        theta=_rad_labels_closed,
+        fill="toself",
+        fillcolor=f"rgba(0,229,255,0.10)",
+        line=dict(color="#00e5ff", width=2),
+        name=ticker,
+        hovertemplate="<b>%{theta}</b><br>Score: %{r}/100<extra></extra>",
+    ))
+    # Market benchmark (all 50)
+    _rad_fig.add_trace(go.Scatterpolar(
+        r=[50] * 7,
+        theta=_rad_labels_closed,
+        mode="lines",
+        line=dict(color=_C_BORDER, width=1, dash="dot"),
+        name="Markt-Median (50)",
+        hoverinfo="skip",
+    ))
+    _rad_fig.update_layout(
+        polar=dict(
+            bgcolor="rgba(0,0,0,0)",
+            radialaxis=dict(visible=True, range=[0, 100], gridcolor=_C_BORDER,
+                            tickfont=dict(size=8, color=_C_TEXT_MUTED), tickvals=[25, 50, 75, 100]),
+            angularaxis=dict(gridcolor=_C_BORDER, tickfont=dict(size=11, color=_C_TEXT_PRIMARY)),
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        showlegend=True,
+        legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=_C_BORDER, borderwidth=1,
+                    font=dict(size=10), x=1.05, y=1.0),
+        margin=dict(t=20, b=20, l=60, r=80),
+        height=360,
+    )
+    st.plotly_chart(_rad_fig, use_container_width=True, config={"displayModeBar": False})
+
+    # ── Interpretation ────────────────────────────────────────────────────
+    _fak_top = sorted(zip(_rad_labels, _rad_values), key=lambda x: x[1], reverse=True)
+    _fak_strong  = [n for n, s in _fak_top if s >= 65]
+    _fak_weak    = [n for n, s in _fak_top if s < 35]
+    _fak_profile_parts = []
+    if _fak_strong:
+        _fak_profile_parts.append(
+            f"<b style='color:{_C_POSITIVE};'>Ausgeprägte Faktoren:</b> "
+            + ", ".join(f"<b>{n}</b>" for n in _fak_strong)
+        )
+    if _fak_weak:
+        _fak_profile_parts.append(
+            f"<b style='color:{_C_NEGATIVE};'>Schwach ausgeprägt:</b> "
+            + ", ".join(f"<b>{n}</b>" for n in _fak_weak)
+        )
+
+    # Build profile label
+    _has_q = _fak_qual_sc >= 65
+    _has_v = _fak_val_sc  >= 65
+    _has_m = _fak_mom_sc  >= 65
+    _has_lv = _fak_lvol_sc >= 65
+    if _has_q and _has_m:      _fak_profile_lbl = "GARP / Wachstum mit Qualität"
+    elif _has_q and _has_lv:   _fak_profile_lbl = "Defensiv-Quality"
+    elif _has_q and _has_v:    _fak_profile_lbl = "Deep Quality Value"
+    elif _has_m and not _has_v: _fak_profile_lbl = "Momentum / Growth"
+    elif _has_v and not _has_m: _fak_profile_lbl = "Value / Contrarian"
+    elif _has_lv:               _fak_profile_lbl = "Low Volatility / Defensiv"
+    else:                       _fak_profile_lbl = "Ausgewogenes Profil"
+
+    _fak_profile_parts.insert(0, f"<b style='color:{_C_ACCENT};'>Profil: {_fak_profile_lbl}</b>")
+
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-left:3px solid {_C_ACCENT};"
+        f"border-radius:10px;padding:10px 14px;color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.7;margin-top:4px;'>"
+        + " &nbsp;·&nbsp; ".join(_fak_profile_parts) +
+        f"<br><span style='font-size:0.70rem;'>Scores sind approximative Relative-Werte auf Basis öffentlicher Finanzkennzahlen. "
+        f"Keine Anlageberatung. Für exakte Faktorladungen empfiehlt sich eine OLS-Regression gegen Fama-French-Faktoren.</span>"
+        f"</div>", unsafe_allow_html=True)
+
+    st.caption("Datenquellen: yFinance (Preis/Fundamentaldaten). Berechnung: rolling 252-Tage-Regression (Beta), normierte Kennzahlen (Value, Quality), 12M−1M Return (Momentum), ann. Volatilität (Low Vol), Marktkapitalisierung (Size).")
 
 
 # ==================== INSIGHTS ====================
