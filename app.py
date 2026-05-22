@@ -3264,6 +3264,61 @@ def load_macro_data() -> dict:
     except Exception:
         pass
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_momentum_signals():
+    import yfinance as _ymf
+    import numpy as _np
+
+    def _signals(ticker, bench=None):
+        try:
+            df = _ymf.download(ticker, period="14mo", auto_adjust=True, progress=False)
+            if df.empty:
+                return None
+            s = df["Close"].squeeze().dropna()
+            if len(s) < 50:
+                return None
+            n252 = min(len(s) - 1, 252)
+            ret_1y = float((s.iloc[-1] / s.iloc[-n252] - 1) * 100)
+            ret_3m = float((s.iloc[-1] / s.iloc[-min(63, len(s)-1)] - 1) * 100)
+            ret_1m = float((s.iloc[-1] / s.iloc[-min(21, len(s)-1)] - 1) * 100)
+            delta = s.diff()
+            gain  = delta.clip(lower=0).rolling(14).mean()
+            loss  = (-delta.clip(upper=0)).rolling(14).mean()
+            rsi   = float((100 - 100 / (1 + gain / loss)).iloc[-1])
+            ma200 = float(s.rolling(200).mean().iloc[-1]) if len(s) >= 200 else None
+            ma_dist = float((s.iloc[-1] / ma200 - 1) * 100) if ma200 else None
+            rel = None
+            if bench:
+                try:
+                    b = _ymf.download(bench, period="14mo", auto_adjust=True, progress=False)["Close"].squeeze().dropna()
+                    nb = min(len(s) - 1, len(b) - 1, 252)
+                    rel = float((s.iloc[-1]/s.iloc[-nb]) / (b.iloc[-1]/b.iloc[-nb]) - 1) * 100
+                except Exception:
+                    pass
+            score = 50.0
+            score += min(25, max(-25, ret_1y / 2))
+            if ma_dist is not None:
+                score += min(15, max(-15, ma_dist * 1.5))
+            if not _np.isnan(rsi):
+                if rsi > 70:   score -= 8
+                elif rsi > 60: score += 5
+                elif rsi < 30: score -= 15
+                elif rsi < 40: score -= 5
+            if rel is not None:
+                score += min(10, max(-10, rel))
+            return {"ret_1y": ret_1y, "ret_3m": ret_3m, "ret_1m": ret_1m,
+                    "rsi": rsi, "ma_dist": ma_dist, "rel": rel, "score": max(0.0, min(100.0, score))}
+        except Exception:
+            return None
+
+    return {
+        "usa":  _signals("SPY"),
+        "mtum": _signals("MTUM", "SPY"),
+        "eu":   _signals("VGK"),
+        "imtm": _signals("IMTM", "VGK"),
+    }
+
+
     # ── Markt-Sentiment (eigene Berechnung aus VIX + SPY-Momentum + MA) ──
     try:
         _today_str  = _dt.date.today().strftime("%Y-%m-%d")
@@ -8240,6 +8295,84 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
     else:
         st.warning("Faktor-ETF Daten konnten nicht geladen werden.")
 
+
+    # ── Momentum-Radar ────────────────────────────────────────────────────
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>📡 Momentum-Radar — USA &amp; Europa</div>", unsafe_allow_html=True)
+    with st.spinner("Lade Momentum-Signale…"):
+        _mom = load_momentum_signals()
+
+    def _mom_status(score):
+        if score is None: return "—", _C_TEXT_MUTED
+        if score >= 68:   return "Stark ↑",   _C_POSITIVE
+        if score >= 52:   return "Neutral →",  _C_NEUTRAL
+        if score >= 35:   return "Schwach ↓",  "#ff9800"
+        return "Kritisch ↓↓", _C_NEGATIVE
+
+    def _mom_bar(score):
+        if score is None: return ""
+        clr = _C_POSITIVE if score >= 68 else _C_NEUTRAL if score >= 52 else "#ff9800" if score >= 35 else _C_NEGATIVE
+        return (f"<div style='background:{_C_BORDER};border-radius:4px;height:6px;margin:6px 0 10px;'>"
+                f"<div style='background:{clr};width:{score:.0f}%;height:6px;border-radius:4px;'></div></div>")
+
+    def _mom_card(title, flag, spy_data, factor_data, factor_label):
+        if not spy_data:
+            return f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:12px;padding:14px 16px;color:{_C_TEXT_MUTED};font-size:0.82rem;'>Keine Daten</div>"
+        score = spy_data["score"]
+        status, sclr = _mom_status(score)
+        bar = _mom_bar(score)
+        def _pct(v, dec=1):
+            if v is None: return "—"
+            sign = "+" if v >= 0 else ""
+            clr2 = _C_POSITIVE if v >= 0 else _C_NEGATIVE
+            return f"<span style='color:{clr2};font-weight:600;'>{sign}{v:.{dec}f}%</span>"
+        rsi_clr = _C_NEGATIVE if spy_data["rsi"] > 70 else _C_POSITIVE if spy_data["rsi"] < 35 else _C_TEXT_SEC
+        ma_clr  = _C_POSITIVE if (spy_data["ma_dist"] or 0) > 0 else _C_NEGATIVE
+        rows = (
+            f"<div style='display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;'>"
+            f"<span style='color:{_C_TEXT_MUTED};'>12M-Rendite</span>{_pct(spy_data['ret_1y'])}</div>"
+            f"<div style='display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;'>"
+            f"<span style='color:{_C_TEXT_MUTED};'>3M-Rendite</span>{_pct(spy_data['ret_3m'])}</div>"
+            f"<div style='display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;'>"
+            f"<span style='color:{_C_TEXT_MUTED};'>RSI(14)</span>"
+            f"<span style='color:{rsi_clr};font-weight:600;'>{spy_data['rsi']:.0f}</span></div>"
+            f"<div style='display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;'>"
+            f"<span style='color:{_C_TEXT_MUTED};'>Abstand 200-MA</span>"
+            f"<span style='color:{ma_clr};font-weight:600;'>{'+' if (spy_data['ma_dist'] or 0) > 0 else ''}{spy_data['ma_dist']:.1f}%</span></div>"
+        )
+        factor_row = ""
+        if factor_data and factor_data.get("rel") is not None:
+            frel = factor_data["rel"]
+            fclr = _C_POSITIVE if frel > 2 else _C_NEGATIVE if frel < -2 else _C_NEUTRAL
+            factor_row = (
+                f"<div style='display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;'>"
+                f"<span style='color:{_C_TEXT_MUTED};'>{factor_label} vs Basis</span>"
+                f"<span style='color:{fclr};font-weight:600;'>{'+' if frel > 0 else ''}{frel:.1f}%</span></div>"
+            )
+        return (
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+            f"border-left:3px solid {sclr};border-radius:12px;padding:14px 16px;'>"
+            f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>"
+            f"<span style='color:{_C_TEXT_PRIMARY};font-size:0.92rem;font-weight:700;'>{flag} {title}</span>"
+            f"<span style='color:{sclr};font-size:0.78rem;font-weight:700;'>{status}</span></div>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.70rem;margin-bottom:2px;'>Score: {score:.0f} / 100</div>"
+            f"{bar}{rows}{factor_row}"
+            f"</div>"
+        )
+
+    _mc1, _mc2 = st.columns(2)
+    with _mc1:
+        st.markdown(_mom_card("USA Momentum", "🇺🇸", _mom.get("usa"), _mom.get("mtum"), "MTUM-Faktor"), unsafe_allow_html=True)
+    with _mc2:
+        st.markdown(_mom_card("Europa Momentum", "🇪🇺", _mom.get("eu"), _mom.get("imtm"), "IMTM-Faktor"), unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-top:6px;line-height:1.5;'>"
+        f"📡 <b>Datengrundlage:</b> SPY / VGK (Indexproxy) + MTUM / IMTM (MSCI-Momentum-Faktor-ETF). "
+        f"Score 0–100 aus 12M-Rendite, 200-MA-Abstand, RSI(14) und Faktor-Relative-Stärke. "
+        f"BofA's proprietärer <i>European Momentum Conviction Indicator</i> (Schwelle 30) ist nicht öffentlich — "
+        f"dieser Score ist ein qualitativ ähnlicher Proxy aus freien Marktdaten. "
+        f"Keine Anlageberatung · Cache 1h</div>",
+        unsafe_allow_html=True)
 
     # ── Marktschlagzeilen ────────────────────────────────────────────────
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
