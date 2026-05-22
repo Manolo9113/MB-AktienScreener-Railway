@@ -3264,6 +3264,9 @@ def load_macro_data() -> dict:
     except Exception:
         pass
 
+    return out
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_momentum_signals():
     import yfinance as _ymf
