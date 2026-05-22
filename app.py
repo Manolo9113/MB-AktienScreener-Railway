@@ -9747,6 +9747,59 @@ elif st.session_state.get("show_stocks"):
             "⚠️ Keine Anlageberatung · Kurse via Yahoo Finance · Manuell kuratiert</div>",
             unsafe_allow_html=True)
 
+    # ── Unterbewertet Blue Chips ──────────────────────────────────────────
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    with st.expander("💼 Unterbewertet — Blue Chips mit Bewertungsabschlag  (Morningstar-Style)", expanded=False):
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-bottom:14px;line-height:1.6;'>"
+            "Large-Cap-Unternehmen mit <b>solidem Moat</b>, <b>unterdurchschnittlicher Bewertung</b> "
+            "und <b>positivem FCF</b> — ähnlich der Methodik von Morningstar's 'Undervalued Stocks' Liste. "
+            "Kein Value-Trap: Mindestanforderung an Qualität und Rentabilität.</div>",
+            unsafe_allow_html=True)
+        _UVB_LIST = [
+            {"ticker": "GOOG",  "name": "Alphabet",          "thesis": "KI-Leader (Gemini, Search, Cloud). KGV ~20x trotz >15 % Wachstum — historisch günstig für ein Qualitäts-Compounder mit Search-Monopol.", "tag": "Tech"},
+            {"ticker": "BRK-B", "name": "Berkshire Hathaway","thesis": "Diversifiziertes Konglomerat. KBV ~1.4x — unter Buffetts Rückkaufschwelle häufig Kaufsignal. Starke Eigenkapitalrendite über Jahrzehnte.", "tag": "Finanz"},
+            {"ticker": "JNJ",   "name": "Johnson & Johnson",  "thesis": "Pharma + MedTech nach Kenvue-Spin-off. Dividendenkönig (62 Jahre), KGV fwd ~14x — günstig für Healthcare-Qualitätsname.", "tag": "Healthcare"},
+            {"ticker": "CVX",   "name": "Chevron",            "thesis": "Integrierter Energiekonzern. FCF-Yield >7%, starke Bilanz, Hess-Übernahme sichert Reserven. Buffett-Kernposition.", "tag": "Energie"},
+            {"ticker": "MRK",   "name": "Merck & Co.",        "thesis": "Keytruda-Umsatz + starke Pipeline. KGV fwd ~12x trotz stabiler Earnings-Qualität — unterdurchschnittlich bewertet.", "tag": "Pharma"},
+            {"ticker": "BAC",   "name": "Bank of America",    "thesis": "Größte US-Retail-Bank. KBV ~1x, Zinsertrag strukturell gestützt, Rückkaufprogramm läuft. Buffett hält ~13 %.", "tag": "Finanz"},
+            {"ticker": "AMZN",  "name": "Amazon",             "thesis": "AWS (KI-Infrastruktur) + Advertising = Margenexpansion. KGV 2025e ~30x bei +25 % EBIT-Wachstum — günstiger als Peers.", "tag": "Tech"},
+            {"ticker": "PFE",   "name": "Pfizer",             "thesis": "Post-COVID Neuausrichtung. KGV fwd ~8x, Dividendenrendite >5 %, Pipeline (GLP-1, Onkologie) als Kurskatalyst.", "tag": "Pharma"},
+        ]
+        _uvb_c1, _uvb_c2 = st.columns(2)
+        for _ui, _us in enumerate(_UVB_LIST):
+            _ucol = _uvb_c1 if _ui % 2 == 0 else _uvb_c2
+            with _ucol:
+                _ud = load_watchlist_metrics(_us["ticker"])
+                _up = _ud.get("price")
+                _umc = _ud.get("mkt_cap")
+                _upe = _ud.get("pe_fwd")
+                _ufcf = _ud.get("fcf_yield")
+                _up_str  = f"$ {_up:,.2f}" if _up else ""
+                _umc_str = f"$ {_umc/1e9:.0f} Mrd." if _umc else ""
+                _upe_str = f"KGV {_upe:.1f}x" if _upe and _upe > 0 else ""
+                _ufcf_str = f"FCF {_ufcf:.1f}%" if _ufcf else ""
+                _ubadges = " · ".join(b for b in [_upe_str, _ufcf_str] if b)
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-left:3px solid #ab47bc;border-radius:12px;padding:13px 15px;margin-bottom:10px;'>"
+                    f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>"
+                    f"<span style='color:#ab47bc;font-size:1.02rem;font-weight:800;'>{_us['ticker']}</span>"
+                    f"<span style='color:{_C_TEXT_SEC};font-size:0.82rem;'>{_up_str}</span></div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-bottom:2px;'>{_us['name']}"
+                    f"{' · ' + _umc_str if _umc_str else ''}"
+                    f"<span style='background:rgba(171,71,188,0.12);color:#ce93d8;border-radius:4px;"
+                    f"padding:1px 6px;font-size:0.67rem;margin-left:6px;'>{_us['tag']}</span></div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:6px;'>{_ubadges}</div>"
+                    f"<div style='color:{_C_TEXT_MUTED2};font-size:0.78rem;line-height:1.5;'>{_us['thesis']}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True)
+        st.markdown(
+            "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
+            "⚠️ Keine Anlageberatung · Methodik angelehnt an Morningstar Undervalued-Kriterien · "
+            "Kurse via Yahoo Finance · Manuell kuratiert</div>",
+            unsafe_allow_html=True)
+
     # ── Mid- & Small-Cap Ideen ─────────────────────────────────────────
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     with st.expander("🏗️  Mid- & Small-Cap Ideen — Nischenführer mit Qualitätsfilter  (12h Cache)", expanded=False):
@@ -10426,6 +10479,97 @@ elif st.session_state.get("show_stocks"):
         f"</div>",
         unsafe_allow_html=True,
     )
+    # ── Disruptoren Archiv ──────────────────────────────────────────────
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    with st.expander("🚀 Disruptoren & Innovatoren — Archiv 2023–2025  (angelehnt an CNBC Disruptor 50)", expanded=False):
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-bottom:14px;line-height:1.6;'>"
+            "Angelehnt an <b>CNBC's jährlicher Disruptor-50-Liste</b> und ARK Invest-Themen. "
+            "Börsennotierte Unternehmen zeigen Live-Kurse; private Firmen (Pre-IPO) ohne Ticker. "
+            "Archiv 2023–2025 — Jahr = erstmals prominent auf Beobachtungslisten aufgetaucht.</div>",
+            unsafe_allow_html=True)
+
+        _DISRUPTORS = {
+            2025: [
+                {"ticker": "PLTR",  "name": "Palantir Technologies",  "sector": "KI / Defense-Tech",  "thesis": "KI-Plattform für Regierung & Enterprise. AIP-Wachstum, NATO-Verträge, ARR +40 %."},
+                {"ticker": "RDDT",  "name": "Reddit",                 "sector": "Social / Data",       "thesis": "IPO 2024. Einzigartiger UGC-Datensatz für KI-Training. Ad-Revenue expandiert."},
+                {"ticker": "ARM",   "name": "Arm Holdings",           "sector": "Chip-Architektur",    "thesis": "IPO 2023. 99 % aller Smartphones nutzen ARM-Cores. KI-Edge-Computing-Rückenwind."},
+                {"ticker": "TEM",   "name": "Tempus AI",              "sector": "KI-HealthTech",       "thesis": "IPO 2024. Genomic-Data-Plattform + KI-Diagnostik. Partnerschaft mit US-Top-Kliniken."},
+                {"ticker": "IOT",   "name": "Samsara",                "sector": "IoT / Fleet-Tech",    "thesis": "Connected-Operations-Plattform. ARR >1 Mrd., NRR >115 %, FCF positiv."},
+                {"ticker": None,    "name": "OpenAI",                 "sector": "KI (privat)",         "thesis": "ChatGPT-Entwickler. Valuation >$80 Mrd., möglicher IPO 2025/2026."},
+                {"ticker": None,    "name": "Anthropic",              "sector": "KI (privat)",         "thesis": "Claude-Entwickler. $18 Mrd. Valuation, Safety-fokussierter KI-Ansatz."},
+                {"ticker": None,    "name": "SpaceX / Starlink",      "sector": "Space (privat)",      "thesis": "Starlink >3 Mio. Abonnenten. Valuation >$150 Mrd., möglicher Starlink-IPO."},
+            ],
+            2024: [
+                {"ticker": "NVDA",  "name": "Nvidia",                 "sector": "KI-Chips",            "thesis": "Dominanter KI-Chip-Lieferant. H100/H200-Nachfrage >Angebot. Datencenter-Umsatz +200 %."},
+                {"ticker": "CRWD",  "name": "CrowdStrike",            "sector": "Cybersecurity KI",    "thesis": "KI-native Security-Plattform. ARR >3 Mrd., NRR >120 %, Falcon-Plattform konsolidiert."},
+                {"ticker": "DDOG",  "name": "Datadog",                "sector": "Cloud-Observability", "thesis": "KI-Workload-Monitoring wächst mit Cloud. NRR >120 %, starke Dev-Adoption."},
+                {"ticker": "SNOW",  "name": "Snowflake",              "sector": "Data Cloud",          "thesis": "Iceberg + Cortex AI erweitern Plattform. Wachstumsverlangsamung bleibt Risiko."},
+                {"ticker": "PATH",  "name": "UiPath",                 "sector": "KI-Automatisierung",  "thesis": "RPA + KI-Agenten. Rule-based Automation wird KI-Assisted. Bewertung normalisiert."},
+                {"ticker": None,    "name": "Stripe",                 "sector": "Fintech (privat)",    "thesis": "Payments-Infrastruktur für das Internet. $65 Mrd. Valuation, profitabel."},
+                {"ticker": None,    "name": "Databricks",             "sector": "Data/KI (privat)",    "thesis": "Lakehouse-Plattform. $43 Mrd. Valuation, ARR >1.5 Mrd."},
+            ],
+            2023: [
+                {"ticker": "TSLA",  "name": "Tesla",                  "sector": "EV / Autonomes Fahren","thesis": "Vollautonomes Fahren (FSD) + Dojo-Supercomputer als KI-Plattform-Story jenseits EV."},
+                {"ticker": "SHOP",  "name": "Shopify",                "sector": "E-Commerce OS",       "thesis": "Commerce-Plattform für SMBs. After PayPal-Logistics-Verkauf Margenerholung sichtbar."},
+                {"ticker": "MELI",  "name": "MercadoLibre",           "sector": "LatAm-Tech",          "thesis": "Amazon + Fintech Lateinamerikas. Fintech (MercadoPago) wächst schneller als Commerce."},
+                {"ticker": "ABNB",  "name": "Airbnb",                 "sector": "Travel-Disruption",   "thesis": "Asset-light, FCF-positiv. Erfahrungen statt Hotelzimmer — strukturelles Konsumtrend."},
+                {"ticker": "DUOL",  "name": "Duolingo",               "sector": "EdTech KI",           "thesis": "KI-personalisiertes Sprachlernern. DAU +65 %, Max-Abo wächst, Bruttomarge >73 %."},
+                {"ticker": None,    "name": "Waymo (Alphabet)",       "sector": "Autonomes Fahren",    "thesis": "Robo-Taxi führend in USA. Expansion San Francisco/LA/Austin. Nicht separat börsennotiert."},
+            ],
+        }
+
+        _dis_year = st.radio(
+            "Jahrgang", options=[2025, 2024, 2023], horizontal=True, key="dis_year_sel",
+            label_visibility="collapsed"
+        )
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.70rem;margin-bottom:10px;'>"
+            f"📅 <b>Jahrgang {_dis_year}</b> — Unternehmen die {_dis_year} auf Disruptor-Beobachtungslisten "
+            f"prominent erschienen sind (angelehnt an CNBC Disruptor 50 / ARK Invest).</div>",
+            unsafe_allow_html=True)
+
+        _dis_list = _DISRUPTORS.get(_dis_year, [])
+        _dc1, _dc2 = st.columns(2)
+        for _di, _ds in enumerate(_dis_list):
+            _dcol = _dc1 if _di % 2 == 0 else _dc2
+            with _dcol:
+                if _ds["ticker"]:
+                    _dd = load_watchlist_metrics(_ds["ticker"])
+                    _dprice = _dd.get("price")
+                    _dmc    = _dd.get("mkt_cap")
+                    _dp_str  = f"$ {_dprice:,.2f}" if _dprice else ""
+                    _dmc_str = f"$ {_dmc/1e9:.0f} Mrd." if _dmc else ""
+                    _ticker_disp = _ds["ticker"]
+                    _accent = "#ff6d00"
+                    _tag_clr = "rgba(255,109,0,0.12)"
+                    _tag_txt = "#ffab40"
+                else:
+                    _dp_str  = "nicht börsennotiert"
+                    _dmc_str = ""
+                    _ticker_disp = "PRIVAT"
+                    _accent = "#546e7a"
+                    _tag_clr = "rgba(84,110,122,0.2)"
+                    _tag_txt = "#90a4ae"
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-left:3px solid {_accent};border-radius:12px;padding:13px 15px;margin-bottom:10px;'>"
+                    f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>"
+                    f"<span style='color:{_accent};font-size:1.02rem;font-weight:800;'>{_ticker_disp}</span>"
+                    f"<span style='color:{_C_TEXT_SEC};font-size:0.82rem;'>{_dp_str}</span></div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-bottom:2px;'>{_ds['name']}"
+                    f"{' · ' + _dmc_str if _dmc_str else ''}"
+                    f"<span style='background:{_tag_clr};color:{_tag_txt};border-radius:4px;"
+                    f"padding:1px 6px;font-size:0.67rem;margin-left:6px;'>{_ds['sector']}</span></div>"
+                    f"<div style='color:{_C_TEXT_MUTED2};font-size:0.78rem;line-height:1.5;margin-top:6px;'>{_ds['thesis']}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True)
+        st.markdown(
+            "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
+            "⚠️ Keine Anlageberatung · Angelehnt an CNBC Disruptor 50 / ARK Invest · "
+            "Kurse via Yahoo Finance · Archiv jährlich aktualisiert</div>",
+            unsafe_allow_html=True)
+
     if st.button("🔬 Zum Aktien-Screener →", use_container_width=False, key="aktienideen_to_screener"):
         for _k in ("show_landing", "show_stocks", "show_portfolio", "show_etf_analyzer",
                    "show_market_overview", "show_compare"):
