@@ -11017,13 +11017,11 @@ if st.session_state.get("show_portfolio"):
           </div>
           <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid {_C_BORDER};min-width:0;'>
             <div style='color:{_C_TEXT_MUTED};font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Aktien &amp; ETFs</div>
-            <div style='color:{_C_TEXT_PRIMARY};font-size:1.25rem;font-weight:700;margin-top:2px;'>{_stocks_str}</div>
-            {_unpriced_note}
+            <div style='color:{_C_TEXT_PRIMARY};font-size:1.25rem;font-weight:700;margin-top:2px;'>{_stocks_str}</div>{_unpriced_note}
           </div>
           <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid {_C_BORDER};min-width:0;'>
             <div style='color:{_C_TEXT_MUTED};font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>Gesamt inkl. Krypto</div>
-            <div style='color:{_C_ACCENT};font-size:1.25rem;font-weight:700;margin-top:2px;'>{_total_str}</div>
-            {_crypto_note}
+            <div style='color:{_C_ACCENT};font-size:1.25rem;font-weight:700;margin-top:2px;'>{_total_str}</div>{_crypto_note}
           </div>
           <div style='background:{_C_CARD_BG};border-radius:8px;padding:10px 12px;border:1px solid {_C_BORDER};min-width:0;'>
             <div style='color:{_C_TEXT_MUTED};font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;'>P&L unreal.</div>
@@ -16986,9 +16984,7 @@ st.markdown(f"""
             <div class="header-title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{_company_name_h}</div>
             <div class="header-sub">{ticker} · {_sector_h} · {_industry_h} · {fmt_large(market_cap, _cur_sym)}</div>
             <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                <span style="background:#1a2744; color:{_C_ACCENT}; border-radius:6px; padding:3px 10px; font-size:0.8rem; font-weight:600;">{_he(recommendation)}</span>
-                {_earnings_badge}
-                {_target_badge}
+                <span style="background:#1a2744; color:{_C_ACCENT}; border-radius:6px; padding:3px 10px; font-size:0.8rem; font-weight:600;">{_he(recommendation)}</span>{_earnings_badge}{_target_badge}
             </div>
             <div style="margin-top:12px;">
                 <div class="header-price" style="font-size:1.8rem; text-align:left;">{_cur_sym}{price:.2f}</div>
@@ -17239,8 +17235,7 @@ if week52_pos is not None:
             <span style="color:#78909c; font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:1px;">52-Wochen Range</span>
             <span style="font-size:0.82rem;">
                 <span style="color:{_52w_label_color}; font-weight:700;">{_52w_label}</span>
-                <span style="color:{_C_ACCENT}; font-weight:600;"> · {week52_pos:.0f}% vom Tief</span>
-                {_dist_html}
+                <span style="color:{_C_ACCENT}; font-weight:600;"> · {week52_pos:.0f}% vom Tief</span>{_dist_html}
             </span>
         </div>
         <div style="background:#1e2d45; border-radius:8px; height:8px; position:relative;">
