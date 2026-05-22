@@ -6789,10 +6789,13 @@ elif st.session_state.get("show_market_overview"):
     # ── Makro-Dashboard ───────────────────────────────────────────────
     st.markdown("<div class='section-header'>📊 Makro-Dashboard</div>", unsafe_allow_html=True)
     macro = _pf_disk_load("macro_basic_v4", max_age_hours=24)
-    if macro is None:
+    if not isinstance(macro, dict) or "fx" not in macro:
         with st.spinner("Lade Makrodaten…"):
             macro = load_macro_data()
-        _pf_disk_save("macro_basic_v4", macro)
+        if isinstance(macro, dict):
+            _pf_disk_save("macro_basic_v4", macro)
+    if not isinstance(macro, dict):
+        macro = {"fx": {}, "macro": {}, "sectors": {}, "vix": None}
 
     _FX_TIPS = {
         "EUR/USD": "Euro zu US-Dollar. Steigt der Wert, wird der Euro stärker (gut für europäische Importeure, schlecht für Exporteure).",
