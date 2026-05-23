@@ -13895,6 +13895,7 @@ if st.session_state.get("show_etf_analyzer"):
         'IE00BP3QZ601':'IS3Q.DE','IE00BP3QZB59':'IS3S.DE',
         'IE000YBGJ9I4':'MEGA.DE','IE0008M1R3N4':'USMC.DE',
         'IE000Z7P04F4':'QTOP.DE','IE000FJJZA01':'QUS5.DE',
+        'IE00B3WJKG14':'QDVE.DE',
         # WKN → ticker
         'A0RPWH':'SXR8.DE','A1JX52':'VWCE.DE','622391':'SXR2.DE','A0HGWC':'IS3N.DE',
         'DBX1MW':'XDWD.DE','A0YEDL':'EQQQ.DE','593393':'EXS1.DE','ETF127':'LCUW.DE',
@@ -13902,7 +13903,7 @@ if st.session_state.get("show_etf_analyzer"):
         'A1T8FV':'VHYL.L','A2DWBY':'IUSN.DE','ETF091':'MEUD.DE','593395':'EXW1.DE',
         'A0YEDL':'EQQQ.DE','A0YBR5':'EXV5.DE','A1H5EU':'IQQC.DE','LYX0RT':'LYPS.DE',
         'A12ATE':'IS3Q.DE','A12ATG':'IS3S.DE','ETF220':'MEGA.DE',
-        'A414W8':'USMC.DE','A40V3X':'QTOP.DE','A40UMR':'QUS5.DE',
+        'A414W8':'USMC.DE','A40V3X':'QTOP.DE','A40UMR':'QUS5.DE','A142N1':'QDVE.DE',
         # Name → ticker
         'msci world':'SXR8.DE','msci em':'IS3N.DE','msci emerging':'IS3N.DE',
         'all world':'VWCE.DE','ftse all world':'VWCE.DE','sp500':'SXR2.DE',
@@ -14310,6 +14311,7 @@ if st.session_state.get("show_etf_analyzer"):
         ('USMC.DE', 'Franklin US Mega Cap 100 UCITS Acc',          'IE0008M1R3N4','A414W8','0,09%'),
         ('QTOP.DE', 'iShares Nasdaq 100 Top 30 UCITS Acc',         'IE000Z7P04F4','A40V3X','0,30%'),
         ('QUS5.DE', 'SPDR S&P 500 Quality Aristocrats UCITS Acc',  'IE000FJJZA01','A40UMR','0,25%'),
+        ('QDVE.DE', 'iShares S&P 500 IT Sector UCITS Acc',          'IE00B3WJKG14','A142N1','0,15%'),
     ]
 
     @st.cache_data(ttl=3600, show_spinner=False)
@@ -14734,6 +14736,8 @@ if st.session_state.get("show_etf_analyzer"):
         ('EQQQ.DE', 'iShares NASDAQ-100',   'IE0032895942', 'A0YEDL',  '#00b347', 'iS'),
         ('EXS1.DE', 'iShares DAX',          'DE0005933931', '593393',  '#00b347', 'iS'),
         ('LCUW.DE', 'Amundi MSCI World',    'LU1781541179', 'ETF127',  '#ff6600', 'AM'),
+        ('QUS5.DE', 'SPDR Quality Arist.',  'IE000FJJZA01', 'A40UMR',  '#ac3b61', 'SS'),
+        ('QDVE.DE', 'iShares S&P 500 IT',  'IE00B3WJKG14', 'A142N1',  '#00b347', 'iS'),
     ]
 
     # ── Header ───────────────────────────────────────────────────────────
