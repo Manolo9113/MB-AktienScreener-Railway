@@ -9094,6 +9094,28 @@ elif st.session_state.get("show_compare"):
         f"Gib Ticker-Symbole <b>oder</b> Firmennamen ein. Tippe Namen → Vorschläge erscheinen.</div>",
         unsafe_allow_html=True)
 
+    # ── Schnellauswahl Vergleichspaare ─────────────────────────────────
+    _CMP_PAIRS = [
+        ("QUS5.DE", "QDVE.DE",  "Quality vs IT"),
+        ("QUS5.DE", "SXR8.DE",  "Quality vs World"),
+        ("QDVE.DE", "EQQQ.DE",  "IT-ETF vs Nasdaq"),
+        ("SXR8.DE", "VWCE.DE",  "iShares vs Vanguard"),
+        ("SXR8.DE", "EQQQ.DE",  "World vs Nasdaq"),
+        ("AAPL",    "MSFT",     "Apple vs Microsoft"),
+        ("NVDA",    "AMD",      "NVDA vs AMD"),
+        ("GOOGL",   "META",     "Google vs Meta"),
+    ]
+    st.markdown(f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;font-weight:600;"
+                f"text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;'>"
+                f"Schnellauswahl</div>", unsafe_allow_html=True)
+    _cpair_cols = st.columns(4)
+    for _cpi, (_cp1, _cp2, _cplabel) in enumerate(_CMP_PAIRS):
+        if _cpair_cols[_cpi % 4].button(_cplabel, key=f"cpair_{_cpi}", use_container_width=True):
+            st.session_state["cmp_q_0"] = _cp1
+            st.session_state["cmp_q_1"] = _cp2
+            st.rerun()
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
     if "cmp_resolved" not in st.session_state:
         st.session_state["cmp_resolved"] = []
 
