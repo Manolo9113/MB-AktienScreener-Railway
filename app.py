@@ -16455,6 +16455,24 @@ if st.session_state.get("show_etf_analyzer"):
             ("INTC","Intel",0.78),("PEP","PepsiCo",0.98),("INTU","Intuit",0.93),
             ("AMGN","Amgen",0.88),("ISRG","Intuitive Surgical",0.83),
         ]),
+        "QUS5.DE": ("SPDR S&P 500 Quality Aristocrats", [
+            ("MSFT","Microsoft",9.20),("AAPL","Apple",8.10),("NVDA","NVIDIA",5.80),
+            ("V","Visa",3.50),("MA","Mastercard",3.20),("AVGO","Broadcom",2.80),
+            ("LLY","Eli Lilly",2.50),("COST","Costco",2.20),("GOOGL","Alphabet A",2.00),
+            ("UNH","UnitedHealth",1.90),("HD","Home Depot",1.80),("WMT","Walmart",1.60),
+            ("AMD","AMD",1.40),("ADBE","Adobe",1.20),("CRM","Salesforce",1.00),
+            ("ISRG","Intuitive Surgical",0.90),("SPGI","S&P Global",0.85),
+            ("NKE","Nike",0.80),("AMP","Ameriprise Financial",0.70),("ANET","Arista Networks",0.65),
+        ]),
+        "QDVE.DE": ("iShares S&P 500 IT Sector UCITS", [
+            ("MSFT","Microsoft",28.00),("AAPL","Apple",25.00),("NVDA","NVIDIA",17.00),
+            ("AVGO","Broadcom",6.20),("ORCL","Oracle",3.80),("CRM","Salesforce",2.80),
+            ("AMD","AMD",2.40),("ADBE","Adobe",1.90),("CSCO","Cisco",1.70),
+            ("INTU","Intuit",1.40),("ACN","Accenture",1.20),("QCOM","Qualcomm",1.00),
+            ("TXN","Texas Instruments",0.90),("IBM","IBM",0.85),("AMAT","Applied Materials",0.75),
+            ("PANW","Palo Alto Networks",0.70),("LRCX","Lam Research",0.65),
+            ("NOW","ServiceNow",0.60),("MU","Micron Technology",0.55),("KLAC","KLA Corp",0.45),
+        ]),
     }
 
     _ol_keys   = list(_OL_DB.keys())
