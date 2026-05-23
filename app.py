@@ -16235,6 +16235,7 @@ if st.session_state.get("show_etf_analyzer"):
     # Ausschüttend: jährliche Dividendenbesteuerung
     # Sparerpauschbetrag erneuert sich jedes Jahr
     _f1_aus_gross = [_f1_betrag]
+    _f1_aus_basis = [_f1_betrag]  # cost basis grows by each year's reinvested net dividends
     _f1_aus_tax_paid = 0.0
     for _ in range(_f1_jahre):
         _pv = _f1_aus_gross[-1]
@@ -16246,10 +16247,11 @@ if st.session_state.get("show_etf_analyzer"):
         _div_net     = _div_gross - _div_tax
         _pv_new      = _pv * (1 + _f1_price_r) + _div_net
         _f1_aus_gross.append(_pv_new)
+        _f1_aus_basis.append(_f1_aus_basis[-1] + _div_net)
 
     _f1_aus_net = []
-    for _y, _v in enumerate(_f1_aus_gross):
-        _price_gain = max(0, _v - _f1_betrag)
+    for _v, _basis in zip(_f1_aus_gross, _f1_aus_basis):
+        _price_gain = max(0, _v - _basis)
         _final_tax  = _price_gain * _f1_eff_satz
         _f1_aus_net.append(_v - _final_tax)
 
