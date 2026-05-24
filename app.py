@@ -9449,7 +9449,7 @@ elif st.session_state.get("show_screener"):
             _mos_min = st.slider("MoS Graham min (%)", -100, 100, int(_f.get("mos_min", -100)), 5, key="scr_mos_min",
                                  help="Sicherheitsmarge zum Graham-Wert (√(22,5 × EPS × Buchwert/Aktie)). 0 = Kurs unter Graham-Wert (unterbewertet). -100 = kein Filter.")
         with _fd2:
-            _qual_min = st.slider("Quality Score min", 0, 100, int(_f.get("quality_min", 20)), 5, key="scr_qual_min",
+            _qual_min = st.slider("Quality Score min", 0, 100, int(_f.get("quality_min", 35)), 5, key="scr_qual_min",
                                   help="Composite Score (0–100) aus Bruttomarge, FCF-Yield, ROE, Umsatzwachstum und Verschuldung. ≥50 = überdurchschnittlich, ≥70 = Top-Qualität.")
             _r40_min  = st.slider("Rule of 40 min", -50, 100, int(_f.get("r40_min", -50)), 5, key="scr_r40_min",
                                   help="SaaS-Kennzahl: Umsatzwachstum % + FCF-Marge % (Fallback: Op.-Marge). ≥40 = gesundes SaaS-Unternehmen. ≥60 = Ausnahme-Performance. -50 = kein Filter.")
