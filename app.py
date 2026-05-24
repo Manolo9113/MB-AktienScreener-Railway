@@ -19873,6 +19873,42 @@ elif _at == 7:
                                            ["RSI (14)", "MACD", "Bollinger Bänder", "Fibonacci"],
                                            default=["RSI (14)"], key="ind_sel")
 
+    # ── Zeichenmodus (Desktop) ────────────────────────────────────────
+    _dm_c1, _dm_c2, _dm_c3, _dm_c4 = st.columns([2, 1, 1, 3])
+    with _dm_c1:
+        _draw_mode = st.toggle(
+            "✏️ Zeichenmodus", value=False, key="chart_draw_mode",
+            help="Trendlinien, Widerstands- und Unterstützungszonen direkt in den Chart zeichnen. "
+                 "Desktop-Browser empfohlen. Gezeichnetes bleibt bis zum nächsten Seitenladen erhalten.")
+    _SCOL  = {
+        "🔵 Cyan":   ("#00e5ff", "rgba(0,229,255,0.07)"),
+        "🟢 Grün":   ("#69f0ae", "rgba(105,240,174,0.07)"),
+        "🟠 Orange": ("#ffa726", "rgba(255,167,38,0.07)"),
+        "🔴 Rot":    ("#ef5350", "rgba(239,83,80,0.07)"),
+        "⚪ Weiß":   ("#e0e0e0", "rgba(224,224,224,0.07)"),
+    }
+    _SDASH = {
+        "—— Durchgezogen": "solid",
+        "- - Gestrichelt":  "dash",
+        "· · Gepunktet":    "dot",
+    }
+    if _draw_mode:
+        with _dm_c2:
+            _sc_sel = st.selectbox("Farbe", list(_SCOL),  key="chart_sc",
+                                   label_visibility="collapsed")
+        with _dm_c3:
+            _sd_sel = st.selectbox("Stil",  list(_SDASH), key="chart_sd",
+                                   label_visibility="collapsed")
+        _shape_hex,  _shape_fill = _SCOL[_sc_sel]
+        _shape_dash = _SDASH[_sd_sel]
+        _sl_c1, _sl_c2, _sl_c3, _ = st.columns([1.3, 1.3, 1.3, 4])
+        _sl_curr = _sl_c1.checkbox("📌 Akt. Kurs", key="sl_curr")
+        _sl_52h  = _sl_c2.checkbox("▲ 52W-Hoch",  key="sl_52h")
+        _sl_52l  = _sl_c3.checkbox("▼ 52W-Tief",  key="sl_52l")
+    else:
+        _shape_hex, _shape_fill, _shape_dash = "#00e5ff", "rgba(0,229,255,0.07)", "solid"
+        _sl_curr = _sl_52h = _sl_52l = False
+
     if chart_mode == "Wöchentlich (2J)":
         chart_data = hist_weekly.copy()
         title_suffix = "Wochenkerzen"
@@ -20187,7 +20223,54 @@ elif _at == 7:
             fig_ta.update_xaxes(showgrid=False, rangebreaks=_rangebreaks, row=r, col=1)
             fig_ta.update_yaxes(showgrid=True, gridcolor="#1e2d45", zeroline=False, row=r, col=1)
 
-        st.plotly_chart(fig_ta, use_container_width=True)
+        # ── Schnelllinien (Zeichenmodus) ────────────────────────────────
+        if _sl_curr:
+            _sl_p = float(close.iloc[-1])
+            fig_ta.add_hline(y=_sl_p, line_dash="dash", line_color="#90a4ae", line_width=1,
+                             annotation_text=f"Kurs  {_cur_sym}{_sl_p:.2f}",
+                             annotation_font_color="#90a4ae", annotation_font_size=9, row=1, col=1)
+        if _sl_52h:
+            _52wn = min(252, len(chart_data))
+            _sl_hh = float(chart_data["High"].iloc[-_52wn:].max())
+            fig_ta.add_hline(y=_sl_hh, line_dash="dash", line_color="#ef5350", line_width=1,
+                             annotation_text=f"52W-Hoch  {_cur_sym}{_sl_hh:.2f}",
+                             annotation_font_color="#ef5350", annotation_font_size=9, row=1, col=1)
+        if _sl_52l:
+            _52wn = min(252, len(chart_data))
+            _sl_hl = float(chart_data["Low"].iloc[-_52wn:].min())
+            fig_ta.add_hline(y=_sl_hl, line_dash="dash", line_color="#69f0ae", line_width=1,
+                             annotation_text=f"52W-Tief  {_cur_sym}{_sl_hl:.2f}",
+                             annotation_font_color="#69f0ae", annotation_font_size=9, row=1, col=1)
+
+        # ── Chart rendern ───────────────────────────────────────────────
+        if _draw_mode:
+            _plotly_cfg = {
+                "modeBarButtonsToAdd": ["drawline", "drawopenpath", "drawrect", "eraseshape"],
+                "newshape": {
+                    "line":      {"color": _shape_hex, "width": 1.5, "dash": _shape_dash},
+                    "fillcolor": _shape_fill,
+                },
+                "edits":      {"shapePosition": True},
+                "scrollZoom": True,
+                "displayModeBar": True,
+            }
+        else:
+            _plotly_cfg = {"displayModeBar": False}
+
+        st.plotly_chart(fig_ta, use_container_width=True, config=_plotly_cfg)
+
+        if _draw_mode:
+            st.markdown(
+                "<div style='background:rgba(0,229,255,0.05);border:1px solid rgba(0,229,255,0.2);"
+                "border-radius:8px;padding:8px 14px;font-size:0.74rem;color:#90a4ae;margin-top:4px;'>"
+                "✏️ <b style='color:#00e5ff'>Zeichenwerkzeuge</b> (Symbolleiste oben rechts im Chart):&nbsp;&nbsp;"
+                "↗ <b>Trendlinie</b> &nbsp;·&nbsp; ✏ <b>Freihand</b> &nbsp;·&nbsp; "
+                "▭ <b>Rechteck / Zone</b> &nbsp;·&nbsp; 🗑 <b>Löschen</b>"
+                "&nbsp;&nbsp;|&nbsp;&nbsp;"
+                "<span style='color:#ffa726'>⚠ Formen gehen beim nächsten Seitenladen verloren "
+                "→ Screenshot empfohlen</span>"
+                "</div>",
+                unsafe_allow_html=True)
 
         # ── Performance-Rückblick ────────────────────────────────────────
         _perf_close = hist["Close"] if not hist.empty else close
