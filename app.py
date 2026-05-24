@@ -19746,6 +19746,102 @@ elif _at == 4:
             else:
                 st.info("Nicht genug Daten für DCF-Berechnung (FCF oder Shares fehlen).")
 
+    # ── Graham-Wert & MoS-Qualitätsscore ──────────────────────────────────
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    with st.expander("📐 Graham-Wert & MoS-Qualitätsscore — weiterführende Bewertung", expanded=False):
+        _bw_pb     = yf_info.get("priceToBook")
+        _bw_graham = (round(price * (22.5 / (trailing_pe * _bw_pb)) ** 0.5, 2)
+                      if (trailing_pe and trailing_pe > 0 and _bw_pb and _bw_pb > 0 and price)
+                      else None)
+        _bw_mos_g  = round((_bw_graham / price - 1) * 100, 1) if (_bw_graham and price) else None
+        _bw_qs     = _sc_score(yf_info)
+        _bw_mos_q  = round(_bw_qs * 0.6 + max(0.0, min(100.0, (_bw_mos_g if _bw_mos_g is not None else -50.0) + 50.0)) * 0.4)
+        _bw_aup    = round((target_mean / price - 1) * 100, 1) if (target_mean and price) else None
+
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+            f"padding:12px 16px;margin-bottom:14px;color:{_C_TEXT_MUTED};font-size:0.80rem;line-height:1.6;'>"
+            f"Der <b style='color:{_C_TEXT_PRIMARY}'>Graham-Wert</b> = √(22,5 × KGV × KBV) — "
+            f"der Preis, zu dem eine Aktie als klassisch fair bewertet gilt. "
+            f"Der <b style='color:{_C_TEXT_PRIMARY}'>Quality Score</b> (0–100) kombiniert Bruttomarge, FCF-Yield, ROE, "
+            f"Wachstum und Verschuldung. Der <b style='color:{_C_TEXT_PRIMARY}'>MoS-Q-Score</b> verbindet "
+            f"beides: 60 % Qualität + 40 % Bewertungsabschlag.</div>",
+            unsafe_allow_html=True)
+
+        _bw_c1, _bw_c2, _bw_c3, _bw_c4 = st.columns(4)
+        with _bw_c1:
+            if _bw_graham and _bw_mos_g is not None:
+                _bw_g_clr = "#69f0ae" if _bw_mos_g >= 0 else _C_NEGATIVE
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:14px;text-align:center;'>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:4px;'>Graham-Wert</div>"
+                    f"<div style='color:{_bw_g_clr};font-size:1.3rem;font-weight:700;'>{_cur_sym}{_bw_graham:,.2f}</div>"
+                    f"<div style='color:{_bw_g_clr};font-size:0.78rem;margin-top:4px;'>{_bw_mos_g:+.1f}% MoS</div>"
+                    f"</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:14px;text-align:center;'>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:4px;'>Graham-Wert</div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.82rem;'>N/A — KGV oder KBV fehlt</div>"
+                    f"</div>", unsafe_allow_html=True)
+        with _bw_c2:
+            _qs_clr = "#69f0ae" if _bw_qs >= 70 else "#00e5ff" if _bw_qs >= 50 else _C_NEUTRAL if _bw_qs >= 30 else _C_NEGATIVE
+            _qs_lbl = "Top-Qualität" if _bw_qs >= 70 else "Gut" if _bw_qs >= 50 else "Durchschnittlich" if _bw_qs >= 30 else "Schwach"
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-radius:10px;padding:14px;text-align:center;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:4px;'>Quality Score</div>"
+                f"<div style='color:{_qs_clr};font-size:1.3rem;font-weight:700;'>{_bw_qs}/100</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:4px;'>{_qs_lbl}</div>"
+                f"</div>", unsafe_allow_html=True)
+        with _bw_c3:
+            _mq_clr = "#69f0ae" if _bw_mos_q >= 70 else "#00e5ff" if _bw_mos_q >= 55 else _C_NEUTRAL if _bw_mos_q >= 40 else _C_NEGATIVE
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-radius:10px;padding:14px;text-align:center;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:4px;'>MoS-Q-Score</div>"
+                f"<div style='color:{_mq_clr};font-size:1.3rem;font-weight:700;'>{_bw_mos_q}/100</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:4px;'>Qualität + Bewertung</div>"
+                f"</div>", unsafe_allow_html=True)
+        with _bw_c4:
+            if _bw_aup is not None:
+                _aup_clr = "#69f0ae" if _bw_aup >= 20 else "#00e5ff" if _bw_aup >= 5 else _C_NEGATIVE if _bw_aup < 0 else _C_NEUTRAL
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:14px;text-align:center;'>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:4px;'>Analyst-Upside</div>"
+                    f"<div style='color:{_aup_clr};font-size:1.3rem;font-weight:700;'>{_bw_aup:+.1f}%</div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:4px;'>Konsens-Kursziel</div>"
+                    f"</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:14px;text-align:center;'>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:4px;'>Analyst-Upside</div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.82rem;'>Kein Kursziel</div>"
+                    f"</div>", unsafe_allow_html=True)
+
+        if _bw_mos_g is not None:
+            if _bw_mos_g >= 20:
+                _bw_vd, _bw_vc, _bw_vbg = "🟢 Unterbewertet — breite Sicherheitsmarge zum Graham-Wert", "#69f0ae", "rgba(0,230,118,0.07)"
+            elif _bw_mos_g >= 0:
+                _bw_vd, _bw_vc, _bw_vbg = "🟡 Fair bewertet — Kurs nahe am Graham-Wert", _C_NEUTRAL, "rgba(255,183,77,0.07)"
+            else:
+                _bw_vd, _bw_vc, _bw_vbg = "🔴 Über Graham-Wert — klassisch überbewertet (gilt nicht für Wachstumsaktien)", _C_NEGATIVE, "rgba(255,82,82,0.07)"
+        elif _bw_aup is not None and _bw_aup >= 15:
+            _bw_vd, _bw_vc, _bw_vbg = "🟡 Analystenupside vorhanden — kein Graham-Wert berechenbar", _C_NEUTRAL, "rgba(255,183,77,0.07)"
+        else:
+            _bw_vd, _bw_vc, _bw_vbg = "⚪ Einordnung nicht möglich — Daten unvollständig", _C_TEXT_MUTED, _C_CARD_BG
+        st.markdown(
+            f"<div style='background:{_bw_vbg};border:1px solid {_bw_vc}33;border-radius:10px;"
+            f"padding:10px 16px;margin-top:12px;text-align:center;'>"
+            f"<span style='color:{_bw_vc};font-size:0.88rem;font-weight:700;'>{_bw_vd}</span>"
+            f"</div>", unsafe_allow_html=True)
+        st.caption("⚠️ Graham-Wert gilt am besten für klassische Substanzwerte — bei Wachstumsaktien "
+                   "mit strukturell hohem KGV erscheint er zu niedrig · Keine Anlageberatung")
+
 # ==================== TAB 5: CHART ANALYSE ====================
 elif _at == 7:
     st.markdown("<div class='section-header'>📉 Technische Chart-Analyse</div>", unsafe_allow_html=True)
