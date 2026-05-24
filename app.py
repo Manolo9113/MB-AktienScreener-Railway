@@ -4177,7 +4177,7 @@ def _load_screener_universe() -> list[dict]:
             _mos_g = round(((22.5 / (_pe_t * _pb_v)) ** 0.5 - 1) * 100, 1) if (_pe_t and _pe_t > 0 and _pb_v and _pb_v > 0) else None
             _qs    = _sc_score(info)
             _mos_q = round(_qs * 0.6 + max(0.0, min(100.0, (_mos_g if _mos_g is not None else -50.0) + 50.0)) * 0.4)
-            _aup   = round((info.get("targetMeanPrice", price) / price - 1) * 100, 1) if price else 0.0
+            _aup   = round(((info.get("targetMeanPrice") or price) / price - 1) * 100, 1) if price else 0.0
             results.append({
                 "ticker":       tkr,
                 "name":         (info.get("shortName") or info.get("longName") or tkr)[:32],
@@ -10095,7 +10095,7 @@ elif st.session_state.get("show_stocks"):
                     _mo_cur   = "$" if _mor["currency"] == "USD" else ("€" if _mor["currency"] == "EUR" else _mor["currency"])
                     _mo_aup   = _mor.get("analyst_up", 0)
                     _mo_mos   = _mor.get("mos_graham")
-                    _mo_aup_clr = "#69f0ae" if _mo_aup >= 30 else "#00e5ff" if _mo_aup >= 20 else _C_NEUTRAL
+                    _mo_aup_clr = "#69f0ae" if _mo_aup >= 30 else "#00e5ff" if _mo_aup >= 15 else _C_NEUTRAL
                     _mo_mos_clr = "#69f0ae" if (_mo_mos or 0) >= 20 else "#40c4ff" if (_mo_mos or 0) >= 0 else _C_NEGATIVE
                     _mo_badges = (
                         f"<span style='background:rgba(0,229,255,0.12);color:#00e5ff;"
