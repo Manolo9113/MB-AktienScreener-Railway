@@ -19905,6 +19905,52 @@ elif _at == 7:
         _sl_curr = _sl_c1.checkbox("📌 Akt. Kurs", key="sl_curr")
         _sl_52h  = _sl_c2.checkbox("▲ 52W-Hoch",  key="sl_52h")
         _sl_52l  = _sl_c3.checkbox("▼ 52W-Tief",  key="sl_52l")
+
+        # ── Persistente H/V-Linien ──────────────────────────────────
+        if st.session_state.get("_draw_ticker") != ticker:
+            st.session_state["chart_hlines"] = []
+            st.session_state["chart_vlines"] = []
+            st.session_state["_draw_ticker"] = ticker
+
+        _hl_c1, _hl_c2, _hl_c3, _hl_c4 = st.columns([2.2, 0.7, 2.2, 0.7])
+        with _hl_c1:
+            _hp_val = st.number_input(
+                "H-Linie", value=0.0, step=1.0, format="%.2f", key="hline_p",
+                label_visibility="collapsed", placeholder="— H-Linie: Preis eingeben")
+        with _hl_c2:
+            if st.button("＋ H", key="btn_add_h", use_container_width=True):
+                if _hp_val != 0.0:
+                    st.session_state.setdefault("chart_hlines", []).append(
+                        {"y": float(_hp_val), "color": _shape_hex, "dash": _shape_dash})
+                    st.rerun()
+        with _hl_c3:
+            _vd_val = st.date_input(
+                "V-Linie", value="today", key="vline_d", label_visibility="collapsed")
+        with _hl_c4:
+            if st.button("＋ V", key="btn_add_v", use_container_width=True):
+                st.session_state.setdefault("chart_vlines", []).append(
+                    {"x": str(_vd_val), "color": _shape_hex})
+                st.rerun()
+
+        _stored_h = st.session_state.get("chart_hlines", [])
+        _stored_v = st.session_state.get("chart_vlines", [])
+        if _stored_h or _stored_v:
+            _ch_badges = "".join(
+                f"<span style='color:{_l['color']};background:rgba(255,255,255,0.06);"
+                f"border-radius:4px;padding:1px 7px;margin-right:5px;font-size:0.72rem;'>"
+                f"— {_l['y']:.2f}</span>" for _l in _stored_h)
+            _cv_badges = "".join(
+                f"<span style='color:{_l['color']};background:rgba(255,255,255,0.06);"
+                f"border-radius:4px;padding:1px 7px;margin-right:5px;font-size:0.72rem;'>"
+                f"| {_l['x']}</span>" for _l in _stored_v)
+            _bd_col, _clr_col = st.columns([5, 1])
+            with _bd_col:
+                st.markdown(_ch_badges + _cv_badges, unsafe_allow_html=True)
+            with _clr_col:
+                if st.button("🗑 Alle", key="btn_clr_lines", use_container_width=True):
+                    st.session_state["chart_hlines"] = []
+                    st.session_state["chart_vlines"] = []
+                    st.rerun()
     else:
         _shape_hex, _shape_fill, _shape_dash = "#00e5ff", "rgba(0,229,255,0.07)", "solid"
         _sl_curr = _sl_52h = _sl_52l = False
@@ -20242,10 +20288,28 @@ elif _at == 7:
                              annotation_text=f"52W-Tief  {_cur_sym}{_sl_hl:.2f}",
                              annotation_font_color="#69f0ae", annotation_font_size=9, row=1, col=1)
 
+        # ── Persistente H/V-Linien anwenden ────────────────────────────
+        for _hl in st.session_state.get("chart_hlines", []):
+            fig_ta.add_hline(
+                y=_hl["y"], line_dash=_hl.get("dash", "solid"),
+                line_color=_hl["color"], line_width=1.5,
+                annotation_text=f"H  {_cur_sym}{_hl['y']:.2f}",
+                annotation_font_color=_hl["color"], annotation_font_size=9,
+                row=1, col=1)
+        for _vl in st.session_state.get("chart_vlines", []):
+            fig_ta.add_vline(
+                x=_vl["x"], line_dash="dash",
+                line_color=_vl["color"], line_width=1.5,
+                annotation_text=_vl["x"],
+                annotation_font_color=_vl["color"], annotation_font_size=9)
+
         # ── Chart rendern ───────────────────────────────────────────────
         if _draw_mode:
             _plotly_cfg = {
-                "modeBarButtonsToAdd": ["drawline", "drawopenpath", "drawrect", "eraseshape"],
+                "modeBarButtonsToAdd": [
+                    "drawline", "drawcircle", "drawclosedpath",
+                    "drawopenpath", "drawrect", "eraseshape",
+                ],
                 "newshape": {
                     "line":      {"color": _shape_hex, "width": 1.5, "dash": _shape_dash},
                     "fillcolor": _shape_fill,
@@ -20264,8 +20328,10 @@ elif _at == 7:
                 "<div style='background:rgba(0,229,255,0.05);border:1px solid rgba(0,229,255,0.2);"
                 "border-radius:8px;padding:8px 14px;font-size:0.74rem;color:#90a4ae;margin-top:4px;'>"
                 "✏️ <b style='color:#00e5ff'>Zeichenwerkzeuge</b> (Symbolleiste oben rechts im Chart):&nbsp;&nbsp;"
-                "↗ <b>Trendlinie</b> &nbsp;·&nbsp; ✏ <b>Freihand</b> &nbsp;·&nbsp; "
-                "▭ <b>Rechteck / Zone</b> &nbsp;·&nbsp; 🗑 <b>Löschen</b>"
+                "↗ <b>Trendlinie</b> &nbsp;·&nbsp; ⬭ <b>Ellipse</b> &nbsp;·&nbsp; "
+                "⬠ <b>Polygon</b> &nbsp;·&nbsp; ✏ <b>Freihand</b> &nbsp;·&nbsp; "
+                "▭ <b>Rechteck / Zone</b> &nbsp;·&nbsp; 🗑 <b>Löschen</b> "
+                "&nbsp;|&nbsp; <b>H/V-Linien</b> oben bleiben bei Indikatoren-Wechsel erhalten"
                 "&nbsp;&nbsp;|&nbsp;&nbsp;"
                 "<span style='color:#ffa726'>⚠ Formen gehen beim nächsten Seitenladen verloren "
                 "→ Screenshot empfohlen</span>"
