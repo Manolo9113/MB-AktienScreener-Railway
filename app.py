@@ -4172,6 +4172,12 @@ def _load_screener_universe() -> list[dict]:
             rev    = info.get("totalRevenue") or 0
             fcf_m  = round(fcf / rev * 100, 1) if (fcf and rev > 0) else None
             r40    = round(rg + (fcf_m if fcf_m is not None else om), 1)
+            _pe_t  = info.get("trailingPE")
+            _pb_v  = info.get("priceToBook")
+            _mos_g = round(((22.5 / (_pe_t * _pb_v)) ** 0.5 - 1) * 100, 1) if (_pe_t and _pe_t > 0 and _pb_v and _pb_v > 0) else None
+            _qs    = _sc_score(info)
+            _mos_q = round(_qs * 0.6 + max(0.0, min(100.0, (_mos_g if _mos_g is not None else -50.0) + 50.0)) * 0.4)
+            _aup   = round(((info.get("targetMeanPrice") or price) / price - 1) * 100, 1) if price else 0.0
             results.append({
                 "ticker":       tkr,
                 "name":         (info.get("shortName") or info.get("longName") or tkr)[:32],
@@ -4180,8 +4186,8 @@ def _load_screener_universe() -> list[dict]:
                 "sector":       sec,
                 "marketcap":    mktcap,
                 "pe_fwd":       info.get("forwardPE"),
-                "pe_trail":     info.get("trailingPE"),
-                "pb":           info.get("priceToBook"),
+                "pe_trail":     _pe_t,
+                "pb":           _pb_v,
                 "rev_growth":   round(rg, 1),
                 "gross_margin": round(gm, 1),
                 "op_margin":    round(om, 1),
@@ -4192,12 +4198,14 @@ def _load_screener_universe() -> list[dict]:
                 "payout":       round((info.get("payoutRatio") or 0) * 100, 1),
                 "beta":         round(info.get("beta") or 1.0, 2),
                 "debt_equity":  round(de, 1),
-                "quality":      _sc_score(info),
+                "quality":      _qs,
                 "moat_width":   moat.get("moat_width", "Kein Moat"),
                 "moat_score":   moat.get("moat_score", 0),
-                "analyst_up":   round((info.get("targetMeanPrice", price) / price - 1) * 100, 1) if price else 0.0,
+                "analyst_up":   _aup,
                 "fcf_margin":   fcf_m,
                 "r40":          r40,
+                "mos_graham":   _mos_g,
+                "mos_q_score":  _mos_q,
             })
         except Exception:
             pass
@@ -4213,6 +4221,7 @@ _SCREENER_PRESETS = {
     "🛡️ Defensiv":       {"beta_max": 0.8, "div_yield_min": 1.0, "gross_margin_min": 30.0},
     "⚡ GARP":           {"rev_growth_min": 10.0, "pe_fwd_max": 30.0, "roe_min": 15.0, "gross_margin_min": 35.0},
     "☁️ SaaS/Tech":      {"r40_min": 40, "gross_margin_min": 60.0, "rev_growth_min": 10.0, "quality_min": 40},
+    "🎯 Quality+Value":  {"quality_min": 55, "mos_min": 0, "roe_min": 10, "gross_margin_min": 30.0},
 }
 
 
@@ -9437,6 +9446,8 @@ elif st.session_state.get("show_screener"):
                                  help="Dividende ÷ Aktienkurs. 0% = auch nicht-zahlende Aktien. ≥2% für Dividenden-Fokus. Achtung: sehr hohe Yield kann auf Kursschwäche hindeuten.")
             _pay_max = st.slider("Payout Ratio max (%)", 10, 110, int(_f.get("payout_max", 90)), 5, key="scr_pay_max",
                                  help="Dividende ÷ Gewinn. <60% gilt als nachhaltig. >80% Risiko einer Kürzung. REITs zahlen strukturbedingt oft >90%. 110 = kein Filter.")
+            _mos_min = st.slider("MoS Graham min (%)", -100, 100, int(_f.get("mos_min", -100)), 5, key="scr_mos_min",
+                                 help="Sicherheitsmarge zum Graham-Wert (√(22,5 × KGV × KBV)). 0 = Kurs unter Graham-Wert (unterbewertet). -100 = kein Filter.")
         with _fd2:
             _qual_min = st.slider("Quality Score min", 0, 100, int(_f.get("quality_min", 20)), 5, key="scr_qual_min",
                                   help="Composite Score (0–100) aus Bruttomarge, FCF-Yield, ROE, Umsatzwachstum und Verschuldung. ≥50 = überdurchschnittlich, ≥70 = Top-Qualität.")
@@ -9468,7 +9479,7 @@ elif st.session_state.get("show_screener"):
                         "pe_fwd_max": _pe_max, "pb_max": _pb_max, "ev_ebitda_max": _eu_max,
                         "rev_growth_min": _rg_min, "gross_margin_min": _gm_min, "op_margin_min": _om_min,
                         "roe_min": _roe_min, "fcf_yield_min": _fcf_min, "beta_max": _beta_max,
-                        "r40_min": _r40_min,
+                        "r40_min": _r40_min, "mos_min": _mos_min,
                         "div_yield_min": _dy_min, "payout_max": _pay_max, "quality_min": _qual_min,
                         "moat_filter": _moat_filter, "sector_filter": _sector_sel, "mcap_filter": _mcap_sel,
                     }
@@ -9506,6 +9517,7 @@ elif st.session_state.get("show_screener"):
         if _mcap_sel == "Large (>$10B)"  and r["marketcap"] <  10e9: return False
         if _mcap_sel == "Mid ($1–10B)"   and not (1e9 <= r["marketcap"] < 10e9): return False
         if _mcap_sel == "Small (<$1B)"   and r["marketcap"] >= 1e9: return False
+        if _mos_min > -100 and (r.get("mos_graham") is None or r["mos_graham"] < _mos_min): return False
         return True
 
     _scr_hits = [r for r in _scr_all if _scr_match(r)]
@@ -9525,20 +9537,22 @@ elif st.session_state.get("show_screener"):
     # ── Sortierung ─────────────────────────────────────────────────────
     _sort_by = st.selectbox(
         "Sortieren nach",
-        ["Quality Score ↓", "Umsatzwachstum ↓", "Rule of 40 ↓", "Bruttomarge ↓", "ROE ↓",
-         "FCF-Yield ↓", "KGV fwd ↑", "Dividendenrendite ↓", "Beta ↑"],
+        ["Quality Score ↓", "MoS-Q-Score ↓", "MoS Graham ↓", "Umsatzwachstum ↓", "Rule of 40 ↓",
+         "Bruttomarge ↓", "ROE ↓", "FCF-Yield ↓", "KGV fwd ↑", "Dividendenrendite ↓", "Beta ↑"],
         key="scr_sort",
     )
     _sort_map = {
-        "Quality Score ↓":    (lambda r: r["quality"],           True),
-        "Umsatzwachstum ↓":   (lambda r: r["rev_growth"],        True),
-        "Rule of 40 ↓":       (lambda r: r.get("r40", -99),      True),
-        "Bruttomarge ↓":      (lambda r: r["gross_margin"],       True),
-        "ROE ↓":              (lambda r: r["roe"],                True),
-        "FCF-Yield ↓":        (lambda r: r["fcf_yield"],          True),
-        "KGV fwd ↑":          (lambda r: r["pe_fwd"] or 999,      False),
-        "Dividendenrendite ↓":(lambda r: r["div_yield"],          True),
-        "Beta ↑":             (lambda r: r["beta"],               False),
+        "Quality Score ↓":    (lambda r: r["quality"],                   True),
+        "MoS-Q-Score ↓":      (lambda r: r.get("mos_q_score", 0),        True),
+        "MoS Graham ↓":       (lambda r: r.get("mos_graham") or -999,    True),
+        "Umsatzwachstum ↓":   (lambda r: r["rev_growth"],                True),
+        "Rule of 40 ↓":       (lambda r: r.get("r40", -99),              True),
+        "Bruttomarge ↓":      (lambda r: r["gross_margin"],               True),
+        "ROE ↓":              (lambda r: r["roe"],                        True),
+        "FCF-Yield ↓":        (lambda r: r["fcf_yield"],                  True),
+        "KGV fwd ↑":          (lambda r: r["pe_fwd"] or 999,              False),
+        "Dividendenrendite ↓":(lambda r: r["div_yield"],                  True),
+        "Beta ↑":             (lambda r: r["beta"],                       False),
     }
     _sort_fn, _sort_rev = _sort_map[_sort_by]
     _scr_hits = sorted(_scr_hits, key=_sort_fn, reverse=_sort_rev)
@@ -9563,6 +9577,8 @@ elif st.session_state.get("show_screener"):
             "Div.-Yield":    f"{r['div_yield']:.2f}%" if r["div_yield"] > 0 else "—",
             "Beta":          f"{r['beta']:.2f}",
             "Quality":       r["quality"],
+            "MoS (G)":       f"{r['mos_graham']:+.0f}%" if r.get("mos_graham") is not None else "—",
+            "MoS-Q":         str(r.get("mos_q_score", "—")),
             "Burggraben":    r["moat_width"].replace(" Moat","").replace("Sehr breiter","⭐⭐").replace("Breiter","⭐").replace("Schmaler","〜").replace("Kein","—"),
             "Upside":        f"{r['analyst_up']:+.0f}%" if r["analyst_up"] else "—",
         })
@@ -10049,6 +10065,76 @@ elif st.session_state.get("show_stocks"):
         st.markdown(
             "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
             "⚠️ Keine Anlageberatung · Burggraben ≠ Kursgarantie · Daten via Yahoo Finance</div>",
+            unsafe_allow_html=True)
+
+    # ── Höchstes Aufholpotential (MoS Top-Liste) ─────────────────────────
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    with st.expander("🎯  Höchstes Aufholpotential — Analystenupside × Qualitätsfilter  (6h Cache)", expanded=False):
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-bottom:14px;line-height:1.6;'>"
+            "Aktien aus dem Qualitäts-Universum mit dem <b>höchsten Analystenupside</b> — gefiltert nach "
+            "<b>Quality Score ≥ 45</b> und <b>Marktkapitalisierung ≥ 5 Mrd. $</b>. "
+            "Ranking nach kombiniertem <b>MoS-Q-Score</b> (60 % Qualität + 40 % Bewertungsabschlag zum Graham-Wert). "
+            "Zusätzlich: Sicherheitsmarge zum Graham-Wert (√(22,5 × KGV × KBV)) als fundamentale Komponente.</div>",
+            unsafe_allow_html=True)
+        with st.spinner("Lade Aufholpotential-Kandidaten…"):
+            _mos_universe = _load_screener_universe()
+        _mos_cands = sorted(
+            [r for r in _mos_universe
+             if r.get("analyst_up", 0) >= 15
+             and r.get("quality", 0) >= 45
+             and r.get("marketcap", 0) >= 5e9],
+            key=lambda r: r.get("mos_q_score", 0), reverse=True
+        )[:12]
+        if not _mos_cands:
+            st.info("Aktuell keine Aktien mit hohem Aufholpotential und Qualitätsfilter gefunden.")
+        else:
+            _mos_col1, _mos_col2 = st.columns(2)
+            for _moi, _mor in enumerate(_mos_cands):
+                with (_mos_col1 if _moi % 2 == 0 else _mos_col2):
+                    _mo_cur   = "$" if _mor["currency"] == "USD" else ("€" if _mor["currency"] == "EUR" else _mor["currency"])
+                    _mo_aup   = _mor.get("analyst_up", 0)
+                    _mo_mos   = _mor.get("mos_graham")
+                    _mo_aup_clr = "#69f0ae" if _mo_aup >= 30 else "#00e5ff" if _mo_aup >= 15 else _C_NEUTRAL
+                    _mo_mos_clr = "#69f0ae" if (_mo_mos or 0) >= 20 else "#40c4ff" if (_mo_mos or 0) >= 0 else _C_NEGATIVE
+                    _mo_badges = (
+                        f"<span style='background:rgba(0,229,255,0.12);color:#00e5ff;"
+                        f"border-radius:5px;padding:2px 8px;font-size:0.71rem;font-weight:700;"
+                        f"margin-right:4px;'>Q {_mor['quality']}</span>"
+                        f"<span style='background:rgba(105,240,174,0.12);color:{_mo_aup_clr};"
+                        f"border-radius:5px;padding:2px 8px;font-size:0.71rem;font-weight:700;"
+                        f"margin-right:4px;'>↑ {_mo_aup:+.0f}% Upside</span>"
+                        + (f"<span style='background:rgba(100,181,246,0.10);color:{_mo_mos_clr};"
+                           f"border-radius:5px;padding:2px 8px;font-size:0.71rem;font-weight:600;"
+                           f"margin-right:4px;'>MoS&thinsp;{_mo_mos:+.0f}%</span>"
+                           if _mo_mos is not None else "")
+                        + (f"<span style='background:rgba(255,183,77,0.10);color:{_C_NEUTRAL};"
+                           f"border-radius:5px;padding:2px 8px;font-size:0.71rem;font-weight:600;'>"
+                           f"KGV&thinsp;{_mor['pe_fwd']:.0f}x</span>"
+                           if _mor.get("pe_fwd") else "")
+                    )
+                    st.markdown(
+                        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                        f"border-left:3px solid {_mo_aup_clr};border-radius:12px;"
+                        f"padding:13px 15px;margin-bottom:6px;'>"
+                        f"<div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>"
+                        f"<span style='color:{_mo_aup_clr};font-size:1.02rem;font-weight:800;'>{_mor['ticker']}</span>"
+                        f"<span style='color:{_C_TEXT_SEC};font-size:0.82rem;font-weight:600;'>"
+                        f"{_mo_cur}{_mor['price']:,.2f}</span></div>"
+                        f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-bottom:8px;'>"
+                        f"{_mor['name']} · MoS-Q {_mor.get('mos_q_score','—')}</div>"
+                        f"<div style='display:flex;flex-wrap:wrap;gap:4px;'>{_mo_badges}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True)
+                    if st.button(f"🔍 {_mor['ticker']} analysieren",
+                                 key=f"mos_go_{_mor['ticker']}", use_container_width=True):
+                        _go_to_ticker(_mor["ticker"])
+                        st.rerun()
+                    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:4px;'>"
+            "⚠️ Kein Anlageberatung · Analystenupside = Konsens-Kursziel vs. aktueller Kurs · "
+            "Graham-MoS gilt nur für Substanzwerte · Daten via Yahoo Finance (6h Cache)</div>",
             unsafe_allow_html=True)
 
     # ── Qualitäts-Screener ─────────────────────────────────────────────
@@ -16235,6 +16321,7 @@ if st.session_state.get("show_etf_analyzer"):
     # Ausschüttend: jährliche Dividendenbesteuerung
     # Sparerpauschbetrag erneuert sich jedes Jahr
     _f1_aus_gross = [_f1_betrag]
+    _f1_aus_basis = [_f1_betrag]  # cost basis grows by each year's reinvested net dividends
     _f1_aus_tax_paid = 0.0
     for _ in range(_f1_jahre):
         _pv = _f1_aus_gross[-1]
@@ -16246,10 +16333,11 @@ if st.session_state.get("show_etf_analyzer"):
         _div_net     = _div_gross - _div_tax
         _pv_new      = _pv * (1 + _f1_price_r) + _div_net
         _f1_aus_gross.append(_pv_new)
+        _f1_aus_basis.append(_f1_aus_basis[-1] + _div_net)
 
     _f1_aus_net = []
-    for _y, _v in enumerate(_f1_aus_gross):
-        _price_gain = max(0, _v - _f1_betrag)
+    for _v, _basis in zip(_f1_aus_gross, _f1_aus_basis):
+        _price_gain = max(0, _v - _basis)
         _final_tax  = _price_gain * _f1_eff_satz
         _f1_aus_net.append(_v - _final_tax)
 
@@ -19657,6 +19745,102 @@ elif _at == 4:
                 </div>""", unsafe_allow_html=True)
             else:
                 st.info("Nicht genug Daten für DCF-Berechnung (FCF oder Shares fehlen).")
+
+    # ── Graham-Wert & MoS-Qualitätsscore ──────────────────────────────────
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    with st.expander("📐 Graham-Wert & MoS-Qualitätsscore — weiterführende Bewertung", expanded=False):
+        _bw_pb     = yf_info.get("priceToBook")
+        _bw_graham = (round(price * (22.5 / (trailing_pe * _bw_pb)) ** 0.5, 2)
+                      if (trailing_pe and trailing_pe > 0 and _bw_pb and _bw_pb > 0 and price)
+                      else None)
+        _bw_mos_g  = round((_bw_graham / price - 1) * 100, 1) if (_bw_graham and price) else None
+        _bw_qs     = _sc_score(yf_info)
+        _bw_mos_q  = round(_bw_qs * 0.6 + max(0.0, min(100.0, (_bw_mos_g if _bw_mos_g is not None else -50.0) + 50.0)) * 0.4)
+        _bw_aup    = round((target_mean / price - 1) * 100, 1) if (target_mean and price) else None
+
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+            f"padding:12px 16px;margin-bottom:14px;color:{_C_TEXT_MUTED};font-size:0.80rem;line-height:1.6;'>"
+            f"Der <b style='color:{_C_TEXT_PRIMARY}'>Graham-Wert</b> = √(22,5 × KGV × KBV) — "
+            f"der Preis, zu dem eine Aktie als klassisch fair bewertet gilt. "
+            f"Der <b style='color:{_C_TEXT_PRIMARY}'>Quality Score</b> (0–100) kombiniert Bruttomarge, FCF-Yield, ROE, "
+            f"Wachstum und Verschuldung. Der <b style='color:{_C_TEXT_PRIMARY}'>MoS-Q-Score</b> verbindet "
+            f"beides: 60 % Qualität + 40 % Bewertungsabschlag.</div>",
+            unsafe_allow_html=True)
+
+        _bw_c1, _bw_c2, _bw_c3, _bw_c4 = st.columns(4)
+        with _bw_c1:
+            if _bw_graham and _bw_mos_g is not None:
+                _bw_g_clr = "#69f0ae" if _bw_mos_g >= 0 else _C_NEGATIVE
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:14px;text-align:center;'>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:4px;'>Graham-Wert</div>"
+                    f"<div style='color:{_bw_g_clr};font-size:1.3rem;font-weight:700;'>{_cur_sym}{_bw_graham:,.2f}</div>"
+                    f"<div style='color:{_bw_g_clr};font-size:0.78rem;margin-top:4px;'>{_bw_mos_g:+.1f}% MoS</div>"
+                    f"</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:14px;text-align:center;'>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:4px;'>Graham-Wert</div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.82rem;'>N/A — KGV oder KBV fehlt</div>"
+                    f"</div>", unsafe_allow_html=True)
+        with _bw_c2:
+            _qs_clr = "#69f0ae" if _bw_qs >= 70 else "#00e5ff" if _bw_qs >= 50 else _C_NEUTRAL if _bw_qs >= 30 else _C_NEGATIVE
+            _qs_lbl = "Top-Qualität" if _bw_qs >= 70 else "Gut" if _bw_qs >= 50 else "Durchschnittlich" if _bw_qs >= 30 else "Schwach"
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-radius:10px;padding:14px;text-align:center;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:4px;'>Quality Score</div>"
+                f"<div style='color:{_qs_clr};font-size:1.3rem;font-weight:700;'>{_bw_qs}/100</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:4px;'>{_qs_lbl}</div>"
+                f"</div>", unsafe_allow_html=True)
+        with _bw_c3:
+            _mq_clr = "#69f0ae" if _bw_mos_q >= 70 else "#00e5ff" if _bw_mos_q >= 55 else _C_NEUTRAL if _bw_mos_q >= 40 else _C_NEGATIVE
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-radius:10px;padding:14px;text-align:center;'>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:4px;'>MoS-Q-Score</div>"
+                f"<div style='color:{_mq_clr};font-size:1.3rem;font-weight:700;'>{_bw_mos_q}/100</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:4px;'>Qualität + Bewertung</div>"
+                f"</div>", unsafe_allow_html=True)
+        with _bw_c4:
+            if _bw_aup is not None:
+                _aup_clr = "#69f0ae" if _bw_aup >= 20 else "#00e5ff" if _bw_aup >= 5 else _C_NEGATIVE if _bw_aup < 0 else _C_NEUTRAL
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:14px;text-align:center;'>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:4px;'>Analyst-Upside</div>"
+                    f"<div style='color:{_aup_clr};font-size:1.3rem;font-weight:700;'>{_bw_aup:+.1f}%</div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:4px;'>Konsens-Kursziel</div>"
+                    f"</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:14px;text-align:center;'>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:4px;'>Analyst-Upside</div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.82rem;'>Kein Kursziel</div>"
+                    f"</div>", unsafe_allow_html=True)
+
+        if _bw_mos_g is not None:
+            if _bw_mos_g >= 20:
+                _bw_vd, _bw_vc, _bw_vbg = "🟢 Unterbewertet — breite Sicherheitsmarge zum Graham-Wert", "#69f0ae", "rgba(0,230,118,0.07)"
+            elif _bw_mos_g >= 0:
+                _bw_vd, _bw_vc, _bw_vbg = "🟡 Fair bewertet — Kurs nahe am Graham-Wert", _C_NEUTRAL, "rgba(255,183,77,0.07)"
+            else:
+                _bw_vd, _bw_vc, _bw_vbg = "🔴 Über Graham-Wert — klassisch überbewertet (gilt nicht für Wachstumsaktien)", _C_NEGATIVE, "rgba(255,82,82,0.07)"
+        elif _bw_aup is not None and _bw_aup >= 15:
+            _bw_vd, _bw_vc, _bw_vbg = "🟡 Analystenupside vorhanden — kein Graham-Wert berechenbar", _C_NEUTRAL, "rgba(255,183,77,0.07)"
+        else:
+            _bw_vd, _bw_vc, _bw_vbg = "⚪ Einordnung nicht möglich — Daten unvollständig", _C_TEXT_MUTED, _C_CARD_BG
+        st.markdown(
+            f"<div style='background:{_bw_vbg};border:1px solid {_bw_vc}33;border-radius:10px;"
+            f"padding:10px 16px;margin-top:12px;text-align:center;'>"
+            f"<span style='color:{_bw_vc};font-size:0.88rem;font-weight:700;'>{_bw_vd}</span>"
+            f"</div>", unsafe_allow_html=True)
+        st.caption("⚠️ Graham-Wert gilt am besten für klassische Substanzwerte — bei Wachstumsaktien "
+                   "mit strukturell hohem KGV erscheint er zu niedrig · Keine Anlageberatung")
 
 # ==================== TAB 5: CHART ANALYSE ====================
 elif _at == 7:
