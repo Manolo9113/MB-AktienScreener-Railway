@@ -4984,6 +4984,7 @@ _ETF_CW = {
     # S&P 500 / USA
     'SXR2.DE': {'USA':100.0}, 'IUSE.DE': {'USA':100.0}, 'LCUW.DE': {'USA':100.0},
     'VUSA.L':  {'USA':100.0}, 'SPY5.DE': {'USA':100.0}, 'CSPX.L':  {'USA':100.0},
+    'QDVB.DE': {'USA':100.0},
     # NASDAQ-100
     'EQQQ.DE': {'USA':97.0,'Sonstige':3.0}, 'CNDX.L': {'USA':97.0,'Sonstige':3.0},
     # EuroStoxx 50
@@ -5085,6 +5086,10 @@ _ETF_SW: dict = {
          'Industrie':13.0,'Basiskonsumgüter':12.0,'Energie':10.0,
          'Nicht-Basiskonsumgüter':8.0,'Grundstoffe':6.0,'Versorger':3.0,
          'Telekommunikation':2.0}),
+    # ── Faktor-ETFs USA ───────────────────────────────────────────────────────
+    'QDVB.DE': {'IT & Technologie':40.0,'Nicht-Basiskonsumgüter':13.0,
+                'Gesundheitswesen':13.0,'Finanzwesen':10.0,'Telekommunikation':9.0,
+                'Basiskonsumgüter':6.0,'Industrie':5.0,'Sonstige':4.0},
     # ── Sektor-ETFs (100% in einem Sektor) ───────────────────────────────────
     **dict.fromkeys(['XDWT.DE','QDVE.DE','IUIT.DE'],{'IT & Technologie':100.0}),
     **dict.fromkeys(['XDWH.DE','QDVG.DE','HEAL.DE'],{'Gesundheitswesen':100.0}),
@@ -5541,7 +5546,7 @@ _PF_ETF_DATA_TKR: dict = {
     'EXS1.DE':'EWG',   'DBXD.DE':'EWG',   'DAXE.DE':'EWG',   'EXV5.DE':'EWJ',
     'XDJP.DE':'EWJ',   'IQQJ.DE':'EWJ',   'IQQC.DE':'MCHI',  'IUSN.DE':'SCHA',
     'ZPRV.DE':'IWM',   'EXI5.DE':'IJH',   'ISPA.DE':'SCHD',  'QDIV.DE':'VYM',
-    'XDIV.DE':'VYM',   'XDWT.DE':'IXN',   'QDVE.DE':'XLK',   'IUIT.DE':'IXN',
+    'XDIV.DE':'VYM',   'XDWT.DE':'IXN',   'QDVE.DE':'XLK',   'QDVB.DE':'QUAL',  'IUIT.DE':'IXN',
     'XDWH.DE':'IXV',   'QDVG.DE':'XLV',   'HEAL.DE':'IXV',   'XDWF.DE':'IXG',
     'SXRV.DE':'XLC',   'XDWU.DE':'XLU',   'XMIN.DE':'INDA',  'XMKR.DE':'EWY',
     'IS3W.DE':'EWT',   'IQQH.DE':'ICLN',  'VHYL.L':'VYM',
@@ -14003,7 +14008,7 @@ if st.session_state.get("show_etf_analyzer"):
         'IE00BP3QZ601':'IS3Q.DE','IE00BP3QZB59':'IS3S.DE',
         'IE000YBGJ9I4':'MEGA.DE','IE0008M1R3N4':'USMC.DE',
         'IE000Z7P04F4':'QTOP.DE','IE000FJJZA01':'QUS5.DE',
-        'IE00B3WJKG14':'QDVE.DE',
+        'IE00B3WJKG14':'QDVE.DE','IE00BD1F4L37':'QDVB.DE',
         # WKN → ticker
         'A0RPWH':'SXR8.DE','A1JX52':'VWCE.DE','622391':'SXR2.DE','A0HGWC':'IS3N.DE',
         'DBX1MW':'XDWD.DE','A0YEDL':'EQQQ.DE','593393':'EXS1.DE','ETF127':'LCUW.DE',
@@ -14011,7 +14016,7 @@ if st.session_state.get("show_etf_analyzer"):
         'A1T8FV':'VHYL.L','A2DWBY':'IUSN.DE','ETF091':'MEUD.DE','593395':'EXW1.DE',
         'A0YEDL':'EQQQ.DE','A0YBR5':'EXV5.DE','A1H5EU':'IQQC.DE','LYX0RT':'LYPS.DE',
         'A12ATE':'IS3Q.DE','A12ATG':'IS3S.DE','ETF220':'MEGA.DE',
-        'A414W8':'USMC.DE','A40V3X':'QTOP.DE','A40UMR':'QUS5.DE','A142N1':'QDVE.DE',
+        'A414W8':'USMC.DE','A40V3X':'QTOP.DE','A40UMR':'QUS5.DE','A142N1':'QDVE.DE','A2AP34':'QDVB.DE',
         # Name → ticker
         'msci world':'SXR8.DE','msci em':'IS3N.DE','msci emerging':'IS3N.DE',
         'all world':'VWCE.DE','ftse all world':'VWCE.DE','sp500':'SXR2.DE',
@@ -14087,6 +14092,7 @@ if st.session_state.get("show_etf_analyzer"):
         'XDWR.DE':0.0025,   # Xtrackers MSCI World Real Estate
         # ── iShares Sektor-ETFs (S&P 500) ───────────────────────────────────
         'QDVE.DE':0.0015,   # S&P 500 IT — 0,15%
+        'QDVB.DE':0.0020,   # MSCI USA Quality Factor — 0,20%
         'QDVG.DE':0.0015,   # S&P 500 Health Care — 0,15%
         'QDVD.DE':0.0015,   # S&P 500 Financials — 0,15%
         'SXRV.DE':0.0015,   # S&P 500 Communication — 0,15%
@@ -14175,6 +14181,7 @@ if st.session_state.get("show_etf_analyzer"):
         'XDEV.DE':'VLUE',  # Xtrackers MSCI World Value
         # ── iShares Sektor (S&P 500) ─────────────────────────────────────────
         'QDVE.DE':'XLK',   # S&P 500 IT
+        'QDVB.DE':'QUAL',  # MSCI USA Quality Factor
         'QDVG.DE':'XLV',   # S&P 500 Health Care
         'QDVD.DE':'XLF',   # S&P 500 Financials
         'SXRV.DE':'XLC',   # S&P 500 Communication
@@ -14255,6 +14262,7 @@ if st.session_state.get("show_etf_analyzer"):
         'DBXD.DE':  3_000_000_000,   # Xtrackers DAX
         # ── iShares Sektor & Faktor ──────────────────────────────────────────
         'QDVE.DE':  3_000_000_000,   # iShares S&P 500 IT
+        'QDVB.DE':  1_500_000_000,   # iShares MSCI USA Quality Factor
         'QDVG.DE':  1_200_000_000,   # iShares S&P 500 Health Care
         'QDVD.DE':    600_000_000,   # iShares S&P 500 Financials
         'SXRV.DE':    500_000_000,   # iShares S&P 500 Communication
@@ -14556,6 +14564,7 @@ if st.session_state.get("show_etf_analyzer"):
         'XMKR.DE':  "Xtrackers MSCI Korea Swap UCITS ETF (TER 0,20%) — konzentriert auf südkoreanische Technologie- und Industriekonzerne. Samsung, SK Hynix, Hyundai als Top-Positionen.",
         # ── iShares Sektor (S&P 500) ──────────────────────────────────────────
         'QDVE.DE':  "iShares S&P 500 Information Technology Sector UCITS ETF (TER 0,15%) — US-IT-Giganten: Apple, Microsoft, NVIDIA, Broadcom. Stark konzentriert, hohes Wachstumspotenzial.",
+        'QDVB.DE':  "iShares Edge MSCI USA Quality Factor UCITS ETF (TER 0,20%) — wählt US-Aktien nach hoher Eigenkapitalrendite, stabilem Gewinnwachstum und niedriger Verschuldung. Physische Replikation, thesaurierend.",
         'QDVG.DE':  "iShares S&P 500 Health Care Sector UCITS ETF (TER 0,15%) — US-Pharma und -Medizintechnik: UnitedHealth, Eli Lilly, J&J. Defensiv mit Wachstumskomponente.",
         'QDVD.DE':  "iShares S&P 500 Financials Sector UCITS ETF (TER 0,15%) — US-Banken und -Versicherungen: JPMorgan, Berkshire Hathaway, Goldman Sachs. Zinsabhängig.",
         'SXRV.DE':  "iShares S&P 500 Communication Sector UCITS ETF (TER 0,15%) — Alphabet, Meta, Netflix, Disney. Kombination aus Wachstum und Dividende.",
@@ -14963,6 +14972,7 @@ if st.session_state.get("show_etf_analyzer"):
         ("EQQQ.DE","Invesco NASDAQ-100","IE0032895942","A0YEDL",0.30,"USA","Thes",10.0),
         ("CSNDX.DE","iShares Nasdaq-100","IE00B53SZB19","A2H9QP",0.33,"USA","Thes",12.0),
         ("QDVE.DE","iShares S&P 500 IT Sector","IE00B3WJKG14","A142N1",0.15,"USA","Thes",4.0),
+        ("QDVB.DE","iShares MSCI USA Quality Factor","IE00BD1F4L37","A2AP34",0.20,"USA","Thes",1.5),
         ("IUIT.DE","iShares MSCI World IT","IE00BD45KH83","A2H9QP",0.40,"USA","Thes",3.0),
         # Europa — Thesaurierend
         ("LYPS.DE","Lyxor Core EURO STOXX 50","FR0007054358","LYX0RT",0.07,"Europa","Thes",7.0),
@@ -16562,6 +16572,15 @@ if st.session_state.get("show_etf_analyzer"):
             ("TXN","Texas Instruments",0.90),("IBM","IBM",0.85),("AMAT","Applied Materials",0.75),
             ("PANW","Palo Alto Networks",0.70),("LRCX","Lam Research",0.65),
             ("NOW","ServiceNow",0.60),("MU","Micron Technology",0.55),("KLAC","KLA Corp",0.45),
+        ]),
+        "QDVB.DE": ("iShares MSCI USA Quality Factor UCITS", [
+            ("NVDA","NVIDIA",9.50),("MSFT","Microsoft",8.80),("AAPL","Apple",7.50),
+            ("META","Meta",6.20),("AMZN","Amazon",5.20),("AVGO","Broadcom",3.60),
+            ("LLY","Eli Lilly",2.90),("V","Visa",2.30),("MA","Mastercard",2.10),
+            ("COST","Costco",2.00),("GOOGL","Alphabet A",1.85),("UNH","UnitedHealth",1.65),
+            ("HD","Home Depot",1.45),("CRM","Salesforce",1.20),("NOW","ServiceNow",1.05),
+            ("ISRG","Intuitive Surgical",0.95),("SPGI","S&P Global",0.88),
+            ("WMT","Walmart",0.80),("AMD","AMD",0.72),("ADBE","Adobe",0.65),
         ]),
     }
 
