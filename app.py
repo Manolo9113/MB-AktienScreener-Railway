@@ -19892,6 +19892,13 @@ elif _at == 7:
         "- - Gestrichelt":  "dash",
         "· · Gepunktet":    "dot",
     }
+    # Ticker-Wechsel löscht gespeicherte Linien — MUSS außerhalb von _draw_mode liegen,
+    # damit Wechsel auch bei ausgeschaltetem Modus wirksam ist.
+    if st.session_state.get("_draw_ticker") != ticker:
+        st.session_state["chart_hlines"] = []
+        st.session_state["chart_vlines"] = []
+        st.session_state["_draw_ticker"] = ticker
+
     if _draw_mode:
         with _dm_c2:
             _sc_sel = st.selectbox("Farbe", list(_SCOL),  key="chart_sc",
@@ -19907,11 +19914,7 @@ elif _at == 7:
         _sl_52l  = _sl_c3.checkbox("▼ 52W-Tief",  key="sl_52l")
 
         # ── Persistente H/V-Linien ──────────────────────────────────
-        if st.session_state.get("_draw_ticker") != ticker:
-            st.session_state["chart_hlines"] = []
-            st.session_state["chart_vlines"] = []
-            st.session_state["_draw_ticker"] = ticker
-
+        _MAX_LINES = 8
         _hl_c1, _hl_c2, _hl_c3, _hl_c4 = st.columns([2.2, 0.7, 2.2, 0.7])
         with _hl_c1:
             _hp_val = st.number_input(
@@ -19919,8 +19922,9 @@ elif _at == 7:
                 label_visibility="collapsed", placeholder="— H-Linie: Preis eingeben")
         with _hl_c2:
             if st.button("＋ H", key="btn_add_h", use_container_width=True):
-                if _hp_val != 0.0:
-                    st.session_state.setdefault("chart_hlines", []).append(
+                _hls_now = st.session_state.setdefault("chart_hlines", [])
+                if _hp_val is not None and len(_hls_now) < _MAX_LINES:
+                    _hls_now.append(
                         {"y": float(_hp_val), "color": _shape_hex, "dash": _shape_dash})
                     st.rerun()
         with _hl_c3:
@@ -19928,9 +19932,10 @@ elif _at == 7:
                 "V-Linie", value="today", key="vline_d", label_visibility="collapsed")
         with _hl_c4:
             if st.button("＋ V", key="btn_add_v", use_container_width=True):
-                st.session_state.setdefault("chart_vlines", []).append(
-                    {"x": str(_vd_val), "color": _shape_hex})
-                st.rerun()
+                _vls_now = st.session_state.setdefault("chart_vlines", [])
+                if len(_vls_now) < _MAX_LINES:
+                    _vls_now.append({"x": str(_vd_val), "color": _shape_hex})
+                    st.rerun()
 
         _stored_h = st.session_state.get("chart_hlines", [])
         _stored_v = st.session_state.get("chart_vlines", [])
@@ -19954,6 +19959,20 @@ elif _at == 7:
     else:
         _shape_hex, _shape_fill, _shape_dash = "#00e5ff", "rgba(0,229,255,0.07)", "solid"
         _sl_curr = _sl_52h = _sl_52l = False
+
+    # Wenn draw_mode AUS aber Linien vorhanden → kompakter Lösch-Button anzeigen
+    if not _draw_mode:
+        _off_h = st.session_state.get("chart_hlines", [])
+        _off_v = st.session_state.get("chart_vlines", [])
+        if _off_h or _off_v:
+            _oc1, _oc2 = st.columns([5, 1])
+            with _oc1:
+                st.caption(f"📌 {len(_off_h)} H-Linie(n) + {len(_off_v)} V-Linie(n) gespeichert")
+            with _oc2:
+                if st.button("🗑 Löschen", key="btn_clr_off", use_container_width=True):
+                    st.session_state["chart_hlines"] = []
+                    st.session_state["chart_vlines"] = []
+                    st.rerun()
 
     if chart_mode == "Wöchentlich (2J)":
         chart_data = hist_weekly.copy()
