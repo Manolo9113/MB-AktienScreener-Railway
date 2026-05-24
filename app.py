@@ -9447,7 +9447,7 @@ elif st.session_state.get("show_screener"):
             _pay_max = st.slider("Payout Ratio max (%)", 10, 110, int(_f.get("payout_max", 90)), 5, key="scr_pay_max",
                                  help="Dividende ÷ Gewinn. <60% gilt als nachhaltig. >80% Risiko einer Kürzung. REITs zahlen strukturbedingt oft >90%. 110 = kein Filter.")
             _mos_min = st.slider("MoS Graham min (%)", -100, 100, int(_f.get("mos_min", -100)), 5, key="scr_mos_min",
-                                 help="Sicherheitsmarge zum Graham-Wert (√(22,5 × KGV × KBV)). 0 = Kurs unter Graham-Wert (unterbewertet). -100 = kein Filter.")
+                                 help="Sicherheitsmarge zum Graham-Wert (√(22,5 × EPS × Buchwert/Aktie)). 0 = Kurs unter Graham-Wert (unterbewertet). -100 = kein Filter.")
         with _fd2:
             _qual_min = st.slider("Quality Score min", 0, 100, int(_f.get("quality_min", 20)), 5, key="scr_qual_min",
                                   help="Composite Score (0–100) aus Bruttomarge, FCF-Yield, ROE, Umsatzwachstum und Verschuldung. ≥50 = überdurchschnittlich, ≥70 = Top-Qualität.")
@@ -9544,7 +9544,7 @@ elif st.session_state.get("show_screener"):
     _sort_map = {
         "Quality Score ↓":    (lambda r: r["quality"],                   True),
         "MoS-Q-Score ↓":      (lambda r: r.get("mos_q_score", 0),        True),
-        "MoS Graham ↓":       (lambda r: r.get("mos_graham") or -999,    True),
+        "MoS Graham ↓":       (lambda r: r["mos_graham"] if r.get("mos_graham") is not None else -999,    True),
         "Umsatzwachstum ↓":   (lambda r: r["rev_growth"],                True),
         "Rule of 40 ↓":       (lambda r: r.get("r40", -99),              True),
         "Bruttomarge ↓":      (lambda r: r["gross_margin"],               True),
@@ -10075,7 +10075,7 @@ elif st.session_state.get("show_stocks"):
             "Aktien aus dem Qualitäts-Universum mit dem <b>höchsten Analystenupside</b> — gefiltert nach "
             "<b>Quality Score ≥ 45</b> und <b>Marktkapitalisierung ≥ 5 Mrd. $</b>. "
             "Ranking nach kombiniertem <b>MoS-Q-Score</b> (60 % Qualität + 40 % Bewertungsabschlag zum Graham-Wert). "
-            "Zusätzlich: Sicherheitsmarge zum Graham-Wert (√(22,5 × KGV × KBV)) als fundamentale Komponente.</div>",
+            "Zusätzlich: Sicherheitsmarge zum Graham-Wert (√(22,5 × EPS × Buchwert/Aktie)) als fundamentale Komponente.</div>",
             unsafe_allow_html=True)
         with st.spinner("Lade Aufholpotential-Kandidaten…"):
             _mos_universe = _load_screener_universe()
@@ -14224,7 +14224,7 @@ if st.session_state.get("show_etf_analyzer"):
         'IWDA.AS': 65_000_000_000,   # iShares Core MSCI World (Amsterdam)
         'SPY5.DE': 40_000_000_000,   # SPDR S&P 500
         'CSPX.L':  60_000_000_000,   # iShares Core S&P 500 (LSE)
-        'EQQQ.DE': 22_000_000_000,   # iShares Nasdaq-100
+        'EQQQ.DE': 22_000_000_000,   # Invesco Nasdaq-100
         'VWCE.DE': 20_000_000_000,   # Vanguard FTSE All-World (Acc)
         'VWRL.L':  18_000_000_000,   # Vanguard FTSE All-World (GBP)
         'IS3N.DE': 14_000_000_000,   # iShares Core MSCI EM IMI
@@ -14518,7 +14518,7 @@ if st.session_state.get("show_etf_analyzer"):
         'CSPX.L':   "iShares Core S&P 500 UCITS ETF in USD (LSE). Physische Replikation des S&P 500 mit über 500 US-Großunternehmen. Thesaurierend.",
         'VUSA.L':   "Vanguard S&P 500 UCITS ETF in USD (LSE). Physische Vollreplikation, thesaurierend. TER 0,07%.",
         # ── Nasdaq-100 ───────────────────────────────────────────────────────
-        'EQQQ.DE':  "iShares Nasdaq-100 UCITS ETF — bildet die 100 größten Nicht-Finanzwerte des Nasdaq ab. ~55% IT-Sektor-Konzentration. Physische Replikation, thesaurierend.",
+        'EQQQ.DE':  "Invesco NASDAQ-100 UCITS ETF — bildet die 100 größten Nicht-Finanzwerte des Nasdaq ab. ~55% IT-Sektor-Konzentration. Physische Replikation, thesaurierend.",
         'CNDX.L':   "iShares Nasdaq-100 UCITS ETF in USD (LSE). Physische Replikation der 100 größten Nasdaq-Unternehmen. Starke Technologieausrichtung mit Apple, Microsoft, NVIDIA an der Spitze.",
         # ── Schwellenländer ───────────────────────────────────────────────────
         'IS3N.DE':  "iShares Core MSCI Emerging Markets IMI UCITS ETF mit >1.400 Titeln aus Schwellenländern. China ~30%, Indien ~18%, Taiwan ~17%. Physische Replikation.",
@@ -14841,11 +14841,11 @@ if st.session_state.get("show_etf_analyzer"):
         ('SXR2.DE', 'iShares S&P 500',      'IE0031442068', '622391',  '#00b347', 'iS'),
         ('IS3N.DE', 'iShares MSCI EM',      'IE00B4L5YC18', 'A0HGWC',  '#00b347', 'iS'),
         ('XDWD.DE', 'Xtrackers World',      'IE00BJ0KDQ92', 'DBX1MW',  '#1a6aff', 'Xt'),
-        ('EQQQ.DE', 'iShares NASDAQ-100',   'IE0032895942', 'A0YEDL',  '#00b347', 'iS'),
+        ('EQQQ.DE', 'Invesco NASDAQ-100',   'IE0032895942', 'A0YEDL',  '#7b2cf2', 'IV'),
         ('EXS1.DE', 'iShares DAX',          'DE0005933931', '593393',  '#00b347', 'iS'),
         ('LCUW.DE', 'Amundi MSCI World',    'LU1781541179', 'ETF127',  '#ff6600', 'AM'),
         ('QUS5.DE', 'SPDR Quality Arist.',  'IE000FJJZA01', 'A40UMR',  '#ac3b61', 'SS'),
-        ('QDVE.DE', 'iShares S&P 500 IT',  'IE00B3WJKG14', 'A142N1',  '#00b347', 'iS'),
+        ('QDVE.DE', 'iShares S&P 500 IT',  'IE00B3WJKG14', 'A142N1',  '#0077cc', 'iS'),
     ]
 
     # ── Header ───────────────────────────────────────────────────────────
@@ -16314,8 +16314,10 @@ if st.session_state.get("show_etf_analyzer"):
     _f1_thes_gross = [_f1_betrag * (1 + _f1_r) ** y for y in range(_f1_jahre + 1)]
     _f1_thes_net   = []
     for _y, _v in enumerate(_f1_thes_gross):
-        _gain = max(0, _v - _f1_betrag)
-        _tax  = _gain * _f1_eff_satz
+        _gain     = max(0, _v - _f1_betrag)
+        _taxable  = _gain * (1 - _f1_teilfrei)          # Teilfreistellung 30 %
+        _after_p  = max(0.0, _taxable - _f1_pausch)     # Sparerpauschbetrag im Verkaufsjahr
+        _tax      = _after_p * _f1_steuer_satz
         _f1_thes_net.append(_v - _tax)
 
     # Ausschüttend: jährliche Dividendenbesteuerung
@@ -19753,7 +19755,7 @@ elif _at == 4:
         _bw_graham = (round(price * (22.5 / (trailing_pe * _bw_pb)) ** 0.5, 2)
                       if (trailing_pe and trailing_pe > 0 and _bw_pb and _bw_pb > 0 and price)
                       else None)
-        _bw_mos_g  = round((_bw_graham / price - 1) * 100, 1) if (_bw_graham and price) else None
+        _bw_mos_g  = round((_bw_graham / price - 1) * 100, 1) if (_bw_graham is not None and price) else None
         _bw_qs     = _sc_score(yf_info)
         _bw_mos_q  = round(_bw_qs * 0.6 + max(0.0, min(100.0, (_bw_mos_g if _bw_mos_g is not None else -50.0) + 50.0)) * 0.4)
         _bw_aup    = round((target_mean / price - 1) * 100, 1) if (target_mean and price) else None
@@ -19761,7 +19763,7 @@ elif _at == 4:
         st.markdown(
             f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
             f"padding:12px 16px;margin-bottom:14px;color:{_C_TEXT_MUTED};font-size:0.80rem;line-height:1.6;'>"
-            f"Der <b style='color:{_C_TEXT_PRIMARY}'>Graham-Wert</b> = √(22,5 × KGV × KBV) — "
+            f"Der <b style='color:{_C_TEXT_PRIMARY}'>Graham-Wert</b> = √(22,5 × EPS × Buchwert/Aktie) — "
             f"der Preis, zu dem eine Aktie als klassisch fair bewertet gilt. "
             f"Der <b style='color:{_C_TEXT_PRIMARY}'>Quality Score</b> (0–100) kombiniert Bruttomarge, FCF-Yield, ROE, "
             f"Wachstum und Verschuldung. Der <b style='color:{_C_TEXT_PRIMARY}'>MoS-Q-Score</b> verbindet "
