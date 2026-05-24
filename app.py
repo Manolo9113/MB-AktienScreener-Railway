@@ -20047,8 +20047,7 @@ elif _at == 7:
 
         # ── Fibonacci ──────────────────────────────────────────────────
         if show_fib:
-            _fib_cutoff = pd.Timestamp.today().normalize() - pd.DateOffset(years=1)
-            _fib_view   = chart_data.loc[chart_data.index >= _fib_cutoff]
+            _fib_view = chart_data.iloc[-min(252, len(chart_data)):]
             if _fib_view.empty:
                 _fib_view = chart_data
             _fib_high = float(_fib_view["High"].max())
@@ -20280,7 +20279,7 @@ elif _at == 7:
             </div>""", unsafe_allow_html=True)
 
         if show_fib:
-            _fib_view_i = chart_data.loc[chart_data.index >= pd.Timestamp.today().normalize() - pd.DateOffset(years=1)]
+            _fib_view_i = chart_data.iloc[-min(252, len(chart_data)):]
             if _fib_view_i.empty:
                 _fib_view_i = chart_data
             _fib_high_v = float(_fib_view_i["High"].max())
@@ -20383,15 +20382,27 @@ elif _at == 7:
 
             _cka_sys = (
                 "Du bist ein erfahrener technischer Analyst. Analysiere die folgenden Indikator-Daten "
-                "einer Aktie und gib eine präzise, strukturierte technische Einschätzung auf Deutsch. "
-                "Identifiziere: Trendrichtung, wichtige Unterstützungs- und Widerstandszonen, "
-                "Überkauft-/Überverkauft-Signale, mögliche Entry-/Exit-Punkte und eine kurze Gesamtbewertung "
-                "(Bullisch / Neutral / Bärisch). Halte dich kurz und konkret — maximal 250 Wörter."
+                "einer Aktie und erstelle eine vollständige, professionelle technische Analyse auf Deutsch. "
+                "Strukturiere die Antwort in diese Abschnitte:\n\n"
+                "**1. Trendanalyse:** Kurzfristiger (20T), mittelfristiger (50T) und langfristiger (200T) Trend. "
+                "Trendstärke und ob der Trend intakt ist.\n\n"
+                "**2. Unterstützung & Widerstand:** Benenne 2–3 konkrete, wichtige Preisniveaus als "
+                "Unterstützung und 2–3 als Widerstand. Nutze dabei EMAs, Fibonacci-Levels und "
+                "markante Hochs/Tiefs aus den gelieferten Daten.\n\n"
+                "**3. Indikatorsignale:** Werte alle angegebenen Indikatoren (RSI, MACD, Bollinger, Fibonacci) "
+                "einzeln aus. Was signalisiert jeder Indikator — bullisch, neutral oder bärisch?\n\n"
+                "**4. Chartmuster & Momentum:** Erkenne mögliche Chartmuster (z.B. Flagge, Dreieck, "
+                "Doppelboden, Schulter-Kopf-Schulter) und beurteile das aktuelle Momentum.\n\n"
+                "**5. Einstiegspunkte & Stop-Loss:** Nenne konkrete Einstiegsniveaus (aggressiv / "
+                "konservativ), einen sinnvollen Stop-Loss und ein kurzfristiges technisches Kursziel.\n\n"
+                "**6. Gesamtbewertung:** Klares Fazit — Bullisch / Neutral / Bärisch — mit einer "
+                "Begründung in 2–3 Sätzen.\n\n"
+                "Verwende konkrete Kurswerte aus den Daten. Antworte präzise und professionell."
             )
             _cka_usr = "\n".join(_cka_lines)
 
             with st.spinner("Gemini analysiert Chart-Indikatoren…"):
-                _cka_text, _cka_provider = call_ki_api(_cka_sys, _cka_usr, GEMINI_API_KEY, max_tokens=800)
+                _cka_text, _cka_provider = call_ki_api(_cka_sys, _cka_usr, GEMINI_API_KEY, max_tokens=2000)
                 st.session_state["chart_ki_analysis"] = _cka_text
                 st.session_state["chart_ki_provider"] = _cka_provider
 
@@ -20401,13 +20412,13 @@ elif _at == 7:
             if _cka_out.startswith("⚠️"):
                 st.warning(_cka_out)
             else:
-                st.markdown(f"""
-                <div class="insight-box" style="margin-top:10px;">
-                    <div style="color:#a78bfa;font-size:0.9rem;font-weight:700;margin-bottom:8px;">
-                        🤖 KI-Chart-Analyse · {company_name} · {_cka_mdl}
-                    </div>
-                    {_cka_out.replace(chr(10), '<br>')}
-                </div>""", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div class='insight-box' style='margin-top:10px;'>"
+                    f"<div style='color:#a78bfa;font-size:0.9rem;font-weight:700;margin-bottom:8px;'>"
+                    f"🤖 KI-Chart-Analyse · {_he(company_name)} · {_he(_cka_mdl)}"
+                    f"</div></div>",
+                    unsafe_allow_html=True)
+                st.markdown(_cka_out)
 
 # ==================== TAB 6: INSIDER & PEERS ====================
 elif _at == 8:
