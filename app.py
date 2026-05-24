@@ -17010,19 +17010,32 @@ earnings_date_str = ""
 earnings_days_until = None
 try:
     from datetime import datetime, date as _date
+    _today = _date.today()
     if isinstance(earnings_ts, (int, float)) and earnings_ts > 0:
         _edt = datetime.fromtimestamp(earnings_ts).date()
-        earnings_date_str = _edt.strftime("%d.%m.%Y")
-        _days = (_edt - _date.today()).days
-        if 0 <= _days <= 90:
-            earnings_days_until = _days
+        _days = (_edt - _today).days
+        if _days >= 0:
+            earnings_date_str = _edt.strftime("%d.%m.%Y")
+            if _days <= 90:
+                earnings_days_until = _days
     elif isinstance(earnings_ts, list) and earnings_ts:
-        _edt = pd.Timestamp(earnings_ts[0]).date()
-        earnings_date_str = _edt.strftime("%d.%m.%Y")
-        _days = (_edt - _date.today()).days
-        if 0 <= _days <= 90:
-            earnings_days_until = _days
-except:
+        # Pick the earliest future date from the list (yfinance may return past dates first)
+        _future = []
+        for _ts in earnings_ts:
+            try:
+                _d = pd.Timestamp(_ts).date()
+                _dd = (_d - _today).days
+                if _dd >= 0:
+                    _future.append((_dd, _d))
+            except Exception:
+                pass
+        if _future:
+            _future.sort()
+            _days, _edt = _future[0]
+            earnings_date_str = _edt.strftime("%d.%m.%Y")
+            if _days <= 90:
+                earnings_days_until = _days
+except Exception:
     pass
 
 peg_ratio = next(
