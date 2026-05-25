@@ -16,7 +16,7 @@ import io
 st.set_page_config(
     page_title="StocksMB",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ==================== CSS ====================
@@ -9621,53 +9621,54 @@ elif st.session_state.get("show_stocks"):
     st.markdown("<div class='section-header'>💡 Aktienideen & Screener</div>", unsafe_allow_html=True)
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
+    # ── Shared card helpers (defined here so all expanders can use them) ──
+    def _badge(label, value, suffix="", fmt=".0f", color="#64b5f6"):
+        if value is None or value == 0:
+            return ""
+        try:
+            val_str = f"{value:{fmt}}{suffix}"
+        except Exception:
+            val_str = f"{value}{suffix}"
+        return (f"<span style='background:rgba(100,181,246,0.1);color:{color};"
+                f"border-radius:5px;padding:2px 7px;font-size:0.71rem;"
+                f"font-weight:600;margin-right:4px;white-space:nowrap;'>"
+                f"{label}&thinsp;{val_str}</span>")
+
+    def _trend_bar(pos, accent):
+        pos = max(0, min(100, pos or 50))
+        bar_clr = accent if pos > 62 else _C_NEUTRAL if pos > 35 else _C_NEGATIVE
+        return (f"<div style='margin-top:7px;'>"
+                f"<div style='display:flex;justify-content:space-between;"
+                f"font-size:0.63rem;color:{_C_TEXT_MUTED};margin-bottom:2px;'>"
+                f"<span>52W-Tief</span><span style='color:{_C_TEXT_MUTED};'>{pos:.0f}%</span>"
+                f"<span>52W-Hoch</span></div>"
+                f"<div style='background:{_C_BORDER};border-radius:4px;height:4px;'>"
+                f"<div style='background:{bar_clr};width:{pos}%;height:4px;"
+                f"border-radius:4px;transition:width 0.4s;'></div></div></div>")
+
+    def _pick_card(s, accent, badges_html, extra_html=""):
+        price_str = f"${s['price']:,.2f}" if s['price'] else "—"
+        return f"""
+        <div style='background:{_C_CARD_BG};
+             border:1px solid {_C_BORDER};border-left:3px solid {accent};
+             border-radius:12px;padding:13px 15px;margin-bottom:10px;'>
+          <div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>
+            <span style='color:{accent};font-size:1.02rem;font-weight:800;
+                  letter-spacing:0.5px;'>{s["ticker"]}</span>
+            <span style='color:{_C_TEXT_SEC};font-size:0.82rem;font-weight:600;'>{price_str}</span>
+          </div>
+          <div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-bottom:5px;'>{s["name"]}</div>
+          <div style='color:{_C_TEXT_MUTED2};font-size:0.78rem;line-height:1.45;margin-bottom:8px;'>{s["desc"]}</div>
+          <div style='line-height:2;'>{badges_html}</div>
+          {extra_html}
+          {_trend_bar(s["w52_pos"], accent)}
+        </div>"""
+
     # ── Aktienempfehlungen Accordion ──
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     with st.expander("💡  Aktienideen — Growth · Value · Dividende · Overhyped  (täglich aktualisiert)", expanded=True):
         with st.spinner("Lade Aktienempfehlungen…"):
             _gp, _vp, _dp, _hp = load_stock_picks()
-
-        def _badge(label, value, suffix="", fmt=".0f", color="#64b5f6"):
-            if value is None or value == 0:
-                return ""
-            try:
-                val_str = f"{value:{fmt}}{suffix}"
-            except Exception:
-                val_str = f"{value}{suffix}"
-            return (f"<span style='background:rgba(100,181,246,0.1);color:{color};"
-                    f"border-radius:5px;padding:2px 7px;font-size:0.71rem;"
-                    f"font-weight:600;margin-right:4px;white-space:nowrap;'>"
-                    f"{label}&thinsp;{val_str}</span>")
-
-        def _trend_bar(pos, accent):
-            pos = max(0, min(100, pos or 50))
-            bar_clr = accent if pos > 62 else _C_NEUTRAL if pos > 35 else _C_NEGATIVE
-            return (f"<div style='margin-top:7px;'>"
-                    f"<div style='display:flex;justify-content:space-between;"
-                    f"font-size:0.63rem;color:{_C_TEXT_MUTED};margin-bottom:2px;'>"
-                    f"<span>52W-Tief</span><span style='color:{_C_TEXT_MUTED};'>{pos:.0f}%</span>"
-                    f"<span>52W-Hoch</span></div>"
-                    f"<div style='background:{_C_BORDER};border-radius:4px;height:4px;'>"
-                    f"<div style='background:{bar_clr};width:{pos}%;height:4px;"
-                    f"border-radius:4px;transition:width 0.4s;'></div></div></div>")
-
-        def _pick_card(s, accent, badges_html, extra_html=""):
-            price_str = f"${s['price']:,.2f}" if s['price'] else "—"
-            return f"""
-            <div style='background:{_C_CARD_BG};
-                 border:1px solid {_C_BORDER};border-left:3px solid {accent};
-                 border-radius:12px;padding:13px 15px;margin-bottom:10px;'>
-              <div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>
-                <span style='color:{accent};font-size:1.02rem;font-weight:800;
-                      letter-spacing:0.5px;'>{s["ticker"]}</span>
-                <span style='color:{_C_TEXT_SEC};font-size:0.82rem;font-weight:600;'>{price_str}</span>
-              </div>
-              <div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-bottom:5px;'>{s["name"]}</div>
-              <div style='color:{_C_TEXT_MUTED2};font-size:0.78rem;line-height:1.45;margin-bottom:8px;'>{s["desc"]}</div>
-              <div style='line-height:2;'>{badges_html}</div>
-              {extra_html}
-              {_trend_bar(s["w52_pos"], accent)}
-            </div>"""
 
         # ── Zeile 1: Growth | Value ──────────────────────────────────────
         _col_g, _col_v = st.columns(2)
