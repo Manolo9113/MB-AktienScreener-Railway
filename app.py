@@ -4926,6 +4926,8 @@ if "show_wissen" not in st.session_state:
     st.session_state["show_wissen"] = False
 if "show_crypto" not in st.session_state:
     st.session_state["show_crypto"] = False
+if "show_rohstoffe" not in st.session_state:
+    st.session_state["show_rohstoffe"] = False
 if "etf_ticker_input" not in st.session_state:
     st.session_state["etf_ticker_input"] = ""
 if "portfolio_df" not in st.session_state:
@@ -6286,47 +6288,52 @@ with st.sidebar:
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     if not st.session_state["show_landing"] and st.button("🏠 Startseite", use_container_width=True):
-        for _k in ("show_portfolio","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto"):
+        for _k in ("show_portfolio","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe"):
             st.session_state[_k] = False
         st.session_state["show_landing"] = True
         st.rerun()
     if not st.session_state.get("show_market_overview") and st.button("🌍 Marktüberblick", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener","show_wissen","show_crypto"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe"):
             st.session_state[_k] = False
         st.session_state["show_market_overview"] = True
         st.rerun()
     if not st.session_state.get("show_stocks") and st.button("💡 Aktienideen", use_container_width=True):
-        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto"):
+        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe"):
             st.session_state[_k] = False
         st.session_state["show_stocks"] = True
         st.rerun()
     if not st.session_state.get("show_screener") and st.button("🔬 Aktien-Screener", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_wissen","show_crypto"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_wissen","show_crypto","show_rohstoffe"):
             st.session_state[_k] = False
         st.session_state["show_screener"] = True
         st.rerun()
     if not st.session_state.get("show_compare") and st.button("⚖️ Aktien-Vergleich", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener","show_wissen","show_crypto"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener","show_wissen","show_crypto","show_rohstoffe"):
             st.session_state[_k] = False
         st.session_state["show_compare"] = True
         st.rerun()
     if st.button("🔎 ETF-Analyzer", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener","show_wissen","show_crypto"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe"):
             st.session_state[_k] = False
         st.session_state["show_etf_analyzer"] = True
         st.rerun()
     if not st.session_state.get("show_wissen") and st.button("📚 Wissenswertes", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_crypto"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_crypto","show_rohstoffe"):
             st.session_state[_k] = False
         st.session_state["show_wissen"] = True
         st.rerun()
     if not st.session_state.get("show_crypto") and st.button("₿ Krypto", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_rohstoffe"):
             st.session_state[_k] = False
         st.session_state["show_crypto"] = True
         st.rerun()
+    if not st.session_state.get("show_rohstoffe") and st.button("⛏️ Rohstoffe", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto"):
+            st.session_state[_k] = False
+        st.session_state["show_rohstoffe"] = True
+        st.rerun()
     if st.button("📁 Mein Portfolio", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto"):
+        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe"):
             st.session_state[_k] = False
         st.session_state["show_portfolio"] = True
         st.rerun()
@@ -6475,7 +6482,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
     # ── Schnellnavigation ───────────────────────────────────────────
     st.markdown("<div class='section-header'>⚡ Zur Übersicht navigieren</div>", unsafe_allow_html=True)
     _nav_c1, _nav_c2 = st.columns(2)
-    _all_pages = ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto")
+    _all_pages = ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe")
     with _nav_c1:
         if st.button("🌍 Marktüberblick", use_container_width=True, type="primary", key="land_nav_markt"):
             for _k in _all_pages: st.session_state[_k] = False
@@ -6504,6 +6511,12 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             st.session_state["show_crypto"] = True
             st.rerun()
     with _nav_c6:
+        if st.button("⛏️ Rohstoffe & Edelmetalle", use_container_width=True, key="land_nav_rohstoffe"):
+            for _k in _all_pages: st.session_state[_k] = False
+            st.session_state["show_rohstoffe"] = True
+            st.rerun()
+    _nav_c7, _nav_c8 = st.columns(2)
+    with _nav_c7:
         if st.button("🔬 Aktien-Screener", use_container_width=True, key="land_nav_scr"):
             for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_screener"] = True
@@ -10710,7 +10723,7 @@ elif st.session_state.get("show_stocks"):
 
     if st.button("🔬 Zum Aktien-Screener →", use_container_width=False, key="aktienideen_to_screener"):
         for _k in ("show_landing", "show_stocks", "show_portfolio", "show_etf_analyzer",
-                   "show_market_overview", "show_compare", "show_wissen", "show_crypto"):
+                   "show_market_overview", "show_compare", "show_wissen", "show_crypto","show_rohstoffe"):
             st.session_state[_k] = False
         st.session_state["show_screener"] = True
         st.rerun()
@@ -10719,7 +10732,7 @@ elif st.session_state.get("show_stocks"):
     st.stop()
 
 # ==================== KRYPTO PAGE ====================
-elif st.session_state.get("show_crypto"):
+elif st.session_state.get("show_crypto","show_rohstoffe"):
     st.markdown("<div class='section-header'>₿ Krypto-Markt</div>", unsafe_allow_html=True)
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -11437,6 +11450,611 @@ elif st.session_state.get("show_crypto"):
         "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:12px;'>"
         "⚠️ Keine Anlageberatung · Krypto ist hochspekulativ · Kurse via Yahoo Finance (5-Min-Cache) · "
         "Steuerinfo vereinfacht — Steuerberater konsultieren</div>",
+        unsafe_allow_html=True)
+
+    st.stop()
+
+# ==================== ROHSTOFFE PAGE ====================
+elif st.session_state.get("show_rohstoffe"):
+    st.markdown("<div class='section-header'>⛏️ Rohstoffe & Edelmetalle</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    _COMMOD_META = [
+        # (ticker, name, color, unit, category, description)
+        ("GC=F",  "Gold",             "#ffd700", "$/oz",    "Edelmetall",
+         "Ultimativer sicherer Hafen · Zentralbanken kauften 2022–24 Rekordmengen · Inflationsschutz"),
+        ("SI=F",  "Silber",           "#a8a9ad", "$/oz",    "Edelmetall",
+         "Dual-Use: Investment + Industrie (Solar, Elektronik) · Gold/Silber-Ratio als Timing-Indikator"),
+        ("PL=F",  "Platin",           "#dee2e6", "$/oz",    "Edelmetall",
+         "Seltener als Gold · Hauptanwendung Autokatalysatoren · 75 % aus Südafrika"),
+        ("PA=F",  "Palladium",        "#cbd5e1", "$/oz",    "Edelmetall",
+         "Benzinkatalysatoren · Russland/Südafrika dominieren · E-Auto-Wandel langfristig belastend"),
+        ("HG=F",  "Kupfer",           "#b87333", "$/lbs",   "Industriemetall",
+         "'Dr. Copper' — Konjunkturfrühindikator · E-Mobilität & Energiewende treibt Nachfrage stark"),
+        ("ALI=F", "Aluminium",        "#7d8597", "$/mt",    "Industriemetall",
+         "Leichtmetall · Verpackung, Bau, Raumfahrt · Energieintensive Produktion (5 % globaler Strom)"),
+        ("CL=F",  "Öl (WTI)",         "#495057", "$/bbl",   "Energie",
+         "US-Referenzöl · OPEC+ & Fracking bestimmen Angebot · Nachfragepeak Mitte 2020er erwartet"),
+        ("BZ=F",  "Öl (Brent)",       "#6c757d", "$/bbl",   "Energie",
+         "Globaler Referenzpreis · Üblicherweise 2–5 $ über WTI · 65 % des Welthandels"),
+        ("NG=F",  "Erdgas",           "#4895ef", "$/mmBtu", "Energie",
+         "Stark saisonal (Winter) · US-LNG-Exporte transformieren globalen Markt · Übergangsenergie"),
+        ("URA",   "Uran (ETF)",       "#7678ed", "$/share", "Nische",
+         "Kernenergie-Renaissance · Global X Uranium ETF (URA) · Kasachstan/Kanada/Namibia dominieren"),
+        ("LIT",   "Lithium (ETF)",    "#00b4d8", "$/share", "Nische",
+         "Global X Lithium & Battery Tech ETF · E-Auto-Megatrend · Südamerika, Australien"),
+        ("REMX",  "Seltene Erden",    "#4caf50", "$/share", "Nische",
+         "VanEck Rare Earth ETF · China kontrolliert 60 % Produktion & 85 % Verarbeitung"),
+    ]
+
+    @st.cache_data(ttl=300, show_spinner=False)
+    def _load_commod_prices(ticker_tuple: tuple) -> list:
+        results = []
+        for tkr in ticker_tuple:
+            try:
+                info  = yf.Ticker(tkr).info
+                price = (info.get("regularMarketPrice") or info.get("currentPrice")
+                         or info.get("bid") or 0)
+                if not price:
+                    results.append({"ticker": tkr, "price": 0, "chg": 0,
+                                     "vol": 0, "w52p": 50, "h52": 0, "l52": 0})
+                    continue
+                chg   = info.get("regularMarketChangePercent") or 0
+                vol   = info.get("regularMarketVolume") or info.get("volume24Hr") or 0
+                h52   = info.get("fiftyTwoWeekHigh") or price
+                l52   = info.get("fiftyTwoWeekLow")  or price
+                w52p  = ((price - l52) / (h52 - l52) * 100) if h52 > l52 else 50
+                results.append({"ticker": tkr, "price": price, "chg": chg,
+                                 "vol": vol, "w52p": w52p, "h52": h52, "l52": l52})
+            except Exception:
+                results.append({"ticker": tkr, "price": 0, "chg": 0,
+                                 "vol": 0, "w52p": 50, "h52": 0, "l52": 0})
+        return results
+
+    def _fmt_cp(p):
+        if not p:          return "—"
+        if p >= 10_000:    return f"${p:,.0f}"
+        if p >= 100:       return f"${p:,.1f}"
+        if p >= 1:         return f"${p:,.2f}"
+        return f"${p:,.3f}"
+
+    _commod_tickers = tuple(r[0] for r in _COMMOD_META)
+    with st.spinner("Lade Rohstoff-Preise…"):
+        _cprices_r = _load_commod_prices(_commod_tickers)
+    _cpmap_r = {r["ticker"]: r for r in _cprices_r}
+
+    # ── Stats Bar ─────────────────────────────────────────────────────────
+    _gold_p  = _cpmap_r.get("GC=F", {}).get("price", 0)
+    _silv_p  = _cpmap_r.get("SI=F", {}).get("price", 0)
+    _oil_p   = _cpmap_r.get("CL=F", {}).get("price", 0)
+    _copp_p  = _cpmap_r.get("HG=F", {}).get("price", 0)
+    _gs_ratio = (_gold_p / _silv_p) if _silv_p else 0
+
+    _rcstat = st.columns(4)
+    for _rsc, (_lbl, _val, _clr) in zip(_rcstat, [
+        ("Gold ($/oz)",        f"${_gold_p:,.0f}"  if _gold_p  else "—", "#ffd700"),
+        ("Silber ($/oz)",      f"${_silv_p:,.2f}"  if _silv_p  else "—", "#a8a9ad"),
+        ("WTI Öl ($/bbl)",     f"${_oil_p:,.2f}"   if _oil_p   else "—", "#4895ef"),
+        ("Gold/Silber-Ratio",  f"{_gs_ratio:.1f}" if _gs_ratio else "—",  "#f7c59f"),
+    ]):
+        _rsc.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+            f"border-radius:10px;padding:10px 14px;text-align:center;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:3px;'>{_lbl}</div>"
+            f"<div style='color:{_clr};font-size:1.1rem;font-weight:700;'>{_val}</div>"
+            f"</div>", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+    # ── Preis-Karten Grid ─────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📊 Aktuelle Preise</div>", unsafe_allow_html=True)
+    _rcc = st.columns(3)
+    for _rci, (tkr, name, color, unit, cat, _) in enumerate(_COMMOD_META):
+        _rcp  = _cpmap_r.get(tkr, {})
+        _rp   = _rcp.get("price", 0)
+        _rchg = _rcp.get("chg", 0)
+        _rw52 = _rcp.get("w52p", 50)
+        _rchg_clr = _C_POSITIVE if _rchg >= 0 else _C_NEGATIVE
+        with _rcc[_rci % 3]:
+            st.markdown(f"""
+            <div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};
+                 border-left:3px solid {color};border-radius:12px;
+                 padding:12px 14px;margin-bottom:10px;'>
+              <div style='display:flex;justify-content:space-between;align-items:baseline;'>
+                <span style='color:{color};font-size:0.9rem;font-weight:800;'>{name}</span>
+                <span style='color:{_rchg_clr};font-size:0.78rem;font-weight:700;'>{'+' if _rchg>=0 else ''}{_rchg:.2f}%</span>
+              </div>
+              <div style='color:{_C_TEXT_MUTED};font-size:0.65rem;margin-bottom:4px;'>{cat} · {unit}</div>
+              <div style='color:{_C_TEXT_PRIMARY};font-size:1.0rem;font-weight:700;margin-bottom:6px;'>{_fmt_cp(_rp)}</div>
+              <div style='background:{_C_BORDER};border-radius:3px;height:3px;'>
+                <div style='background:{color};width:{_rw52:.0f}%;height:3px;border-radius:3px;'></div>
+              </div>
+              <div style='display:flex;justify-content:space-between;font-size:0.6rem;color:{_C_TEXT_MUTED};margin-top:2px;'>
+                <span>52W-Tief</span><span>{_rw52:.0f}%</span><span>52W-Hoch</span>
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    # ── Kurs-Chart ───────────────────────────────────────────────────────
+    with st.expander("📈 Preis-Chart — Historisch", expanded=False):
+        _rch1, _rch2 = st.columns([2, 1])
+        with _rch1:
+            _rcsel = st.selectbox(
+                "Rohstoff",
+                [r[0] for r in _COMMOD_META],
+                format_func=lambda t: (
+                    f"{next(r[1] for r in _COMMOD_META if r[0]==t)} "
+                    f"({next(r[3] for r in _COMMOD_META if r[0]==t)})"
+                ),
+                key="commod_chart_sel")
+        with _rch2:
+            _rcper = st.selectbox("Zeitraum", ["1mo","3mo","6mo","1y","2y","5y"],
+                                  index=2, key="commod_chart_per")
+
+        @st.cache_data(ttl=600, show_spinner=False)
+        def _load_commod_hist(tkr: str, period: str):
+            try:
+                df = yf.download(tkr, period=period, interval="1d",
+                                 auto_adjust=True, progress=False)
+                if df.empty:
+                    return None
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                return df[["Close"]].dropna()
+            except Exception:
+                return None
+
+        _rchdf = _load_commod_hist(_rcsel, _rcper)
+        if _rchdf is not None and not _rchdf.empty:
+            _rcc_color = next((r[2] for r in _COMMOD_META if r[0] == _rcsel), "#64b5f6")
+            _rcc_unit  = next((r[3] for r in _COMMOD_META if r[0] == _rcsel), "")
+            _rcc_name  = next((r[1] for r in _COMMOD_META if r[0] == _rcsel), _rcsel)
+            _rcs = float(_rchdf["Close"].iloc[0])
+            _rce = float(_rchdf["Close"].iloc[-1])
+            _rcpct = (_rce - _rcs) / _rcs * 100 if _rcs else 0.0
+            _rclc = _C_POSITIVE if _rcpct >= 0 else _C_NEGATIVE
+            _fig_rc = go.Figure()
+            _fig_rc.add_trace(go.Scatter(
+                x=_rchdf.index, y=_rchdf["Close"].squeeze(),
+                mode="lines", name=_rcc_name,
+                line=dict(color=_rclc, width=2),
+                fill="tozeroy",
+                fillcolor=f"rgba({int(_rclc[1:3],16)},{int(_rclc[3:5],16)},{int(_rclc[5:7],16)},0.07)",
+            ))
+            _fig_rc.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=0, r=0, t=28, b=0), height=280,
+                xaxis=dict(showgrid=False, color=_C_TEXT_MUTED, tickfont=dict(size=10)),
+                yaxis=dict(showgrid=True, gridcolor=_C_BORDER, color=_C_TEXT_MUTED,
+                           tickprefix="$", tickfont=dict(size=10)),
+                showlegend=False,
+            )
+            _fig_rc.add_annotation(
+                text=f"{'+' if _rcpct>=0 else ''}{_rcpct:.1f}% in {_rcper}",
+                xref="paper", yref="paper", x=0.01, y=0.97, showarrow=False,
+                font=dict(color=_rclc, size=13, family="Inter"),
+            )
+            st.plotly_chart(_fig_rc, use_container_width=True, config={"displayModeBar": False})
+            st.markdown(
+                f"<div style='color:{_C_TEXT_MUTED2};font-size:0.72rem;'>"
+                f"Daten: Yahoo Finance · Einheit: {_rcc_unit} · Ticker: {_rcsel}</div>",
+                unsafe_allow_html=True)
+        else:
+            st.info("Kursdaten konnten nicht geladen werden.")
+
+    # ── Kategorie-Expander ────────────────────────────────────────────────
+    _COMMOD_CATS = [
+        ("🥇 Edelmetalle — Sicherer Hafen & Werterhalt", [
+            ("GC=F", "Gold", "#ffd700",
+             "Das ultimative Wertaufbewahrungsmittel. Festes, knappes Angebot (~3.300t/Jahr). "
+             "Zentralbanken kauften 2022–24 Rekordmengen (>1.000t/Jahr) — größter Treiber des jüngsten Preisanstiegs. "
+             "Haupttreiber: Realzinsen (negativ = gut für Gold), USD-Stärke, Geopolitik. "
+             "Portfolio-Rolle: Absicherung gegen Währungsentwertung, Systemrisiken."),
+            ("SI=F", "Silber", "#a8a9ad",
+             "Dual-Use: ~55 % Industrieanwendung + ~45 % Investment/Schmuck. "
+             "Solar-Boom: Ein PV-Modul enthält ~18 g Silber → Photovoltaik 2024: >20 % der Silbernachfrage. "
+             "Gold/Silber-Ratio: Historisch ~50–70x. Bei >80x gilt Silber als günstig bewertet. "
+             "Volatiler als Gold, reagiert stärker auf Konjunktur und Industrienachfrage."),
+            ("PL=F", "Platin", "#dee2e6",
+             "Seltener als Gold — nur ~200t/Jahr gefördert weltweit. 75 % kommen aus Südafrika (Konzentrationsrisiko). "
+             "Hauptanwendung: Dieselkatalysatoren (39 %), Schmuck, Industrie, Brennstoffzellen (Wasserstoff). "
+             "Historisch über Goldpreis gehandelt — aktueller Discount ist historisch ungewöhnlich. "
+             "Wasserstoff-Wirtschaft könnte langfristig neue Nachfrage schaffen."),
+            ("PA=F", "Palladium", "#cbd5e1",
+             "Spezialist für Benzinmotoren-Katalysatoren (>80 % der Nachfrage). "
+             "Russland (~40 %) und Südafrika (~38 %) kontrollieren fast 80 % der Weltproduktion → Sanktionsrisiko. "
+             "E-Auto-Wachstum (BEVs brauchen keine Katalysatoren) ist strukturelles Risiko für die Nachfrage. "
+             "Markt ist extrem klein → hohe Preisvolatilität bei kleinen Mengenänderungen."),
+        ]),
+        ("🏭 Industriemetalle — Motor der Weltwirtschaft", [
+            ("HG=F", "Kupfer", "#b87333",
+             "'Dr. Copper' — der Rohstoff mit dem Doktortitel in Wirtschaft. Kupferpreis gilt als Echtzeit-Konjunkturindikator. "
+             "Strukturelles Defizit erwartet: E-Auto braucht 4× mehr Kupfer als Verbrenner (60–80 kg vs. 15 kg). "
+             "Offshore-Wind: 8–10 Tonnen Kupfer pro MW installierter Kapazität. "
+             "Neue Minen brauchen 10–20 Jahre bis zur Produktion — Angebotsseite kaum flexibel."),
+            ("ALI=F", "Aluminium", "#7d8597",
+             "Zweithäufigstes Metall der Erde, aber energieintensive Herstellung (5 % globaler Stromverbrauch). "
+             "Anwendungen: Verpackung (27 %), Transport (27 %), Bau (24 %), Maschinenbau (14 %). "
+             "Recycling sehr effizient: Nur 5 % der Primärenergie → starker Sekundärmarkt. "
+             "China produziert ~57 % der Weltproduktion → Energiekosten und chinesische Politik bestimmend."),
+        ]),
+        ("⚡ Energie-Rohstoffe — Fossile Brücken-Energieträger", [
+            ("CL=F", "Öl (WTI)", "#495057",
+             "West Texas Intermediate — leichtes, süßes US-Rohöl. Benchmark für US-Raffinerien. "
+             "OPEC+ (Saudi-Arabien, Russland, 23 Mitglieder) kontrolliert ~40 % der Weltproduktion. "
+             "US-Fracking hat USA zum weltgrößten Produzenten gemacht (~14 % global). "
+             "IEA: Nachfrage-Peak für Öl Mitte der 2020er Jahre erwartet — langfristig strukturell rückläufig."),
+            ("BZ=F", "Öl (Brent)", "#6c757d",
+             "Nordseeöl — globaler Referenzpreis. ~65 % des weltweiten Ölhandels auf Brent-Basis bepreist. "
+             "Üblicherweise 2–5 USD Aufschlag gegenüber WTI (schwereres, schwefeligeres Öl). "
+             "Geopolitik als Hauptrisiko: Naher Osten, Russland/Ukraine, Straße von Hormus. "
+             "Bedeutend für Heizöl, Diesel, Kerosin in Europa."),
+            ("NG=F", "Erdgas", "#4895ef",
+             "Henry Hub (US-Referenzpreis). Stark saisonal: Höchster Verbrauch Winter (Heizung) und Sommer (Kühlung). "
+             "USA 2023 zum weltgrößten LNG-Exporteur geworden — Europa-Lieferungen nach Russland-Embargo. "
+             "Übergangsenergie: CO₂-Emission nur ~50 % von Kohle bei Stromerzeugung. "
+             "Sehr volatile Preise durch Wetter, Speicherstände, LNG-Logistik."),
+        ]),
+        ("🔋 Batterie-Metalle & Seltene Erden — Rohstoffe der Energiewende", [
+            ("URA", "Uran ETF (URA)", "#7678ed",
+             "Kernenergie-Renaissance: IEA erwartet Verdoppelung der Kernkraft bis 2050 für Net-Zero. "
+             "COP28 (2023): 22 Länder erklären sich zur Verdreifachung der Kernenergie bis 2050. "
+             "Global X Uranium ETF (URA) investiert in Uran-Mining-Unternehmen (Cameco, Kazatomprom, NexGen). "
+             "Strukturelles Angebots-Defizit ab ~2025 erwartet: Minenproduktion < Reaktornachfrage."),
+            ("LIT", "Lithium ETF (LIT)", "#00b4d8",
+             "Global X Lithium & Battery Tech ETF: Mining-Unternehmen + Batteriehersteller (CATL, BYD, Albemarle). "
+             "Lithium-Nachfrage 2030: ~3× höher als 2023 (IEA-Szenario für Net-Zero). "
+             "Preiscrash 2023/24: LiCarbonat -80 % vom Hoch durch kurzfristiges Überangebot. "
+             "Langfristig strukturelles Defizit: Neue Minen brauchen 7–10 Jahre bis zur Produktion."),
+            ("REMX", "Seltene Erden ETF (REMX)", "#4caf50",
+             "VanEck Rare Earth/Strategic Metals ETF: Lynas (AUS), MP Materials (USA), China-Konzerne. "
+             "17 seltene Erdelemente unverzichtbar für: Permanentmagnete (E-Autos, Windräder), Elektronik, Katalysatoren. "
+             "China kontrolliert 60 % der Produktion und 85 % der Verarbeitung → geopolitisches Klumpenrisiko. "
+             "USA, Australien, Kanada investieren Milliarden in Alternativen — dauert Jahrzehnte."),
+        ]),
+    ]
+
+    for _rcat_title, _rcat_items in _COMMOD_CATS:
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        with st.expander(_rcat_title, expanded=False):
+            _rcat_c1, _rcat_c2 = st.columns(2)
+            for _rci2, (tkr, name, color, thesis) in enumerate(_rcat_items):
+                _rcp2 = _cpmap_r.get(tkr, {})
+                _rp2  = _rcp2.get("price", 0)
+                _rc2  = _rcp2.get("chg", 0)
+                _rcclr2 = _C_POSITIVE if _rc2 >= 0 else _C_NEGATIVE
+                _unit2  = next((r[3] for r in _COMMOD_META if r[0] == tkr), "")
+                _col_r  = _rcat_c1 if _rci2 % 2 == 0 else _rcat_c2
+                with _col_r:
+                    st.markdown(f"""
+                    <div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};
+                         border-left:3px solid {color};border-radius:12px;
+                         padding:13px 15px;margin-bottom:10px;'>
+                      <div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>
+                        <span style='color:{color};font-size:1.0rem;font-weight:800;'>{name}</span>
+                        <span style='color:{_rcclr2};font-size:0.78rem;font-weight:700;'>{'+' if _rc2>=0 else ''}{_rc2:.2f}%</span>
+                      </div>
+                      <div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-bottom:3px;'>{_unit2}
+                        {f"· {_fmt_cp(_rp2)}" if _rp2 else ""}</div>
+                      <div style='color:{_C_TEXT_MUTED2};font-size:0.77rem;line-height:1.5;'>{thesis}</div>
+                    </div>""", unsafe_allow_html=True)
+
+    # ── ETC/ETF Empfehlungen ─────────────────────────────────────────────
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    with st.expander("📦 ETC/ETF-Empfehlungen — Wie investieren?", expanded=False):
+
+        _etc_tabs = st.tabs(["🥇 Edelmetalle", "🏭 Industrie & Breit", "🔋 Nische & Themen"])
+
+        with _etc_tabs[0]:
+            st.markdown(
+                f"<div style='background:rgba(255,215,0,0.07);border:1px solid rgba(255,215,0,0.25);"
+                f"border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:0.78rem;"
+                f"color:{_C_TEXT_MUTED};line-height:1.7;'>"
+                f"<b style='color:#ffd700;'>💡 Wichtig für deutsche Anleger:</b> "
+                f"<b>Xetra-Gold</b> und <b>EUWAX Gold II</b> sind als 'sonstiges Wirtschaftsgut' klassifiziert "
+                f"→ Gewinne nach <b>12 Monaten Haltezeit steuerfrei</b> (BFH-Urteil 2022 bestätigt). "
+                f"Ausländische ETCs (iShares, WisdomTree etc.) unterliegen dagegen der "
+                f"<b>Abgeltungssteuer (25 % + Soli)</b>. Physische Goldlieferung bei deutschen ETCs möglich."
+                f"</div>", unsafe_allow_html=True)
+
+            def _etc_card(name, ticker, isin, wkn, ter, typ, anbieter, highlight, name_color=_C_ACCENT):
+                _tc = _C_POSITIVE if ter <= 0.20 else (_C_TEXT_MUTED if ter <= 0.35 else _C_NEGATIVE)
+                _isin_line = f"ISIN {isin} · WKN {wkn}" if isin != "—" else "→ justETF.com"
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:10px 13px;margin-bottom:7px;'>"
+                    f"<div style='display:flex;justify-content:space-between;align-items:baseline;'>"
+                    f"<span style='color:{name_color};font-size:0.82rem;font-weight:700;'>{name}</span>"
+                    f"<span style='color:{_tc};font-size:0.75rem;font-weight:700;'>TER {ter:.2f}%</span>"
+                    f"</div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.7rem;margin-bottom:5px;'>"
+                    f"{ticker} · {typ} · {anbieter}<br>{_isin_line}</div>"
+                    f"<div style='color:{_C_TEXT_MUTED2};font-size:0.73rem;line-height:1.5;'>{highlight}</div>"
+                    f"</div>", unsafe_allow_html=True)
+
+            st.markdown(f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:700;"
+                        f"margin-bottom:8px;'>🥇 Gold ETCs</div>", unsafe_allow_html=True)
+            _etc_card("Xetra-Gold",              "4GLD.DE", "DE000A0S9GB0", "A0S9GB", 0.36,
+                      "ETC physisch (DE)", "Deutsche Börse Commodities",
+                      "✅ Steuerfrei nach 1 Jahr · Physische Goldlieferung möglich · ~€10 Mrd. AUM · Größter dt. Gold-ETC",
+                      "#ffd700")
+            _etc_card("EUWAX Gold II",            "EWG2.DE", "DE000EWG2LD7", "EWG2LD", 0.30,
+                      "ETC physisch (DE)", "BNP Paribas / Börse Stuttgart",
+                      "✅ Steuerfrei nach 1 Jahr · Physische Lieferung möglich · Günstiger als Xetra-Gold",
+                      "#ffd700")
+            _etc_card("iShares Physical Gold ETC","IGLN.DE", "IE00B4ND3602", "A1KWZX", 0.12,
+                      "ETC physisch (IE)", "BlackRock / iShares",
+                      "⚠️ Abgeltungssteuer (kein 1-Jahres-Privileg) · Günstigste TER · Sehr liquide · €20+ Mrd. AUM",
+                      "#ffd700")
+            _etc_card("WisdomTree Physical Gold", "PHGP.DE", "JE00B1VS3770", "A0N62G", 0.39,
+                      "ETC physisch (JE)", "WisdomTree",
+                      "⚠️ Abgeltungssteuer · Lagerort London · Altbewährt",
+                      "#ffd700")
+
+            st.markdown(f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:700;"
+                        f"margin:12px 0 8px 0;'>🥈 Silber ETCs</div>", unsafe_allow_html=True)
+            _etc_card("iShares Physical Silver", "ISLN.DE", "IE00B4NCWG09", "A1H5ZN", 0.20,
+                      "ETC physisch (IE)", "BlackRock / iShares",
+                      "⚠️ Abgeltungssteuer · Größter Silber-ETC Europas · ~€4 Mrd. AUM",
+                      "#a8a9ad")
+            _etc_card("WisdomTree Physical Silver","VZLS.DE", "JE00B1VS3333", "A0N62F", 0.49,
+                      "ETC physisch (JE)", "WisdomTree",
+                      "⚠️ Abgeltungssteuer · Lagerort London · Etablierter Klassiker",
+                      "#a8a9ad")
+
+            st.markdown(f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:700;"
+                        f"margin:12px 0 8px 0;'>⬜ Platin & Palladium ETCs</div>", unsafe_allow_html=True)
+            _etc_card("WisdomTree Physical Platinum",  "VZPC.DE", "JE00B1VS3W29", "A0N62H", 0.49,
+                      "ETC physisch (JE)", "WisdomTree",
+                      "⚠️ Abgeltungssteuer · Klein, aber liquide · Lagerort London",
+                      "#dee2e6")
+            _etc_card("WisdomTree Physical Palladium", "VZPD.DE", "JE00B1VSXM24", "A0N62J", 0.49,
+                      "ETC physisch (JE)", "WisdomTree",
+                      "⚠️ Abgeltungssteuer · Sehr kleine Marktgröße → hohe Spreads möglich",
+                      "#cbd5e1")
+
+            st.markdown(
+                f"<div style='color:{_C_TEXT_MUTED2};font-size:0.68rem;margin-top:8px;'>"
+                f"⚠️ ISIN/WKN bitte vor Kauf auf justETF.com oder beim Broker verifizieren.</div>",
+                unsafe_allow_html=True)
+
+        with _etc_tabs[1]:
+            st.markdown(
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-bottom:10px;line-height:1.7;'>"
+                f"<b style='color:{_C_ACCENT};'>💡 Diversifizierte Rohstoff-ETFs</b> investieren in "
+                f"einen Korb aus Energie, Metallen und Agrar-Rohstoffen via Futures/Swaps. "
+                f"<b>Rollkosten</b> (beim Wechsel auslaufender Futures) sind ein wichtiger Kostenfaktor — "
+                f"ETFs mit längeren Futures-Laufzeiten (z. B. L&G) reduzieren diesen Effekt."
+                f"</div>", unsafe_allow_html=True)
+
+            st.markdown(f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:700;"
+                        f"margin-bottom:8px;'>🏭 Einzelne Industriemetalle</div>", unsafe_allow_html=True)
+            _etc_card("WisdomTree Copper ETC",    "COPA.DE", "JE00B197YW81", "A0KRKQ", 0.49,
+                      "ETC Futures-basiert", "WisdomTree",
+                      "Kupfer-Futures · Konjunktur & Energiewende-Spiel · Rollkosten beachten")
+            _etc_card("WisdomTree Aluminium ETC", "ALUM.DE", "JE00B1537482", "A0KRKM", 0.49,
+                      "ETC Futures-basiert", "WisdomTree",
+                      "Aluminium-Futures · Nicht physisch hinterlegt · Energiepreis-abhängig")
+            _etc_card("WisdomTree Natural Gas ETC","NGAS.DE", "JE00B15KXV33", "A0KRKN", 0.49,
+                      "ETC Futures-basiert", "WisdomTree",
+                      "Henry Hub Erdgas · Extrem volatil · Reine Spekulation auf Energiepreise")
+
+            st.markdown(f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:700;"
+                        f"margin:12px 0 8px 0;'>🌍 Breit Diversifizierte Rohstoff-ETFs</div>",
+                        unsafe_allow_html=True)
+            _etc_card("iShares Diversified Commodity Swap", "RBOT.DE", "IE00BDFL4P12", "A2H5GD", 0.19,
+                      "ETF Swap-basiert (IE)", "BlackRock / iShares",
+                      "Bloomberg Commodity Index · Breite Diversifikation (Energie, Metalle, Agrar) · Günstigste TER")
+            _etc_card("Invesco Bloomberg Commodity", "CMOD.DE", "IE00B4SVXY83", "A1JUPL", 0.35,
+                      "ETF Swap-basiert (IE)", "Invesco",
+                      "Bloomberg Commodity Index · Energie ~30%, Metalle ~40%, Agrar ~30%")
+            _etc_card("L&G Longer Dated All Commodities", "CRBR.DE", "IE00B4WPHX27", "A0RBRE", 0.30,
+                      "ETF Swap-basiert (IE)", "L&G (LGIM)",
+                      "Längere Futures-Laufzeiten → reduzierte Rollkosten · Stabilere Backwardation-Nutzung")
+
+            st.markdown(
+                f"<div style='color:{_C_TEXT_MUTED2};font-size:0.68rem;margin-top:8px;'>"
+                f"⚠️ ISIN/WKN bitte vor Kauf auf justETF.com oder beim Broker verifizieren.</div>",
+                unsafe_allow_html=True)
+
+        with _etc_tabs[2]:
+            st.markdown(
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-bottom:10px;line-height:1.7;'>"
+                f"<b style='color:{_C_ACCENT};'>⚠️ Hinweis:</b> US-ETFs (URA, LIT, REMX) sind für EU-Privatanleger "
+                f"bei vielen deutschen Brokern eingeschränkt (kein PRIIPs-KID). Zugänglich über: "
+                f"IBKR, Degiro, Scalable (als professioneller Anleger) oder als irische UCITS-Variante suchen."
+                f"</div>", unsafe_allow_html=True)
+
+            st.markdown(f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:700;"
+                        f"margin-bottom:8px;'>☢️ Uran & Kernenergie</div>", unsafe_allow_html=True)
+            _etc_card("Global X Uranium ETF",      "URA",    "—", "—", 0.69,
+                      "Aktien-ETF (US)", "Global X",
+                      "Mining + Utilities · Cameco, Kazatomprom, NexGen · Breiter als URNM · 30 % Teilfreistellung")
+            _etc_card("Sprott Uranium Miners ETF", "URNM",   "—", "—", 0.83,
+                      "Aktien-ETF (US)", "Sprott",
+                      "Reines Uran-Mining-Exposure · High-Beta zu Uranpreis · Für spekulative Anleger · 30 % Teilfreistellung")
+            _etc_card("HANetf Uranium&Nuclear Energy","URAN.DE","IE0005YK6564","A3D4QT", 0.69,
+                      "Aktien-ETF (IE)", "HANetf",
+                      "✅ UCITS-konform · EU-Anleger friendly · Uranium-Mining + Nuclear Energy Utilities")
+
+            st.markdown(f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:700;"
+                        f"margin:12px 0 8px 0;'>🔋 Lithium & Batterie-Metalle</div>", unsafe_allow_html=True)
+            _etc_card("Global X Lithium & Battery", "LIT",   "—", "—", 0.75,
+                      "Aktien-ETF (US)", "Global X",
+                      "Albemarle, SQM, CATL, Ganfeng · Mining + Verarbeitung + Batteriezellen · 30 % Teilfreistellung")
+            _etc_card("Amundi Global Lithium ETF", "LI4U.DE","IE000BJ5GH05","A3D0YH", 0.40,
+                      "Aktien-ETF (IE)", "Amundi",
+                      "✅ UCITS-konform · Lithium- und Batterie-Wertschöpfungskette · EU-zugänglich")
+
+            st.markdown(f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:700;"
+                        f"margin:12px 0 8px 0;'>🌿 Seltene Erden & Bergbau</div>", unsafe_allow_html=True)
+            _etc_card("VanEck Rare Earth/Strategic", "REMX", "—", "—", 0.50,
+                      "Aktien-ETF (US)", "VanEck",
+                      "Lynas, MP Materials, Iluka · 17 seltene Erdelemente · Geopolitik-Play China vs. Westen")
+            _etc_card("Amundi MSCI Metals & Mining","AIGE.DE","LU1900066564","A2N6TC", 0.35,
+                      "Aktien-ETF (IE)", "Amundi",
+                      "✅ UCITS-konform · MSCI World Metals & Mining · BHP, Rio Tinto, Glencore · 30 % Teilfreistellung")
+
+            st.markdown(
+                f"<div style='color:{_C_TEXT_MUTED2};font-size:0.68rem;margin-top:8px;'>"
+                f"⚠️ ISIN/WKN vor Kauf verifizieren · US-ETFs ggf. Broker-Beschränkungen prüfen</div>",
+                unsafe_allow_html=True)
+
+    # ── Fundamentaldaten ─────────────────────────────────────────────────
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    with st.expander("🔬 Fundamentaldaten — Angebot, Nachfrage & Verwendung", expanded=False):
+        _fd_data = {
+            "Gold":          {"emoji":"🥇","farbe":"#ffd700","produktion":"~3.300 t/Jahr",
+                              "reserven":"~55.000 t identifiziert","inflationsschutz":"⭐⭐⭐⭐⭐",
+                              "zinssensitiv":"Hoch (negativ korreliert)",
+                              "top_prod":["China ~10%","Australien ~10%","Russland ~9%","Kanada ~8%"],
+                              "verwendung":["Schmuck 46%","Investment/ETFs 23%","Zentralbanken 20%","Industrie/Elektronik 11%"],
+                              "besonderheit":"Zentralbanken kauften 2022–24 Rekordmengen (>1.000 t/Jahr)"},
+            "Silber":        {"emoji":"🥈","farbe":"#a8a9ad","produktion":"~25.000 t/Jahr",
+                              "reserven":"~550.000 t","inflationsschutz":"⭐⭐⭐⭐",
+                              "zinssensitiv":"Mittel",
+                              "top_prod":["Mexiko ~23%","China ~14%","Peru ~12%","Chile ~10%"],
+                              "verwendung":["Industrie 55%","Schmuck 20%","Investment 16%","Photovoltaik 9%"],
+                              "besonderheit":"Solar-Boom: PV-Industrie 2024 >20% der Gesamtnachfrage"},
+            "Platin":        {"emoji":"⬜","farbe":"#dee2e6","produktion":"~200 t/Jahr",
+                              "reserven":"~70.000 t","inflationsschutz":"⭐⭐⭐",
+                              "zinssensitiv":"Niedrig",
+                              "top_prod":["Südafrika 75%","Russland 10%","Simbabwe 7%","USA 5%"],
+                              "verwendung":["Autokatalysatoren 39%","Schmuck 30%","Industrie 20%","Investment 11%"],
+                              "besonderheit":"Historisch über Goldpreis — aktueller Discount ist ungewöhnlich"},
+            "Palladium":     {"emoji":"⬡","farbe":"#cbd5e1","produktion":"~210 t/Jahr",
+                              "reserven":"~69.000 t","inflationsschutz":"⭐⭐",
+                              "zinssensitiv":"Niedrig",
+                              "top_prod":["Russland 40%","Südafrika 38%","Kanada 9%","USA 6%"],
+                              "verwendung":["Benzinkatalysatoren 80%","Elektronik 10%","Dental 5%","Sonstiges 5%"],
+                              "besonderheit":"E-Auto-Wandel ist strukturelles Nachfragerisiko"},
+            "Kupfer":        {"emoji":"🔶","farbe":"#b87333","produktion":"~22 Mio. t/Jahr",
+                              "reserven":"~880 Mio. t","inflationsschutz":"⭐⭐⭐",
+                              "zinssensitiv":"Mittel (Konjunktur)",
+                              "top_prod":["Chile 28%","DRK 10%","Peru 9%","China 8%"],
+                              "verwendung":["Elektrik/Elektronik 26%","Bau 27%","Industrie 25%","Transport 12%","Sonstiges 10%"],
+                              "besonderheit":"E-Auto benötigt 4× mehr Kupfer als Verbrenner (60 kg vs. 15 kg)"},
+            "Aluminium":     {"emoji":"🔷","farbe":"#7d8597","produktion":"~70 Mio. t/Jahr",
+                              "reserven":">100 Jahre Vorrat","inflationsschutz":"⭐⭐",
+                              "zinssensitiv":"Niedrig",
+                              "top_prod":["China 57%","Indien 6%","Russland 6%","Kanada 4%"],
+                              "verwendung":["Verpackung 27%","Transport 27%","Bau 24%","Maschinenbau 14%","Sonstiges 8%"],
+                              "besonderheit":"Energiekosten bestimmen Marge — Recycling spart 95% der Energie"},
+            "Öl (WTI)":      {"emoji":"🛢️","farbe":"#495057","produktion":"~103 Mio. bbl/Tag",
+                              "reserven":"~1.700 Mrd. bbl","inflationsschutz":"⭐⭐⭐⭐",
+                              "zinssensitiv":"Niedrig",
+                              "top_prod":["USA 14%","Russland 10%","Saudi-Arabien 10%","Irak 5%"],
+                              "verwendung":["Transport 55%","Petrochemie 14%","Heizung 7%","Strom 4%","Sonstiges 20%"],
+                              "besonderheit":"IEA: Nachfrage-Peak für Öl Mitte der 2020er Jahre"},
+            "Erdgas":        {"emoji":"🔥","farbe":"#4895ef","produktion":"~4.100 Mrd. m³/Jahr",
+                              "reserven":"~188 Bio. m³","inflationsschutz":"⭐⭐⭐",
+                              "zinssensitiv":"Niedrig",
+                              "top_prod":["USA 24%","Russland 16%","Iran 7%","Katar 5%"],
+                              "verwendung":["Strom 40%","Industrie 25%","Heizung 22%","Sonstiges 13%"],
+                              "besonderheit":"USA wurde 2023 weltgrößter LNG-Exporteur"},
+            "Uran":          {"emoji":"☢️","farbe":"#7678ed","produktion":"~60.000 t U₃O₈/Jahr",
+                              "reserven":"~6 Mio. t identifiziert","inflationsschutz":"⭐⭐⭐",
+                              "zinssensitiv":"Niedrig",
+                              "top_prod":["Kasachstan 45%","Kanada 15%","Namibia 11%","Australien 8%"],
+                              "verwendung":["Kernkraftwerke 100%","—","—","—"],
+                              "besonderheit":"22 Länder wollen Kernkraft bis 2050 verdreifachen (COP28)"},
+            "Lithium":       {"emoji":"🔋","farbe":"#00b4d8","produktion":"~180.000 t LCE/Jahr",
+                              "reserven":"~98 Mio. t LCE","inflationsschutz":"⭐⭐⭐",
+                              "zinssensitiv":"Mittel",
+                              "top_prod":["Australien 47%","Chile 26%","China 15%","Argentinien 7%"],
+                              "verwendung":["Batterien E-Autos 74%","Keramik/Glas 14%","Schmierstoffe 7%","Sonstiges 5%"],
+                              "besonderheit":"Preis 2023/24 -80% vom Hoch — langfristig strukturelles Defizit"},
+            "Seltene Erden": {"emoji":"🌿","farbe":"#4caf50","produktion":"~300.000 t REO/Jahr",
+                              "reserven":"~120 Mio. t REO","inflationsschutz":"⭐⭐",
+                              "zinssensitiv":"Niedrig",
+                              "top_prod":["China 60%","USA 15%","Australien 8%","Myanmar 7%"],
+                              "verwendung":["Permanentmagnete 38%","Katalysatoren 24%","Keramik/Glas 16%","Polieren 14%","Sonstiges 8%"],
+                              "besonderheit":"China kontrolliert 60% Produktion & 85% der Verarbeitung"},
+        }
+
+        _fd_sel = st.selectbox("Rohstoff auswählen", list(_fd_data.keys()),
+                               key="fd_commod_sel", label_visibility="collapsed")
+        _fd = _fd_data[_fd_sel]
+
+        _fdc1, _fdc2 = st.columns(2)
+        with _fdc1:
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-radius:10px;padding:12px 14px;'>"
+                f"<div style='color:{_fd['farbe']};font-size:0.85rem;font-weight:700;margin-bottom:8px;'>"
+                f"{_fd['emoji']} {_fd_sel} — Kerndaten</div>"
+                f"<table style='width:100%;font-size:0.75rem;border-collapse:collapse;'>"
+                f"<tr><td style='color:{_C_TEXT_MUTED};padding:4px 0;'>Jährl. Produktion</td>"
+                f"<td style='color:{_C_TEXT_PRIMARY};text-align:right;'>{_fd['produktion']}</td></tr>"
+                f"<tr><td style='color:{_C_TEXT_MUTED};padding:4px 0;border-top:1px solid {_C_BORDER};'>Bekannte Reserven</td>"
+                f"<td style='color:{_C_TEXT_PRIMARY};text-align:right;border-top:1px solid {_C_BORDER};'>{_fd['reserven']}</td></tr>"
+                f"<tr><td style='color:{_C_TEXT_MUTED};padding:4px 0;border-top:1px solid {_C_BORDER};'>Inflationsschutz</td>"
+                f"<td style='color:{_C_TEXT_PRIMARY};text-align:right;border-top:1px solid {_C_BORDER};'>{_fd['inflationsschutz']}</td></tr>"
+                f"<tr><td style='color:{_C_TEXT_MUTED};padding:4px 0;border-top:1px solid {_C_BORDER};'>Zins-Sensitivität</td>"
+                f"<td style='color:{_C_TEXT_PRIMARY};text-align:right;border-top:1px solid {_C_BORDER};'>{_fd['zinssensitiv']}</td></tr>"
+                f"</table>"
+                f"<div style='color:{_C_ACCENT};font-size:0.72rem;margin-top:8px;padding-top:6px;"
+                f"border-top:1px solid {_C_BORDER};'>💡 {_fd['besonderheit']}</div>"
+                f"</div>", unsafe_allow_html=True)
+
+        with _fdc2:
+            _prod_html = "".join(
+                f"<span style='background:rgba(100,181,246,0.1);color:{_C_ACCENT};border-radius:4px;"
+                f"padding:2px 7px;font-size:0.71rem;margin-right:4px;margin-bottom:4px;"
+                f"display:inline-block;'>{p}</span>"
+                for p in _fd["top_prod"])
+            _use_html = "".join(
+                f"<div style='color:{_C_TEXT_MUTED2};font-size:0.73rem;padding:3px 0;"
+                f"border-bottom:1px solid {_C_BORDER};'>{u}</div>"
+                for u in _fd["verwendung"] if u != "—")
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-radius:10px;padding:12px 14px;'>"
+                f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;font-weight:700;margin-bottom:6px;'>Verwendungszwecke</div>"
+                f"{_use_html}"
+                f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;font-weight:700;"
+                f"margin:10px 0 6px 0;'>Top-Produzenten</div>"
+                f"<div style='line-height:2;'>{_prod_html}</div>"
+                f"</div>", unsafe_allow_html=True)
+
+    # ── Steuerinfo ───────────────────────────────────────────────────────
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    with st.expander("🇩🇪 Steuerregeln für Rohstoff-Investments", expanded=False):
+        st.markdown(f"""
+        <div style='color:{_C_TEXT_MUTED};font-size:0.8rem;line-height:1.8;'>
+        <b style='color:#ffd700;'>✅ Deutsche Gold-/Silber-ETCs: Steuerfrei nach 12 Monaten</b><br>
+        <b>Xetra-Gold (DE000A0S9GB0)</b> und <b>EUWAX Gold II (DE000EWG2LD7)</b> gelten steuerlich als
+        „sonstiges Wirtschaftsgut" — identisch mit physischem Gold/Silber. Gewinne nach 12 Monaten Haltezeit
+        vollständig einkommensteuerfrei (BFH-Urteil I R 37/15, bestätigt 2022). Physische Lieferung möglich.
+        <br><br>
+        <b style='color:{_C_TEXT_PRIMARY};'>⚠️ Ausländische ETCs (iShares, WisdomTree): Abgeltungssteuer</b><br>
+        IE...- und JE...-ISINs unterliegen der <b>Abgeltungssteuer (25 % + 5,5 % Soli = 26,375 %)</b>.
+        Kein 1-Jahres-Privileg. Teilfreistellung: <b>0 %</b> für Rohstoff-ETCs
+        (anders als Aktien-ETFs mit 30 % Teilfreistellung).
+        <br><br>
+        <b style='color:{_C_TEXT_PRIMARY};'>📋 Diversifizierte Rohstoff-ETFs (Swap-basiert)</b><br>
+        ETFs auf Bloomberg Commodity Index o.ä. (RBOT, CMOD, CRBR) gelten als Investmentfonds.
+        Abgeltungssteuer gilt. <b>Teilfreistellung: 0 %</b> (keine Aktienquote ≥ 25 %).
+        Vorabpauschale bei positiver Wertentwicklung und positivem Basiszins möglich.
+        <br><br>
+        <b style='color:{_C_TEXT_PRIMARY};'>🔋 Rohstoff-Aktien-ETFs: 30 % Teilfreistellung</b><br>
+        ETFs die in Bergbau-/Mining-<b>Aktien</b> investieren (URA, LIT, REMX, AIGE.DE, URAN.DE) sind
+        Aktien-ETFs → <b>30 % Teilfreistellung</b> → effektiv nur ~17,5 % Abgeltungssteuer.
+        Für langfristige Anleger steuerlich deutlich attraktiver als reine Rohstoff-ETCs.
+        <br><br>
+        <div style='background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);
+             border-radius:8px;padding:10px 14px;'>
+        ⚠️ <b>Kein Steuerrat!</b> Steuerliche Behandlung kann sich ändern (Gesetzgebung, BMF-Schreiben).
+        Bitte Steuerberater konsultieren — besonders bei Swap-ETFs, ETCs und ausländischen Produkten.
+        </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown(
+        "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:12px;'>"
+        "⚠️ Keine Anlageberatung · Preise via Yahoo Finance (5-Min-Cache) · "
+        "ETF/ETC-Daten zur Orientierung — bitte auf justETF.com verifizieren</div>",
         unsafe_allow_html=True)
 
     st.stop()
