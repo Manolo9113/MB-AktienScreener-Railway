@@ -6301,7 +6301,7 @@ with st.sidebar:
         st.session_state["show_stocks"] = True
         st.rerun()
     if not st.session_state.get("show_screener") and st.button("🔬 Aktien-Screener", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_crypto"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_wissen","show_crypto"):
             st.session_state[_k] = False
         st.session_state["show_screener"] = True
         st.rerun()
@@ -10710,7 +10710,7 @@ elif st.session_state.get("show_stocks"):
 
     if st.button("🔬 Zum Aktien-Screener →", use_container_width=False, key="aktienideen_to_screener"):
         for _k in ("show_landing", "show_stocks", "show_portfolio", "show_etf_analyzer",
-                   "show_market_overview", "show_compare"):
+                   "show_market_overview", "show_compare", "show_wissen", "show_crypto"):
             st.session_state[_k] = False
         st.session_state["show_screener"] = True
         st.rerun()
@@ -10789,7 +10789,7 @@ elif st.session_state.get("show_crypto"):
     _stat_cols = st.columns(4)
     for _sc_col, (_sc_lbl, _sc_val, _sc_clr) in zip(_stat_cols, [
         ("Total Market Cap",  _fmt_mc(_total_mc) if _total_mc else "—",  "#64b5f6"),
-        ("BTC Dominanz",      f"{_btc_dom:.1f}%" if _btc_dom else "—",    "#f7931a"),
+        ("BTC Dominanz",      f"{_btc_dom:.1f}%" if _btc_mc else "—",    "#f7931a"),
         ("BTC Preis",         f"${_cprice_map.get('BTC-USD',{}).get('price',0):,.0f}" if _cprice_map.get('BTC-USD',{}).get('price') else "—", "#f7931a"),
         ("ETH Preis",         f"${_cprice_map.get('ETH-USD',{}).get('price',0):,.0f}" if _cprice_map.get('ETH-USD',{}).get('price') else "—", "#627eea"),
     ]):
@@ -10867,7 +10867,7 @@ elif st.session_state.get("show_crypto"):
             _ch_color = next((r[2] for r in _CRYPTO_META if r[0] == _csel), "#00e5ff")
             _ch_start = float(_chdf["Close"].iloc[0])
             _ch_end   = float(_chdf["Close"].iloc[-1])
-            _ch_pct   = (_ch_end - _ch_start) / _ch_start * 100
+            _ch_pct   = (_ch_end - _ch_start) / _ch_start * 100 if _ch_start else 0.0
             _ch_line_color = _C_POSITIVE if _ch_pct >= 0 else _C_NEGATIVE
             _fig_c = go.Figure()
             _fig_c.add_trace(go.Scatter(
@@ -11120,24 +11120,24 @@ elif st.session_state.get("show_crypto"):
 
         @st.cache_data(ttl=3600, show_spinner=False)
         def _load_cg_supply_data(cg_ids: tuple) -> dict:
-            try:
-                import requests as _req
-                r = _req.get(
-                    "https://api.coingecko.com/api/v3/coins/markets",
-                    params={
-                        "vs_currency": "usd",
-                        "ids": ",".join(cg_ids),
-                        "order": "market_cap_desc",
-                        "per_page": 25,
-                        "page": 1,
-                        "sparkline": "false",
-                    },
-                    timeout=15,
-                )
-                r.raise_for_status()
-                return {c["id"]: c for c in r.json()}
-            except Exception:
-                return {}
+            import requests as _req
+            r = _req.get(
+                "https://api.coingecko.com/api/v3/coins/markets",
+                params={
+                    "vs_currency": "usd",
+                    "ids": ",".join(cg_ids),
+                    "order": "market_cap_desc",
+                    "per_page": 25,
+                    "page": 1,
+                    "sparkline": "false",
+                },
+                timeout=15,
+            )
+            r.raise_for_status()
+            data = r.json()
+            if not isinstance(data, list):
+                raise ValueError(f"unexpected CoinGecko response: {str(data)[:80]}")
+            return {c["id"]: c for c in data}
 
         @st.cache_data(ttl=86400, show_spinner=False)
         def _load_cg_supply_history(cg_id: str, days: int = 1095) -> pd.DataFrame:
@@ -11160,7 +11160,10 @@ elif st.session_state.get("show_crypto"):
                 return pd.DataFrame(columns=["date", "supply", "price", "mcap"])
 
         with st.spinner("Lade Supply-Daten von CoinGecko…"):
-            _cg_data = _load_cg_supply_data(_CG_IDS)
+            try:
+                _cg_data = _load_cg_supply_data(_CG_IDS)
+            except Exception:
+                _cg_data = {}
 
         # ── Overview table: all 12 coins ──────────────────────────────────
         st.markdown(
@@ -11325,7 +11328,7 @@ elif st.session_state.get("show_crypto"):
                 mode="lines",
                 line=dict(color=_hist_color, width=2),
                 fill="tozeroy",
-                fillcolor=f"{_hist_color}22",
+                fillcolor=f"rgba({int(_hist_color[1:3],16)},{int(_hist_color[3:5],16)},{int(_hist_color[5:7],16)},0.13)",
                 name="Supply (umlaufend)",
                 hovertemplate="<b>%{x|%d.%m.%Y}</b><br>Supply: %{y:,.0f}<extra></extra>",
             ))
@@ -15737,7 +15740,7 @@ if st.session_state.get("show_etf_analyzer"):
         ("IUSN.DE","iShares MSCI World Small Cap","IE00BF4RFH31","A2DWBY",0.35,"Global","Thes",8.0),
         ("WSML.DE","iShares MSCI World Small Cap","IE00BF4RFH31","A2DWBY",0.35,"Global","Thes",8.0),
         # Faktor / Themen
-        ("IWQU.DE","iShares MSCI World Quality Factor","IE00BD1F4L37","A2JDYF",0.30,"Global","Thes",4.0),
+        ("IWQU.DE","iShares MSCI World Quality Factor","—","A2JDYF",0.30,"Global","Thes",4.0),
         ("IWMO.DE","iShares MSCI World Momentum Factor","IE00BD1F4N58","A2JDYG",0.30,"Global","Thes",3.0),
         ("MVOL.DE","iShares MSCI World Min Vol","IE00B8FHGS14","A1J781",0.20,"Global","Thes",4.0),
         ("IQQH.DE","iShares Global Clean Energy","IE00B1XNHC34","A0MZBE",0.65,"Themen","Thes",2.0),
