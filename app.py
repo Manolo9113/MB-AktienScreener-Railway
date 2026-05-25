@@ -10965,6 +10965,408 @@ elif st.session_state.get("show_crypto"):
                       <div style='color:{_C_TEXT_MUTED2};font-size:0.77rem;line-height:1.5;'>{thesis}</div>
                     </div>""", unsafe_allow_html=True)
 
+    # ── Token-Fundamentals ────────────────────────────────────────────────
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    with st.expander("🔬 Token-Fundamentals — Supply, Verwässerung & Burns", expanded=False):
+
+        _CRYPTO_TOKENOMICS = {
+            "BTC-USD":  {
+                "cg_id": "bitcoin",
+                "max_supply": 21_000_000,
+                "supply_type": "Capped",
+                "inflation_pct": 0.85,
+                "burn_mechanism": "Kein Burn — mathematisch begrenzt auf 21 Mio. via Halvings",
+                "burn_highlight": None,
+                "dilution_risk": "Sehr Gering",
+                "dilution_color": "#4caf50",
+                "key_fact": "~19.7 Mio. BTC bereits gemint · 1.3 Mio. noch minbar · nächstes Halving ~2028",
+                "held_by_team": None,
+            },
+            "ETH-USD":  {
+                "cg_id": "ethereum",
+                "max_supply": None,
+                "supply_type": "Deflationär",
+                "inflation_pct": 0.3,
+                "burn_mechanism": "EIP-1559: Base Fee wird verbrannt (seit Aug 2021) · Merge (Sep 2022): PoS",
+                "burn_highlight": ">4,4 Mio. ETH verbrannt (Mkt-Wert >10 Mrd. $)",
+                "dilution_risk": "Gering",
+                "dilution_color": "#8bc34a",
+                "key_fact": "Nettoausgabe ~ +0,3 % p.a. · In hoher Netzauslastung netto deflationär",
+                "held_by_team": None,
+            },
+            "BNB-USD":  {
+                "cg_id": "binancecoin",
+                "max_supply": 100_000_000,
+                "supply_type": "Deflationär",
+                "inflation_pct": -2.0,
+                "burn_mechanism": "Quartalsweise Auto-Burn + Real-Time BEP-95 Burn",
+                "burn_highlight": "Von 200 Mio. auf ~145 Mio. BNB gesenkt (Ziel: 100 Mio.)",
+                "dilution_risk": "Sehr Gering",
+                "dilution_color": "#4caf50",
+                "key_fact": "~55 Mio. BNB bereits verbrannt · Supply sinkt kontinuierlich",
+                "held_by_team": None,
+            },
+            "SOL-USD":  {
+                "cg_id": "solana",
+                "max_supply": None,
+                "supply_type": "Inflationär (sinkend)",
+                "inflation_pct": 5.0,
+                "burn_mechanism": "50 % der Tx-Gebühren werden verbrannt",
+                "burn_highlight": None,
+                "dilution_risk": "Mittel",
+                "dilution_color": "#ff9800",
+                "key_fact": "Startinflation 8 % → sinkt 15 %/Jahr bis Langfristziel 1,5 %",
+                "held_by_team": None,
+            },
+            "XRP-USD":  {
+                "cg_id": "ripple",
+                "max_supply": 100_000_000_000,
+                "supply_type": "Escrow-Kontrolliert",
+                "inflation_pct": 2.5,
+                "burn_mechanism": "Tx-Gebühren werden verbrannt (sehr geringe Mengen)",
+                "burn_highlight": None,
+                "dilution_risk": "Mittel",
+                "dilution_color": "#ff9800",
+                "key_fact": "~45 Mrd. XRP in Ripple-Escrow (monatlich 1 Mrd. freigegeben)",
+                "held_by_team": 45.0,
+            },
+            "ADA-USD":  {
+                "cg_id": "cardano",
+                "max_supply": 45_000_000_000,
+                "supply_type": "Capped",
+                "inflation_pct": 2.0,
+                "burn_mechanism": "Kein direkter Burn — Reserve zahlt Staking-Rewards",
+                "burn_highlight": None,
+                "dilution_risk": "Gering",
+                "dilution_color": "#8bc34a",
+                "key_fact": "~35 Mrd. ADA umlaufend · ~10 Mrd. noch in Reserve für Rewards",
+                "held_by_team": None,
+            },
+            "AVAX-USD": {
+                "cg_id": "avalanche-2",
+                "max_supply": 720_000_000,
+                "supply_type": "Capped",
+                "inflation_pct": 1.5,
+                "burn_mechanism": "ALLE Tx-Gebühren werden verbrannt (seit Genesis)",
+                "burn_highlight": "Jede Transaktion auf Avalanche reduziert das Angebot",
+                "dilution_risk": "Gering",
+                "dilution_color": "#8bc34a",
+                "key_fact": "720 Mio. Max · ~420 Mio. umlaufend · Staking-Rewards aus Vorrat",
+                "held_by_team": None,
+            },
+            "DOGE-USD": {
+                "cg_id": "dogecoin",
+                "max_supply": None,
+                "supply_type": "Unbegrenzt",
+                "inflation_pct": 3.6,
+                "burn_mechanism": "Kein Burn-Mechanismus",
+                "burn_highlight": None,
+                "dilution_risk": "Hoch",
+                "dilution_color": "#f44336",
+                "key_fact": "~5 Mrd. neue DOGE pro Jahr FOREVER · kein Angebots-Cap",
+                "held_by_team": None,
+            },
+            "LINK-USD": {
+                "cg_id": "chainlink",
+                "max_supply": 1_000_000_000,
+                "supply_type": "Capped",
+                "inflation_pct": 1.5,
+                "burn_mechanism": "Kein aktiver Burn",
+                "burn_highlight": None,
+                "dilution_risk": "Mittel",
+                "dilution_color": "#ff9800",
+                "key_fact": "~35 % (350 Mio.) durch Chainlink Labs gehalten — Verkaufsdruck möglich",
+                "held_by_team": 35.0,
+            },
+            "DOT-USD":  {
+                "cg_id": "polkadot",
+                "max_supply": None,
+                "supply_type": "Inflationär",
+                "inflation_pct": 10.0,
+                "burn_mechanism": "Ungenutzte Treasury-Mittel werden verbrannt (ca. 1 % p.a.)",
+                "burn_highlight": None,
+                "dilution_risk": "Mittel-Hoch",
+                "dilution_color": "#ff5722",
+                "key_fact": "~10 % Jahresinflation · hohe Staking-Beteiligung reduziert Sell-Druck",
+                "held_by_team": None,
+            },
+            "UNI-USD":  {
+                "cg_id": "uniswap",
+                "max_supply": 1_000_000_000,
+                "supply_type": "Capped",
+                "inflation_pct": 2.0,
+                "burn_mechanism": "Kein aktiver Burn · Governance kann Gebühren-Switch aktivieren",
+                "burn_highlight": None,
+                "dilution_risk": "Mittel",
+                "dilution_color": "#ff9800",
+                "key_fact": "Team/Investor-Vesting bis 2024 abgelaufen · ~750 Mio. UNI umlaufend",
+                "held_by_team": None,
+            },
+            "MATIC-USD":{
+                "cg_id": "matic-network",
+                "max_supply": 10_000_000_000,
+                "supply_type": "Capped",
+                "inflation_pct": 0.5,
+                "burn_mechanism": "EIP-1559 auf Polygon PoS — Base Fee wird verbrannt",
+                "burn_highlight": None,
+                "dilution_risk": "Gering",
+                "dilution_color": "#8bc34a",
+                "key_fact": "~9,5 Mrd. (95 %) bereits im Umlauf · kaum noch Verwässerungs-Risiko",
+                "held_by_team": None,
+            },
+        }
+
+        _CG_IDS = tuple(v["cg_id"] for v in _CRYPTO_TOKENOMICS.values())
+
+        @st.cache_data(ttl=3600, show_spinner=False)
+        def _load_cg_supply_data(cg_ids: tuple) -> dict:
+            try:
+                import requests as _req
+                r = _req.get(
+                    "https://api.coingecko.com/api/v3/coins/markets",
+                    params={
+                        "vs_currency": "usd",
+                        "ids": ",".join(cg_ids),
+                        "order": "market_cap_desc",
+                        "per_page": 25,
+                        "page": 1,
+                        "sparkline": "false",
+                    },
+                    timeout=15,
+                )
+                r.raise_for_status()
+                return {c["id"]: c for c in r.json()}
+            except Exception:
+                return {}
+
+        @st.cache_data(ttl=86400, show_spinner=False)
+        def _load_cg_supply_history(cg_id: str, days: int = 1095) -> pd.DataFrame:
+            try:
+                import requests as _req
+                r = _req.get(
+                    f"https://api.coingecko.com/api/v3/coins/{cg_id}/market_chart",
+                    params={"vs_currency": "usd", "days": days, "interval": "weekly"},
+                    timeout=20,
+                )
+                r.raise_for_status()
+                data = r.json()
+                prices = pd.DataFrame(data["prices"],     columns=["ts", "price"])
+                mcaps  = pd.DataFrame(data["market_caps"], columns=["ts", "mcap"])
+                df = prices.merge(mcaps, on="ts")
+                df["date"]   = pd.to_datetime(df["ts"], unit="ms")
+                df["supply"] = (df["mcap"] / df["price"]).replace([float("inf"), -float("inf")], pd.NA)
+                return df[["date", "supply", "price", "mcap"]].dropna()
+            except Exception:
+                return pd.DataFrame(columns=["date", "supply", "price", "mcap"])
+
+        with st.spinner("Lade Supply-Daten von CoinGecko…"):
+            _cg_data = _load_cg_supply_data(_CG_IDS)
+
+        # ── Overview table: all 12 coins ──────────────────────────────────
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;margin-bottom:10px;'>"
+            "Supply-Daten via CoinGecko. Historische Supply = Marktkapitalisierung ÷ Preis (wöchentlich)."
+            "</div>", unsafe_allow_html=True)
+
+        _tf_cols = st.columns([2, 1.4, 1.2, 1.4, 1.2, 2])
+        for _h, _c in zip(
+            ["Coin", "Umlauf", "Max Supply", "Supply-Typ", "Inflation", "Verwässerungs-Risiko"],
+            _tf_cols,
+        ):
+            _c.markdown(
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;font-weight:700;"
+                f"padding-bottom:4px;border-bottom:1px solid {_C_BORDER};'>{_h}</div>",
+                unsafe_allow_html=True)
+
+        for _tkr, _meta_row in zip(
+            [m[0] for m in _CRYPTO_META],
+            [_CRYPTO_TOKENOMICS[m[0]] for m in _CRYPTO_META],
+        ):
+            _coin_name  = next(m[1] for m in _CRYPTO_META if m[0] == _tkr)
+            _coin_color = next(m[2] for m in _CRYPTO_META if m[0] == _tkr)
+            _cg         = _cg_data.get(_meta_row["cg_id"], {})
+            _circ       = _cg.get("circulating_supply") or 0
+            _max_s      = _cg.get("max_supply") or _meta_row["max_supply"]
+            _inf        = _meta_row["inflation_pct"]
+            _stype      = _meta_row["supply_type"]
+            _drisk      = _meta_row["dilution_risk"]
+            _drcolor    = _meta_row["dilution_color"]
+
+            def _fmt_supply(n):
+                if n is None:
+                    return "∞"
+                if n >= 1e12:
+                    return f"{n/1e12:.1f} Bio."
+                if n >= 1e9:
+                    return f"{n/1e9:.2f} Mrd."
+                if n >= 1e6:
+                    return f"{n/1e6:.2f} Mio."
+                return f"{n:,.0f}"
+
+            _pct_issued = (_circ / _max_s * 100) if (_max_s and _circ) else None
+            _bar_html = ""
+            if _pct_issued is not None:
+                _bar_html = (
+                    f"<div style='background:{_C_BORDER};border-radius:3px;height:5px;margin-top:4px;'>"
+                    f"<div style='background:{_coin_color};border-radius:3px;height:5px;"
+                    f"width:{min(_pct_issued,100):.1f}%;'></div></div>"
+                    f"<div style='color:{_C_TEXT_MUTED2};font-size:0.67rem;'>{_pct_issued:.0f}% ausgegeben</div>"
+                )
+
+            _stype_color = {
+                "Capped": "#4caf50", "Deflationär": "#2196f3",
+                "Inflationär (sinkend)": "#ff9800", "Inflationär": "#f44336",
+                "Unbegrenzt": "#f44336", "Escrow-Kontrolliert": "#ff9800",
+            }.get(_stype, _C_TEXT_MUTED)
+
+            _inf_str  = f"{_inf:+.1f}% p.a." if _inf > 0 else (f"{_inf:.1f}% p.a." if _inf < 0 else "~0%")
+            _inf_color = "#4caf50" if _inf <= 0 else ("#ff9800" if _inf < 5 else "#f44336")
+
+            _c0, _c1, _c2, _c3, _c4, _c5 = st.columns([2, 1.4, 1.2, 1.4, 1.2, 2])
+            _c0.markdown(
+                f"<div style='color:{_coin_color};font-size:0.8rem;font-weight:700;"
+                f"padding:6px 0;'>{_coin_name}</div>",
+                unsafe_allow_html=True)
+            _c1.markdown(
+                f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;padding:6px 0;'>"
+                f"{_fmt_supply(_circ) if _circ else '—'}{_bar_html}</div>",
+                unsafe_allow_html=True)
+            _c2.markdown(
+                f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.78rem;padding:6px 0;'>"
+                f"{_fmt_supply(_max_s)}</div>",
+                unsafe_allow_html=True)
+            _c3.markdown(
+                f"<div style='background:rgba(0,0,0,0.15);border-radius:4px;padding:3px 7px;"
+                f"display:inline-block;font-size:0.72rem;font-weight:700;color:{_stype_color};"
+                f"margin-top:4px;'>{_stype}</div>",
+                unsafe_allow_html=True)
+            _c4.markdown(
+                f"<div style='color:{_inf_color};font-size:0.78rem;font-weight:700;"
+                f"padding:6px 0;'>{_inf_str}</div>",
+                unsafe_allow_html=True)
+            _c5.markdown(
+                f"<div style='background:rgba(0,0,0,0.15);border-radius:4px;padding:3px 7px;"
+                f"display:inline-block;font-size:0.72rem;font-weight:700;color:{_drcolor};"
+                f"margin-top:4px;'>{_drisk}</div>",
+                unsafe_allow_html=True)
+
+        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+        # ── Burn-Mechanismen Highlights ───────────────────────────────────
+        st.markdown(
+            f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.85rem;font-weight:700;"
+            f"margin-bottom:8px;'>🔥 Burn-Mechanismen im Detail</div>",
+            unsafe_allow_html=True)
+        _burn_cols = st.columns(2)
+        _burn_idx = 0
+        for _tkr, _meta_row in zip(
+            [m[0] for m in _CRYPTO_META],
+            [_CRYPTO_TOKENOMICS[m[0]] for m in _CRYPTO_META],
+        ):
+            _coin_name  = next(m[1] for m in _CRYPTO_META if m[0] == _tkr)
+            _coin_color = next(m[2] for m in _CRYPTO_META if m[0] == _tkr)
+            _burn_mech  = _meta_row["burn_mechanism"]
+            _burn_hl    = _meta_row["burn_highlight"]
+            _key_fact   = _meta_row["key_fact"]
+            _held       = _meta_row["held_by_team"]
+
+            _hl_html = ""
+            if _burn_hl:
+                _hl_html = f"<div style='color:#ef5350;font-size:0.72rem;margin-top:3px;'>🔥 {_burn_hl}</div>"
+            _held_html = ""
+            if _held:
+                _held_html = (f"<div style='color:#ff9800;font-size:0.72rem;margin-top:3px;'>"
+                              f"⚠️ {_held:.0f}% durch Team/Unternehmen gehalten</div>")
+
+            _burn_cols[_burn_idx % 2].markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-radius:10px;padding:10px 13px;margin-bottom:8px;'>"
+                f"<div style='color:{_coin_color};font-size:0.8rem;font-weight:700;"
+                f"margin-bottom:4px;'>{_coin_name}</div>"
+                f"<div style='color:{_C_TEXT_MUTED2};font-size:0.75rem;line-height:1.5;'>{_burn_mech}</div>"
+                f"{_hl_html}"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-top:3px;"
+                f"font-style:italic;'>{_key_fact}</div>"
+                f"{_held_html}"
+                f"</div>",
+                unsafe_allow_html=True)
+            _burn_idx += 1
+
+        st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+        # ── Historical Supply Chart ───────────────────────────────────────
+        st.markdown(
+            f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.85rem;font-weight:700;"
+            f"margin-bottom:8px;'>📈 Historische Supply-Entwicklung (3 Jahre)</div>",
+            unsafe_allow_html=True)
+
+        _hist_coin_options = {m[1]: (m[0], _CRYPTO_TOKENOMICS[m[0]]["cg_id"], m[2])
+                              for m in _CRYPTO_META}
+        _hist_sel = st.selectbox(
+            "Coin auswählen",
+            list(_hist_coin_options.keys()),
+            key="tf_hist_coin",
+            label_visibility="collapsed",
+        )
+        _hist_tkr, _hist_cg_id, _hist_color = _hist_coin_options[_hist_sel]
+
+        with st.spinner(f"Lade Supply-Historie für {_hist_sel}…"):
+            _hist_df = _load_cg_supply_history(_hist_cg_id, days=1095)
+
+        if not _hist_df.empty:
+            _supply_min = _hist_df["supply"].min()
+            _supply_max = _hist_df["supply"].max()
+            _supply_chg = (_hist_df["supply"].iloc[-1] / _hist_df["supply"].iloc[0] - 1) * 100
+
+            _fig_tf = go.Figure()
+            _fig_tf.add_trace(go.Scatter(
+                x=_hist_df["date"],
+                y=_hist_df["supply"],
+                mode="lines",
+                line=dict(color=_hist_color, width=2),
+                fill="tozeroy",
+                fillcolor=f"{_hist_color}22",
+                name="Supply (umlaufend)",
+                hovertemplate="<b>%{x|%d.%m.%Y}</b><br>Supply: %{y:,.0f}<extra></extra>",
+            ))
+            _fig_tf.update_layout(
+                height=300,
+                margin=dict(l=10, r=10, t=30, b=10),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=_C_TEXT_MUTED, size=10),
+                xaxis=dict(gridcolor=_C_BORDER, zeroline=False, showgrid=True),
+                yaxis=dict(gridcolor=_C_BORDER, zeroline=False, showgrid=True,
+                           tickformat=".3s"),
+                title=dict(
+                    text=f"{_hist_sel} · Umlaufende Supply (3J) · Veränderung: {_supply_chg:+.1f}%",
+                    font=dict(size=11, color=_C_TEXT_MUTED2),
+                    x=0.0, xanchor="left",
+                ),
+            )
+            st.plotly_chart(_fig_tf, use_container_width=True, config={"displayModeBar": False})
+
+            _tf_inf = _CRYPTO_TOKENOMICS[_hist_tkr]
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-radius:10px;padding:10px 14px;font-size:0.78rem;'>"
+                f"<span style='color:{_CRYPTO_TOKENOMICS[_hist_tkr]['dilution_color']};font-weight:700;'>"
+                f"Verwässerungs-Risiko: {_tf_inf['dilution_risk']}</span>"
+                f" &nbsp;·&nbsp; <span style='color:{_C_TEXT_MUTED2};'>{_tf_inf['key_fact']}</span>"
+                f"</div>",
+                unsafe_allow_html=True)
+        else:
+            st.markdown(
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.8rem;'>"
+                "⚠️ CoinGecko-Daten momentan nicht verfügbar. Bitte später erneut versuchen.</div>",
+                unsafe_allow_html=True)
+
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED2};font-size:0.68rem;margin-top:10px;'>"
+            "Datenquelle: CoinGecko API · Supply-Historie = Mkt-Cap ÷ Preis (Näherungswert) · "
+            "Inflationsraten sind Schätzwerte und können variieren</div>",
+            unsafe_allow_html=True)
+
     # ── Steuerinfo Deutschland ────────────────────────────────────────────
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     with st.expander("🇩🇪 Krypto-Steuer in Deutschland — Das Wichtigste", expanded=False):
