@@ -4924,6 +4924,8 @@ if "show_screener" not in st.session_state:
     st.session_state["show_screener"] = False
 if "show_wissen" not in st.session_state:
     st.session_state["show_wissen"] = False
+if "show_crypto" not in st.session_state:
+    st.session_state["show_crypto"] = False
 if "etf_ticker_input" not in st.session_state:
     st.session_state["etf_ticker_input"] = ""
 if "portfolio_df" not in st.session_state:
@@ -6284,42 +6286,47 @@ with st.sidebar:
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     if not st.session_state["show_landing"] and st.button("🏠 Startseite", use_container_width=True):
-        for _k in ("show_portfolio","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen"):
+        for _k in ("show_portfolio","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto"):
             st.session_state[_k] = False
         st.session_state["show_landing"] = True
         st.rerun()
     if not st.session_state.get("show_market_overview") and st.button("🌍 Marktüberblick", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener","show_wissen"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener","show_wissen","show_crypto"):
             st.session_state[_k] = False
         st.session_state["show_market_overview"] = True
         st.rerun()
     if not st.session_state.get("show_stocks") and st.button("💡 Aktienideen", use_container_width=True):
-        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen"):
+        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto"):
             st.session_state[_k] = False
         st.session_state["show_stocks"] = True
         st.rerun()
     if not st.session_state.get("show_screener") and st.button("🔬 Aktien-Screener", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_crypto"):
             st.session_state[_k] = False
         st.session_state["show_screener"] = True
         st.rerun()
     if not st.session_state.get("show_compare") and st.button("⚖️ Aktien-Vergleich", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener","show_wissen"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener","show_wissen","show_crypto"):
             st.session_state[_k] = False
         st.session_state["show_compare"] = True
         st.rerun()
     if st.button("🔎 ETF-Analyzer", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener","show_wissen"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener","show_wissen","show_crypto"):
             st.session_state[_k] = False
         st.session_state["show_etf_analyzer"] = True
         st.rerun()
     if not st.session_state.get("show_wissen") and st.button("📚 Wissenswertes", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_crypto"):
             st.session_state[_k] = False
         st.session_state["show_wissen"] = True
         st.rerun()
+    if not st.session_state.get("show_crypto") and st.button("₿ Krypto", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen"):
+            st.session_state[_k] = False
+        st.session_state["show_crypto"] = True
+        st.rerun()
     if st.button("📁 Mein Portfolio", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen"):
+        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto"):
             st.session_state[_k] = False
         st.session_state["show_portfolio"] = True
         st.rerun()
@@ -6468,7 +6475,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
     # ── Schnellnavigation ───────────────────────────────────────────
     st.markdown("<div class='section-header'>⚡ Zur Übersicht navigieren</div>", unsafe_allow_html=True)
     _nav_c1, _nav_c2 = st.columns(2)
-    _all_pages = ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen")
+    _all_pages = ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto")
     with _nav_c1:
         if st.button("🌍 Marktüberblick", use_container_width=True, type="primary", key="land_nav_markt"):
             for _k in _all_pages: st.session_state[_k] = False
@@ -6489,6 +6496,17 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
         if st.button("🔎 ETF-Analyzer", use_container_width=True, key="land_nav_etf"):
             for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_etf_analyzer"] = True
+            st.rerun()
+    _nav_c5, _nav_c6 = st.columns(2)
+    with _nav_c5:
+        if st.button("₿ Krypto-Markt", use_container_width=True, key="land_nav_crypto"):
+            for _k in _all_pages: st.session_state[_k] = False
+            st.session_state["show_crypto"] = True
+            st.rerun()
+    with _nav_c6:
+        if st.button("🔬 Aktien-Screener", use_container_width=True, key="land_nav_scr"):
+            for _k in _all_pages: st.session_state[_k] = False
+            st.session_state["show_screener"] = True
             st.rerun()
 
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
@@ -10697,6 +10715,324 @@ elif st.session_state.get("show_stocks"):
         st.session_state["show_screener"] = True
         st.rerun()
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    st.stop()
+
+# ==================== KRYPTO PAGE ====================
+elif st.session_state.get("show_crypto"):
+    st.markdown("<div class='section-header'>₿ Krypto-Markt</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    _CRYPTO_META = [
+        ("BTC-USD",   "Bitcoin",       "#f7931a", "Store of Value · Digitales Gold · 21 Mio. Angebot · PoW"),
+        ("ETH-USD",   "Ethereum",      "#627eea", "Smart-Contract-Plattform · EVM · DeFi & NFT Basis · PoS"),
+        ("BNB-USD",   "BNB Chain",     "#f3ba2f", "Binance-Ökosystem · Günstige Transaktionen · CEX-Token"),
+        ("SOL-USD",   "Solana",        "#9945ff", "Hochperformante Layer-1 · 50.000+ TPS · DeFi & NFTs"),
+        ("XRP-USD",   "XRP",           "#346aa9", "Banken-Zahlungsnetz · Ripple · Institutioneller Fokus"),
+        ("ADA-USD",   "Cardano",       "#0d9488", "Peer-Review-Ansatz · Hydra-Skalierung · PoS · Haskell"),
+        ("AVAX-USD",  "Avalanche",     "#e84142", "Subnetz-Architektur · Niedrige Latenz · DeFi-Hub"),
+        ("DOGE-USD",  "Dogecoin",      "#c2a633", "Meme-Coin · Zahlungsfokus · Elon-Effekt · Hohe Liquidität"),
+        ("LINK-USD",  "Chainlink",     "#2a5ada", "Dezentrale Oracles · DeFi-Infrastruktur · Datenfeeds"),
+        ("DOT-USD",   "Polkadot",      "#e6007a", "Parachain-Ökosystem · Interoperabilität · Substrate"),
+        ("UNI-USD",   "Uniswap",       "#ff007a", "Größtes DEX · AMM-Modell · Governance-Token"),
+        ("MATIC-USD", "Polygon (POL)", "#8247e5", "Ethereum Layer-2 · zkEVM · Niedrige Gebühren · Weit verbreitet"),
+    ]
+
+    @st.cache_data(ttl=300, show_spinner=False)
+    def _load_crypto_prices(ticker_tuple: tuple) -> list:
+        results = []
+        for tkr in ticker_tuple:
+            try:
+                info  = yf.Ticker(tkr).info
+                price = (info.get("currentPrice") or info.get("regularMarketPrice")
+                         or info.get("bid") or 0)
+                if not price:
+                    continue
+                chg   = info.get("regularMarketChangePercent") or 0
+                mc    = info.get("marketCap") or 0
+                vol   = info.get("volume24Hr") or info.get("regularMarketVolume") or 0
+                h52   = info.get("fiftyTwoWeekHigh") or price
+                l52   = info.get("fiftyTwoWeekLow")  or price
+                w52p  = ((price - l52) / (h52 - l52) * 100) if h52 > l52 else 50
+                results.append({
+                    "ticker": tkr,
+                    "price":  price,
+                    "chg":    chg,
+                    "mc":     mc,
+                    "vol":    vol,
+                    "w52p":   w52p,
+                    "h52":    h52,
+                    "l52":    l52,
+                })
+            except Exception:
+                results.append({"ticker": tkr, "price": 0, "chg": 0,
+                                 "mc": 0, "vol": 0, "w52p": 50,
+                                 "h52": 0, "l52": 0})
+        return results
+
+    _crypto_tickers = tuple(r[0] for r in _CRYPTO_META)
+    with st.spinner("Lade Krypto-Kurse…"):
+        _cprices = _load_crypto_prices(_crypto_tickers)
+
+    _cprice_map = {r["ticker"]: r for r in _cprices}
+
+    # ── Markt-Stats-Bar ───────────────────────────────────────────────────
+    _btc_mc  = _cprice_map.get("BTC-USD", {}).get("mc", 0)
+    _total_mc = sum(r.get("mc", 0) for r in _cprices)
+    _btc_dom  = (_btc_mc / _total_mc * 100) if _total_mc else 0
+
+    def _fmt_mc(v):
+        if v >= 1e12: return f"${v/1e12:.2f}T"
+        if v >= 1e9:  return f"${v/1e9:.1f}Mrd."
+        return f"${v/1e6:.0f}M"
+
+    _stat_cols = st.columns(4)
+    for _sc_col, (_sc_lbl, _sc_val, _sc_clr) in zip(_stat_cols, [
+        ("Total Market Cap",  _fmt_mc(_total_mc) if _total_mc else "—",  "#64b5f6"),
+        ("BTC Dominanz",      f"{_btc_dom:.1f}%" if _btc_dom else "—",    "#f7931a"),
+        ("BTC Preis",         f"${_cprice_map.get('BTC-USD',{}).get('price',0):,.0f}" if _cprice_map.get('BTC-USD',{}).get('price') else "—", "#f7931a"),
+        ("ETH Preis",         f"${_cprice_map.get('ETH-USD',{}).get('price',0):,.0f}" if _cprice_map.get('ETH-USD',{}).get('price') else "—", "#627eea"),
+    ]):
+        _sc_col.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+            f"border-radius:10px;padding:10px 14px;text-align:center;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:3px;'>{_sc_lbl}</div>"
+            f"<div style='color:{_sc_clr};font-size:1.1rem;font-weight:700;'>{_sc_val}</div>"
+            f"</div>", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+    # ── Kurs-Karten Grid ─────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📊 Kurs-Überblick</div>", unsafe_allow_html=True)
+    _cc_cols = st.columns(3)
+    for _ci, (tkr, name, color, _) in enumerate(_CRYPTO_META):
+        _cp = _cprice_map.get(tkr, {})
+        _c_price = _cp.get("price", 0)
+        _c_chg   = _cp.get("chg",   0)
+        _c_mc    = _cp.get("mc",    0)
+        _c_w52   = _cp.get("w52p",  50)
+        _chg_clr = _C_POSITIVE if _c_chg >= 0 else _C_NEGATIVE
+        _chg_str = f"{'+' if _c_chg >= 0 else ''}{_c_chg:.2f}%"
+        _price_str = f"${_c_price:,.4f}" if _c_price < 1 else (f"${_c_price:,.2f}" if _c_price < 1000 else f"${_c_price:,.0f}")
+        _mc_str  = _fmt_mc(_c_mc) if _c_mc else "—"
+        _bar_clr = color if _c_chg >= 0 else _C_NEGATIVE
+        with _cc_cols[_ci % 3]:
+            st.markdown(f"""
+            <div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};
+                 border-left:3px solid {color};border-radius:12px;
+                 padding:12px 14px;margin-bottom:10px;'>
+              <div style='display:flex;justify-content:space-between;align-items:baseline;'>
+                <span style='color:{color};font-size:0.95rem;font-weight:800;'>{tkr.replace("-USD","")}</span>
+                <span style='color:{_chg_clr};font-size:0.78rem;font-weight:700;'>{_chg_str}</span>
+              </div>
+              <div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-bottom:4px;'>{name}</div>
+              <div style='color:{_C_TEXT_PRIMARY};font-size:1.0rem;font-weight:700;margin-bottom:3px;'>{_price_str}</div>
+              <div style='color:{_C_TEXT_MUTED};font-size:0.67rem;margin-bottom:6px;'>Mkt Cap {_mc_str}</div>
+              <div style='background:{_C_BORDER};border-radius:3px;height:3px;'>
+                <div style='background:{_bar_clr};width:{_c_w52:.0f}%;height:3px;border-radius:3px;'></div>
+              </div>
+              <div style='display:flex;justify-content:space-between;font-size:0.6rem;color:{_C_TEXT_MUTED};margin-top:2px;'>
+                <span>52W-Tief</span><span>{_c_w52:.0f}%</span><span>52W-Hoch</span>
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    # ── Kurs-Chart ────────────────────────────────────────────────────────
+    with st.expander("📈 Kurs-Chart — Historisch", expanded=False):
+        _chart_c1, _chart_c2 = st.columns([2, 1])
+        with _chart_c1:
+            _csel = st.selectbox(
+                "Kryptowährung",
+                [r[0] for r in _CRYPTO_META],
+                format_func=lambda t: f"{t.replace('-USD','')} — {next(r[1] for r in _CRYPTO_META if r[0]==t)}",
+                key="crypto_chart_sel")
+        with _chart_c2:
+            _cper = st.selectbox("Zeitraum", ["7d","1mo","3mo","6mo","1y","2y"], index=2, key="crypto_chart_per")
+
+        @st.cache_data(ttl=600, show_spinner=False)
+        def _load_crypto_hist(tkr: str, period: str):
+            try:
+                df = yf.download(tkr, period=period, interval="1d", auto_adjust=True, progress=False)
+                if df.empty:
+                    return None
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                return df[["Close"]].dropna()
+            except Exception:
+                return None
+
+        _chdf = _load_crypto_hist(_csel, _cper)
+        if _chdf is not None and not _chdf.empty:
+            _ch_color = next((r[2] for r in _CRYPTO_META if r[0] == _csel), "#00e5ff")
+            _ch_start = float(_chdf["Close"].iloc[0])
+            _ch_end   = float(_chdf["Close"].iloc[-1])
+            _ch_pct   = (_ch_end - _ch_start) / _ch_start * 100
+            _ch_line_color = _C_POSITIVE if _ch_pct >= 0 else _C_NEGATIVE
+            _fig_c = go.Figure()
+            _fig_c.add_trace(go.Scatter(
+                x=_chdf.index, y=_chdf["Close"].squeeze(),
+                mode="lines", name=_csel.replace("-USD",""),
+                line=dict(color=_ch_line_color, width=2),
+                fill="tozeroy",
+                fillcolor=f"rgba({int(_ch_line_color[1:3],16)},{int(_ch_line_color[3:5],16)},{int(_ch_line_color[5:7],16)},0.07)",
+            ))
+            _fig_c.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=0, r=0, t=28, b=0),
+                height=280,
+                xaxis=dict(showgrid=False, color=_C_TEXT_MUTED, tickfont=dict(size=10)),
+                yaxis=dict(showgrid=True, gridcolor=_C_BORDER, color=_C_TEXT_MUTED,
+                           tickprefix="$", tickfont=dict(size=10)),
+                showlegend=False,
+            )
+            _fig_c.add_annotation(
+                text=f"{'+' if _ch_pct>=0 else ''}{_ch_pct:.1f}% in {_cper}",
+                xref="paper", yref="paper", x=0.01, y=0.97,
+                showarrow=False, font=dict(color=_ch_line_color, size=13, family="Inter"),
+            )
+            st.plotly_chart(_fig_c, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.info("Kursdaten konnten nicht geladen werden.")
+
+    # ── Kategorie-Expander ────────────────────────────────────────────────
+    _CRYPTO_CATS = [
+        ("👑 Bitcoin & Ethereum — Blue Chips der Krypto-Welt", [
+            ("BTC-USD",  "Bitcoin",  "#f7931a",
+             "Das digitale Gold. Festes Angebot (21 Mio.), dezentral, ältestes und größtes Netzwerk. "
+             "Institutionelle Adoption durch ETFs (BlackRock, Fidelity). Gilt als Basisinvestment im Krypto-Portfolio. "
+             "Halving alle ~4 Jahre reduziert Neuemission — historisch bullischer Zykluskatalyst."),
+            ("ETH-USD",  "Ethereum",  "#627eea",
+             "Die Smart-Contract-Plattform. Basis für DeFi (60 Mrd. TVL), NFTs, Stablecoins. "
+             "Merge 2022 → Proof-of-Stake, energieeffizient. Layer-2 (Arbitrum, Optimism, Base) skalieren das Netz. "
+             "EIP-1559: Gebühren werden verbrannt → deflationäres Modell bei hoher Nutzung."),
+        ]),
+        ("⚡ Layer-1 Plattformen — Ethereum-Alternativen", [
+            ("SOL-USD",   "Solana",    "#9945ff",
+             "Hochperformante Layer-1 mit ~65.000 TPS und sehr niedrigen Gebühren. "
+             "Wächst stark im NFT- und DeFi-Segment. Proof-of-History + PoS-Konsens. "
+             "Risiko: Vergangenheit mit Netzwerkausfällen, höhere Zentralisierung der Validatoren."),
+            ("AVAX-USD",  "Avalanche", "#e84142",
+             "Subnetz-Architektur für anpassbare Blockchains. Finality in <1 Sek. "
+             "Stark im Gaming und Enterprise-Segment. Mehrere Subnets ermöglichen eigene Ketten ohne Ethereum-Abhängigkeit."),
+            ("ADA-USD",   "Cardano",   "#0d9488",
+             "Peer-Review-orientierter wissenschaftlicher Ansatz. PoS via Ouroboros. "
+             "Hydra für Skalierung in Entwicklung. Langsame aber solide Entwicklung, starke akademische Community."),
+            ("BNB-USD",   "BNB Chain", "#f3ba2f",
+             "Binance-eigene Blockchain mit BNB als Gas-Token. Günstige Transaktionen, hohes Ökosystem. "
+             "Zentrale Abhängigkeit von Binance ist das Hauptrisiko. Starke DeFi-Nutzung durch günstige Gebühren."),
+        ]),
+        ("🔗 DeFi, Infrastruktur & Web3", [
+            ("LINK-USD", "Chainlink", "#2a5ada",
+             "Marktführer für dezentrale Preis-Oracles. DeFi-Protokolle wie Aave, Compound nutzen Chainlink-Feeds. "
+             "CCIP für Cross-Chain-Interoperabilität. Fundamental wichtige Infrastruktur."),
+            ("DOT-USD",  "Polkadot",  "#e6007a",
+             "Parachain-Ökosystem für Blockchain-Interoperabilität. Substrate-Framework für einfache Chain-Entwicklung. "
+             "Auktionsmodell für Parachain-Slots. Gavin Wood (Ethereum-Mitgründer) als Hauptarchitekt."),
+            ("UNI-USD",  "Uniswap",   "#ff007a",
+             "Größtes dezentrales Exchange-Protokoll (DEX). AMM-Modell (Automated Market Maker). "
+             "Uniswap v3 mit konzentrierter Liquidität. Governance über UNI-Token. Mehrere Mrd. $ tägliches Handelsvolumen."),
+            ("MATIC-USD","Polygon",   "#8247e5",
+             "Ethereum Layer-2 mit zkEVM. Niedrige Gebühren, breite Adoption (Meta, Starbucks, Nike). "
+             "Umbenennung zu POL für das Polygon 2.0 Ökosystem. Starke institutionelle Partnerschaften."),
+        ]),
+    ]
+
+    for _cat_title, _cat_coins in _CRYPTO_CATS:
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        with st.expander(_cat_title, expanded=False):
+            _cat_c1, _cat_c2 = st.columns(2)
+            for _ci2, (tkr, name, color, thesis) in enumerate(_cat_coins):
+                _cp2 = _cprice_map.get(tkr, {})
+                _price2 = _cp2.get("price", 0)
+                _chg2   = _cp2.get("chg", 0)
+                _mc2    = _cp2.get("mc", 0)
+                _chg_clr2 = _C_POSITIVE if _chg2 >= 0 else _C_NEGATIVE
+                _price_str2 = f"${_price2:,.4f}" if _price2 and _price2 < 1 else (f"${_price2:,.2f}" if _price2 and _price2 < 1000 else f"${_price2:,.0f}")
+                _col2 = _cat_c1 if _ci2 % 2 == 0 else _cat_c2
+                with _col2:
+                    st.markdown(f"""
+                    <div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};
+                         border-left:3px solid {color};border-radius:12px;
+                         padding:13px 15px;margin-bottom:10px;'>
+                      <div style='display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;'>
+                        <span style='color:{color};font-size:1.0rem;font-weight:800;'>{tkr.replace("-USD","")}</span>
+                        <span style='color:{_chg_clr2};font-size:0.78rem;font-weight:700;'>{'+' if _chg2>=0 else ''}{_chg2:.2f}%</span>
+                      </div>
+                      <div style='color:{_C_TEXT_MUTED};font-size:0.72rem;margin-bottom:3px;'>{name}
+                        {f"· Mkt Cap {_fmt_mc(_mc2)}" if _mc2 else ""}</div>
+                      <div style='color:{_C_TEXT_PRIMARY};font-size:0.95rem;font-weight:700;margin-bottom:8px;'>{_price_str2 if _price2 else "—"}</div>
+                      <div style='color:{_C_TEXT_MUTED2};font-size:0.77rem;line-height:1.5;'>{thesis}</div>
+                    </div>""", unsafe_allow_html=True)
+
+    # ── Steuerinfo Deutschland ────────────────────────────────────────────
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    with st.expander("🇩🇪 Krypto-Steuer in Deutschland — Das Wichtigste", expanded=False):
+        st.markdown(f"""
+        <div style='color:{_C_TEXT_MUTED};font-size:0.8rem;line-height:1.8;'>
+        <b style='color:{_C_TEXT_PRIMARY};'>✅ 1-Jahres-Regel: Steuerfrei nach 12 Monaten Haltezeit</b><br>
+        Wer Kryptowährungen länger als 1 Jahr hält und dann verkauft, zahlt <b>0 % Steuer</b> auf den Gewinn —
+        unabhängig von der Gewinngröße. Dies gilt für BTC, ETH und alle anderen Coins.
+        <br><br>
+        <b style='color:{_C_TEXT_PRIMARY};'>⚠️ Unter 1 Jahr: Steuerpflichtig über 600 €</b><br>
+        Gewinne aus Verkäufen unter 12 Monaten Haltezeit sind als <b>privates Veräußerungsgeschäft</b> (§ 23 EStG)
+        zu versteuern. Freigrenze: <b>600 € pro Jahr</b> (unter 600 € = steuerfrei).
+        Über 600 € wird der volle Gewinn mit dem persönlichen Einkommensteuersatz (bis 42 %) besteuert.
+        <br><br>
+        <b style='color:{_C_TEXT_PRIMARY};'>🔄 Staking & Lending: Separate Betrachtung</b><br>
+        Staking-Erträge gelten als <b>sonstige Einkünfte</b> zum Zeitpunkt des Zuflusses.
+        Bei späterem Verkauf der gestakten Coins beginnt eine neue 1-Jahres-Frist
+        (einige Experten: 10-Jahres-Frist bei Staking — Rechtslage noch nicht abschließend geklärt).
+        <br><br>
+        <b style='color:{_C_TEXT_PRIMARY};'>📋 FIFO-Methode</b><br>
+        Zur Bestimmung der Haltedauer gilt standardmäßig <b>First-In-First-Out (FIFO)</b>.
+        Kauf-Zeitpunkt und -Preis sind für die Steuerberechnung entscheidend — daher genaue Aufzeichnungen führen!
+        <br><br>
+        <b style='color:{_C_TEXT_PRIMARY};'>💡 Sparerpauschbetrag gilt NICHT für Krypto</b><br>
+        Der Sparerpauschbetrag (1.000 € / 2.000 € zusammenveranlagend) gilt nur für Kapitalerträge
+        wie Dividenden und Zinsen — nicht für Krypto-Gewinne.
+        <br><br>
+        <div style='background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);
+             border-radius:8px;padding:10px 14px;'>
+        ⚠️ <b>Kein Steuerrat!</b> Diese Übersicht ist vereinfacht und dient nur zur Information.
+        Bitte einen Steuerberater konsultieren — besonders bei Staking, DeFi, NFTs und komplexen Transaktionshistorien.
+        </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── Krypto-Glossar ────────────────────────────────────────────────────
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    with st.expander("📚 Krypto-Glossar — Grundbegriffe", expanded=False):
+        _gloss = [
+            ("Blockchain",       "Dezentrale, unveränderliche Datenbank. Transaktionen werden in Blöcken gespeichert und kryptografisch miteinander verknüpft."),
+            ("Proof-of-Work",    "Konsensmechanismus (Bitcoin). Miner lösen rechenintensive Aufgaben → Energieverbrauch hoch, sehr sicher."),
+            ("Proof-of-Stake",   "Konsensmechanismus (Ethereum, Solana). Validatoren 'staken' Coins als Sicherheit → energieeffizient."),
+            ("DeFi",             "Decentralized Finance — Finanzprodukte (Lending, Tausch, Derivate) auf Smart Contracts ohne Intermediäre."),
+            ("Layer-2",          "Skalierungslösung auf einer bestehenden Blockchain. Verarbeitet Transaktionen off-chain und settled on-chain (z.B. Arbitrum, Optimism auf Ethereum)."),
+            ("Smart Contract",   "Selbstausführender Code auf der Blockchain. Führt Bedingungen automatisch aus — kein Mittelsmann nötig."),
+            ("TVL",              "Total Value Locked — gesamter Wert in einem DeFi-Protokoll. Wichtige Kennzahl für Protokoll-Adoption."),
+            ("Halving",          "Bei Bitcoin: alle ~4 Jahre wird die Block-Belohnung halbiert. Reduziert Neuangebot → historisch bullischer Effekt."),
+            ("Staking",          "Einsetzen von Coins als Sicherheit im PoS-Netzwerk. Belohnung: neue Coins. Risiko: 'Slashing' bei Fehlverhalten."),
+            ("CEX / DEX",        "Centralized Exchange (z.B. Binance, Coinbase) vs. Decentralized Exchange (z.B. Uniswap). CEX: KYC, Verwahrung. DEX: self-custody, anonym."),
+            ("Wallet",           "Software/Hardware zur Verwaltung kryptografischer Schlüssel. Self-custody = volle Kontrolle, volle Verantwortung."),
+            ("FOMO / FUD",       "Fear Of Missing Out / Fear, Uncertainty, Doubt — emotionale Markttreiber. Häufige Ursache für irrationale Kauf- oder Verkaufsentscheidungen."),
+        ]
+        _gl1, _gl2 = st.columns(2)
+        for _gi, (_term, _desc) in enumerate(_gloss):
+            _gc = _gl1 if _gi % 2 == 0 else _gl2
+            with _gc:
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:10px 13px;margin-bottom:8px;'>"
+                    f"<div style='color:{_C_ACCENT};font-size:0.8rem;font-weight:700;margin-bottom:3px;'>{_term}</div>"
+                    f"<div style='color:{_C_TEXT_MUTED2};font-size:0.75rem;line-height:1.5;'>{_desc}</div>"
+                    f"</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:12px;'>"
+        "⚠️ Keine Anlageberatung · Krypto ist hochspekulativ · Kurse via Yahoo Finance (5-Min-Cache) · "
+        "Steuerinfo vereinfacht — Steuerberater konsultieren</div>",
+        unsafe_allow_html=True)
 
     st.stop()
 
