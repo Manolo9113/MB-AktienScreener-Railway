@@ -12051,6 +12051,103 @@ elif st.session_state.get("show_rohstoffe"):
         </div>
         """, unsafe_allow_html=True)
 
+    # ── KI Megatrend-Analyse ─────────────────────────────────────────────
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    with st.expander("🤖 KI-Megatrend-Analyse — Welche Rohstoffe profitieren am meisten?", expanded=False):
+
+        _rki_pk = "rohstoffe_ki_analyse"
+        _rki_mk = "rohstoffe_ki_model"
+        _rki_ts = "rohstoffe_ki_ts"
+
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.78rem;margin-bottom:12px;line-height:1.6;'>"
+            f"Die KI analysiert, welche Rohstoffe durch aktuelle Megatrends "
+            f"(Energiewende, E-Mobilität, KI & Rechenzentren, Dekarbonisierung, Rüstung) "
+            f"am stärksten profitieren — und bewertet das mittel- bis langfristige Renditepotenzial."
+            f"</div>", unsafe_allow_html=True)
+
+        _rki_c1, _rki_c2 = st.columns([5, 1])
+        with _rki_c1:
+            _rki_gen = st.button(
+                "🤖 KI-Analyse starten", type="primary",
+                use_container_width=True, key="btn_rki_gen",
+                disabled=not GEMINI_API_KEY)
+        with _rki_c2:
+            _rki_ref = st.button(
+                "🔄 Neu", use_container_width=True, key="btn_rki_ref",
+                disabled=(_rki_pk not in st.session_state or not GEMINI_API_KEY))
+
+        if not GEMINI_API_KEY:
+            st.caption("🔑 GEMINI_API_KEY in Railway-Umgebungsvariablen eintragen.")
+
+        if _rki_ref:
+            for _k in [_rki_pk, _rki_mk, _rki_ts]:
+                st.session_state.pop(_k, None)
+            st.rerun()
+
+        if _rki_gen and _rki_pk not in st.session_state:
+            _rki_sys = (
+                "Du bist ein erfahrener Rohstoff- und Makro-Analyst mit 20 Jahren Erfahrung "
+                "bei einem globalen Asset Manager. Du kombinierst fundamentale Angebotsanalyse, "
+                "geopolitische Risiken und strukturelle Nachfragetreiber. "
+                "Dein Fokus liegt auf langfristiger struktureller Analyse, nicht kurzfristigen Kursschwankungen. "
+                "Antworte ausschließlich auf Deutsch. Sei konkret, datenorientiert und ehrlich — "
+                "nenne auch Risiken klar. Verwende Markdown-Formatierung."
+            )
+            _rki_usr = (
+                "Analysiere die folgenden 12 Rohstoffe aus der Perspektive der wichtigsten globalen Megatrends:\n\n"
+                "**Rohstoffe:** Gold, Silber, Platin, Palladium, Kupfer, Aluminium, Öl (WTI), Erdgas, Uran, Lithium, Seltene Erden, Palladium\n\n"
+                "**Relevante Megatrends:**\n"
+                "- 🌱 Energiewende (Solar, Wind, Stromnetz-Ausbau)\n"
+                "- 🚗 E-Mobilität (Batterien, Motoren, Ladeinfrastruktur)\n"
+                "- 🤖 KI & Rechenzentren (Stromverbrauch, Kühlung, Hardware)\n"
+                "- 🏭 Dekarbonisierung der Industrie (Grüner Wasserstoff, CCS)\n"
+                "- 🛡️ Rüstung & Verteidigung (Munition, Fahrzeuge, Elektronik)\n"
+                "- 🏙️ Urbanisierung & Infrastruktur (Emerging Markets)\n\n"
+                "**Bitte erstelle:**\n\n"
+                "## 🏆 Ranking: Top-5 Rohstoffe nach Renditepotenzial\n"
+                "Für jeden der Top-5 exakt dieses Format:\n\n"
+                "**[Rang]. [ROHSTOFF-EMOJI] [Rohstoff]** · Renditepotenzial: [⭐⭐⭐⭐⭐]\n"
+                "*Mittelfristig (3–5J): [Kurze Einschätzung]* · *Langfristig (10–20J): [Kurze Einschätzung]*\n\n"
+                "🟢 **Megatrend-Treiber:** [Welche 2–3 Megatrends treiben die Nachfrage konkret? Zahlen nennen.]\n"
+                "📊 **Angebots-Defizit:** [Gibt es ein strukturelles Defizit? Warum lässt sich Angebot nicht schnell erhöhen?]\n"
+                "⚠️ **Hauptrisiko:** [Das wichtigste Risiko für die These]\n\n"
+                "---\n\n"
+                "## 📊 Trend-Matrix: Alle 12 Rohstoffe\n"
+                "Erstelle eine kompakte Tabelle:\n"
+                "| Rohstoff | Energiewende | E-Mobilität | KI/Strom | Rüstung | Gesamt-Score | Mittel. Potenzial | Langfr. Potenzial |\n"
+                "|---|---|---|---|---|---|---|---|\n"
+                "Bewertung: ⭐ = gering, ⭐⭐ = mittel, ⭐⭐⭐ = hoch, ⭐⭐⭐⭐ = sehr hoch\n\n"
+                "---\n\n"
+                "## 🔍 Strategische Einschätzung\n"
+                "[3–4 Sätze: Was ist das wichtigste Erkenntnisse aus dieser Analyse? "
+                "Welche Rohstoffe werden unterschätzt, welche überschätzt? "
+                "Wie sollte ein langfristiger Privatanleger das Portfolio gewichten?]"
+            )
+            with st.spinner("🤖 KI analysiert Megatrends und Rohstoff-Nachfrage…"):
+                _rki_txt, _rki_mdl = _try_gemini(
+                    [{"role": "system", "content": _rki_sys},
+                     {"role": "user",   "content": _rki_usr}],
+                    max_tokens=6000, temperature=0.5, api_key=GEMINI_API_KEY
+                )
+            if _rki_txt:
+                import datetime as _rkidt
+                st.session_state[_rki_pk] = _rki_txt
+                st.session_state[_rki_mk] = _rki_mdl
+                st.session_state[_rki_ts] = _rkidt.datetime.now().strftime("%d.%m.%Y %H:%M")
+                st.rerun()
+            else:
+                st.error(f"KI-Analyse fehlgeschlagen: {_rki_mdl}")
+
+        if _rki_pk in st.session_state:
+            st.markdown(st.session_state[_rki_pk])
+            st.markdown(
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;margin-top:8px;'>"
+                f"Generiert: {st.session_state.get(_rki_ts,'')} · "
+                f"Modell: {st.session_state.get(_rki_mk,'Gemini')} · "
+                f"KI kann halluzinieren — eigenständig verifizieren</div>",
+                unsafe_allow_html=True)
+
     st.markdown(
         "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:12px;'>"
         "⚠️ Keine Anlageberatung · Preise via Yahoo Finance (5-Min-Cache) · "
