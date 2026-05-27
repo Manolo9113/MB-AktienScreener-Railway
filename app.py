@@ -19202,6 +19202,13 @@ if len(hist_plot) >= 2:
         name="Volumen", marker_color=colors_vol, opacity=0.6,
         showlegend=False
     ), row=2, col=1)
+    # 20-day average volume overlay
+    _avg_vol_20 = hist_plot["Volume"].rolling(20, min_periods=1).mean()
+    fig.add_trace(go.Scatter(
+        x=hist_plot.index, y=_avg_vol_20,
+        name="Ø Vol (20T)", line=dict(color="#ffa726", width=1.3, dash="dot"),
+        opacity=0.85, showlegend=True,
+    ), row=2, col=1)
 
     fig.update_layout(
         template=_C_CHART_THEME,
@@ -21676,6 +21683,13 @@ elif _at == 7:
             x=chart_data.index, y=chart_data["Volume"],
             name="Volumen", marker_color=vol_colors, opacity=0.55, showlegend=False,
         ), row=vol_row, col=1)
+        # 20-day average volume overlay
+        _avg_vol_20 = chart_data["Volume"].rolling(20, min_periods=1).mean()
+        fig_ta.add_trace(go.Scatter(
+            x=chart_data.index, y=_avg_vol_20,
+            name="Ø Vol (20T)", line=dict(color="#ffa726", width=1.3, dash="dot"),
+            opacity=0.85, showlegend=False,
+        ), row=vol_row, col=1)
 
         # ── RSI ─────────────────────────────────────────────────────────
         if show_rsi and rsi_row:
@@ -21928,6 +21942,21 @@ elif _at == 7:
             else:
                 _bb_status = f"Innerhalb ({(_cp - _bb_l) / (_bb_u - _bb_l) * 100:.0f}% vom Tief)"
             _insights.append(f"BB: {_bb_status} · Breite {_bw:.1f}%")
+        # Relative volume insight
+        if len(chart_data) >= 5 and chart_data["Volume"].iloc[-1] > 0:
+            _rvol_avg = float(_avg_vol_20.iloc[-1])
+            _rvol_cur = float(chart_data["Volume"].iloc[-1])
+            if _rvol_avg > 0:
+                _rvol = _rvol_cur / _rvol_avg
+                if _rvol >= 2.0:
+                    _rvol_status = f"sehr hoch 🔴 ({_rvol:.1f}x Ø)"
+                elif _rvol >= 1.3:
+                    _rvol_status = f"erhöht 🟡 ({_rvol:.1f}x Ø)"
+                elif _rvol >= 0.7:
+                    _rvol_status = f"normal ({_rvol:.1f}x Ø)"
+                else:
+                    _rvol_status = f"gering ⚪ ({_rvol:.1f}x Ø)"
+                _insights.append(f"RVOL: {_rvol_status}")
         if _insights:
             st.markdown(f"""
             <div class="insight-box">
