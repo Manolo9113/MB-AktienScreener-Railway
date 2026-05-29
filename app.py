@@ -4928,6 +4928,8 @@ if "show_crypto" not in st.session_state:
     st.session_state["show_crypto"] = False
 if "show_rohstoffe" not in st.session_state:
     st.session_state["show_rohstoffe"] = False
+if "show_marktbewertung" not in st.session_state:
+    st.session_state["show_marktbewertung"] = False
 if "etf_ticker_input" not in st.session_state:
     st.session_state["etf_ticker_input"] = ""
 if "portfolio_df" not in st.session_state:
@@ -6288,52 +6290,57 @@ with st.sidebar:
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     if not st.session_state["show_landing"] and st.button("🏠 Startseite", use_container_width=True):
-        for _k in ("show_portfolio","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe"):
+        for _k in ("show_portfolio","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
             st.session_state[_k] = False
         st.session_state["show_landing"] = True
         st.rerun()
     if not st.session_state.get("show_market_overview") and st.button("🌍 Marktüberblick", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
             st.session_state[_k] = False
         st.session_state["show_market_overview"] = True
         st.rerun()
     if not st.session_state.get("show_stocks") and st.button("💡 Aktienideen", use_container_width=True):
-        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe"):
+        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
             st.session_state[_k] = False
         st.session_state["show_stocks"] = True
         st.rerun()
     if not st.session_state.get("show_screener") and st.button("🔬 Aktien-Screener", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_wissen","show_crypto","show_rohstoffe"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
             st.session_state[_k] = False
         st.session_state["show_screener"] = True
         st.rerun()
     if not st.session_state.get("show_compare") and st.button("⚖️ Aktien-Vergleich", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener","show_wissen","show_crypto","show_rohstoffe"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
             st.session_state[_k] = False
         st.session_state["show_compare"] = True
         st.rerun()
     if st.button("🔎 ETF-Analyzer", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
             st.session_state[_k] = False
         st.session_state["show_etf_analyzer"] = True
         st.rerun()
     if not st.session_state.get("show_wissen") and st.button("📚 Wissenswertes", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_crypto","show_rohstoffe"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_crypto","show_rohstoffe","show_marktbewertung"):
             st.session_state[_k] = False
         st.session_state["show_wissen"] = True
         st.rerun()
     if not st.session_state.get("show_crypto") and st.button("₿ Krypto", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_rohstoffe"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_rohstoffe","show_marktbewertung"):
             st.session_state[_k] = False
         st.session_state["show_crypto"] = True
         st.rerun()
     if not st.session_state.get("show_rohstoffe") and st.button("⛏️ Rohstoffe", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_marktbewertung"):
             st.session_state[_k] = False
         st.session_state["show_rohstoffe"] = True
         st.rerun()
+    if not st.session_state.get("show_marktbewertung") and st.button("📈 Indizes Analyse", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe"):
+            st.session_state[_k] = False
+        st.session_state["show_marktbewertung"] = True
+        st.rerun()
     if st.button("📁 Mein Portfolio", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe"):
+        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
             st.session_state[_k] = False
         st.session_state["show_portfolio"] = True
         st.rerun()
@@ -6482,7 +6489,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
     # ── Schnellnavigation ───────────────────────────────────────────
     st.markdown("<div class='section-header'>⚡ Zur Übersicht navigieren</div>", unsafe_allow_html=True)
     _nav_c1, _nav_c2 = st.columns(2)
-    _all_pages = ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe")
+    _all_pages = ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung")
     with _nav_c1:
         if st.button("🌍 Marktüberblick", use_container_width=True, type="primary", key="land_nav_markt"):
             for _k in _all_pages: st.session_state[_k] = False
@@ -6520,6 +6527,11 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
         if st.button("🔬 Aktien-Screener", use_container_width=True, key="land_nav_scr"):
             for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_screener"] = True
+            st.rerun()
+    with _nav_c8:
+        if st.button("📈 Indizes Analyse", use_container_width=True, key="land_nav_mktval"):
+            for _k in _all_pages: st.session_state[_k] = False
+            st.session_state["show_marktbewertung"] = True
             st.rerun()
 
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
@@ -10723,7 +10735,7 @@ elif st.session_state.get("show_stocks"):
 
     if st.button("🔬 Zum Aktien-Screener →", use_container_width=False, key="aktienideen_to_screener"):
         for _k in ("show_landing", "show_stocks", "show_portfolio", "show_etf_analyzer",
-                   "show_market_overview", "show_compare", "show_wissen", "show_crypto","show_rohstoffe"):
+                   "show_market_overview", "show_compare", "show_wissen", "show_crypto","show_rohstoffe","show_marktbewertung"):
             st.session_state[_k] = False
         st.session_state["show_screener"] = True
         st.rerun()
@@ -12154,6 +12166,663 @@ elif st.session_state.get("show_rohstoffe"):
         "ETF/ETC-Daten zur Orientierung — bitte auf justETF.com verifizieren</div>",
         unsafe_allow_html=True)
 
+    st.stop()
+
+# ==================== INDIZES ANALYSE PAGE ====================
+elif st.session_state.get("show_marktbewertung"):
+    st.markdown("<div class='section-header'>📈 Indizes Analyse — Chartanalyse & Bewertung</div>", unsafe_allow_html=True)
+
+    _MKTV_INDICES = {
+        "S&P 500":    {"ticker": "^GSPC", "etf": "SPY",    "color": "#2196f3", "flag": "🇺🇸",
+                       "desc": "500 größte US-Unternehmen · breiter US-Marktindex"},
+        "NASDAQ 100": {"ticker": "^NDX",  "etf": "QQQ",    "color": "#00e5ff", "flag": "🇺🇸",
+                       "desc": "Top 100 Technologie-Werte der NASDAQ"},
+        "DAX 40":     {"ticker": "^GDAXI","etf": "EXS1.DE","color": "#ffab40", "flag": "🇩🇪",
+                       "desc": "40 größte börsennotierte deutsche Unternehmen"},
+        "Dow Jones":  {"ticker": "^DJI",  "etf": "DIA",    "color": "#7c4dff", "flag": "🇺🇸",
+                       "desc": "30 Blue-Chip US-Aktien · kursgewichtet"},
+        "Nikkei 225": {"ticker": "^N225", "etf": "EWJ",    "color": "#ef5350", "flag": "🇯🇵",
+                       "desc": "225 Leitaktien der Tokioter Börse"},
+        "FTSE 100":   {"ticker": "^FTSE", "etf": "ISF.L",  "color": "#26a69a", "flag": "🇬🇧",
+                       "desc": "100 größte Unternehmen an der London Stock Exchange"},
+    }
+    # (hist_median_PE, hist_low_PE, hist_high_PE)
+    _MV_HIST_PE = {
+        "S&P 500":    (18.0, 10, 32),
+        "NASDAQ 100": (26.0, 14, 60),
+        "DAX 40":     (16.0,  9, 28),
+        "Dow Jones":  (17.0,  9, 28),
+        "Nikkei 225": (18.0,  9, 45),
+        "FTSE 100":   (14.0,  7, 22),
+    }
+
+    @st.cache_data(ttl=300, show_spinner=False)
+    def _load_idx_hist(ticker: str, period: str = "5y"):
+        df = yf.download(ticker, period=period, interval="1d", auto_adjust=True, progress=False)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        if getattr(df.index, "tz", None) is not None:
+            df.index = df.index.tz_convert(None)
+        return df
+
+    @st.cache_data(ttl=1800, show_spinner=False)
+    def _load_idx_etf_info(etf_ticker: str):
+        return yf.Ticker(etf_ticker).info
+
+    @st.cache_data(ttl=300, show_spinner=False)
+    def _load_vix_price():
+        info = yf.Ticker("^VIX").info
+        return info.get("regularMarketPrice") or info.get("previousClose")
+
+    # ── Index selector ────────────────────────────────────────────────────
+    _mv_sel_c, _mv_desc_c = st.columns([1, 3])
+    with _mv_sel_c:
+        _mv_idx_name = st.selectbox(
+            "Index", list(_MKTV_INDICES.keys()), key="mv_idx_sel",
+            format_func=lambda x: f"{_MKTV_INDICES[x]['flag']}  {x}"
+        )
+    _mv_meta  = _MKTV_INDICES[_mv_idx_name]
+    _mv_color = _mv_meta["color"]
+    with _mv_desc_c:
+        st.markdown(
+            f"<div style='padding:26px 0 0 8px;color:#78909c;font-size:0.82rem;'>{_mv_meta['desc']}</div>",
+            unsafe_allow_html=True)
+
+    # ── Load data ─────────────────────────────────────────────────────────
+    with st.spinner("Lade Index-Daten…"):
+        _mv_hist     = _load_idx_hist(_mv_meta["ticker"])
+        _mv_etf_info = _load_idx_etf_info(_mv_meta["etf"])
+        _mv_vix      = _load_vix_price()
+
+    if _mv_hist.empty or "Close" not in _mv_hist.columns:
+        st.error(f"Keine Preisdaten für {_mv_idx_name} verfügbar.")
+        st.stop()
+
+    _mv_close = _mv_hist["Close"].dropna()
+    if _mv_close.empty:
+        st.error("Keine gültigen Schlusskursdaten.")
+        st.stop()
+
+    _mv_price   = float(_mv_close.iloc[-1])
+    _mv_prev    = float(_mv_close.iloc[-2]) if len(_mv_close) > 1 else _mv_price
+    _mv_chg     = (_mv_price - _mv_prev) / _mv_prev * 100 if _mv_prev else 0.0
+    _mv_chg_abs = _mv_price - _mv_prev
+    _mv_52h     = float(_mv_hist["High"].iloc[-252:].max()) if "High" in _mv_hist.columns and len(_mv_hist) >= 10 else _mv_price
+    _mv_52l     = float(_mv_hist["Low"].iloc[-252:].min())  if "Low"  in _mv_hist.columns and len(_mv_hist) >= 10 else _mv_price
+    _mv_ytd_ser = _mv_close[_mv_close.index.year == pd.Timestamp.today().year]
+    _mv_ytd_pct = ((_mv_price / float(_mv_ytd_ser.iloc[0]) - 1) * 100) if len(_mv_ytd_ser) > 1 else 0.0
+
+    _mv_pe  = _mv_etf_info.get("trailingPE") or _mv_etf_info.get("forwardPE")
+    _mv_pb  = _mv_etf_info.get("priceToBook")
+    _mv_dy  = (_mv_etf_info.get("dividendYield") or 0) * 100
+    _mv_aum = _mv_etf_info.get("totalAssets")
+
+    _mv_chg_c    = _C_POSITIVE if _mv_chg >= 0 else _C_NEGATIVE
+    _mv_chg_sign = "+" if _mv_chg >= 0 else ""
+
+    def _fmt_idx_lvl(v: float) -> str:
+        return f"{v:,.0f}" if v >= 1000 else f"{v:.2f}"
+
+    if _mv_vix:
+        _vix_c = (_C_POSITIVE if _mv_vix < 15 else
+                  "#26a69a"   if _mv_vix < 20 else
+                  "#ffa726"   if _mv_vix < 30 else
+                  _C_NEGATIVE if _mv_vix < 40 else "#ff1744")
+        _vix_l = ("Niedrig 🟢" if _mv_vix < 15 else
+                  "Moderat ⚪" if _mv_vix < 20 else
+                  "Erhöht 🟡"  if _mv_vix < 30 else
+                  "Hoch 🔴"    if _mv_vix < 40 else "Extrem 🚨")
+
+    # ── Stats bar ─────────────────────────────────────────────────────────
+    _mv_stats = [
+        (f"{_mv_meta['flag']} {_mv_idx_name}", _fmt_idx_lvl(_mv_price),                                          _mv_color),
+        ("1T Änderung",  f"{_mv_chg_sign}{_mv_chg_abs:,.1f}  ({_mv_chg_sign}{_mv_chg:.2f}%)",                   _mv_chg_c),
+        ("YTD",          f"{'+' if _mv_ytd_pct >= 0 else ''}{_mv_ytd_pct:.1f}%",                                 _C_POSITIVE if _mv_ytd_pct >= 0 else _C_NEGATIVE),
+        ("52W Hoch",     _fmt_idx_lvl(_mv_52h),                                                                   "#26a69a"),
+        ("52W Tief",     _fmt_idx_lvl(_mv_52l),                                                                   "#ef5350"),
+    ]
+    if _mv_pe:    _mv_stats.append(("KGV (ETF-Proxy)", f"{_mv_pe:.1f}x",   _C_NEUTRAL))
+    if _mv_dy > 0: _mv_stats.append(("Div.-Rendite",  f"{_mv_dy:.2f}%",   "#ffd600"))
+    if _mv_vix:   _mv_stats.append((f"VIX — {_vix_l}", f"{_mv_vix:.1f}", _vix_c))
+
+    _mv_sc = st.columns(len(_mv_stats))
+    for (_lbl, _val, _clr), _col in zip(_mv_stats, _mv_sc):
+        with _col:
+            st.markdown(f"""
+            <div class="metric-card" style="text-align:center;padding:12px 6px;">
+                <div class="metric-label" style="font-size:0.68rem;">{_lbl}</div>
+                <div class="metric-value" style="color:{_clr};font-size:1.05rem;font-weight:700;">{_val}</div>
+            </div>""", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+    # ── Tabs ──────────────────────────────────────────────────────────────
+    _mvt1, _mvt2, _mvt3, _mvt4 = st.tabs(["📊 Übersicht", "🔬 Chart Analyse", "📐 Bewertung", "🤖 KI-Analyse"])
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 1: ÜBERSICHT — Trend-Kanal-Chart
+    # ══════════════════════════════════════════════════════════════════════
+    with _mvt1:
+        _mv_lookback  = min(1260, len(_mv_hist))
+        _mv_hist_plot = _mv_hist.iloc[-_mv_lookback:].copy()
+        _mv_cp        = _mv_hist_plot["Close"].dropna()
+
+        if len(_mv_cp) >= 20:
+            import numpy as _np_mv
+            _mv_log  = _np_mv.log(_mv_cp.values.astype(float))
+            _mv_x    = _np_mv.arange(len(_mv_log))
+            _mv_coef = _np_mv.polyfit(_mv_x, _mv_log, 1)
+            _mv_tr   = _np_mv.polyval(_mv_coef, _mv_x)
+            _mv_res  = _mv_log - _mv_tr
+            _mv_std  = float(_mv_res.std())
+            _mv_trend  = _np_mv.exp(_mv_tr)
+            _mv_upper2 = _np_mv.exp(_mv_tr + 2 * _mv_std)
+            _mv_lower2 = _np_mv.exp(_mv_tr - 2 * _mv_std)
+            _mv_upper3 = _np_mv.exp(_mv_tr + 3 * _mv_std)
+            _mv_lower3 = _np_mv.exp(_mv_tr - 3 * _mv_std)
+
+            _mv_fig1 = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                                     row_heights=[0.78, 0.22], vertical_spacing=0.03)
+            _mv_fig1.add_trace(go.Scatter(x=_mv_hist_plot.index, y=_mv_upper3,
+                line=dict(color="rgba(100,181,246,0.0)"), showlegend=False), row=1, col=1)
+            _mv_fig1.add_trace(go.Scatter(x=_mv_hist_plot.index, y=_mv_lower3,
+                name="Trendkanal (3σ)", line=dict(color="rgba(100,181,246,0.0)"),
+                fill="tonexty", fillcolor="rgba(21,101,192,0.08)", showlegend=True), row=1, col=1)
+            _mv_fig1.add_trace(go.Scatter(x=_mv_hist_plot.index, y=_mv_upper2,
+                line=dict(color="rgba(100,181,246,0.25)", dash="dot", width=1), showlegend=False), row=1, col=1)
+            _mv_fig1.add_trace(go.Scatter(x=_mv_hist_plot.index, y=_mv_lower2,
+                name="Trendkanal (±2σ)", line=dict(color="rgba(100,181,246,0.25)", dash="dot", width=1),
+                fill="tonexty", fillcolor="rgba(21,101,192,0.12)", showlegend=True), row=1, col=1)
+            _mv_fig1.add_trace(go.Scatter(x=_mv_hist_plot.index, y=_mv_trend,
+                name="Trendlinie", line=dict(color="#64b5f6", width=1.5, dash="dash")), row=1, col=1)
+            _mv_r, _mv_g, _mv_b = int(_mv_color[1:3],16), int(_mv_color[3:5],16), int(_mv_color[5:7],16)
+            _mv_fig1.add_trace(go.Scatter(x=_mv_hist_plot.index, y=_mv_hist_plot["Close"],
+                name=_mv_idx_name, line=dict(color=_mv_color, width=2),
+                fill="tonexty", fillcolor=f"rgba({_mv_r},{_mv_g},{_mv_b},0.05)"), row=1, col=1)
+
+            if "Volume" in _mv_hist_plot.columns:
+                _mv1_vol = _mv_hist_plot["Volume"].fillna(0)
+                if _mv1_vol.sum() > 0:
+                    _mv1_open = _mv_hist_plot["Open"] if "Open" in _mv_hist_plot.columns else _mv_hist_plot["Close"]
+                    _mv1_vc = [_C_POSITIVE if c >= o else _C_NEGATIVE
+                               for c, o in zip(_mv_hist_plot["Close"], _mv1_open)]
+                    _mv_fig1.add_trace(go.Bar(x=_mv_hist_plot.index, y=_mv1_vol,
+                        name="Volumen", marker_color=_mv1_vc, opacity=0.55, showlegend=False), row=2, col=1)
+                    _mv_fig1.add_trace(go.Scatter(x=_mv_hist_plot.index,
+                        y=_mv1_vol.rolling(20, min_periods=1).mean(),
+                        name="Ø Vol (20T)", line=dict(color="#ffa726", width=1.3, dash="dot"),
+                        opacity=0.85, showlegend=True), row=2, col=1)
+
+            _mv_fig1.update_layout(
+                template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER, plot_bgcolor=_C_CHART_PLOT,
+                height=560,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                            bgcolor=_C_CHART_PLOT, bordercolor=_C_BORDER, borderwidth=1, font=dict(size=11)),
+                margin=dict(l=0, r=0, t=30, b=0),
+                xaxis=dict(showgrid=False, zeroline=False),
+                yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False),
+                xaxis2=dict(showgrid=False),
+                yaxis2=dict(showgrid=False, zeroline=False),
+                hovermode="x unified",
+            )
+            st.plotly_chart(_mv_fig1, use_container_width=True)
+
+            _mv_last_sigma = float(_mv_res[-1]) / _mv_std if _mv_std > 0 else 0.0
+            _mv_pos_txt = ("deutlich überbewertet (>2σ über Trend)" if _mv_last_sigma > 2 else
+                           "leicht überbewertet (>1σ)"              if _mv_last_sigma > 1 else
+                           "leicht unterbewertet (<−1σ)"            if _mv_last_sigma < -1 else
+                           "deutlich unterbewertet (<−2σ)"          if _mv_last_sigma < -2 else
+                           "fair bewertet (nahe Trend)")
+            _mv_sig_c = _C_NEGATIVE if _mv_last_sigma > 1 else _C_POSITIVE if _mv_last_sigma < -1 else _C_NEUTRAL
+            st.markdown(f"""
+            <div class="insight-box">
+                <strong>📊 Trend-Analyse (5J):</strong> {_mv_idx_name} notiert
+                <strong style="color:{_mv_sig_c}">{_mv_last_sigma:+.1f}σ</strong> vom langfristigen Trendkanal —
+                {_mv_pos_txt}. Trendkanal (±2σ):
+                <strong>{_fmt_idx_lvl(float(_mv_lower2[-1]))}</strong> –
+                <strong>{_fmt_idx_lvl(float(_mv_upper2[-1]))}</strong>.
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.info("Zu wenige Datenpunkte für Trend-Analyse.")
+
+        # Performance cards
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-header'>📅 Performance-Rückblick</div>", unsafe_allow_html=True)
+        _mv_perf_defs = [("1M", 21), ("3M", 63), ("6M", 126), ("YTD", None), ("1J", 252), ("3J", 756), ("5J", 1260)]
+        _mv_pc = st.columns(len(_mv_perf_defs))
+        for (_plbl, _pd_n), _col in zip(_mv_perf_defs, _mv_pc):
+            if _plbl == "YTD":
+                _ys = _mv_close[_mv_close.index.year == pd.Timestamp.today().year]
+                _pret = ((_mv_price / float(_ys.iloc[0]) - 1) * 100) if len(_ys) > 1 else None
+            elif len(_mv_close) >= _pd_n:
+                _pret = (_mv_price / float(_mv_close.iloc[-_pd_n]) - 1) * 100
+            else:
+                _pret = None
+            with _col:
+                _pc_c = "#26a69a" if _pret and _pret > 0 else "#ef5350"
+                st.markdown(f"""
+                <div class="metric-card" style="text-align:center;padding:10px 6px;">
+                    <div class="metric-label">{_plbl}</div>
+                    <div class="metric-value" style="color:{_pc_c if _pret is not None else '#546e7a'};font-size:1.15rem;">
+                        {f'{_pret:+.1f}%' if _pret is not None else '—'}
+                    </div>
+                </div>""", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 2: CHART ANALYSE
+    # ══════════════════════════════════════════════════════════════════════
+    with _mvt2:
+        _mv2_c1, _mv2_c2, _mv2_c3 = st.columns([1, 1, 2])
+        with _mv2_c1:
+            _mv2_mode = st.selectbox("Zeitraum", ["Täglich (2J)", "Täglich (1J)", "Wöchentlich (5J)", "Monatlich (10J)"], key="mv2_mode")
+        with _mv2_c2:
+            _mv2_ctype = st.selectbox("Chart-Typ", ["Candlestick", "Linie"], key="mv2_ctype")
+        with _mv2_c3:
+            _mv2_emas = st.multiselect("EMAs", ["EMA 20","EMA 50","EMA 100","EMA 200"], default=["EMA 50","EMA 200"], key="mv2_emas")
+
+        _mv2_ic1, _mv2_ic2 = st.columns(2)
+        with _mv2_ic1:
+            _mv2_inds = st.multiselect("Indikatoren", ["RSI (14)","MACD","Bollinger Bänder","Fibonacci"], key="mv2_inds")
+        with _mv2_ic2:
+            _mv2_cmp = st.multiselect("Vergleich (normalisiert)", [n for n in _MKTV_INDICES if n != _mv_idx_name],
+                                       key="mv2_cmp", max_selections=3)
+
+        # Build chart data for selected period
+        if "Wöchentlich" in _mv2_mode:
+            _mv2_raw  = _load_idx_hist(_mv_meta["ticker"], period="5y")
+            _mv2_data = _mv2_raw.resample("W").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna(subset=["Close"])
+        elif "Monatlich" in _mv2_mode:
+            _mv2_raw  = _load_idx_hist(_mv_meta["ticker"], period="max")
+            _mv2_data = _mv2_raw.resample("ME").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna(subset=["Close"])
+        elif "1J" in _mv2_mode:
+            _mv2_data = _mv_hist.iloc[-252:].copy() if len(_mv_hist) >= 252 else _mv_hist.copy()
+        else:
+            _mv2_data = _mv_hist.iloc[-504:].copy() if len(_mv_hist) >= 504 else _mv_hist.copy()
+
+        if _mv2_data.empty:
+            st.warning("Keine Daten für den gewählten Zeitraum.")
+        else:
+            _mv2_close     = _mv2_data["Close"].dropna()
+            _mv2_show_rsi  = "RSI (14)"         in _mv2_inds
+            _mv2_show_macd = "MACD"             in _mv2_inds
+            _mv2_show_fib  = "Fibonacci"        in _mv2_inds
+            _mv2_show_bb   = "Bollinger Bänder" in _mv2_inds
+
+            _mv2_nrows   = 1 + 1 + (1 if _mv2_show_rsi else 0) + (1 if _mv2_show_macd else 0)
+            _mv2_heights = [0.55 if (_mv2_show_rsi or _mv2_show_macd) else 0.72, 0.12,
+                            *([0.16] if _mv2_show_rsi  else []),
+                            *([0.16] if _mv2_show_macd else [])]
+
+            _mv2_fig = make_subplots(
+                rows=_mv2_nrows, cols=1, shared_xaxes=True,
+                row_heights=_mv2_heights, vertical_spacing=0.02,
+                subplot_titles=["", "Volumen",
+                                *(["RSI (14)"] if _mv2_show_rsi  else []),
+                                *(["MACD"]     if _mv2_show_macd else [])],
+            )
+            _mv2_vol_row  = 2
+            _mv2_rsi_row  = 3 if _mv2_show_rsi  else None
+            _mv2_macd_row = (3 + (1 if _mv2_show_rsi else 0)) if _mv2_show_macd else None
+
+            # Price trace
+            if _mv2_ctype == "Candlestick" and "Open" in _mv2_data.columns:
+                _mv2_fig.add_trace(go.Candlestick(
+                    x=_mv2_data.index, open=_mv2_data["Open"], high=_mv2_data["High"],
+                    low=_mv2_data["Low"], close=_mv2_close, name=_mv_idx_name,
+                    increasing_line_color=_C_POSITIVE, decreasing_line_color=_C_NEGATIVE,
+                    increasing_fillcolor=_C_POSITIVE, decreasing_fillcolor=_C_NEGATIVE,
+                ), row=1, col=1)
+            else:
+                _mv2_r, _mv2_g, _mv2_b = int(_mv_color[1:3],16), int(_mv_color[3:5],16), int(_mv_color[5:7],16)
+                _mv2_fig.add_trace(go.Scatter(
+                    x=_mv2_data.index, y=_mv2_close, name=_mv_idx_name,
+                    line=dict(color=_mv_color, width=2),
+                    fill="tozeroy", fillcolor=f"rgba({_mv2_r},{_mv2_g},{_mv2_b},0.05)",
+                ), row=1, col=1)
+
+            # EMAs
+            _mv2_ema_pds    = {"EMA 20": 20, "EMA 50": 50, "EMA 100": 100, "EMA 200": 200}
+            _mv2_ema_colors = {"EMA 20": _C_NEUTRAL, "EMA 50": "#00e5ff", "EMA 100": "#ff9100", "EMA 200": "#ef5350"}
+            for _en in _mv2_emas:
+                _ep = _mv2_ema_pds[_en]
+                if len(_mv2_close) >= _ep:
+                    _mv2_fig.add_trace(go.Scatter(
+                        x=_mv2_data.index, y=compute_ema(_mv2_close, _ep),
+                        name=_en, line=dict(color=_mv2_ema_colors[_en], width=1.4),
+                    ), row=1, col=1)
+
+            # Bollinger Bands
+            if _mv2_show_bb and len(_mv2_close) >= 20:
+                _mv2_bb_m = _mv2_close.rolling(20).mean()
+                _mv2_bb_s = _mv2_close.rolling(20).std()
+                _mv2_fig.add_trace(go.Scatter(x=_mv2_data.index, y=_mv2_bb_m + 2*_mv2_bb_s,
+                    name="BB Oben", line=dict(color="rgba(100,181,246,0.6)", width=1, dash="dot"), showlegend=True), row=1, col=1)
+                _mv2_fig.add_trace(go.Scatter(x=_mv2_data.index, y=_mv2_bb_m - 2*_mv2_bb_s,
+                    name="BB Unten", line=dict(color="rgba(100,181,246,0.6)", width=1, dash="dot"),
+                    fill="tonexty", fillcolor="rgba(100,181,246,0.04)", showlegend=True), row=1, col=1)
+                _mv2_fig.add_trace(go.Scatter(x=_mv2_data.index, y=_mv2_bb_m,
+                    name="BB Mitte", line=dict(color="rgba(100,181,246,0.3)", width=1), showlegend=False), row=1, col=1)
+
+            # Fibonacci
+            if _mv2_show_fib:
+                _mv2_fv = _mv2_data.iloc[-min(252, len(_mv2_data)):]
+                _mv2_fh = float(_mv2_fv["High"].max()); _mv2_fl = float(_mv2_fv["Low"].min())
+                _fib_c_mv = {"0.0 %": "rgba(255,255,255,0.25)", "23.6 %": "rgba(255,214,0,0.55)",
+                             "38.2 %": "rgba(0,230,118,0.65)",  "50.0 %": "rgba(0,229,255,0.65)",
+                             "61.8 %": "rgba(0,230,118,0.65)",  "78.6 %": "rgba(255,145,0,0.65)",
+                             "100.0 %": "rgba(255,255,255,0.25)"}
+                for _flbl, _flvl in compute_fibonacci(_mv2_fh, _mv2_fl).items():
+                    _mv2_fig.add_hline(y=_flvl, line_dash="dot",
+                        line_color=_fib_c_mv.get(_flbl, "rgba(100,181,246,0.4)"), line_width=1,
+                        annotation_text=f"Fib {_flbl}  {_fmt_idx_lvl(_flvl)}",
+                        annotation_font_color=_fib_c_mv.get(_flbl, "#64b5f6"),
+                        annotation_font_size=9, row=1, col=1)
+
+            # 52W high/low reference lines
+            if len(_mv2_data) >= 50:
+                _mv2_52h_v = float(_mv2_data["High"].iloc[-min(252,len(_mv2_data)):].max())
+                _mv2_52l_v = float(_mv2_data["Low"].iloc[-min(252,len(_mv2_data)):].min())
+                _mv2_fig.add_hline(y=_mv2_52h_v, line_dash="dot", line_color="rgba(0,230,118,0.4)",
+                    annotation_text=f"52W Hoch  {_fmt_idx_lvl(_mv2_52h_v)}",
+                    annotation_font_color="rgba(0,230,118,0.7)", annotation_font_size=9, row=1, col=1)
+                _mv2_fig.add_hline(y=_mv2_52l_v, line_dash="dot", line_color="rgba(255,82,82,0.4)",
+                    annotation_text=f"52W Tief  {_fmt_idx_lvl(_mv2_52l_v)}",
+                    annotation_font_color="rgba(255,82,82,0.7)", annotation_font_size=9, row=1, col=1)
+
+            # Comparison indices (normalized to same start value)
+            if _mv2_ctype != "Candlestick":
+                for _cmp_name in _mv2_cmp:
+                    try:
+                        _cmp_period = "5y" if "Wöchentlich" in _mv2_mode or "Monatlich" in _mv2_mode else "2y"
+                        _cmp_h = _load_idx_hist(_MKTV_INDICES[_cmp_name]["ticker"], period=_cmp_period)
+                        if not _cmp_h.empty and "Close" in _cmp_h.columns:
+                            _cmp_c = _cmp_h["Close"].copy()
+                            _cmp_c.index = pd.to_datetime(_cmp_c.index).normalize().tz_localize(None)
+                            _mv2_idx_n = pd.to_datetime(_mv2_data.index).normalize().tz_localize(None)
+                            _cmp_r = _cmp_c.reindex(_mv2_idx_n, method="ffill").dropna()
+                            if not _cmp_r.empty and not _mv2_close.empty:
+                                _cmp_sc = _cmp_r * (float(_mv2_close.iloc[0]) / float(_cmp_r.iloc[0]))
+                                _mv2_fig.add_trace(go.Scatter(
+                                    x=_mv2_data.index, y=_cmp_sc.values,
+                                    name=_cmp_name, line=dict(color=_MKTV_INDICES[_cmp_name]["color"], width=1.2, dash="dot"),
+                                    opacity=0.75,
+                                ), row=1, col=1)
+                    except Exception:
+                        pass
+
+            # Volume subplot
+            if "Volume" in _mv2_data.columns:
+                _mv2_vol = _mv2_data["Volume"].fillna(0)
+                if _mv2_vol.sum() > 0:
+                    _mv2_op = _mv2_data["Open"] if "Open" in _mv2_data.columns else _mv2_data["Close"]
+                    _mv2_vc = [_C_POSITIVE if c >= o else _C_NEGATIVE for c, o in zip(_mv2_data["Close"], _mv2_op)]
+                    _mv2_fig.add_trace(go.Bar(x=_mv2_data.index, y=_mv2_vol,
+                        name="Volumen", marker_color=_mv2_vc, opacity=0.55, showlegend=False), row=_mv2_vol_row, col=1)
+                    _mv2_fig.add_trace(go.Scatter(x=_mv2_data.index,
+                        y=_mv2_vol.rolling(20, min_periods=1).mean(),
+                        name="Ø Vol (20T)", line=dict(color="#ffa726", width=1.3, dash="dot"),
+                        opacity=0.85, showlegend=False), row=_mv2_vol_row, col=1)
+
+            # RSI
+            _mv2_rsi_vals  = None
+            _mv2_macd_line = None
+            _mv2_macd_sig  = None
+            if _mv2_show_rsi and _mv2_rsi_row:
+                _mv2_rsi_vals = compute_rsi(_mv2_close)
+                _mv2_fig.add_trace(go.Scatter(x=_mv2_data.index, y=_mv2_rsi_vals,
+                    name="RSI", line=dict(color="#a78bfa", width=1.5), showlegend=False), row=_mv2_rsi_row, col=1)
+                for _lvl, _lc in [(70, "rgba(255,82,82,0.35)"), (30, "rgba(0,230,118,0.35)")]:
+                    _mv2_fig.add_hline(y=_lvl, line_dash="dash", line_color=_lc, line_width=1, row=_mv2_rsi_row, col=1)
+                _mv2_fig.update_yaxes(range=[0, 100], row=_mv2_rsi_row, col=1)
+
+            # MACD
+            if _mv2_show_macd and _mv2_macd_row:
+                _mv2_macd_line, _mv2_macd_sig, _mv2_macd_hist_vals = compute_macd(_mv2_close)
+                _mv2_mhc = [_C_POSITIVE if v >= 0 else _C_NEGATIVE for v in _mv2_macd_hist_vals]
+                _mv2_fig.add_trace(go.Bar(x=_mv2_data.index, y=_mv2_macd_hist_vals,
+                    name="MACD Hist", marker_color=_mv2_mhc, opacity=0.6, showlegend=False), row=_mv2_macd_row, col=1)
+                _mv2_fig.add_trace(go.Scatter(x=_mv2_data.index, y=_mv2_macd_line,
+                    name="MACD", line=dict(color="#00e5ff", width=1.5), showlegend=False), row=_mv2_macd_row, col=1)
+                _mv2_fig.add_trace(go.Scatter(x=_mv2_data.index, y=_mv2_macd_sig,
+                    name="Signal", line=dict(color=_C_NEUTRAL, width=1.2), showlegend=False), row=_mv2_macd_row, col=1)
+
+            _mv2_height = 560 + 120 * (_mv2_nrows - 2)
+            _mv2_today  = pd.Timestamp.today().normalize()
+            _mv2_re     = _mv2_today.strftime("%Y-%m-%d")
+            _mv2_rs     = (_mv2_today - pd.DateOffset(years=1)).strftime("%Y-%m-%d")
+            _mv2_fig.update_layout(
+                template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER, plot_bgcolor=_C_CHART_PLOT,
+                height=_mv2_height,
+                legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
+                            bgcolor=_C_CHART_PLOT, bordercolor=_C_BORDER, borderwidth=1, font=dict(size=10)),
+                margin=dict(l=0, r=60, t=40, b=0),
+                xaxis=dict(showgrid=False, zeroline=False, rangeslider=dict(visible=False),
+                           range=[_mv2_rs, _mv2_re],
+                           rangebreaks=[dict(bounds=["sat","mon"])] if "Täglich" in _mv2_mode else []),
+                yaxis=dict(showgrid=True, gridcolor="#1e2d45", zeroline=False),
+                xaxis2=dict(showgrid=False),
+                yaxis2=dict(showgrid=False, zeroline=False),
+                hovermode="x unified",
+            )
+            st.plotly_chart(_mv2_fig, use_container_width=True)
+
+            # TA insight box
+            _mv2_insights = []
+            for _en in _mv2_emas:
+                _ep = _mv2_ema_pds[_en]
+                if len(_mv2_close) >= _ep:
+                    _ev = float(compute_ema(_mv2_close, _ep).iloc[-1])
+                    _ed = (float(_mv2_close.iloc[-1]) - _ev) / _ev * 100 if _ev else 0.0
+                    _mv2_insights.append(f"{_en}: {'oberhalb ✅' if _ed > 0 else 'unterhalb ⚠️'} ({_ed:+.1f}%)")
+            if _mv2_show_rsi and _mv2_rsi_vals is not None:
+                _rv = float(_mv2_rsi_vals.iloc[-1])
+                _mv2_insights.append(f"RSI: {_rv:.1f} — {'Überkauft 🔴' if _rv > 70 else 'Überverkauft 🟢' if _rv < 30 else 'Neutral ⚪'}")
+            if _mv2_show_macd and _mv2_macd_line is not None and _mv2_macd_sig is not None:
+                _mv2_insights.append(f"MACD: {'Bullish ✅' if float(_mv2_macd_line.iloc[-1]) > float(_mv2_macd_sig.iloc[-1]) else 'Bearish ⚠️'}")
+            if _mv2_show_bb and len(_mv2_close) >= 20:
+                _mv2_bb_m_now = float(_mv2_close.rolling(20).mean().iloc[-1])
+                _mv2_bb_s_now = float(_mv2_close.rolling(20).std().iloc[-1])
+                _mv2_bbu = _mv2_bb_m_now + 2 * _mv2_bb_s_now
+                _mv2_bbl = _mv2_bb_m_now - 2 * _mv2_bb_s_now
+                _mv2_cpn = float(_mv2_close.iloc[-1])
+                _mv2_bw  = (_mv2_bbu - _mv2_bbl) / _mv2_bb_m_now * 100 if _mv2_bb_m_now else 0.0
+                _mv2_bb_st = ("Über BB Oben 🔴" if _mv2_cpn > _mv2_bbu else
+                              "Unter BB Unten 🟢" if _mv2_cpn < _mv2_bbl else
+                              f"Innerhalb ({(_mv2_cpn - _mv2_bbl)/(_mv2_bbu - _mv2_bbl)*100:.0f}%)")
+                _mv2_insights.append(f"BB: {_mv2_bb_st} · Breite {_mv2_bw:.1f}%")
+            if "Volume" in _mv2_data.columns and float(_mv2_data["Volume"].iloc[-1]) > 0:
+                _mv2_ravg = float(_mv2_data["Volume"].rolling(20, min_periods=1).mean().iloc[-1])
+                if _mv2_ravg > 0:
+                    _mv2_rv = float(_mv2_data["Volume"].iloc[-1]) / _mv2_ravg
+                    _mv2_insights.append(f"RVOL: {'sehr hoch 🔴' if _mv2_rv>=2 else 'erhöht 🟡' if _mv2_rv>=1.3 else 'normal' if _mv2_rv>=0.7 else 'gering ⚪'} ({_mv2_rv:.1f}x Ø)")
+            if _mv2_insights:
+                st.markdown(f"""
+                <div class="insight-box">
+                    <strong>📊 Indikator-Analyse:</strong><br>
+                    {'&nbsp;&nbsp;|&nbsp;&nbsp;'.join(_mv2_insights)}
+                </div>""", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 3: BEWERTUNG
+    # ══════════════════════════════════════════════════════════════════════
+    with _mvt3:
+        st.markdown("<div class='section-header'>📐 Fundamentale Bewertung</div>", unsafe_allow_html=True)
+        st.caption(f"Kennzahlen via ETF-Proxy ({_mv_meta['etf']}). Historische Median-Werte als Orientierungsrahmen.")
+
+        _mv3_metrics = []
+        if _mv_pe:  _mv3_metrics.append(("KGV (Trailing P/E)", f"{_mv_pe:.1f}x",  "Kurs-Gewinn-Verhältnis (Trailing)"))
+        if _mv_etf_info.get("forwardPE"): _mv3_metrics.append(("Forward P/E", f"{_mv_etf_info['forwardPE']:.1f}x", "Erwartetes KGV (nächste 12M)"))
+        if _mv_pb:  _mv3_metrics.append(("KBV (P/Book)", f"{_mv_pb:.2f}x",         "Kurs-Buchwert-Verhältnis"))
+        if _mv_dy > 0: _mv3_metrics.append(("Dividendenrendite", f"{_mv_dy:.2f}%", "Aus ETF-Proxy"))
+        if _mv_aum: _mv3_metrics.append(("ETF-Volumen (AUM)", fmt_large(_mv_aum),   "Verwaltetes Vermögen (USD)"))
+
+        if _mv3_metrics:
+            _mv3_cols = st.columns(min(len(_mv3_metrics), 4))
+            for _i3, (_lbl3, _val3, _hint3) in enumerate(_mv3_metrics):
+                with _mv3_cols[_i3 % 4]:
+                    st.markdown(f"""
+                    <div class="metric-card" style="text-align:center;padding:14px 8px;">
+                        <div class="metric-label" style="font-size:0.72rem;">{_lbl3}</div>
+                        <div class="metric-value" style="color:{_C_NEUTRAL};font-size:1.3rem;font-weight:700;">{_val3}</div>
+                        <div style="font-size:0.64rem;color:#546e7a;margin-top:4px;">{_hint3}</div>
+                    </div>""", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+        # KGV Gauge
+        if _mv_pe and _mv_idx_name in _MV_HIST_PE:
+            _mv3_med, _mv3_low, _mv3_high = _MV_HIST_PE[_mv_idx_name]
+            st.markdown("<div class='section-header'>📊 KGV-Bewertungskontext</div>", unsafe_allow_html=True)
+
+            if _mv_pe < _mv3_med * 0.85:
+                _mv3_bew = "Günstig 🟢";                _mv3_bew_c = _C_POSITIVE
+            elif _mv_pe < _mv3_med * 1.1:
+                _mv3_bew = "Normal / Fair bewertet ⚪"; _mv3_bew_c = _C_NEUTRAL
+            elif _mv_pe < _mv3_high * 0.8:
+                _mv3_bew = "Leicht erhöht 🟡";          _mv3_bew_c = "#ffa726"
+            else:
+                _mv3_bew = "Hoch bewertet 🔴";          _mv3_bew_c = _C_NEGATIVE
+
+            _mv3_gauge = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=_mv_pe,
+                title={"text": f"KGV {_mv_idx_name}", "font": {"color": "#90a4ae", "size": 13}},
+                number={"suffix": "x", "font": {"color": _C_NEUTRAL, "size": 28}},
+                gauge={
+                    "axis": {"range": [_mv3_low, _mv3_high],
+                             "tickcolor": "#546e7a", "tickfont": {"color":"#78909c","size":10}},
+                    "bar": {"color": _mv3_bew_c},
+                    "bgcolor": "#0d1526",
+                    "borderwidth": 1,
+                    "bordercolor": _C_BORDER,
+                    "steps": [
+                        {"range": [_mv3_low,           _mv3_med * 0.85], "color": "rgba(21,128,61,0.2)"},
+                        {"range": [_mv3_med * 0.85,    _mv3_med * 1.1],  "color": "rgba(100,181,246,0.15)"},
+                        {"range": [_mv3_med * 1.1,     _mv3_high * 0.8], "color": "rgba(255,167,38,0.2)"},
+                        {"range": [_mv3_high * 0.8,    _mv3_high],       "color": "rgba(185,28,28,0.2)"},
+                    ],
+                    "threshold": {"line": {"color": "#64b5f6", "width": 2},
+                                  "thickness": 0.75, "value": _mv3_med},
+                },
+            ))
+            _mv3_gauge.update_layout(
+                template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
+                height=230, margin=dict(l=20, r=20, t=40, b=20), font=dict(color="#90a4ae"),
+            )
+            _mv3_g1, _mv3_g2 = st.columns([1.2, 1])
+            with _mv3_g1:
+                st.plotly_chart(_mv3_gauge, use_container_width=True)
+            with _mv3_g2:
+                st.markdown(f"""
+                <div class="metric-card" style="padding:16px 14px;margin-top:8px;">
+                    <div style="font-size:0.8rem;color:#90a4ae;margin-bottom:10px;"><b>KGV-Einschätzung</b></div>
+                    <div style="font-size:1.05rem;font-weight:700;color:{_mv3_bew_c};">{_mv3_bew}</div>
+                    <div style="margin-top:10px;font-size:0.75rem;color:#78909c;line-height:1.7;">
+                        <b style="color:#90a4ae;">Aktuell:</b> {_mv_pe:.1f}x<br>
+                        <b style="color:#90a4ae;">Histor. Median:</b> {_mv3_med:.0f}x
+                        <span style="color:#64b5f6;"> (blaue Markierung)</span><br>
+                        <b style="color:#90a4ae;">Histor. Bereich:</b> {_mv3_low}x – {_mv3_high}x<br>
+                        <b style="color:#90a4ae;">Abweichung vom Median:</b>
+                        <span style="color:{_mv3_bew_c};">{(_mv_pe/_mv3_med - 1)*100:+.1f}%</span>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+
+        # Cross-index comparison table
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-header'>🔀 Index-Vergleich auf einen Blick</div>", unsafe_allow_html=True)
+        st.caption("KGV via ETF-Proxy · YTD = seit Jahresbeginn · alle Daten 5-Min-Cache")
+        _mv3_rows = []
+        for _cn3, _cm3 in _MKTV_INDICES.items():
+            try:
+                _ci3 = _load_idx_etf_info(_cm3["etf"])
+                _ch3 = _load_idx_hist(_cm3["ticker"])
+                if not _ch3.empty and "Close" in _ch3.columns:
+                    _cc3  = _ch3["Close"].dropna()
+                    _cv3  = float(_cc3.iloc[-1])
+                    _cy3  = _cc3[_cc3.index.year == pd.Timestamp.today().year]
+                    _cy3p = ((_cv3/float(_cy3.iloc[0])-1)*100) if len(_cy3)>1 else None
+                    _c1y3 = float(_cc3.iloc[-252]) if len(_cc3)>=252 else None
+                    _c1y3p= ((_cv3/float(_c1y3)-1)*100) if _c1y3 else None
+                    _pe3  = _ci3.get("trailingPE") or _ci3.get("forwardPE")
+                    _mv3_rows.append({
+                        "Index":    f"{_cm3['flag']} {_cn3}",
+                        "Kurs":     _fmt_idx_lvl(_cv3),
+                        "YTD %":    f"{'+' if _cy3p and _cy3p>=0 else ''}{_cy3p:.1f}%" if _cy3p is not None else "—",
+                        "1J %":     f"{'+' if _c1y3p and _c1y3p>=0 else ''}{_c1y3p:.1f}%" if _c1y3p is not None else "—",
+                        "KGV (ETF)":f"{_pe3:.1f}x" if _pe3 else "—",
+                    })
+            except Exception:
+                pass
+        if _mv3_rows:
+            st.dataframe(pd.DataFrame(_mv3_rows).set_index("Index"), use_container_width=True)
+        st.markdown(
+            "<div style='color:#37474f;font-size:0.68rem;margin-top:6px;'>"
+            "⚠️ KGV-Daten via ETF-Proxy (SPY, QQQ, EXS1.DE…) · Historische Mediane als Richtwerte — keine Anlageberatung</div>",
+            unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # TAB 4: KI-ANALYSE
+    # ══════════════════════════════════════════════════════════════════════
+    with _mvt4:
+        st.markdown("<div class='section-header'>🤖 KI Marktanalyse</div>", unsafe_allow_html=True)
+        _mvki_pk = "marktbew_ki_analyse"
+        _mvki_mk = "marktbew_ki_model"
+        _mvki_ts = "marktbew_ki_ts"
+
+        _mvki_ctx = (f"Index: {_mv_idx_name} | Kurs: {_fmt_idx_lvl(_mv_price)} | "
+                     f"1T: {_mv_chg_sign}{_mv_chg:.2f}% | YTD: {'+' if _mv_ytd_pct>=0 else ''}{_mv_ytd_pct:.1f}% | "
+                     f"52W: {_fmt_idx_lvl(_mv_52l)} – {_fmt_idx_lvl(_mv_52h)}")
+        if _mv_pe:    _mvki_ctx += f" | KGV (ETF): {_mv_pe:.1f}x"
+        if _mv_dy > 0: _mvki_ctx += f" | Div.Rendite: {_mv_dy:.2f}%"
+        if _mv_vix:   _mvki_ctx += f" | VIX: {_mv_vix:.1f} ({_vix_l})"
+
+        if st.session_state.get(_mvki_pk):
+            _mv_ts_disp = st.session_state.get(_mvki_ts, "")
+            _mv_md_disp = st.session_state.get(_mvki_mk, "Gemini")
+            st.markdown(f"<div style='font-size:0.7rem;color:#546e7a;margin-bottom:8px;'>🤖 {_mv_md_disp} · {_mv_ts_disp}</div>",
+                        unsafe_allow_html=True)
+            st.markdown(st.session_state[_mvki_pk])
+
+        _mvki_dis = not bool(GEMINI_API_KEY)
+        if st.button("🤖 KI-Analyse starten", key="mv_ki_btn", disabled=_mvki_dis,
+                     help="Benötigt GEMINI_API_KEY" if _mvki_dis else "Gemini analysiert die aktuelle Marktlage"):
+            with st.spinner("Gemini analysiert Marktlage…"):
+                _mvki_sys = ("Du bist ein erfahrener institutioneller Marktanalyst. "
+                             "Antworte auf Deutsch, präzise und gut strukturiert mit Markdown.")
+                _mvki_usr = f"""Analysiere die aktuelle Marktlage für folgenden Index:
+
+{_mvki_ctx}
+
+Strukturiere die Analyse so:
+1. **Marktlage & Trend** — Technische und fundamentale Einschätzung. Ist die Bewertung attraktiv?
+2. **Chancen & Katalysatoren** — Was könnte den Index kurzfristig (3–6M) und mittelfristig (1–2J) antreiben?
+3. **Risiken & Gefahren** — Makro, Geopolitik, Zinsen, Bewertungsrisiken
+4. **Sentimentanalyse** — Was signalisiert das aktuelle VIX-Niveau? Ist der Markt in Gier oder Angst?
+5. **Strategische Einschätzung** — Aufstocken, halten oder absichern? (Zeithorizont 12–18 Monate)
+
+Sei konkret, nenne historische Vergleiche und bewerte Risk/Reward klar."""
+
+                try:
+                    _mvki_res = _try_gemini(
+                        [{"role": "user", "content": f"System: {_mvki_sys}\n\n{_mvki_usr}"}],
+                        max_tokens=4000, temperature=0.5, api_key=GEMINI_API_KEY
+                    )
+                    if _mvki_res:
+                        st.session_state[_mvki_pk] = _mvki_res
+                        st.session_state[_mvki_mk] = "Gemini"
+                        st.session_state[_mvki_ts] = pd.Timestamp.now().strftime("%d.%m.%Y %H:%M")
+                        st.rerun()
+                    else:
+                        st.error("Keine Antwort von Gemini erhalten.")
+                except Exception as _e:
+                    st.error(f"Fehler: {_e}")
+        if _mvki_dis:
+            st.info("GEMINI_API_KEY nicht konfiguriert.")
+
+    st.markdown(
+        "<div style='color:#37474f;font-size:0.68rem;text-align:center;margin-top:12px;'>"
+        "⚠️ Keine Anlageberatung · Kurse via Yahoo Finance (5-Min-Cache) · "
+        "Fundamentaldaten via ETF-Proxy — Abweichungen möglich</div>",
+        unsafe_allow_html=True)
     st.stop()
 
 @st.cache_data(ttl=43200, show_spinner=False)
