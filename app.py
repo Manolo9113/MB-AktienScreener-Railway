@@ -12263,7 +12263,8 @@ elif st.session_state.get("show_marktbewertung"):
 
     _mv_pe_trail = _mv_etf_info.get("trailingPE")
     _mv_pe_fwd   = _mv_etf_info.get("forwardPE")
-    _mv_pe  = _mv_pe_trail or _mv_pe_fwd
+    _mv_pe       = _mv_pe_trail or _mv_pe_fwd
+    _mv_pe_label = "Trailing" if _mv_pe_trail else ("Forward" if _mv_pe_fwd else "")
     _mv_pb  = _mv_etf_info.get("priceToBook")
     _mv_dy  = (_mv_etf_info.get("dividendYield") or 0) * 100
     _mv_aum = _mv_etf_info.get("totalAssets")
@@ -12381,8 +12382,8 @@ elif st.session_state.get("show_marktbewertung"):
             _mv_last_sigma = float(_mv_res[-1]) / _mv_std if _mv_std > 0 else 0.0
             _mv_pos_txt = ("deutlich überbewertet (>2σ über Trend)" if _mv_last_sigma > 2 else
                            "leicht überbewertet (>1σ)"              if _mv_last_sigma > 1 else
-                           "leicht unterbewertet (<−1σ)"            if _mv_last_sigma < -1 else
                            "deutlich unterbewertet (<−2σ)"          if _mv_last_sigma < -2 else
+                           "leicht unterbewertet (<−1σ)"            if _mv_last_sigma < -1 else
                            "fair bewertet (nahe Trend)")
             _mv_sig_c = _C_NEGATIVE if _mv_last_sigma > 1 else _C_POSITIVE if _mv_last_sigma < -1 else _C_NEUTRAL
             st.markdown(f"""
@@ -12410,7 +12411,7 @@ elif st.session_state.get("show_marktbewertung"):
             else:
                 _pret = None
             with _col:
-                _pc_c = "#26a69a" if _pret and _pret > 0 else "#ef5350"
+                _pc_c = "#26a69a" if _pret is not None and _pret >= 0 else "#ef5350"
                 st.markdown(f"""
                 <div class="metric-card" style="text-align:center;padding:10px 6px;">
                     <div class="metric-label">{_plbl}</div>
@@ -12439,12 +12440,17 @@ elif st.session_state.get("show_marktbewertung"):
                                        key="mv2_cmp", max_selections=3)
 
         # Build chart data for selected period
+        def _safe_resample_agg(df: pd.DataFrame, rule: str) -> pd.DataFrame:
+            _cols = {k: v for k, v in {"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}.items()
+                     if k in df.columns}
+            return df.resample(rule).agg(_cols).dropna(subset=["Close"])
+
         if "Wöchentlich" in _mv2_mode:
             _mv2_raw  = _load_idx_hist(_mv_meta["ticker"], period="5y")
-            _mv2_data = _mv2_raw.resample("W").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna(subset=["Close"])
+            _mv2_data = _safe_resample_agg(_mv2_raw, "W")
         elif "Monatlich" in _mv2_mode:
             _mv2_raw  = _load_idx_hist(_mv_meta["ticker"], period="max")
-            _mv2_data = _mv2_raw.resample("ME").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna(subset=["Close"])
+            _mv2_data = _safe_resample_agg(_mv2_raw, "ME")
         elif "1J" in _mv2_mode:
             _mv2_data = _mv_hist.iloc[-252:].copy() if len(_mv_hist) >= 252 else _mv_hist.copy()
         else:
@@ -12600,7 +12606,11 @@ elif st.session_state.get("show_marktbewertung"):
             _mv2_height = 560 + 120 * (_mv2_nrows - 2)
             _mv2_today  = pd.Timestamp.today().normalize()
             _mv2_re     = _mv2_today.strftime("%Y-%m-%d")
-            _mv2_rs     = (_mv2_today - pd.DateOffset(years=1)).strftime("%Y-%m-%d")
+            _mv2_rs_offset = (pd.DateOffset(years=10) if "Monatlich"   in _mv2_mode else
+                              pd.DateOffset(years=5)  if "Wöchentlich" in _mv2_mode else
+                              pd.DateOffset(years=2)  if "2J"          in _mv2_mode else
+                              pd.DateOffset(years=1))
+            _mv2_rs     = (_mv2_today - _mv2_rs_offset).strftime("%Y-%m-%d")
             _mv2_fig.update_layout(
                 template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER, plot_bgcolor=_C_CHART_PLOT,
                 height=_mv2_height,
@@ -12697,7 +12707,7 @@ elif st.session_state.get("show_marktbewertung"):
             _mv3_gauge = go.Figure(go.Indicator(
                 mode="gauge+number",
                 value=_mv_pe,
-                title={"text": f"KGV {_mv_idx_name}", "font": {"color": "#90a4ae", "size": 13}},
+                title={"text": f"KGV {_mv_idx_name} ({_mv_pe_label})", "font": {"color": "#90a4ae", "size": 13}},
                 number={"suffix": "x", "font": {"color": _C_NEUTRAL, "size": 28}},
                 gauge={
                     "axis": {"range": [_mv3_low, _mv3_high],
@@ -12729,8 +12739,9 @@ elif st.session_state.get("show_marktbewertung"):
                     <div style="font-size:0.8rem;color:#90a4ae;margin-bottom:10px;"><b>KGV-Einschätzung</b></div>
                     <div style="font-size:1.05rem;font-weight:700;color:{_mv3_bew_c};">{_mv3_bew}</div>
                     <div style="margin-top:10px;font-size:0.75rem;color:#78909c;line-height:1.7;">
-                        <b style="color:#90a4ae;">Aktuell:</b> {_mv_pe:.1f}x<br>
-                        <b style="color:#90a4ae;">Histor. Median:</b> {_mv3_med:.0f}x
+                        <b style="color:#90a4ae;">Aktuell ({_mv_pe_label}):</b> {_mv_pe:.1f}x
+                        {'<span style="color:#ffa726;font-size:0.65rem;"> ⚠ Forward PE (Schätzung)</span>' if not _mv_pe_trail else ''}<br>
+                        <b style="color:#90a4ae;">Histor. Median (Trailing):</b> {_mv3_med:.0f}x
                         <span style="color:#64b5f6;"> (blaue Markierung)</span><br>
                         <b style="color:#90a4ae;">Histor. Bereich:</b> {_mv3_low}x – {_mv3_high}x<br>
                         <b style="color:#90a4ae;">Abweichung vom Median:</b>
@@ -12776,9 +12787,9 @@ elif st.session_state.get("show_marktbewertung"):
     # ══════════════════════════════════════════════════════════════════════
     with _mvt4:
         st.markdown("<div class='section-header'>🤖 KI Marktanalyse</div>", unsafe_allow_html=True)
-        _mvki_pk = "marktbew_ki_analyse"
-        _mvki_mk = "marktbew_ki_model"
-        _mvki_ts = "marktbew_ki_ts"
+        _mvki_pk = f"marktbew_ki_{_mv_idx_name}"
+        _mvki_mk = f"marktbew_ki_model_{_mv_idx_name}"
+        _mvki_ts = f"marktbew_ki_ts_{_mv_idx_name}"
 
         _mvki_ctx = (f"Index: {_mv_idx_name} | Kurs: {_fmt_idx_lvl(_mv_price)} | "
                      f"1T: {_mv_chg_sign}{_mv_chg:.2f}% | YTD: {'+' if _mv_ytd_pct>=0 else ''}{_mv_ytd_pct:.1f}% | "
