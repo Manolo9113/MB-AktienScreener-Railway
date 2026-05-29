@@ -12252,7 +12252,9 @@ elif st.session_state.get("show_marktbewertung"):
     _mv_ytd_ser = _mv_close[_mv_close.index.year == pd.Timestamp.today().year]
     _mv_ytd_pct = ((_mv_price / float(_mv_ytd_ser.iloc[0]) - 1) * 100) if len(_mv_ytd_ser) > 1 else 0.0
 
-    _mv_pe  = _mv_etf_info.get("trailingPE") or _mv_etf_info.get("forwardPE")
+    _mv_pe_trail = _mv_etf_info.get("trailingPE")
+    _mv_pe_fwd   = _mv_etf_info.get("forwardPE")
+    _mv_pe  = _mv_pe_trail or _mv_pe_fwd
     _mv_pb  = _mv_etf_info.get("priceToBook")
     _mv_dy  = (_mv_etf_info.get("dividendYield") or 0) * 100
     _mv_aum = _mv_etf_info.get("totalAssets")
@@ -12281,9 +12283,10 @@ elif st.session_state.get("show_marktbewertung"):
         ("52W Hoch",     _fmt_idx_lvl(_mv_52h),                                                                   "#26a69a"),
         ("52W Tief",     _fmt_idx_lvl(_mv_52l),                                                                   "#ef5350"),
     ]
-    if _mv_pe:    _mv_stats.append(("KGV (ETF-Proxy)", f"{_mv_pe:.1f}x",   _C_NEUTRAL))
-    if _mv_dy > 0: _mv_stats.append(("Div.-Rendite",  f"{_mv_dy:.2f}%",   "#ffd600"))
-    if _mv_vix:   _mv_stats.append((f"VIX — {_vix_l}", f"{_mv_vix:.1f}", _vix_c))
+    if _mv_pe_trail: _mv_stats.append(("KGV Trailing",   f"{_mv_pe_trail:.1f}x", _C_NEUTRAL))
+    if _mv_pe_fwd:   _mv_stats.append(("KGV Forward",    f"{_mv_pe_fwd:.1f}x",  _C_NEUTRAL))
+    if _mv_dy > 0:   _mv_stats.append(("Div.-Rendite",   f"{_mv_dy:.2f}%",      "#ffd600"))
+    if _mv_vix:      _mv_stats.append((f"VIX — {_vix_l}", f"{_mv_vix:.1f}",    _vix_c))
 
     _mv_sc = st.columns(len(_mv_stats))
     for (_lbl, _val, _clr), _col in zip(_mv_stats, _mv_sc):
