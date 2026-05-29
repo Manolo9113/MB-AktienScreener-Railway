@@ -12191,6 +12191,10 @@ elif st.session_state.get("show_marktbewertung"):
                              "desc": "100 größte Unternehmen an der London Stock Exchange"},
         "Shanghai Comp.":   {"ticker": "000001.SS","etf": "MCHI",   "color": "#ff7043", "flag": "🇨🇳",
                              "desc": "Shanghai Stock Exchange Composite · Leitindex der Volksrepublik China"},
+        "Euro STOXX 50":    {"ticker": "^STOXX50E","etf": "FEZ",    "color": "#ffd600", "flag": "🇪🇺",
+                             "desc": "50 führende Bluechip-Unternehmen der Eurozone · europäischer Leitindex"},
+        "VHYL All-World":   {"ticker": "VHYL.L",  "etf": "VHYL.L", "color": "#aed581", "flag": "🌍",
+                             "desc": "Vanguard FTSE All-World High Dividend Yield UCITS ETF · globale Dividendenaktien (TER 0,22%)"},
     }
     # (hist_median_PE, hist_low_PE, hist_high_PE)
     _MV_HIST_PE = {
@@ -12203,6 +12207,8 @@ elif st.session_state.get("show_marktbewertung"):
         "Nikkei 225":      (18.0,  9, 45),
         "FTSE 100":        (14.0,  7, 22),
         "Shanghai Comp.":  (14.0,  7, 40),
+        "Euro STOXX 50":   (16.5,  9, 30),
+        "VHYL All-World":  (15.0,  9, 22),
     }
 
     @st.cache_data(ttl=300, show_spinner=False)
