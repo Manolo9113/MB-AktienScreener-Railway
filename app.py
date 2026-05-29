@@ -12239,9 +12239,18 @@ elif st.session_state.get("show_marktbewertung"):
 
     # ── Load data ─────────────────────────────────────────────────────────
     with st.spinner("Lade Index-Daten…"):
-        _mv_hist     = _load_idx_hist(_mv_meta["ticker"])
-        _mv_etf_info = _load_idx_etf_info(_mv_meta["etf"])
-        _mv_vix      = _load_vix_price()
+        try:
+            _mv_hist = _load_idx_hist(_mv_meta["ticker"])
+        except Exception:
+            _mv_hist = pd.DataFrame()
+        try:
+            _mv_etf_info = _load_idx_etf_info(_mv_meta["etf"])
+        except Exception:
+            _mv_etf_info = {}
+        try:
+            _mv_vix = _load_vix_price()
+        except Exception:
+            _mv_vix = None
 
     if _mv_hist.empty or "Close" not in _mv_hist.columns:
         st.error(f"Keine Preisdaten für {_mv_idx_name} verfügbar.")
@@ -12521,7 +12530,7 @@ elif st.session_state.get("show_marktbewertung"):
                     name="BB Mitte", line=dict(color="rgba(100,181,246,0.3)", width=1), showlegend=False), row=1, col=1)
 
             # Fibonacci
-            if _mv2_show_fib:
+            if _mv2_show_fib and "High" in _mv2_data.columns and "Low" in _mv2_data.columns:
                 _mv2_fv = _mv2_data.iloc[-min(252, len(_mv2_data)):]
                 _mv2_fh = float(_mv2_fv["High"].max()); _mv2_fl = float(_mv2_fv["Low"].min())
                 _fib_c_mv = {"0.0 %": "rgba(255,255,255,0.25)", "23.6 %": "rgba(255,214,0,0.55)",
@@ -12536,7 +12545,7 @@ elif st.session_state.get("show_marktbewertung"):
                         annotation_font_size=9, row=1, col=1)
 
             # 52W high/low reference lines
-            if len(_mv2_data) >= 50:
+            if len(_mv2_data) >= 50 and "High" in _mv2_data.columns and "Low" in _mv2_data.columns:
                 _mv2_52h_v = float(_mv2_data["High"].iloc[-min(252,len(_mv2_data)):].max())
                 _mv2_52l_v = float(_mv2_data["Low"].iloc[-min(252,len(_mv2_data)):].min())
                 _mv2_fig.add_hline(y=_mv2_52h_v, line_dash="dot", line_color="rgba(0,230,118,0.4)",
@@ -12825,13 +12834,14 @@ Strukturiere die Analyse so:
 Sei konkret, nenne historische Vergleiche und bewerte Risk/Reward klar."""
 
                 try:
-                    _mvki_res = _try_gemini(
-                        [{"role": "user", "content": f"System: {_mvki_sys}\n\n{_mvki_usr}"}],
+                    _mvki_txt, _mvki_mdl = _try_gemini(
+                        [{"role": "system", "content": _mvki_sys},
+                         {"role": "user", "content": _mvki_usr}],
                         max_tokens=4000, temperature=0.5, api_key=GEMINI_API_KEY
                     )
-                    if _mvki_res:
-                        st.session_state[_mvki_pk] = _mvki_res
-                        st.session_state[_mvki_mk] = "Gemini"
+                    if _mvki_txt:
+                        st.session_state[_mvki_pk] = _mvki_txt
+                        st.session_state[_mvki_mk] = _mvki_mdl
                         st.session_state[_mvki_ts] = pd.Timestamp.now().strftime("%d.%m.%Y %H:%M")
                         st.rerun()
                     else:
