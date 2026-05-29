@@ -2558,6 +2558,76 @@ def load_piotroski(ticker: str):
         "fy_t1": fy_t1,
     }
 
+# ==================== ALTMAN Z-SCORE ====================
+@st.cache_data(ttl=86400, show_spinner=False)
+def _load_altman_data(ticker: str) -> dict | None:
+    """Fetch balance-sheet and income items needed for Altman Z''-Score."""
+    try:
+        stk = yf.Ticker(ticker)
+        bs  = stk.balance_sheet
+        inc = stk.income_stmt
+    except Exception:
+        return None
+    if bs is None or bs.empty or inc is None or inc.empty:
+        return None
+
+    def _get(df, keys, col=0):
+        if df is None or df.empty or col >= len(df.columns):
+            return None
+        for k in keys:
+            if k in df.index:
+                try:
+                    v = df.loc[k].iloc[col]
+                    return float(v) if pd.notna(v) else None
+                except Exception:
+                    pass
+        return None
+
+    return {
+        "total_assets":  _get(bs, ["Total Assets"]),
+        "cur_assets":    _get(bs, ["Current Assets", "Total Current Assets"]),
+        "cur_liab":      _get(bs, ["Current Liabilities", "Total Current Liabilities"]),
+        "retained_earn": _get(bs, ["Retained Earnings"]),
+        "total_liab":    _get(bs, ["Total Liabilities Net Minority Interest",
+                                   "Total Liab", "Total Liabilities"]),
+        "ebit":          _get(inc, ["Operating Income", "EBIT", "Ebit"]),
+    }
+
+
+def _calc_altman_z(raw: dict, market_value_equity: float) -> dict | None:
+    """Compute Z''-Score from raw balance-sheet dict and current market cap."""
+    ta  = raw.get("total_assets")
+    ca  = raw.get("cur_assets")
+    cl  = raw.get("cur_liab")
+    re  = raw.get("retained_earn")
+    tl  = raw.get("total_liab")
+    ebit = raw.get("ebit")
+    mve  = market_value_equity
+
+    # Guard: any missing anchor value means we cannot compute a meaningful score
+    if not ta or ta <= 0:
+        return None
+    if tl is None or tl <= 0:
+        return None
+
+    wc = (ca - cl) if (ca is not None and cl is not None) else None
+
+    x1 = (wc  / ta)  if wc   is not None else None
+    x2 = (re  / ta)  if re   is not None else None
+    x3 = (ebit / ta) if ebit is not None else None
+    x4 = (mve / tl)  if (mve is not None and mve > 0) else None
+
+    # Need all four components for a valid score
+    if any(v is None for v in [x1, x2, x3, x4]):
+        return None
+
+    z = 6.56 * x1 + 3.26 * x2 + 6.72 * x3 + 1.05 * x4
+    return {
+        "z": z, "x1": x1, "x2": x2, "x3": x3, "x4": x4,
+        "wc": wc, "ta": ta, "re": re, "ebit": ebit, "mve": mve, "tl": tl,
+    }
+
+
 # ==================== MOAT ANALYSIS ====================
 def compute_moat(sector, industry, gross_margin, roic_val, operating_margin,
                  profit_margin, rev_growth, market_cap, debt, employees=None):
@@ -20050,7 +20120,8 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
 # ==================== NAVIGATION ====================
 _TABS = [
     "📊 Kennzahlen", "📈 Wachstum", "🔮 Prognose", "📋 Fundamental", "⚖️ Bewertung",
-    "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden", "📐 Faktor-Profil",
+    "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden",
+    "📐 Faktor-Profil", "🧮 Altman Z-Score",
 ]
 _at = st.session_state.get("active_tab", 0)
 st.markdown(
@@ -20058,7 +20129,7 @@ st.markdown(
     f"letter-spacing:.09em;margin-bottom:4px;'>Analyse-Bereich wählen</div>",
     unsafe_allow_html=True,
 )
-_nav_row1 = st.columns(6)
+_nav_row1 = st.columns(7)
 _nav_row2 = st.columns(6)
 _nav_cols = _nav_row1 + _nav_row2
 for _ni, _nlabel in enumerate(_TABS):
@@ -23934,6 +24005,234 @@ elif _at == 11:
 
     st.caption("Datenquellen: yFinance (Preis/Fundamentaldaten). Berechnung: rolling 252-Tage-Regression (Beta), normierte Kennzahlen (Value, Quality), 12M−1M Return (Momentum), ann. Volatilität (Low Vol), Marktkapitalisierung (Size).")
 
+
+# ==================== ALTMAN Z-SCORE TAB ====================
+elif _at == 12:
+    st.markdown("<div class='section-header'>🧮 Altman Z''-Score — Insolvenzrisiko</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+    # ── Intro info box ────────────────────────────────────────────────────
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+        f"padding:10px 16px;margin-bottom:16px;color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.6;'>"
+        f"<b style='color:{_C_TEXT_PRIMARY};'>Altman Z''-Score (nicht-produzierende Unternehmen)</b>"
+        f" — Modifizierte Formel nach Altman (1995) optimiert für Tech- und SaaS-Unternehmen "
+        f"mit geringer physischer Kapitalbasis. Formel: "
+        f"<code>Z'' = 6.56·X1 + 3.26·X2 + 6.72·X3 + 1.05·X4</code><br>"
+        f"<b style='color:{_C_POSITIVE};'>Safe Zone Z'' &gt; 2.90</b> · "
+        f"<b style='color:{_C_NEUTRAL};'>Grey Zone 1.10–2.90</b> · "
+        f"<b style='color:{_C_NEGATIVE};'>Distress Zone Z'' &lt; 1.10</b></div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Fetch and compute ─────────────────────────────────────────────────
+    with st.spinner("Lade Bilanzdaten…"):
+        _az_raw = _load_altman_data(ticker)
+
+    _az_mve = market_cap  # market value of equity = current market cap
+
+    if _az_raw is None:
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:12px;"
+            f"padding:32px;text-align:center;margin:24px 0;'>"
+            f"<div style='font-size:2rem;margin-bottom:8px;'>📭</div>"
+            f"<div style='color:{_C_TEXT_PRIMARY};font-size:1rem;font-weight:600;margin-bottom:6px;'>"
+            f"Bilanzdaten nicht verfügbar</div>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.82rem;'>"
+            f"Für {ticker} konnten keine Jahresabschlussdaten geladen werden. "
+            f"Mögliche Ursachen: ETF, Rohstoff-Ticker, kürzlich gelistetes Unternehmen "
+            f"oder fehlende yFinance-Daten.</div></div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        _az_result = _calc_altman_z(_az_raw, _az_mve)
+
+        # ── Fallback: missing components ─────────────────────────────────
+        if _az_result is None:
+            _az_missing = []
+            if not (_az_raw.get("total_assets") or 0) > 0:
+                _az_missing.append("Bilanzsumme (Total Assets)")
+            if not (_az_raw.get("total_liab") or 0) > 0:
+                _az_missing.append("Gesamtverbindlichkeiten (Total Liabilities)")
+            if _az_raw.get("cur_assets") is None:
+                _az_missing.append("Umlaufvermögen (Current Assets)")
+            if _az_raw.get("cur_liab") is None:
+                _az_missing.append("Kurzfristige Verbindlichkeiten (Current Liabilities)")
+            if _az_raw.get("retained_earn") is None:
+                _az_missing.append("Gewinnrücklagen (Retained Earnings)")
+            if _az_raw.get("ebit") is None:
+                _az_missing.append("Betriebsergebnis (EBIT / Operating Income)")
+            if not (_az_mve or 0) > 0:
+                _az_missing.append("Marktkapitalisierung (Market Value of Equity)")
+            _missing_str = "<br>".join(f"• {m}" for m in _az_missing) if _az_missing else "• Unbekannte Fehlwerte"
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:12px;"
+                f"padding:28px;margin:16px 0;'>"
+                f"<div style='color:{_C_TEXT_PRIMARY};font-weight:600;margin-bottom:10px;'>"
+                f"⚠️ Datenprofil unvollständig — Score nicht berechenbar</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.82rem;line-height:1.8;'>"
+                f"Folgende Kennzahlen konnten nicht ermittelt werden:<br>{_missing_str}</div></div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            _az_z   = _az_result["z"]
+            _az_x1  = _az_result["x1"]
+            _az_x2  = _az_result["x2"]
+            _az_x3  = _az_result["x3"]
+            _az_x4  = _az_result["x4"]
+
+            # ── Zone classification ───────────────────────────────────────
+            if _az_z > 2.90:
+                _az_zone       = "Safe Zone"
+                _az_zone_color = _C_POSITIVE
+                _az_zone_bg    = "rgba(0,230,118,0.08)"
+                _az_zone_icon  = "✅"
+                _az_zone_desc  = "Das Unternehmen zeigt geringe Insolvenzgefahr. Finanziell solide aufgestellt."
+            elif _az_z >= 1.10:
+                _az_zone       = "Grey Zone"
+                _az_zone_color = _C_NEUTRAL
+                _az_zone_bg    = "rgba(255,214,0,0.08)"
+                _az_zone_icon  = "⚠️"
+                _az_zone_desc  = "Unsicheres Terrain. Erhöhte Überwachung der Bilanzentwicklung empfohlen."
+            else:
+                _az_zone       = "Distress Zone"
+                _az_zone_color = _C_NEGATIVE
+                _az_zone_bg    = "rgba(255,82,82,0.08)"
+                _az_zone_icon  = "🔴"
+                _az_zone_desc  = "Deutliche Warnsignale. Erhöhtes Risiko finanzieller Schieflage."
+
+            # ── Summary Hero Card ─────────────────────────────────────────
+            _az_gauge_pct = min(max((_az_z / 5.0) * 100, 0), 100)
+            st.markdown(
+                f"<div style='background:{_az_zone_bg};border:2px solid {_az_zone_color};"
+                f"border-radius:14px;padding:22px 28px;margin-bottom:20px;'>"
+                f"<div style='display:flex;align-items:center;gap:14px;margin-bottom:14px;'>"
+                f"<div style='font-size:2.4rem;line-height:1;'>{_az_zone_icon}</div>"
+                f"<div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;text-transform:uppercase;"
+                f"letter-spacing:.1em;font-weight:600;'>Altman Z''-Score</div>"
+                f"<div style='color:{_az_zone_color};font-size:2.6rem;font-weight:800;"
+                f"line-height:1.1;'>{_az_z:.2f}</div>"
+                f"<div style='color:{_az_zone_color};font-size:0.9rem;font-weight:700;"
+                f"margin-top:2px;'>{_az_zone}</div>"
+                f"</div></div>"
+                f"<div style='background:rgba(0,0,0,0.15);border-radius:6px;height:8px;"
+                f"margin-bottom:10px;overflow:hidden;'>"
+                f"<div style='background:{_az_zone_color};height:100%;width:{_az_gauge_pct:.1f}%;"
+                f"border-radius:6px;transition:width .4s;'></div></div>"
+                f"<div style='display:flex;justify-content:space-between;"
+                f"font-size:0.68rem;color:{_C_TEXT_MUTED};margin-bottom:12px;'>"
+                f"<span>0 — Distress</span><span>1.10</span><span>2.90</span><span>5.0 — Safe</span>"
+                f"</div>"
+                f"<div style='color:{_C_TEXT_SEC};font-size:0.82rem;line-height:1.5;'>{_az_zone_desc}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+            # ── Variable Breakdown Table ──────────────────────────────────
+            st.markdown(
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;font-weight:600;"
+                f"text-transform:uppercase;letter-spacing:.09em;margin-bottom:8px;'>"
+                f"Komponenten-Aufschlüsselung</div>",
+                unsafe_allow_html=True,
+            )
+
+            def _az_fmt_bn(v):
+                if v is None: return "—"
+                if abs(v) >= 1e12: return f"{v/1e12:.2f}T"
+                if abs(v) >= 1e9:  return f"{v/1e9:.2f}B"
+                if abs(v) >= 1e6:  return f"{v/1e6:.2f}M"
+                return f"{v:,.0f}"
+
+            _az_rows = [
+                ("X1", "Working Capital / Total Assets",
+                 f"{_az_x1:.4f}", f"6.56 × {_az_x1:.4f} = <b>{6.56*_az_x1:.3f}</b>",
+                 f"WC: {_az_fmt_bn(_az_result['wc'])} · Assets: {_az_fmt_bn(_az_result['ta'])}",
+                 6.56 * _az_x1),
+                ("X2", "Retained Earnings / Total Assets",
+                 f"{_az_x2:.4f}", f"3.26 × {_az_x2:.4f} = <b>{3.26*_az_x2:.3f}</b>",
+                 f"RE: {_az_fmt_bn(_az_result['re'])} · Assets: {_az_fmt_bn(_az_result['ta'])}",
+                 3.26 * _az_x2),
+                ("X3", "EBIT / Total Assets",
+                 f"{_az_x3:.4f}", f"6.72 × {_az_x3:.4f} = <b>{6.72*_az_x3:.3f}</b>",
+                 f"EBIT: {_az_fmt_bn(_az_result['ebit'])} · Assets: {_az_fmt_bn(_az_result['ta'])}",
+                 6.72 * _az_x3),
+                ("X4", "Market Value of Equity / Total Liabilities",
+                 f"{_az_x4:.4f}", f"1.05 × {_az_x4:.4f} = <b>{1.05*_az_x4:.3f}</b>",
+                 f"MVE: {_az_fmt_bn(_az_result['mve'])} · Liab: {_az_fmt_bn(_az_result['tl'])}",
+                 1.05 * _az_x4),
+            ]
+
+            _max_contrib = max(abs(r[5]) for r in _az_rows) or 1
+
+            for _vname, _vdesc, _vval, _vcontr, _vsrc, _vnum in _az_rows:
+                _bar_w  = abs(_vnum) / _max_contrib * 100
+                _bar_c  = _C_POSITIVE if _vnum >= 0 else _C_NEGATIVE
+                st.markdown(
+                    f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                    f"border-radius:10px;padding:12px 16px;margin-bottom:8px;'>"
+                    f"<div style='display:flex;justify-content:space-between;align-items:baseline;"
+                    f"margin-bottom:6px;'>"
+                    f"<div>"
+                    f"<span style='font-weight:700;color:{_C_ACCENT};font-size:0.95rem;'>{_vname}</span>"
+                    f"<span style='color:{_C_TEXT_MUTED};font-size:0.78rem;margin-left:8px;'>{_vdesc}</span>"
+                    f"</div>"
+                    f"<div style='font-size:0.82rem;color:{_C_TEXT_SEC};'>"
+                    f"Ratio: <b style='color:{_C_TEXT_PRIMARY};'>{_vval}</b></div>"
+                    f"</div>"
+                    f"<div style='background:rgba(0,0,0,0.12);border-radius:4px;height:6px;"
+                    f"margin-bottom:8px;overflow:hidden;'>"
+                    f"<div style='background:{_bar_c};height:100%;width:{_bar_w:.1f}%;"
+                    f"border-radius:4px;'></div></div>"
+                    f"<div style='display:flex;justify-content:space-between;font-size:0.75rem;'>"
+                    f"<span style='color:{_C_TEXT_MUTED};'>{_vsrc}</span>"
+                    f"<span style='color:{_bar_c};'>{_vcontr}</span>"
+                    f"</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+            # ── Zone Reference ────────────────────────────────────────────
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;"
+                f"margin-bottom:20px;'>"
+                f"<div style='background:rgba(255,82,82,0.08);border:1px solid {_C_NEGATIVE};"
+                f"border-radius:8px;padding:10px 12px;text-align:center;'>"
+                f"<div style='color:{_C_NEGATIVE};font-weight:700;font-size:0.85rem;'>🔴 Distress Zone</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-top:3px;'>Z'' &lt; 1.10</div>"
+                f"<div style='color:{_C_TEXT_SEC};font-size:0.72rem;margin-top:4px;line-height:1.4;'>"
+                f"Hohes Insolvenzrisiko</div></div>"
+                f"<div style='background:rgba(255,214,0,0.08);border:1px solid {_C_NEUTRAL};"
+                f"border-radius:8px;padding:10px 12px;text-align:center;'>"
+                f"<div style='color:{_C_NEUTRAL};font-weight:700;font-size:0.85rem;'>⚠️ Grey Zone</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-top:3px;'>1.10 – 2.90</div>"
+                f"<div style='color:{_C_TEXT_SEC};font-size:0.72rem;margin-top:4px;line-height:1.4;'>"
+                f"Erhöhte Wachsamkeit</div></div>"
+                f"<div style='background:rgba(0,230,118,0.08);border:1px solid {_C_POSITIVE};"
+                f"border-radius:8px;padding:10px 12px;text-align:center;'>"
+                f"<div style='color:{_C_POSITIVE};font-weight:700;font-size:0.85rem;'>✅ Safe Zone</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-top:3px;'>Z'' &gt; 2.90</div>"
+                f"<div style='color:{_C_TEXT_SEC};font-size:0.72rem;margin-top:4px;line-height:1.4;'>"
+                f"Geringe Insolvenzgefahr</div></div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+            # ── Interpretation Context ────────────────────────────────────
+            st.markdown(
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-radius:10px;padding:14px 18px;font-size:0.78rem;"
+                f"color:{_C_TEXT_MUTED};line-height:1.6;'>"
+                f"<b style='color:{_C_TEXT_PRIMARY};'>⚙️ Methodische Hinweise</b><br>"
+                f"• <b>Sektor-Kontext:</b> Negative Retained Earnings sind bei wachstumsstarken Tech-/SaaS-Unternehmen "
+                f"(Investitionsphase) normal und bestrafen X2 strukturell — kein automatisches Warnsignal.<br>"
+                f"• <b>Marktpreissensitivität:</b> X4 reagiert direkt auf Kursänderungen. "
+                f"Ein Kurseinbruch kann den Score allein in die Grey Zone schieben.<br>"
+                f"• <b>Branchengrenzen:</b> Der Z''-Score eignet sich nicht für Banken, Versicherungen und REITs "
+                f"(andere Bilanzstruktur). Für diese Sektoren sind branchenspezifische Modelle zu bevorzugen.<br>"
+                f"• Datenbasis: letztes verfügbares Geschäftsjahr (yFinance Balance Sheet).</div>",
+                unsafe_allow_html=True,
+            )
 
 # ==================== INSIGHTS ====================
 st.markdown("<div class='section-header'>💡 Investor Insights</div>", unsafe_allow_html=True)
