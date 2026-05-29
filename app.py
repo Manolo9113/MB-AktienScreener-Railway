@@ -12195,6 +12195,8 @@ elif st.session_state.get("show_marktbewertung"):
                              "desc": "50 führende Bluechip-Unternehmen der Eurozone · europäischer Leitindex"},
         "VHYL All-World":   {"ticker": "VHYL.L",  "etf": "VHYL.L", "color": "#aed581", "flag": "🌍",
                              "desc": "Vanguard FTSE All-World High Dividend Yield UCITS ETF · globale Dividendenaktien (TER 0,22%)"},
+        "MSCI World":       {"ticker": "IWDA.L",  "etf": "IWDA.L", "color": "#4dd0e1", "flag": "🌐",
+                             "desc": "iShares Core MSCI World UCITS ETF · ~1.400 Large- & Mid-Caps aus 23 Industrieländern (TER 0,20%)"},
     }
     # (hist_median_PE, hist_low_PE, hist_high_PE)
     _MV_HIST_PE = {
@@ -12209,6 +12211,7 @@ elif st.session_state.get("show_marktbewertung"):
         "Shanghai Comp.":  (14.0,  7, 40),
         "Euro STOXX 50":   (16.5,  9, 30),
         "VHYL All-World":  (15.0,  9, 22),
+        "MSCI World":      (18.0, 10, 28),
     }
 
     @st.cache_data(ttl=300, show_spinner=False)
