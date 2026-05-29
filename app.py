@@ -2561,7 +2561,7 @@ def load_piotroski(ticker: str):
 # ==================== ALTMAN Z-SCORE ====================
 @st.cache_data(ttl=86400, show_spinner=False)
 def _load_altman_data(ticker: str) -> dict | None:
-    """Fetch balance-sheet and income items needed for Altman Z''-Score."""
+    """Fetch balance-sheet and income items needed for both Altman Z and Z'' scores."""
     try:
         stk = yf.Ticker(ticker)
         bs  = stk.balance_sheet
@@ -2591,40 +2591,47 @@ def _load_altman_data(ticker: str) -> dict | None:
         "total_liab":    _get(bs, ["Total Liabilities Net Minority Interest",
                                    "Total Liab", "Total Liabilities"]),
         "ebit":          _get(inc, ["Operating Income", "EBIT", "Ebit"]),
+        "revenue":       _get(inc, ["Total Revenue", "Revenue"]),
     }
 
 
-def _calc_altman_z(raw: dict, market_value_equity: float) -> dict | None:
-    """Compute Z''-Score from raw balance-sheet dict and current market cap."""
-    ta  = raw.get("total_assets")
-    ca  = raw.get("cur_assets")
-    cl  = raw.get("cur_liab")
-    re  = raw.get("retained_earn")
-    tl  = raw.get("total_liab")
+def _calc_altman_both(raw: dict, market_value_equity: float) -> dict | None:
+    """Compute original Z (manufacturing) and Z'' (non-manufacturing) scores."""
+    ta   = raw.get("total_assets")
+    ca   = raw.get("cur_assets")
+    cl   = raw.get("cur_liab")
+    re   = raw.get("retained_earn")
+    tl   = raw.get("total_liab")
     ebit = raw.get("ebit")
+    rev  = raw.get("revenue")
     mve  = market_value_equity
 
-    # Guard: any missing anchor value means we cannot compute a meaningful score
-    if not ta or ta <= 0:
-        return None
-    if tl is None or tl <= 0:
+    if not ta or ta <= 0 or not tl or tl <= 0:
         return None
 
     wc = (ca - cl) if (ca is not None and cl is not None) else None
+    x1 = wc  / ta  if wc   is not None else None
+    x2 = re  / ta  if re   is not None else None
+    x3 = ebit / ta if ebit is not None else None
+    x4 = mve  / tl if (mve is not None and mve > 0) else None
+    x5 = rev  / ta if rev  is not None else None   # only used by original Z
 
-    x1 = (wc  / ta)  if wc   is not None else None
-    x2 = (re  / ta)  if re   is not None else None
-    x3 = (ebit / ta) if ebit is not None else None
-    x4 = (mve / tl)  if (mve is not None and mve > 0) else None
+    # Z'' requires x1–x4; original Z additionally requires x5
+    z_prime = None
+    if all(v is not None for v in [x1, x2, x3, x4]):
+        z_prime = 6.56 * x1 + 3.26 * x2 + 6.72 * x3 + 1.05 * x4
 
-    # Need all four components for a valid score
-    if any(v is None for v in [x1, x2, x3, x4]):
+    z_orig = None
+    if all(v is not None for v in [x1, x2, x3, x4, x5]):
+        z_orig = 1.2 * x1 + 1.4 * x2 + 3.3 * x3 + 0.6 * x4 + 1.0 * x5
+
+    if z_prime is None and z_orig is None:
         return None
 
-    z = 6.56 * x1 + 3.26 * x2 + 6.72 * x3 + 1.05 * x4
     return {
-        "z": z, "x1": x1, "x2": x2, "x3": x3, "x4": x4,
-        "wc": wc, "ta": ta, "re": re, "ebit": ebit, "mve": mve, "tl": tl,
+        "z_prime": z_prime, "z_orig": z_orig,
+        "x1": x1, "x2": x2, "x3": x3, "x4": x4, "x5": x5,
+        "wc": wc, "ta": ta, "re": re, "ebit": ebit, "mve": mve, "tl": tl, "rev": rev,
     }
 
 
@@ -24008,20 +24015,46 @@ elif _at == 11:
 
 # ==================== ALTMAN Z-SCORE TAB ====================
 elif _at == 12:
-    st.markdown("<div class='section-header'>🧮 Altman Z''-Score — Insolvenzrisiko</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>🧮 Altman Z-Score — Insolvenzrisiko</div>", unsafe_allow_html=True)
     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
-    # ── Intro info box ────────────────────────────────────────────────────
+    # ── Sector-based model recommendation ────────────────────────────────
+    _az_sec = (sector or "").lower()
+    _az_ind = (industry or "").lower()
+    _az_mfg_keywords  = ("industrial", "material", "energy", "utilities", "manufactur",
+                         "chemical", "mining", "steel", "automotive", "aerospace")
+    _az_tech_keywords = ("technology", "software", "internet", "communication", "saas",
+                         "semiconductor", "cloud", "data", "platform")
+    _az_excl_keywords = ("bank", "insurance", "financial", "reit", "real estate")
+
+    _az_is_mfg   = any(k in _az_sec or k in _az_ind for k in _az_mfg_keywords)
+    _az_is_tech  = any(k in _az_sec or k in _az_ind for k in _az_tech_keywords)
+    _az_is_excl  = any(k in _az_sec or k in _az_ind for k in _az_excl_keywords)
+
+    # Recommend original Z for manufacturing/energy/industrial, Z'' for everything else
+    _az_recommended = "orig" if _az_is_mfg and not _az_is_tech else "prime"
+
+    if _az_is_excl:
+        _az_model_note = (f"⚠️ <b>{sector}</b> — Banken, Versicherungen und REITs haben strukturell "
+                          f"andere Bilanzen. Beide Z-Score-Modelle sind für diesen Sektor nur eingeschränkt "
+                          f"aussagekräftig. Scores zur Orientierung angezeigt.")
+        _az_model_color = _C_NEUTRAL
+    elif _az_recommended == "orig":
+        _az_model_note = (f"🏭 <b>{sector}</b> — Produzierender / kapitalintensiver Sektor. "
+                          f"Empfohlen: <b>Originaler Z-Score</b> (Altman 1968). "
+                          f"Z'' wird ergänzend angezeigt.")
+        _az_model_color = _C_ACCENT
+    else:
+        _az_model_note = (f"💻 <b>{sector or 'Dienstleistung/Tech'}</b> — Asset-leichter Sektor. "
+                          f"Empfohlen: <b>Z''-Score</b> (Altman 1995, nicht-produzierend). "
+                          f"Originaler Z wird ergänzend angezeigt.")
+        _az_model_color = _C_ACCENT
+
     st.markdown(
-        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
-        f"padding:10px 16px;margin-bottom:16px;color:{_C_TEXT_MUTED};font-size:0.78rem;line-height:1.6;'>"
-        f"<b style='color:{_C_TEXT_PRIMARY};'>Altman Z''-Score (nicht-produzierende Unternehmen)</b>"
-        f" — Modifizierte Formel nach Altman (1995) optimiert für Tech- und SaaS-Unternehmen "
-        f"mit geringer physischer Kapitalbasis. Formel: "
-        f"<code>Z'' = 6.56·X1 + 3.26·X2 + 6.72·X3 + 1.05·X4</code><br>"
-        f"<b style='color:{_C_POSITIVE};'>Safe Zone Z'' &gt; 2.90</b> · "
-        f"<b style='color:{_C_NEUTRAL};'>Grey Zone 1.10–2.90</b> · "
-        f"<b style='color:{_C_NEGATIVE};'>Distress Zone Z'' &lt; 1.10</b></div>",
+        f"<div style='background:{_C_CARD_BG};border-left:3px solid {_az_model_color};"
+        f"border-radius:0 10px 10px 0;padding:10px 16px;margin-bottom:16px;"
+        f"color:{_C_TEXT_MUTED};font-size:0.80rem;line-height:1.6;border:1px solid {_C_BORDER};"
+        f"border-left:3px solid {_az_model_color};'>{_az_model_note}</div>",
         unsafe_allow_html=True,
     )
 
@@ -24029,7 +24062,7 @@ elif _at == 12:
     with st.spinner("Lade Bilanzdaten…"):
         _az_raw = _load_altman_data(ticker)
 
-    _az_mve = market_cap  # market value of equity = current market cap
+    _az_mve = market_cap
 
     if _az_raw is None:
         st.markdown(
@@ -24045,9 +24078,8 @@ elif _at == 12:
             unsafe_allow_html=True,
         )
     else:
-        _az_result = _calc_altman_z(_az_raw, _az_mve)
+        _az_result = _calc_altman_both(_az_raw, _az_mve)
 
-        # ── Fallback: missing components ─────────────────────────────────
         if _az_result is None:
             _az_missing = []
             if not (_az_raw.get("total_assets") or 0) > 0:
@@ -24075,65 +24107,99 @@ elif _at == 12:
                 unsafe_allow_html=True,
             )
         else:
-            _az_z   = _az_result["z"]
+            _az_zp  = _az_result["z_prime"]  # Z'' (non-manufacturing)
+            _az_zo  = _az_result["z_orig"]   # Z  (original/manufacturing)
             _az_x1  = _az_result["x1"]
             _az_x2  = _az_result["x2"]
             _az_x3  = _az_result["x3"]
             _az_x4  = _az_result["x4"]
+            _az_x5  = _az_result["x5"]
 
-            # ── Zone classification ───────────────────────────────────────
-            if _az_z > 2.90:
-                _az_zone       = "Safe Zone"
-                _az_zone_color = _C_POSITIVE
-                _az_zone_bg    = "rgba(0,230,118,0.08)"
-                _az_zone_icon  = "✅"
-                _az_zone_desc  = "Das Unternehmen zeigt geringe Insolvenzgefahr. Finanziell solide aufgestellt."
-            elif _az_z >= 1.10:
-                _az_zone       = "Grey Zone"
-                _az_zone_color = _C_NEUTRAL
-                _az_zone_bg    = "rgba(255,214,0,0.08)"
-                _az_zone_icon  = "⚠️"
-                _az_zone_desc  = "Unsicheres Terrain. Erhöhte Überwachung der Bilanzentwicklung empfohlen."
-            else:
-                _az_zone       = "Distress Zone"
-                _az_zone_color = _C_NEGATIVE
-                _az_zone_bg    = "rgba(255,82,82,0.08)"
-                _az_zone_icon  = "🔴"
-                _az_zone_desc  = "Deutliche Warnsignale. Erhöhtes Risiko finanzieller Schieflage."
+            def _az_zone_info(z_val, model):
+                """Returns (zone_name, color, bg, icon, desc) for a given Z value."""
+                if z_val is None:
+                    return "—", _C_TEXT_MUTED, _C_CARD_BG, "❓", "Nicht berechenbar (fehlende Daten)"
+                if model == "orig":
+                    safe_t, dist_t = 2.99, 1.81
+                else:
+                    safe_t, dist_t = 2.90, 1.10
+                if z_val > safe_t:
+                    return ("Safe Zone", _C_POSITIVE, "rgba(0,230,118,0.08)", "✅",
+                            "Geringe Insolvenzgefahr · Finanziell solide aufgestellt")
+                elif z_val >= dist_t:
+                    return ("Grey Zone", _C_NEUTRAL, "rgba(255,214,0,0.08)", "⚠️",
+                            "Unsicheres Terrain · Erhöhte Überwachung empfohlen")
+                else:
+                    return ("Distress Zone", _C_NEGATIVE, "rgba(255,82,82,0.08)", "🔴",
+                            "Deutliche Warnsignale · Erhöhtes Insolvenzrisiko")
 
-            # ── Summary Hero Card ─────────────────────────────────────────
-            _az_gauge_pct = min(max((_az_z / 5.0) * 100, 0), 100)
-            st.markdown(
-                f"<div style='background:{_az_zone_bg};border:2px solid {_az_zone_color};"
-                f"border-radius:14px;padding:22px 28px;margin-bottom:20px;'>"
-                f"<div style='display:flex;align-items:center;gap:14px;margin-bottom:14px;'>"
-                f"<div style='font-size:2.4rem;line-height:1;'>{_az_zone_icon}</div>"
-                f"<div>"
-                f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;text-transform:uppercase;"
-                f"letter-spacing:.1em;font-weight:600;'>Altman Z''-Score</div>"
-                f"<div style='color:{_az_zone_color};font-size:2.6rem;font-weight:800;"
-                f"line-height:1.1;'>{_az_z:.2f}</div>"
-                f"<div style='color:{_az_zone_color};font-size:0.9rem;font-weight:700;"
-                f"margin-top:2px;'>{_az_zone}</div>"
-                f"</div></div>"
-                f"<div style='background:rgba(0,0,0,0.15);border-radius:6px;height:8px;"
-                f"margin-bottom:10px;overflow:hidden;'>"
-                f"<div style='background:{_az_zone_color};height:100%;width:{_az_gauge_pct:.1f}%;"
-                f"border-radius:6px;transition:width .4s;'></div></div>"
-                f"<div style='display:flex;justify-content:space-between;"
-                f"font-size:0.68rem;color:{_C_TEXT_MUTED};margin-bottom:12px;'>"
-                f"<span>0 — Distress</span><span>1.10</span><span>2.90</span><span>5.0 — Safe</span>"
-                f"</div>"
-                f"<div style='color:{_C_TEXT_SEC};font-size:0.82rem;line-height:1.5;'>{_az_zone_desc}</div>"
-                f"</div>",
-                unsafe_allow_html=True,
+            _az_zp_info = _az_zone_info(_az_zp, "prime")
+            _az_zo_info = _az_zone_info(_az_zo, "orig")
+
+            # ── Dual score cards side by side ─────────────────────────────
+            _az_col_prime, _az_col_orig = st.columns(2)
+
+            def _az_score_card(col, z_val, zone_name, zone_color, zone_bg, zone_icon,
+                               zone_desc, label, formula, safe_t, dist_t, is_recommended):
+                scale_max = 9.0 if "orig" in formula else 5.0
+                gauge_pct = min(max(((z_val or 0) / scale_max) * 100, 0), 100) if z_val else 0
+                rec_badge = (f"<span style='background:{_C_ACCENT};color:#fff;font-size:0.62rem;"
+                             f"font-weight:700;padding:2px 7px;border-radius:99px;"
+                             f"margin-left:8px;vertical-align:middle;'>Empfohlen</span>"
+                             if is_recommended else "")
+                border_style = f"2px solid {zone_color}" if is_recommended else f"1px solid {_C_BORDER}"
+                z_str = f"{z_val:.2f}" if z_val is not None else "N/A"
+                col.markdown(
+                    f"<div style='background:{zone_bg};border:{border_style};"
+                    f"border-radius:14px;padding:18px 20px;height:100%;'>"
+                    f"<div style='font-size:0.68rem;text-transform:uppercase;letter-spacing:.09em;"
+                    f"font-weight:600;color:{_C_TEXT_MUTED};margin-bottom:4px;'>"
+                    f"{label}{rec_badge}</div>"
+                    f"<div style='font-size:0.71rem;color:{_C_TEXT_MUTED};margin-bottom:10px;"
+                    f"font-family:monospace;'>{formula}</div>"
+                    f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:10px;'>"
+                    f"<span style='font-size:2rem;line-height:1;'>{zone_icon}</span>"
+                    f"<div>"
+                    f"<div style='color:{zone_color};font-size:2.2rem;font-weight:800;line-height:1;'>"
+                    f"{z_str}</div>"
+                    f"<div style='color:{zone_color};font-size:0.82rem;font-weight:700;'>{zone_name}</div>"
+                    f"</div></div>"
+                    f"<div style='background:rgba(0,0,0,0.15);border-radius:4px;height:6px;"
+                    f"margin-bottom:6px;overflow:hidden;'>"
+                    f"<div style='background:{zone_color};height:100%;width:{gauge_pct:.1f}%;"
+                    f"border-radius:4px;'></div></div>"
+                    f"<div style='display:flex;justify-content:space-between;font-size:0.62rem;"
+                    f"color:{_C_TEXT_MUTED};margin-bottom:10px;'>"
+                    f"<span>Distress &lt;{dist_t}</span><span>Safe &gt;{safe_t}</span></div>"
+                    f"<div style='color:{_C_TEXT_MUTED};font-size:0.74rem;line-height:1.4;'>"
+                    f"{zone_desc}</div></div>",
+                    unsafe_allow_html=True,
+                )
+
+            _az_score_card(
+                _az_col_prime, _az_zp,
+                *_az_zp_info,
+                label="Z''-Score (Nicht-produzierend)",
+                formula="6.56·X1 + 3.26·X2 + 6.72·X3 + 1.05·X4",
+                safe_t=2.90, dist_t=1.10,
+                is_recommended=(_az_recommended == "prime"),
+            )
+            _az_score_card(
+                _az_col_orig, _az_zo,
+                *_az_zo_info,
+                label="Z-Score (Original / Produktion)",
+                formula="1.2·X1 + 1.4·X2 + 3.3·X3 + 0.6·X4 + 1.0·X5",
+                safe_t=2.99, dist_t=1.81,
+                is_recommended=(_az_recommended == "orig"),
             )
 
-            # ── Variable Breakdown Table ──────────────────────────────────
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+            # ── Shared variable breakdown ─────────────────────────────────
             st.markdown(
                 f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;font-weight:600;"
                 f"text-transform:uppercase;letter-spacing:.09em;margin-bottom:8px;'>"
-                f"Komponenten-Aufschlüsselung</div>",
+                f"Komponenten X1–X5 (gemeinsame Datenbasis)</div>",
                 unsafe_allow_html=True,
             )
 
@@ -24144,92 +24210,140 @@ elif _at == 12:
                 if abs(v) >= 1e6:  return f"{v/1e6:.2f}M"
                 return f"{v:,.0f}"
 
-            _az_rows = [
+            _ta_s = _az_fmt_bn(_az_result["ta"])
+
+            _az_components = [
                 ("X1", "Working Capital / Total Assets",
-                 f"{_az_x1:.4f}", f"6.56 × {_az_x1:.4f} = <b>{6.56*_az_x1:.3f}</b>",
-                 f"WC: {_az_fmt_bn(_az_result['wc'])} · Assets: {_az_fmt_bn(_az_result['ta'])}",
-                 6.56 * _az_x1),
+                 _az_x1,
+                 f"WC {_az_fmt_bn(_az_result['wc'])} / Assets {_ta_s}",
+                 {"Z''": (6.56, _az_zp is not None), "Z": (1.2, _az_zo is not None)}),
                 ("X2", "Retained Earnings / Total Assets",
-                 f"{_az_x2:.4f}", f"3.26 × {_az_x2:.4f} = <b>{3.26*_az_x2:.3f}</b>",
-                 f"RE: {_az_fmt_bn(_az_result['re'])} · Assets: {_az_fmt_bn(_az_result['ta'])}",
-                 3.26 * _az_x2),
+                 _az_x2,
+                 f"RE {_az_fmt_bn(_az_result['re'])} / Assets {_ta_s}",
+                 {"Z''": (3.26, _az_zp is not None), "Z": (1.4, _az_zo is not None)}),
                 ("X3", "EBIT / Total Assets",
-                 f"{_az_x3:.4f}", f"6.72 × {_az_x3:.4f} = <b>{6.72*_az_x3:.3f}</b>",
-                 f"EBIT: {_az_fmt_bn(_az_result['ebit'])} · Assets: {_az_fmt_bn(_az_result['ta'])}",
-                 6.72 * _az_x3),
+                 _az_x3,
+                 f"EBIT {_az_fmt_bn(_az_result['ebit'])} / Assets {_ta_s}",
+                 {"Z''": (6.72, _az_zp is not None), "Z": (3.3, _az_zo is not None)}),
                 ("X4", "Market Value of Equity / Total Liabilities",
-                 f"{_az_x4:.4f}", f"1.05 × {_az_x4:.4f} = <b>{1.05*_az_x4:.3f}</b>",
-                 f"MVE: {_az_fmt_bn(_az_result['mve'])} · Liab: {_az_fmt_bn(_az_result['tl'])}",
-                 1.05 * _az_x4),
+                 _az_x4,
+                 f"MVE {_az_fmt_bn(_az_result['mve'])} / Liab {_az_fmt_bn(_az_result['tl'])}",
+                 {"Z''": (1.05, _az_zp is not None), "Z": (0.6, _az_zo is not None)}),
+                ("X5", "Umsatz / Total Assets  ·  nur Z (Original)",
+                 _az_x5,
+                 f"Rev {_az_fmt_bn(_az_result['rev'])} / Assets {_ta_s}",
+                 {"Z''": (0.0, False), "Z": (1.0, _az_zo is not None)}),
             ]
 
-            _max_contrib = max(abs(r[5]) for r in _az_rows) or 1
+            _az_all_contribs = []
+            for _, _, xv, _, weights in _az_components:
+                for mdl, (coeff, active) in weights.items():
+                    if active and xv is not None:
+                        _az_all_contribs.append(abs(coeff * xv))
+            _az_max_contrib = max(_az_all_contribs) if _az_all_contribs else 1
 
-            for _vname, _vdesc, _vval, _vcontr, _vsrc, _vnum in _az_rows:
-                _bar_w  = abs(_vnum) / _max_contrib * 100
-                _bar_c  = _C_POSITIVE if _vnum >= 0 else _C_NEGATIVE
+            for _xn, _xdesc, _xval, _xsrc, _xw in _az_components:
+                _xval_str = f"{_xval:.4f}" if _xval is not None else "—"
+                _contrib_parts = []
+                _bar_val = 0.0
+                for _mn, (_coeff, _active) in _xw.items():
+                    if not _active or _coeff == 0:
+                        continue
+                    if _xval is not None:
+                        _cv = _coeff * _xval
+                        _cc = _C_POSITIVE if _cv >= 0 else _C_NEGATIVE
+                        _contrib_parts.append(
+                            f"<span style='color:{_C_TEXT_MUTED};'>{_mn}:</span> "
+                            f"<span style='color:{_cc};font-weight:600;'>{_cv:+.3f}</span>"
+                        )
+                        if _mn == ("Z''" if _az_recommended == "prime" else "Z"):
+                            _bar_val = _cv
+                    else:
+                        _contrib_parts.append(
+                            f"<span style='color:{_C_TEXT_MUTED};'>{_mn}:</span> "
+                            f"<span style='color:{_C_TEXT_MUTED};'>N/A</span>"
+                        )
+                _bar_w = abs(_bar_val) / _az_max_contrib * 100 if _az_max_contrib else 0
+                _bar_c = _C_POSITIVE if _bar_val >= 0 else _C_NEGATIVE
+                _contrib_html = "  &nbsp;·&nbsp;  ".join(_contrib_parts) if _contrib_parts else "—"
+
+                _x5_dim = "opacity:0.55;" if _xn == "X5" and _az_recommended == "prime" else ""
                 st.markdown(
                     f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
-                    f"border-radius:10px;padding:12px 16px;margin-bottom:8px;'>"
+                    f"border-radius:10px;padding:12px 16px;margin-bottom:8px;{_x5_dim}'>"
                     f"<div style='display:flex;justify-content:space-between;align-items:baseline;"
-                    f"margin-bottom:6px;'>"
-                    f"<div>"
-                    f"<span style='font-weight:700;color:{_C_ACCENT};font-size:0.95rem;'>{_vname}</span>"
-                    f"<span style='color:{_C_TEXT_MUTED};font-size:0.78rem;margin-left:8px;'>{_vdesc}</span>"
+                    f"margin-bottom:5px;'>"
+                    f"<div><span style='font-weight:700;color:{_C_ACCENT};font-size:0.95rem;'>{_xn}</span>"
+                    f"<span style='color:{_C_TEXT_MUTED};font-size:0.77rem;margin-left:8px;'>{_xdesc}</span>"
                     f"</div>"
-                    f"<div style='font-size:0.82rem;color:{_C_TEXT_SEC};'>"
-                    f"Ratio: <b style='color:{_C_TEXT_PRIMARY};'>{_vval}</b></div>"
+                    f"<div style='font-size:0.82rem;'>"
+                    f"Ratio: <b style='color:{_C_TEXT_PRIMARY};'>{_xval_str}</b></div>"
                     f"</div>"
-                    f"<div style='background:rgba(0,0,0,0.12);border-radius:4px;height:6px;"
-                    f"margin-bottom:8px;overflow:hidden;'>"
+                    f"<div style='background:rgba(0,0,0,0.12);border-radius:4px;height:5px;"
+                    f"margin-bottom:7px;overflow:hidden;'>"
                     f"<div style='background:{_bar_c};height:100%;width:{_bar_w:.1f}%;"
                     f"border-radius:4px;'></div></div>"
-                    f"<div style='display:flex;justify-content:space-between;font-size:0.75rem;'>"
-                    f"<span style='color:{_C_TEXT_MUTED};'>{_vsrc}</span>"
-                    f"<span style='color:{_bar_c};'>{_vcontr}</span>"
+                    f"<div style='display:flex;justify-content:space-between;font-size:0.74rem;'>"
+                    f"<span style='color:{_C_TEXT_MUTED};'>{_xsrc}</span>"
+                    f"<span>{_contrib_html}</span>"
                     f"</div></div>",
                     unsafe_allow_html=True,
                 )
 
-            # ── Zone Reference ────────────────────────────────────────────
+            # ── Zone reference both models ────────────────────────────────
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             st.markdown(
-                f"<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;"
-                f"margin-bottom:20px;'>"
-                f"<div style='background:rgba(255,82,82,0.08);border:1px solid {_C_NEGATIVE};"
-                f"border-radius:8px;padding:10px 12px;text-align:center;'>"
-                f"<div style='color:{_C_NEGATIVE};font-weight:700;font-size:0.85rem;'>🔴 Distress Zone</div>"
-                f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-top:3px;'>Z'' &lt; 1.10</div>"
-                f"<div style='color:{_C_TEXT_SEC};font-size:0.72rem;margin-top:4px;line-height:1.4;'>"
-                f"Hohes Insolvenzrisiko</div></div>"
-                f"<div style='background:rgba(255,214,0,0.08);border:1px solid {_C_NEUTRAL};"
-                f"border-radius:8px;padding:10px 12px;text-align:center;'>"
-                f"<div style='color:{_C_NEUTRAL};font-weight:700;font-size:0.85rem;'>⚠️ Grey Zone</div>"
-                f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-top:3px;'>1.10 – 2.90</div>"
-                f"<div style='color:{_C_TEXT_SEC};font-size:0.72rem;margin-top:4px;line-height:1.4;'>"
-                f"Erhöhte Wachsamkeit</div></div>"
-                f"<div style='background:rgba(0,230,118,0.08);border:1px solid {_C_POSITIVE};"
-                f"border-radius:8px;padding:10px 12px;text-align:center;'>"
-                f"<div style='color:{_C_POSITIVE};font-weight:700;font-size:0.85rem;'>✅ Safe Zone</div>"
-                f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;margin-top:3px;'>Z'' &gt; 2.90</div>"
-                f"<div style='color:{_C_TEXT_SEC};font-size:0.72rem;margin-top:4px;line-height:1.4;'>"
-                f"Geringe Insolvenzgefahr</div></div>"
-                f"</div>",
+                f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;'>"
+                # Z'' thresholds
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-radius:10px;padding:12px;'>"
+                f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.77rem;font-weight:700;"
+                f"margin-bottom:8px;'>Z''-Score Schwellen</div>"
+                f"<div style='display:flex;gap:6px;'>"
+                f"<div style='flex:1;background:rgba(255,82,82,0.1);border-radius:6px;padding:6px 8px;"
+                f"text-align:center;'><div style='color:{_C_NEGATIVE};font-weight:700;font-size:0.75rem;'>"
+                f"🔴 &lt; 1.10</div><div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>Distress</div></div>"
+                f"<div style='flex:1;background:rgba(255,214,0,0.1);border-radius:6px;padding:6px 8px;"
+                f"text-align:center;'><div style='color:{_C_NEUTRAL};font-weight:700;font-size:0.75rem;'>"
+                f"⚠️ 1.10–2.90</div><div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>Grey</div></div>"
+                f"<div style='flex:1;background:rgba(0,230,118,0.1);border-radius:6px;padding:6px 8px;"
+                f"text-align:center;'><div style='color:{_C_POSITIVE};font-weight:700;font-size:0.75rem;'>"
+                f"✅ &gt; 2.90</div><div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>Safe</div></div>"
+                f"</div></div>"
+                # Z orig thresholds
+                f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                f"border-radius:10px;padding:12px;'>"
+                f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.77rem;font-weight:700;"
+                f"margin-bottom:8px;'>Z-Score (Original) Schwellen</div>"
+                f"<div style='display:flex;gap:6px;'>"
+                f"<div style='flex:1;background:rgba(255,82,82,0.1);border-radius:6px;padding:6px 8px;"
+                f"text-align:center;'><div style='color:{_C_NEGATIVE};font-weight:700;font-size:0.75rem;'>"
+                f"🔴 &lt; 1.81</div><div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>Distress</div></div>"
+                f"<div style='flex:1;background:rgba(255,214,0,0.1);border-radius:6px;padding:6px 8px;"
+                f"text-align:center;'><div style='color:{_C_NEUTRAL};font-weight:700;font-size:0.75rem;'>"
+                f"⚠️ 1.81–2.99</div><div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>Grey</div></div>"
+                f"<div style='flex:1;background:rgba(0,230,118,0.1);border-radius:6px;padding:6px 8px;"
+                f"text-align:center;'><div style='color:{_C_POSITIVE};font-weight:700;font-size:0.75rem;'>"
+                f"✅ &gt; 2.99</div><div style='color:{_C_TEXT_MUTED};font-size:0.68rem;'>Safe</div></div>"
+                f"</div></div></div>",
                 unsafe_allow_html=True,
             )
 
-            # ── Interpretation Context ────────────────────────────────────
+            # ── Methodische Hinweise ──────────────────────────────────────
             st.markdown(
                 f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
                 f"border-radius:10px;padding:14px 18px;font-size:0.78rem;"
                 f"color:{_C_TEXT_MUTED};line-height:1.6;'>"
                 f"<b style='color:{_C_TEXT_PRIMARY};'>⚙️ Methodische Hinweise</b><br>"
-                f"• <b>Sektor-Kontext:</b> Negative Retained Earnings sind bei wachstumsstarken Tech-/SaaS-Unternehmen "
-                f"(Investitionsphase) normal und bestrafen X2 strukturell — kein automatisches Warnsignal.<br>"
-                f"• <b>Marktpreissensitivität:</b> X4 reagiert direkt auf Kursänderungen. "
-                f"Ein Kurseinbruch kann den Score allein in die Grey Zone schieben.<br>"
-                f"• <b>Branchengrenzen:</b> Der Z''-Score eignet sich nicht für Banken, Versicherungen und REITs "
-                f"(andere Bilanzstruktur). Für diese Sektoren sind branchenspezifische Modelle zu bevorzugen.<br>"
+                f"• <b>Z'' vs. Z:</b> Der originale Z (1968) nutzt X5 (Asset Turnover) — vorteilhaft für "
+                f"kapitalintensive Industrien. Z'' (1995) verzichtet darauf, da Tech/SaaS absichtlich "
+                f"wenig physische Assets halten — X5 würde sie strukturell bestrafen.<br>"
+                f"• <b>Negative Retained Earnings:</b> Bei Wachstumsunternehmen in der Investitionsphase "
+                f"strukturell normal — X2 wird negativ, drückt den Score, ist aber kein Warnsignal per se.<br>"
+                f"• <b>X4 Marktsensitivität:</b> Reagiert direkt auf Kursveränderungen. "
+                f"Starke Kursrückgänge können den Score allein in die Grey Zone verschieben.<br>"
+                f"• <b>Sektorgrenzen:</b> Banken, Versicherungen und REITs erfordern "
+                f"branchenspezifische Insolvenzmodelle — beide Z-Scores sind dort nur Orientierungswerte.<br>"
                 f"• Datenbasis: letztes verfügbares Geschäftsjahr (yFinance Balance Sheet).</div>",
                 unsafe_allow_html=True,
             )
