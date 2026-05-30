@@ -2672,14 +2672,14 @@ def _calc_altman_both(raw: dict, market_value_equity: float) -> dict | None:
     rev  = raw.get("revenue")
     mve  = market_value_equity
 
-    if not ta or ta <= 0 or not tl or tl <= 0:
+    if not ta or ta <= 0:
         return None
 
     wc = (ca - cl) if (ca is not None and cl is not None) else None
     x1 = wc  / ta  if wc   is not None else None
     x2 = re  / ta  if re   is not None else None
     x3 = ebit / ta if ebit is not None else None
-    x4 = mve  / tl if (mve is not None and mve > 0) else None
+    x4 = mve  / tl if (mve is not None and mve > 0 and tl is not None and tl > 0) else None
     x5 = rev  / ta if rev  is not None else None   # only used by original Z
 
     # Z'' requires x1–x4; original Z additionally requires x5
@@ -23498,11 +23498,18 @@ elif _at == 6:
     _dr_rev_last  = None
     if not a_rev.empty and len(a_rev) >= 3:
         _rv = a_rev.sort_index()
-        _g1 = (float(_rv.iloc[-1]) / float(_rv.iloc[-2]) - 1) if float(_rv.iloc[-2]) > 0 else None
-        _g2 = (float(_rv.iloc[-2]) / float(_rv.iloc[-3]) - 1) if float(_rv.iloc[-3]) > 0 else None
+        _rv2 = float(_rv.iloc[-2])
+        _rv3 = float(_rv.iloc[-3])
+        if _rv2 <= 0:
+            # Zero/negative prior-year revenue is a major disruption signal
+            _dr_rev_decel = 99.0
+            _g1 = None
+        else:
+            _g1 = float(_rv.iloc[-1]) / _rv2 - 1
+            _g2 = (_rv2 / _rv3 - 1) if _rv3 > 0 else None
+            if _g1 is not None and _g2 is not None:
+                _dr_rev_decel = _g2 - _g1  # positive = deceleration
         _dr_rev_last = _g1
-        if _g1 is not None and _g2 is not None:
-            _dr_rev_decel = _g2 - _g1  # positive = deceleration
 
     if _dr_rev_decel is None:
         _dr_mom_score = 10
@@ -23535,9 +23542,10 @@ elif _at == 6:
 
     # ── Component 4: Financial Flexibility (debt/EBITDA) ─────────────────
     _dr_debt_now = float(a_debt.iloc[-1]) if not a_debt.empty else None
-    _dr_ebitda_now = float(a_ebitda.iloc[-1]) if not a_ebitda.empty else (ebitda or None)
+    # Use only annual EBITDA series to avoid period mismatch with a_debt (fiscal year end)
+    _dr_ebitda_now = float(a_ebitda.iloc[-1]) if not a_ebitda.empty else None
     _dr_debt_ebitda = None
-    if _dr_debt_now and _dr_ebitda_now and _dr_ebitda_now > 0:
+    if _dr_debt_now is not None and _dr_ebitda_now is not None and _dr_ebitda_now > 0:
         _dr_debt_ebitda = _dr_debt_now / _dr_ebitda_now
 
     if _dr_debt_ebitda is None:
@@ -23627,7 +23635,7 @@ elif _at == 6:
          "F&E-Intensität. <10 % = Investitions-lücke, >15 % = Innovationsschutz."),
         ("📉 Revenue Momentum",
          "Wachstums-Dezeleration",
-         f"{_dr_rev_decel*100:+.1f}pp" if _dr_rev_decel is not None else "N/A",
+         ("Extrem ↓" if _dr_rev_decel >= 90 else f"{_dr_rev_decel*100:+.1f}pp") if _dr_rev_decel is not None else "N/A",
          _dr_mom_score, 20,
          (f"Letztes Wachstum: {_dr_rev_last*100:+.1f}%" if _dr_rev_last is not None else ""),
          "Verlangsamung des Umsatzwachstums — klassisches Frühwarnsignal bei Disruption."),
@@ -24508,9 +24516,10 @@ elif _at == 12:
             _az_col_prime, _az_col_orig = st.columns(2)
 
             def _az_score_card(col, z_val, zone_name, zone_color, zone_bg, zone_icon,
-                               zone_desc, label, formula, safe_t, dist_t, is_recommended):
-                scale_max = 9.0 if "orig" in formula else 5.0
-                gauge_pct = min(max(((z_val or 0) / scale_max) * 100, 0), 100) if z_val else 0
+                               zone_desc, label, formula, safe_t, dist_t, is_recommended,
+                               model="prime"):
+                scale_max = 9.0 if model == "orig" else 5.0
+                gauge_pct = min(max((z_val / scale_max) * 100, 0), 100) if z_val is not None else 0
                 rec_badge = (f"<span style='background:{_C_ACCENT};color:#fff;font-size:0.62rem;"
                              f"font-weight:700;padding:2px 7px;border-radius:99px;"
                              f"margin-left:8px;vertical-align:middle;'>Empfohlen</span>"
@@ -24550,7 +24559,8 @@ elif _at == 12:
                 label="Z''-Score (Nicht-produzierend)",
                 formula="6.56·X1 + 3.26·X2 + 6.72·X3 + 1.05·X4",
                 safe_t=2.90, dist_t=1.10,
-                is_recommended=(_az_recommended == "prime"),
+                is_recommended=(_az_recommended == "prime" and _az_zp is not None),
+                model="prime",
             )
             _az_score_card(
                 _az_col_orig, _az_zo,
@@ -24558,7 +24568,8 @@ elif _at == 12:
                 label="Z-Score (Original / Produktion)",
                 formula="1.2·X1 + 1.4·X2 + 3.3·X3 + 0.6·X4 + 1.0·X5",
                 safe_t=2.99, dist_t=1.81,
-                is_recommended=(_az_recommended == "orig"),
+                is_recommended=(_az_recommended == "orig" and _az_zo is not None),
+                model="orig",
             )
 
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
