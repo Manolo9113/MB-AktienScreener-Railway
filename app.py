@@ -1606,6 +1606,43 @@ def load_extended_financials(ticker: str, api_key: str = ""):
 
     return rev, net, eps, fcf, shares, price_annual, ebitda_ext
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _load_quarterly_revenue_long(ticker: str, api_key: str = "") -> pd.Series:
+    """Up to 20 quarters of revenue — FMP primary, yfinance fallback."""
+    if api_key:
+        try:
+            r = requests.get(
+                f"https://financialmodelingprep.com/api/v3/income-statement/{ticker}",
+                params={"period": "quarter", "limit": 20, "apikey": api_key}, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list) and data:
+                    dates, revs = [], []
+                    for d in data:
+                        try:
+                            dates.append(pd.Timestamp(d["date"]))
+                            revs.append(float(d.get("revenue") or 0))
+                        except Exception:
+                            continue
+                    if dates:
+                        s = pd.Series(revs, index=dates).replace(0, float("nan")).dropna().sort_index()
+                        if not s.empty:
+                            return s
+        except Exception:
+            pass
+    # yfinance fallback — up to 8 quarters
+    try:
+        qi = yf.Ticker(ticker).quarterly_income_stmt
+        if qi is not None and not qi.empty:
+            for row in ["Total Revenue", "Revenue"]:
+                if row in qi.index:
+                    s = qi.loc[row].dropna().sort_index()
+                    return s.replace(0, float("nan")).dropna()
+    except Exception:
+        pass
+    return pd.Series(dtype=float)
+
+
 @st.cache_data(ttl=86400)
 def load_earnings_surprises(ticker: str) -> list[dict]:
     """Lädt EPS Beat/Miss — FMP primär, yfinance als Fallback."""
@@ -20128,7 +20165,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
 _TABS = [
     "📊 Kennzahlen", "📈 Wachstum", "🔮 Prognose", "📋 Fundamental", "⚖️ Bewertung",
     "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden",
-    "📐 Faktor-Profil", "🧮 Altman Z-Score",
+    "📐 Faktor-Profil", "🧮 Altman Z-Score", "🔄 ARR & Kunden",
 ]
 _at = st.session_state.get("active_tab", 0)
 st.markdown(
@@ -20137,7 +20174,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 _nav_row1 = st.columns(7)
-_nav_row2 = st.columns(6)
+_nav_row2 = st.columns(7)
 _nav_cols = _nav_row1 + _nav_row2
 for _ni, _nlabel in enumerate(_TABS):
     _is_active = (_ni == _at)
@@ -24347,6 +24384,333 @@ elif _at == 12:
                 f"• Datenbasis: letztes verfügbares Geschäftsjahr (yFinance Balance Sheet).</div>",
                 unsafe_allow_html=True,
             )
+
+# ==================== ARR & CUSTOMER RETENTION TAB ====================
+elif _at == 13:
+    import plotly.graph_objects as _go_arr
+    from plotly.subplots import make_subplots as _msp_arr
+
+    st.markdown("<div class='section-header'>🔄 ARR & Kundenbindung — Recurring Revenue Analyse</div>",
+                unsafe_allow_html=True)
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+    # ── Detect subscription/SaaS context ─────────────────────────────────
+    _arr_sec = (sector or "").lower()
+    _arr_ind = (industry or "").lower()
+    _arr_is_saas = any(k in _arr_sec or k in _arr_ind for k in
+                       ("software", "technology", "saas", "cloud", "internet",
+                        "communication", "platform", "semiconductor", "data"))
+    _arr_is_sub  = any(k in _arr_sec or k in _arr_ind for k in
+                       ("subscription", "streaming", "media", "telecom",
+                        "insurance", "financial service", "rental"))
+
+    _arr_context = "saas" if _arr_is_saas else ("subscription" if _arr_is_sub else "general")
+
+    # ── Load quarterly revenue (up to 20 quarters) ───────────────────────
+    with st.spinner("Lade Quartalsdaten…"):
+        _arr_q_rev = _load_quarterly_revenue_long(ticker, FMP_API_KEY)
+
+    if _arr_q_rev.empty and not q_rev.empty:
+        _arr_q_rev = q_rev.sort_index()
+
+    # ── Intro banner ──────────────────────────────────────────────────────
+    _arr_banner_text = {
+        "saas":         ("💻 SaaS / Tech-Unternehmen",
+                         "ARR und NRR sind die wichtigsten Wachstumsindikatoren. "
+                         "Ein NRR &gt; 100 % bedeutet, Bestandskunden wachsen schneller als Abwanderung."),
+        "subscription": ("📦 Abonnement-Geschäftsmodell",
+                         "Wiederkehrende Einnahmen sind strukturell planbar. "
+                         "Churn-Rate und ARPU-Wachstum treiben den Wert."),
+        "general":      ("🏢 Umsatzentwicklung",
+                         "Kein reines Subscription-Modell erkannt. "
+                         "Dennoch zeigen Quartalskohorten ob Stammkunden wachsen oder Umsatz volatil ist."),
+    }[_arr_context]
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border-left:3px solid {_C_ACCENT};"
+        f"border:1px solid {_C_BORDER};border-left-width:3px;border-left-color:{_C_ACCENT};"
+        f"border-radius:0 10px 10px 0;padding:10px 16px;margin-bottom:16px;"
+        f"font-size:0.80rem;color:{_C_TEXT_MUTED};line-height:1.5;'>"
+        f"<b style='color:{_C_TEXT_PRIMARY};'>{_arr_banner_text[0]}</b> — {_arr_banner_text[1]}</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Compute ARR metrics ───────────────────────────────────────────────
+    _arr_ttm   = None   # Trailing 12M revenue
+    _arr_proxy = None   # ARR proxy = last Q × 4
+    _arr_yoy_pct = None
+    _arr_qoq_pct = None
+    _arr_q_growth_series = pd.Series(dtype=float)  # YoY growth per quarter
+
+    if not _arr_q_rev.empty and len(_arr_q_rev) >= 2:
+        _arr_s = _arr_q_rev.sort_index()
+        _arr_last_q  = float(_arr_s.iloc[-1])
+        _arr_proxy   = _arr_last_q * 4
+        if len(_arr_s) >= 4:
+            _arr_ttm = float(_arr_s.iloc[-4:].sum())
+        # QoQ growth
+        _arr_qoq_pct = (_arr_last_q / float(_arr_s.iloc[-2]) - 1) * 100 if float(_arr_s.iloc[-2]) > 0 else None
+        # YoY growth per quarter (same quarter prior year)
+        _yoy_vals, _yoy_idx = [], []
+        for i in range(4, len(_arr_s)):
+            cur = float(_arr_s.iloc[i])
+            prev = float(_arr_s.iloc[i - 4])
+            if prev > 0:
+                _yoy_vals.append((cur / prev - 1) * 100)
+                _yoy_idx.append(_arr_s.index[i])
+        if _yoy_vals:
+            _arr_q_growth_series = pd.Series(_yoy_vals, index=_yoy_idx)
+        # YoY ARR growth (last 4Q vs prior 4Q)
+        if len(_arr_s) >= 8:
+            _ttm_cur  = float(_arr_s.iloc[-4:].sum())
+            _ttm_prev = float(_arr_s.iloc[-8:-4].sum())
+            if _ttm_prev > 0:
+                _arr_yoy_pct = (_ttm_cur / _ttm_prev - 1) * 100
+
+    # ── Annual cohort: NRR proxy ──────────────────────────────────────────
+    # Implied revenue retention = current year revenue / prior year revenue
+    # (includes net new customers but approximates ecosystem health)
+    _arr_nrr_proxy  = None
+    _arr_nrr_series = pd.Series(dtype=float)
+    if not a_rev.empty and len(a_rev) >= 2:
+        _a = a_rev.sort_index()
+        _rr_vals, _rr_idx = [], []
+        for i in range(1, len(_a)):
+            prev = float(_a.iloc[i - 1])
+            cur  = float(_a.iloc[i])
+            if prev > 0:
+                _rr_vals.append(cur / prev * 100)
+                _rr_idx.append(_a.index[i])
+        if _rr_vals:
+            _arr_nrr_series = pd.Series(_rr_vals, index=_rr_idx)
+            _arr_nrr_proxy  = _rr_vals[-1]
+
+    # ── Summary KPI cards ─────────────────────────────────────────────────
+    def _arr_fmt(v):
+        if v is None: return "—"
+        if abs(v) >= 1e12: return f"${v/1e12:.2f}T"
+        if abs(v) >= 1e9:  return f"${v/1e9:.2f}B"
+        if abs(v) >= 1e6:  return f"${v/1e6:.2f}M"
+        return f"${v:,.0f}"
+
+    _kpi_c1, _kpi_c2, _kpi_c3, _kpi_c4 = st.columns(4)
+
+    def _kpi_card(col, label, val_str, delta_str, delta_positive):
+        _dc = _C_POSITIVE if delta_positive else (_C_NEGATIVE if delta_positive is False else _C_TEXT_MUTED)
+        col.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:10px;"
+            f"padding:12px 14px;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;font-weight:600;"
+            f"text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;'>{label}</div>"
+            f"<div style='color:{_C_TEXT_PRIMARY};font-size:1.3rem;font-weight:700;'>{val_str}</div>"
+            f"<div style='color:{_dc};font-size:0.78rem;margin-top:3px;'>{delta_str}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    _kpi_card(_kpi_c1, "ARR-Proxy (Q×4)",
+              _arr_fmt(_arr_proxy),
+              f"Letztes Quartal annualisiert",
+              None)
+
+    _kpi_card(_kpi_c2, "TTM Umsatz",
+              _arr_fmt(_arr_ttm),
+              "Trailing 12 Monate",
+              None)
+
+    _arr_yoy_pos = (_arr_yoy_pct > 0) if _arr_yoy_pct is not None else None
+    _kpi_card(_kpi_c3, "ARR-Wachstum YoY",
+              f"{_arr_yoy_pct:+.1f}%" if _arr_yoy_pct is not None else "—",
+              "TTM vs. Vorjahr TTM",
+              _arr_yoy_pos)
+
+    _arr_qoq_pos = (_arr_qoq_pct > 0) if _arr_qoq_pct is not None else None
+    _kpi_card(_kpi_c4, "QoQ Wachstum",
+              f"{_arr_qoq_pct:+.1f}%" if _arr_qoq_pct is not None else "—",
+              "Letztes vs. vorletztes Quartal",
+              _arr_qoq_pos)
+
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+    # ── Chart 1: Quarterly Revenue Cohorts ───────────────────────────────
+    if not _arr_q_rev.empty and len(_arr_q_rev) >= 4:
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;font-weight:600;"
+            f"text-transform:uppercase;letter-spacing:.09em;margin-bottom:8px;'>"
+            f"Quartalsumsatz — Kohorten-Vergleich (jedes Jahr übereinandergelegt)</div>",
+            unsafe_allow_html=True,
+        )
+
+        # Build cohort structure: {year: {quarter: revenue}}
+        _arr_cohorts: dict[int, dict[int, float]] = {}
+        for ts, val in _arr_q_rev.items():
+            _yr  = ts.year
+            _qtr = (ts.month - 1) // 3 + 1
+            _arr_cohorts.setdefault(_yr, {})[_qtr] = val
+
+        _arr_years = sorted(_arr_cohorts.keys())
+        _arr_palette = ["#90caf9", "#42a5f5", "#1e88e5", "#1565c0",
+                        "#64b5f6", "#2196f3", "#0d47a1", "#bbdefb",
+                        "#1976d2", "#e3f2fd"]
+        _arr_qtr_labels = ["Q1", "Q2", "Q3", "Q4"]
+
+        _fig_cohort = _go_arr.Figure()
+        for _yi, _yr in enumerate(_arr_years):
+            _yr_revs = [_arr_cohorts[_yr].get(q) for q in range(1, 5)]
+            _yr_revs_bn = [(v / 1e9 if v is not None else None) for v in _yr_revs]
+            _clr = _arr_palette[_yi % len(_arr_palette)]
+            _fig_cohort.add_trace(_go_arr.Bar(
+                x=_arr_qtr_labels,
+                y=_yr_revs_bn,
+                name=str(_yr),
+                marker_color=_clr,
+                opacity=0.85,
+            ))
+
+        _fig_cohort.update_layout(
+            barmode="group",
+            template=_C_CHART_THEME,
+            paper_bgcolor=_C_CHART_PAPER,
+            plot_bgcolor=_C_CHART_PLOT,
+            height=280,
+            margin=dict(l=10, r=10, t=20, b=10),
+            legend=dict(orientation="h", y=1.08, font=dict(size=10),
+                        bgcolor="rgba(0,0,0,0)"),
+            xaxis=dict(showgrid=False),
+            yaxis=dict(showgrid=True, gridcolor="#1e2d45", title="Umsatz (Mrd.)"),
+        )
+        st.plotly_chart(_fig_cohort, use_container_width=True)
+
+    # ── Chart 2: YoY Growth per Quarter ──────────────────────────────────
+    if len(_arr_q_growth_series) >= 2:
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;font-weight:600;"
+            f"text-transform:uppercase;letter-spacing:.09em;margin-bottom:8px;'>"
+            f"YoY Wachstum pro Quartal (selbes Quartal Vorjahr)</div>",
+            unsafe_allow_html=True,
+        )
+        _gs = _arr_q_growth_series
+        _gs_labels = [f"Q{(ts.month-1)//3+1} {ts.year}" for ts in _gs.index]
+        _gs_colors = [_C_POSITIVE if v >= 0 else _C_NEGATIVE for v in _gs.values]
+
+        _fig_growth = _go_arr.Figure(_go_arr.Bar(
+            x=_gs_labels, y=list(_gs.values),
+            marker_color=_gs_colors, opacity=0.85,
+            text=[f"{v:+.1f}%" for v in _gs.values],
+            textposition="outside",
+            textfont=dict(size=9),
+        ))
+        _fig_growth.add_hline(y=0, line_color=_C_BORDER, line_width=1)
+        _fig_growth.update_layout(
+            template=_C_CHART_THEME,
+            paper_bgcolor=_C_CHART_PAPER,
+            plot_bgcolor=_C_CHART_PLOT,
+            height=230,
+            margin=dict(l=10, r=10, t=10, b=10),
+            showlegend=False,
+            xaxis=dict(showgrid=False),
+            yaxis=dict(showgrid=True, gridcolor="#1e2d45",
+                       title="YoY Wachstum %", ticksuffix="%"),
+        )
+        st.plotly_chart(_fig_growth, use_container_width=True)
+
+    # ── Chart 3: Implied Revenue Retention (NRR Proxy) ───────────────────
+    if len(_arr_nrr_series) >= 1:
+        st.markdown(
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;font-weight:600;"
+            f"text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px;'>"
+            f"Implied Revenue Retention — Jahreskohorte (NRR-Proxy)</div>",
+            unsafe_allow_html=True,
+        )
+        # NRR interpretation note
+        _nrr_zone = ("🟢 Expansion" if (_arr_nrr_proxy or 0) > 110
+                     else "🟡 Stabil" if (_arr_nrr_proxy or 0) >= 95
+                     else "🔴 Kontraktion")
+        _nrr_color = (_C_POSITIVE if (_arr_nrr_proxy or 0) > 110
+                      else _C_NEUTRAL  if (_arr_nrr_proxy or 0) >= 95
+                      else _C_NEGATIVE)
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+            f"border-radius:10px;padding:12px 16px;margin-bottom:10px;"
+            f"display:flex;gap:12px;'>"
+            f"<div style='flex:1;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;'>Letzter Wert</div>"
+            f"<div style='color:{_nrr_color};font-size:1.8rem;font-weight:800;'>"
+            f"{_arr_nrr_proxy:.1f}%</div>"
+            f"<div style='color:{_nrr_color};font-size:0.82rem;font-weight:600;'>{_nrr_zone}</div>"
+            f"</div>"
+            f"<div style='flex:3;color:{_C_TEXT_MUTED};font-size:0.76rem;line-height:1.5;padding-top:4px;'>"
+            f"<b style='color:{_C_TEXT_PRIMARY};'>Was bedeutet dieser Wert?</b><br>"
+            f"&gt;120 % = starke Expansion (Bestandskunden zahlen deutlich mehr) · "
+            f"100–120 % = gesundes Wachstum · "
+            f"95–100 % = leichte Abwanderung kompensiert · "
+            f"&lt;95 % = Umsatz schrumpft aus Bestandsbase.<br>"
+            f"<span style='font-size:0.70rem;'>⚠️ Proxy: beinhaltet Neukunden — echte NRR wird von SaaS-Unternehmen "
+            f"separat im Earnings Report disclosed.</span></div></div>",
+            unsafe_allow_html=True,
+        )
+
+        _nrr_labels = [str(ts.year) for ts in _arr_nrr_series.index]
+        _nrr_colors = [(_C_POSITIVE if v > 110 else _C_NEUTRAL if v >= 95 else _C_NEGATIVE)
+                       for v in _arr_nrr_series.values]
+        _fig_nrr = _go_arr.Figure(_go_arr.Bar(
+            x=_nrr_labels, y=list(_arr_nrr_series.values),
+            marker_color=_nrr_colors, opacity=0.85,
+            text=[f"{v:.1f}%" for v in _arr_nrr_series.values],
+            textposition="outside", textfont=dict(size=9),
+        ))
+        _fig_nrr.add_hline(y=100, line_color=_C_BORDER, line_width=1.5,
+                           line_dash="dot",
+                           annotation_text="100 % = Nullwachstum",
+                           annotation_font_color=_C_TEXT_MUTED,
+                           annotation_font_size=9)
+        _fig_nrr.add_hline(y=110, line_color=_C_POSITIVE, line_width=0.8,
+                           line_dash="dot",
+                           annotation_text="110 %",
+                           annotation_font_color=_C_POSITIVE,
+                           annotation_font_size=8)
+        _fig_nrr.update_layout(
+            template=_C_CHART_THEME,
+            paper_bgcolor=_C_CHART_PAPER,
+            plot_bgcolor=_C_CHART_PLOT,
+            height=220,
+            margin=dict(l=10, r=10, t=10, b=10),
+            showlegend=False,
+            yaxis=dict(showgrid=True, gridcolor="#1e2d45",
+                       title="Umsatz % des Vorjahres", ticksuffix="%"),
+            xaxis=dict(showgrid=False),
+        )
+        st.plotly_chart(_fig_nrr, use_container_width=True)
+
+    elif _arr_q_rev.empty:
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:12px;"
+            f"padding:32px;text-align:center;margin:16px 0;'>"
+            f"<div style='font-size:2rem;margin-bottom:8px;'>📭</div>"
+            f"<div style='color:{_C_TEXT_PRIMARY};font-size:1rem;font-weight:600;margin-bottom:6px;'>"
+            f"Keine Quartalsdaten verfügbar</div>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.82rem;'>"
+            f"Für {ticker} sind keine Quartalsumsatzdaten abrufbar. "
+            f"Mögliche Ursachen: ETF, Rohstoff, kürzlich gelistetes Unternehmen.</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    # ── Investor guide: where to find real NRR ───────────────────────────
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+        f"border-radius:10px;padding:14px 18px;font-size:0.78rem;"
+        f"color:{_C_TEXT_MUTED};line-height:1.7;'>"
+        f"<b style='color:{_C_TEXT_PRIMARY};'>📌 Wo findet man echte ARR / NRR Daten?</b><br>"
+        f"• <b>Earnings Call / Investor Presentation:</b> SaaS-Unternehmen (NOW, SNOW, DDOG, CRM, ...) "
+        f"berichten ARR, NRR und Kundenzahlen meist quartalsweise im IR-Bereich.<br>"
+        f"• <b>10-K / 10-Q (SEC):</b> Abschnitt 'Business' oder 'Management Discussion & Analysis' "
+        f"enthält oft ARR-Definitionen und Kundenkohortenangaben.<br>"
+        f"• <b>Key Benchmarks:</b> NRR &gt; 120 % = Best-in-Class (Snowflake, Datadog) · "
+        f"NRR &gt; 110 % = stark · 100–110 % = solide · &lt; 100 % = Churn-Problem.<br>"
+        f"• <b>Churn vs. Expansion:</b> Gross Revenue Retention (GRR) = Retention ohne Expansion · "
+        f"NRR = GRR + Upsell/Cross-Sell Wachstum bestehender Kunden.</div>",
+        unsafe_allow_html=True,
+    )
 
 # ==================== INSIGHTS ====================
 st.markdown("<div class='section-header'>💡 Investor Insights</div>", unsafe_allow_html=True)
