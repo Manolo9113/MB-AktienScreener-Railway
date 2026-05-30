@@ -1607,6 +1607,35 @@ def load_extended_financials(ticker: str, api_key: str = ""):
     return rev, net, eps, fcf, shares, price_annual, ebitda_ext
 
 @st.cache_data(ttl=86400, show_spinner=False)
+def _load_disruption_data(ticker: str) -> dict:
+    """Fetch R&D, gross profit, and asset-tangibility history for disruption scoring."""
+    out = {"rnd": pd.Series(dtype=float), "gross_profit": pd.Series(dtype=float),
+           "ppe": pd.Series(dtype=float), "total_assets_s": pd.Series(dtype=float)}
+    try:
+        stk = yf.Ticker(ticker)
+        inc = stk.income_stmt
+        bs  = stk.balance_sheet
+
+        def _row(df, *keys):
+            if df is None or df.empty: return pd.Series(dtype=float)
+            for k in keys:
+                if k in df.index:
+                    return df.loc[k].dropna().sort_index().astype(float)
+            return pd.Series(dtype=float)
+
+        out["rnd"]          = _row(inc, "Research And Development",
+                                   "Research Development", "ResearchAndDevelopment")
+        out["gross_profit"] = _row(inc, "Gross Profit")
+        out["revenue_s"]    = _row(inc, "Total Revenue", "Revenue")
+        out["ppe"]          = _row(bs, "Net PPE", "Net Property Plant Equipment",
+                                   "Property Plant Equipment Net")
+        out["total_assets_s"] = _row(bs, "Total Assets")
+    except Exception:
+        pass
+    return out
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
 def _load_quarterly_revenue_long(ticker: str, api_key: str = "") -> pd.Series:
     """Up to 20 quarters of revenue — FMP primary, yfinance fallback."""
     if api_key:
@@ -23428,6 +23457,308 @@ elif _at == 6:
         <strong style="color:{moat['moat_color']};">{moat['moat_icon']} {moat['moat_width']} — Score {moat['moat_score']}/100</strong><br><br>
         {"<br>".join(_moat_bullets)}
     </div>""", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # DISRUPTIONS-RISIKO ANALYSE
+    # ══════════════════════════════════════════════════════════════════════
+    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>⚡ Disruptions-Risiko</div>", unsafe_allow_html=True)
+
+    with st.spinner("Berechne Disruptions-Score…"):
+        _dr_raw = _load_disruption_data(ticker)
+
+    # ── Component 1: Innovation Shield (R&D / Revenue) ───────────────────
+    _dr_rnd_s   = _dr_raw.get("rnd", pd.Series(dtype=float))
+    _dr_rev_s   = _dr_raw.get("revenue_s", pd.Series(dtype=float))
+    if _dr_rev_s.empty: _dr_rev_s = a_rev
+    _dr_rnd_ratio = None
+    _dr_rnd_trend = None
+    if not _dr_rnd_s.empty and not _dr_rev_s.empty:
+        _common = _dr_rnd_s.index.intersection(_dr_rev_s.index)
+        if len(_common) >= 1:
+            _rnd_pct_s = (_dr_rnd_s.reindex(_common).abs() /
+                          _dr_rev_s.reindex(_common).abs() * 100).dropna()
+            if not _rnd_pct_s.empty:
+                _dr_rnd_ratio = float(_rnd_pct_s.iloc[-1])
+                if len(_rnd_pct_s) >= 3:
+                    _dr_rnd_trend = float(_rnd_pct_s.iloc[-1]) - float(_rnd_pct_s.iloc[-3])
+
+    # Score: low R&D = high risk
+    if _dr_rnd_ratio is None:
+        _dr_rnd_score = 10  # unknown → neutral-low
+    elif _dr_rnd_ratio > 15: _dr_rnd_score = 0
+    elif _dr_rnd_ratio > 10: _dr_rnd_score = 4
+    elif _dr_rnd_ratio > 5:  _dr_rnd_score = 8
+    elif _dr_rnd_ratio > 2:  _dr_rnd_score = 14
+    elif _dr_rnd_ratio > 0:  _dr_rnd_score = 18
+    else:                    _dr_rnd_score = 20  # zero R&D
+
+    # ── Component 2: Revenue Momentum (growth deceleration) ──────────────
+    _dr_rev_decel = None
+    _dr_rev_last  = None
+    if not a_rev.empty and len(a_rev) >= 3:
+        _rv = a_rev.sort_index()
+        _g1 = (float(_rv.iloc[-1]) / float(_rv.iloc[-2]) - 1) if float(_rv.iloc[-2]) > 0 else None
+        _g2 = (float(_rv.iloc[-2]) / float(_rv.iloc[-3]) - 1) if float(_rv.iloc[-3]) > 0 else None
+        _dr_rev_last = _g1
+        if _g1 is not None and _g2 is not None:
+            _dr_rev_decel = _g2 - _g1  # positive = deceleration
+
+    if _dr_rev_decel is None:
+        _dr_mom_score = 10
+    elif _dr_rev_decel > 0.15:  _dr_mom_score = 20
+    elif _dr_rev_decel > 0.08:  _dr_mom_score = 15
+    elif _dr_rev_decel > 0.03:  _dr_mom_score = 10
+    elif _dr_rev_decel > 0:     _dr_mom_score = 5
+    elif (_dr_rev_last or 0) > 0.20: _dr_mom_score = 0  # accelerating + high growth
+    else:                        _dr_mom_score = 2
+
+    # ── Component 3: Margin Defense (gross margin trend) ─────────────────
+    _dr_gp_s = _dr_raw.get("gross_profit", pd.Series(dtype=float))
+    _dr_gm_now   = gross_margin  # current, already in scope
+    _dr_gm_trend = None
+    if not _dr_gp_s.empty and not _dr_rev_s.empty:
+        _common_gm = _dr_gp_s.index.intersection(_dr_rev_s.index)
+        if len(_common_gm) >= 3:
+            _gm_s = (_dr_gp_s.reindex(_common_gm) /
+                     _dr_rev_s.reindex(_common_gm) * 100).dropna().sort_index()
+            if len(_gm_s) >= 3:
+                _dr_gm_trend = float(_gm_s.iloc[-1]) - float(_gm_s.iloc[-3])  # pp change
+
+    if _dr_gm_trend is None:
+        _dr_margin_score = 8
+    elif _dr_gm_trend < -8:  _dr_margin_score = 20
+    elif _dr_gm_trend < -4:  _dr_margin_score = 15
+    elif _dr_gm_trend < -1:  _dr_margin_score = 8
+    elif _dr_gm_trend < 0:   _dr_margin_score = 4
+    else:                    _dr_margin_score = 0
+
+    # ── Component 4: Financial Flexibility (debt/EBITDA) ─────────────────
+    _dr_debt_now = float(a_debt.iloc[-1]) if not a_debt.empty else None
+    _dr_ebitda_now = float(a_ebitda.iloc[-1]) if not a_ebitda.empty else (ebitda or None)
+    _dr_debt_ebitda = None
+    if _dr_debt_now and _dr_ebitda_now and _dr_ebitda_now > 0:
+        _dr_debt_ebitda = _dr_debt_now / _dr_ebitda_now
+
+    if _dr_debt_ebitda is None:
+        _dr_fin_score = 8
+    elif _dr_debt_ebitda > 5:   _dr_fin_score = 20
+    elif _dr_debt_ebitda > 3:   _dr_fin_score = 15
+    elif _dr_debt_ebitda > 1.5: _dr_fin_score = 8
+    elif _dr_debt_ebitda > 0:   _dr_fin_score = 3
+    else:                       _dr_fin_score = 0  # net cash
+
+    # ── Component 5: Asset Intensity (PPE / Total Assets) ────────────────
+    _dr_ppe_s = _dr_raw.get("ppe", pd.Series(dtype=float))
+    _dr_ta_s  = _dr_raw.get("total_assets_s", pd.Series(dtype=float))
+    _dr_asset_ratio = None
+    if not _dr_ppe_s.empty and not _dr_ta_s.empty:
+        _common_a = _dr_ppe_s.index.intersection(_dr_ta_s.index)
+        if len(_common_a) >= 1:
+            _dr_asset_ratio = float(
+                (_dr_ppe_s.reindex(_common_a) /
+                 _dr_ta_s.reindex(_common_a) * 100).dropna().iloc[-1]
+            )
+
+    if _dr_asset_ratio is None:
+        _dr_asset_score = 8
+    elif _dr_asset_ratio > 50:  _dr_asset_score = 20  # heavy physical assets
+    elif _dr_asset_ratio > 30:  _dr_asset_score = 14
+    elif _dr_asset_ratio > 15:  _dr_asset_score = 8
+    elif _dr_asset_ratio > 5:   _dr_asset_score = 4
+    else:                       _dr_asset_score = 0   # asset-light
+
+    # ── Moat modifier: strong moat reduces disruption risk ────────────────
+    _dr_moat_bonus = 0
+    _ms = moat.get("moat_score", 50)
+    if _ms >= 70:   _dr_moat_bonus = -8
+    elif _ms >= 50: _dr_moat_bonus = -4
+    elif _ms <= 20: _dr_moat_bonus = +5
+
+    _dr_total = max(0, min(100,
+        _dr_rnd_score + _dr_mom_score + _dr_margin_score + _dr_fin_score +
+        _dr_asset_score + _dr_moat_bonus))
+
+    # ── Risk classification ───────────────────────────────────────────────
+    if _dr_total <= 20:
+        _dr_level, _dr_color, _dr_bg, _dr_icon = "Sehr niedrig",  _C_POSITIVE, "rgba(0,230,118,0.07)", "🛡️"
+    elif _dr_total <= 40:
+        _dr_level, _dr_color, _dr_bg, _dr_icon = "Niedrig",       _C_POSITIVE, "rgba(0,230,118,0.05)", "🟢"
+    elif _dr_total <= 60:
+        _dr_level, _dr_color, _dr_bg, _dr_icon = "Moderat",       _C_NEUTRAL,  "rgba(255,214,0,0.07)", "🟡"
+    elif _dr_total <= 78:
+        _dr_level, _dr_color, _dr_bg, _dr_icon = "Erhöht",        _C_NEGATIVE, "rgba(255,82,82,0.07)", "🔴"
+    else:
+        _dr_level, _dr_color, _dr_bg, _dr_icon = "Hoch",          _C_NEGATIVE, "rgba(255,82,82,0.10)", "⚠️"
+
+    # ── Hero card ─────────────────────────────────────────────────────────
+    _dr_gauge_pct = _dr_total
+    st.markdown(
+        f"<div style='background:{_dr_bg};border:2px solid {_dr_color};"
+        f"border-radius:14px;padding:18px 24px;margin-bottom:16px;'>"
+        f"<div style='display:flex;align-items:center;gap:14px;margin-bottom:12px;'>"
+        f"<span style='font-size:2.2rem;line-height:1;'>{_dr_icon}</span>"
+        f"<div>"
+        f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;text-transform:uppercase;"
+        f"letter-spacing:.1em;font-weight:600;'>Disruptions-Risiko-Score</div>"
+        f"<div style='color:{_dr_color};font-size:2.4rem;font-weight:800;line-height:1;'>"
+        f"{_dr_total}<span style='font-size:1rem;font-weight:400;color:{_C_TEXT_MUTED};'> / 100</span></div>"
+        f"<div style='color:{_dr_color};font-size:0.88rem;font-weight:700;'>{_dr_level}</div>"
+        f"</div></div>"
+        f"<div style='background:rgba(0,0,0,0.15);border-radius:6px;height:7px;"
+        f"overflow:hidden;margin-bottom:6px;'>"
+        f"<div style='background:{_dr_color};height:100%;width:{_dr_gauge_pct}%;"
+        f"border-radius:6px;'></div></div>"
+        f"<div style='display:flex;justify-content:space-between;font-size:0.66rem;"
+        f"color:{_C_TEXT_MUTED};'>"
+        f"<span>0 Kein Risiko</span><span>20</span><span>40</span>"
+        f"<span>60</span><span>80</span><span>100 Maximal</span></div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── 5 component cards ─────────────────────────────────────────────────
+    _dr_comps = [
+        ("🔬 Innovation Shield",
+         "F&E / Umsatz",
+         f"{_dr_rnd_ratio:.1f}%" if _dr_rnd_ratio is not None else "N/A",
+         _dr_rnd_score, 20,
+         (f"Trend 3J: {_dr_rnd_trend:+.1f}pp" if _dr_rnd_trend is not None else "Trend: —"),
+         "F&E-Intensität. <10 % = Investitions-lücke, >15 % = Innovationsschutz."),
+        ("📉 Revenue Momentum",
+         "Wachstums-Dezeleration",
+         f"{_dr_rev_decel*100:+.1f}pp" if _dr_rev_decel is not None else "N/A",
+         _dr_mom_score, 20,
+         (f"Letztes Wachstum: {_dr_rev_last*100:+.1f}%" if _dr_rev_last is not None else ""),
+         "Verlangsamung des Umsatzwachstums — klassisches Frühwarnsignal bei Disruption."),
+        ("📊 Margin Defense",
+         "Bruttomarge-Trend",
+         f"{_dr_gm_trend:+.1f}pp" if _dr_gm_trend is not None else "N/A",
+         _dr_margin_score, 20,
+         f"Aktuelle GM: {_dr_gm_now:.1f}%" if _dr_gm_now else "",
+         "Sinkende Bruttomargen signalisieren Preisdruck durch neue Wettbewerber."),
+        ("💰 Financial Flexibility",
+         "Schulden / EBITDA",
+         f"{_dr_debt_ebitda:.1f}x" if _dr_debt_ebitda is not None else "N/A",
+         _dr_fin_score, 20,
+         ">3x = kein Kapital für Transformation",
+         "Hohe Verschuldung verhindert Investitionen in die eigene Disruptions-Verteidigung."),
+        ("🏗️ Asset Intensity",
+         "PPE / Bilanzsumme",
+         f"{_dr_asset_ratio:.1f}%" if _dr_asset_ratio is not None else "N/A",
+         _dr_asset_score, 20,
+         "Hoch = schwer pivotierbar",
+         "Physisch-lastige Modelle können sich schwerer transformieren als asset-leichte."),
+    ]
+
+    _dr_cols = st.columns(5)
+    for _ci, (_ctitle, _csub, _cval, _cscore, _cmax, _cdetail, _chint) in enumerate(_dr_comps):
+        _c_pct = _cscore / _cmax * 100
+        _c_color = (_C_POSITIVE if _cscore <= _cmax * 0.3
+                    else _C_NEUTRAL  if _cscore <= _cmax * 0.6
+                    else _C_NEGATIVE)
+        _dr_cols[_ci].markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+            f"border-radius:10px;padding:12px;height:100%;'>"
+            f"<div style='font-size:0.78rem;font-weight:700;color:{_C_TEXT_PRIMARY};"
+            f"margin-bottom:3px;'>{_ctitle}</div>"
+            f"<div style='font-size:0.68rem;color:{_C_TEXT_MUTED};margin-bottom:6px;'>{_csub}</div>"
+            f"<div style='color:{_c_color};font-size:1.3rem;font-weight:800;"
+            f"margin-bottom:4px;'>{_cval}</div>"
+            f"<div style='background:rgba(0,0,0,0.15);border-radius:3px;height:4px;"
+            f"margin-bottom:6px;overflow:hidden;'>"
+            f"<div style='background:{_c_color};height:100%;width:{_c_pct:.0f}%;"
+            f"border-radius:3px;'></div></div>"
+            f"<div style='font-size:0.67rem;color:{_C_TEXT_MUTED};line-height:1.3;'>"
+            f"Risiko: <b style='color:{_c_color};'>{_cscore}/{_cmax}</b><br>"
+            f"<span style='font-size:0.63rem;'>{_cdetail}</span></div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+    # ── Sector disruption vectors ─────────────────────────────────────────
+    _DR_VECTORS: dict[str, list[tuple[str, str]]] = {
+        "technology":            [("🤖 KI-Plattformen", "Hyperscaler bauen Konkurrenzprodukte (OpenAI, Gemini)"),
+                                  ("🔓 Open Source", "Kostenloses OSS ersetzt kommerzielle Software"),
+                                  ("☁️ Cloud-Konsolidierung", "AWS/Azure/GCP integrieren Nischen vertikal")],
+        "communication services":[("📱 Social Fragmentation", "TikTok, Substack, Podcasts ersetzen klassische Medien"),
+                                  ("🤖 GenAI Content", "KI-generierte Inhalte verdrängen menschliche Creator"),
+                                  ("📡 Cord Cutting", "Streaming vs. lineares TV — Werbeumsatz bricht ein")],
+        "financial services":    [("🏦 NeoBanken", "Revolut, N26, Chime — günstigere Digital-First-Alternativen"),
+                                  ("🔗 DeFi / Blockchain", "Dezentrale Protokolle ohne Intermediäre"),
+                                  ("💳 BNPL / Embedded Finance", "BigTech integriert Finanzdienstleistungen direkt")],
+        "healthcare":            [("🩺 KI-Diagnostik", "Algorithmen übertreffen Radiologen in Bildanalyse"),
+                                  ("💊 mRNA-Plattformen", "Modulare Wirkstoffentwicklung disruptiert klassische Pharma"),
+                                  ("📲 Telemedizin", "Remote-first Versorgung verdrängt stationäre Modelle")],
+        "consumer discretionary":[("📦 D2C / E-Commerce", "Marken verkaufen direkt, Intermediäre verlieren Marge"),
+                                  ("🤖 AI-Personalisierung", "Algorithmen ersetzen stationären Einzelhandel"),
+                                  ("♻️ Circular Economy", "Re-Commerce (Vinted, Depop) verdrängt Neuware")],
+        "consumer staples":      [("🏷️ Private Label", "Handelsmarken mit gleicher Qualität zu 40% weniger"),
+                                  ("🌱 Plant-Based", "Alternative Proteine disruptieren Fleisch-/Milchwirtschaft"),
+                                  ("📲 D2C Brands", "Direkt-zu-Konsument-Neobrands ohne Handel")],
+        "industrials":           [("🦾 Robotik / Automation", "Cobots ersetzen manuelle Produktionslinien"),
+                                  ("🖨️ 3D-Druck", "Additive Fertigung dezentralisiert Produktion"),
+                                  ("⚡ Elektrifizierung", "Elektroantriebe ersetzen Verbrenner-Lieferketten")],
+        "energy":                [("☀️ Erneuerbare Energien", "Solar/Wind-LCOE unter fossilen Brennstoffen"),
+                                  ("🔋 Batteriespeicher", "Grid-Storage macht Grundlastkraftwerke obsolet"),
+                                  ("💧 Grüner Wasserstoff", "Dekarbonisierung der Schwerindustrie")],
+        "materials":             [("♻️ Circular Economy", "Recyclingtechnologien reduzieren Primärmaterialbedarf"),
+                                  ("🧬 Bio-Materialien", "Laborproduzierte Alternativen ersetzen Extraktionsmaterialien"),
+                                  ("🖨️ 3D-Druck", "On-Demand Produktion senkt Lagerbestand und Materialverbrauch")],
+        "real estate":           [("🏠 Remote Work", "Büronachfrage dauerhaft reduziert (Post-COVID-Strukturbruch)"),
+                                  ("🛍️ E-Commerce", "Einzelhandelsflächen weiter unter Druck"),
+                                  ("🏘️ PropTech Plattformen", "Airbnb, Opendoor disruptieren Intermediäre")],
+        "utilities":             [("⚡ Dezentrale Energie", "Rooftop Solar + Batterien machen Netzabhängigkeit optional"),
+                                  ("🏭 Prosumer-Modelle", "Verbraucher werden Erzeuger — Netz verliert Volumen"),
+                                  ("📊 Smart Grid", "Datenwert liegt bei Software, nicht beim Netzbetreiber")],
+    }
+
+    _dr_sec_lower = (sector or "").lower()
+    _dr_ind_lower = (industry or "").lower()
+    _dr_sec_key = next((k for k in _DR_VECTORS if k in _dr_sec_lower or k in _dr_ind_lower), None)
+    _dr_vectors = _DR_VECTORS.get(_dr_sec_key, [
+        ("🌐 Digitalisierung", "Plattformökonomie verdrängt physische Intermediäre"),
+        ("🤖 KI-Automatisierung", "KI übernimmt repetitive kognitive und manuelle Tätigkeiten"),
+        ("📉 Preistransparenz", "Vergleichsportale und Aggregatoren komprimieren Margen"),
+    ])
+
+    st.markdown(
+        f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;font-weight:600;"
+        f"text-transform:uppercase;letter-spacing:.09em;margin-bottom:8px;'>"
+        f"Bekannte Disruptions-Vektoren — {sector or 'Allgemein'}</div>",
+        unsafe_allow_html=True,
+    )
+    for _vname, _vdesc in _dr_vectors:
+        # Assess relevance to score
+        _vrel = "Relevant" if _dr_total > 40 else "Gering"
+        _vrel_c = _C_NEGATIVE if _dr_total > 60 else _C_NEUTRAL if _dr_total > 40 else _C_POSITIVE
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+            f"border-radius:8px;padding:10px 14px;margin-bottom:6px;"
+            f"display:flex;justify-content:space-between;align-items:center;'>"
+            f"<div>"
+            f"<span style='font-weight:600;color:{_C_TEXT_PRIMARY};font-size:0.85rem;'>"
+            f"{_vname}</span>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.76rem;margin-top:2px;'>{_vdesc}</div>"
+            f"</div>"
+            f"<span style='color:{_vrel_c};font-size:0.72rem;font-weight:600;"
+            f"white-space:nowrap;margin-left:12px;'>{_vrel}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        f"<div style='color:{_C_TEXT_MUTED};font-size:0.70rem;margin-top:10px;"
+        f"padding:10px 14px;background:{_C_CARD_BG};border-radius:8px;"
+        f"border:1px solid {_C_BORDER};line-height:1.5;'>"
+        f"⚙️ <b>Methodik:</b> Disruptions-Score aus 5 Komponenten (je 0–20): "
+        f"F&E-Intensität · Umsatzdezeleration · Bruttomargenkompression · "
+        f"Verschuldungsgrad · Anlagenintensität. Starker Burggraben reduziert den Score um bis zu 8 Punkte. "
+        f"Keine Anlageberatung — quantitativer Frühindikator auf Basis veröffentlichter Finanzdaten.</div>",
+        unsafe_allow_html=True,
+    )
 
     st.markdown(f"""
     <div style="color:#37474f; font-size:0.75rem; margin-top:16px; padding:12px 16px;
