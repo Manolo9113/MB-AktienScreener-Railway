@@ -2976,11 +2976,13 @@ def _fred_last(series_id: str, n: int = 1) -> list[float]:
 @st.cache_data(ttl=86400, show_spinner=False)
 def _load_margin_debt_live() -> dict:
     """
-    Margin Debt / US-Marktkapitalisierung via FRED (kein API-Key nötig, täglich gecacht).
-    Margin Debt: FRED WIMFSL (FINRA debit balances, Mio. USD) oder WRMFSL als Fallback.
-    Marktkapitalisierung: FRED WCAUSAMKTCAP (Wilshire US Total Mktcap, Mrd. USD).
-    Gibt {"pct": float, "date": str, "live": bool} zurück.
+    Margin Debt / US-Marktkapitalisierung — Quellen-Kaskade:
+    1. FINRA HTML-Seite (HTML-Tabelle, kein JS nötig)
+    2. FRED RMFSL / TOTLL (alternative Series-IDs)
+    3. Hardcoded-Fallback ~1.25 % ca. 2024
     """
+    import re as _re
+
     def _fred_val_date(sid):
         try:
             r = requests.get(
@@ -3000,42 +3002,68 @@ def _load_margin_debt_live() -> dict:
             pass
         return None, None
 
-    # Margin debt (Mio. USD) — try multiple FRED series IDs
+    # ── 1. FINRA HTML-Seite direkt parsen ────────────────────────────────
+    try:
+        _fh = requests.get(
+            "https://www.finra.org/investors/learn-to-invest/advanced-investing/margin-statistics",
+            timeout=12,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; bot/1.0)"},
+        )
+        if _fh.ok:
+            # Look for debit balance (millions $) — largest 6-digit comma-number in table
+            _nums = _re.findall(r'(\d{3},\d{3}(?:,\d{3})*)', _fh.text)
+            if _nums:
+                # First large number in the table is typically the latest debit balance
+                _debit_mn = float(_nums[0].replace(",", ""))
+                if 100_000 < _debit_mn < 10_000_000:  # sanity: 100B–10T
+                    # Market cap from FRED WCAUSAMKTCAP
+                    _mc, _ = _fred_val_date("WCAUSAMKTCAP")
+                    if not _mc:
+                        try:
+                            _spy_ta = yf.Ticker("SPY").info.get("totalAssets") or 0
+                            _mc = (_spy_ta / 1e9) * 82 if _spy_ta > 1e10 else None
+                        except Exception:
+                            pass
+                    if _mc and _mc > 0:
+                        _pct = (_debit_mn / 1000.0) / _mc * 100
+                        if 0.1 < _pct < 15:
+                            import datetime as _dtmd
+                            return {
+                                "pct": round(_pct, 2),
+                                "date": _dtmd.date.today().strftime("%b %Y"),
+                                "live": True,
+                                "src": "FINRA",
+                            }
+    except Exception:
+        pass
+
+    # ── 2. FRED — mehrere bekannte Series-IDs ─────────────────────────────
     md_val, md_date = None, None
-    for _sid in ("WIMFSL", "WRMFSL"):
+    for _sid in ("RMFSL", "TOTLL", "WIMFSL", "WRMFSL"):
         md_val, md_date = _fred_val_date(_sid)
         if md_val:
             break
 
-    if not md_val:
-        return {"pct": 1.25, "date": "ca. 2024", "live": False}
+    if md_val:
+        mc_val, _ = _fred_val_date("WCAUSAMKTCAP")
+        if not mc_val:
+            try:
+                _spy_ta = yf.Ticker("SPY").info.get("totalAssets") or 0
+                mc_val = (_spy_ta / 1e9) * 82 if _spy_ta > 1e10 else None
+            except Exception:
+                pass
+        if mc_val and mc_val > 0:
+            pct = (md_val / 1000.0) / mc_val * 100
+            if 0.1 < pct < 15:
+                try:
+                    import datetime as _dtmd
+                    date_label = _dtmd.datetime.strptime(md_date, "%Y-%m-%d").strftime("%b %Y")
+                except Exception:
+                    date_label = md_date or "aktuell"
+                return {"pct": round(pct, 2), "date": date_label, "live": True, "src": "FRED"}
 
-    # US total equity market cap (Mrd. USD)
-    mc_val, _ = _fred_val_date("WCAUSAMKTCAP")
-
-    # Fallback: SPY total assets als S&P-500-Proxy
-    if not mc_val:
-        try:
-            _spy_ta = yf.Ticker("SPY").info.get("totalAssets") or 0
-            if _spy_ta > 1e10:
-                mc_val = (_spy_ta / 1e9) * 82  # SPY AUM ×82 ≈ S&P-500-Gesamtmktcap
-        except Exception:
-            pass
-
-    if not mc_val or mc_val <= 0:
-        return {"pct": 1.25, "date": "ca. 2024", "live": False}
-
-    pct = (md_val / 1000.0) / mc_val * 100  # Mio→Mrd, dann % von Mrd
-    if not (0.1 < pct < 15):  # Plausibilitätsprüfung
-        return {"pct": 1.25, "date": "ca. 2024", "live": False}
-
-    try:
-        import datetime as _dtmd
-        date_label = _dtmd.datetime.strptime(md_date, "%Y-%m-%d").strftime("%b %Y")
-    except Exception:
-        date_label = md_date or "aktuell"
-
-    return {"pct": round(pct, 2), "date": date_label, "live": True}
+    # ── 3. Hardcoded-Fallback ─────────────────────────────────────────────
+    return {"pct": 1.25, "date": "ca. 2024", "live": False, "src": "approx."}
 
 
 @st.cache_data(ttl=14400, show_spinner=False)
@@ -8583,24 +8611,35 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
         else "#ffee58" if _md_cur_pct > 2
         else "#66bb6a"
     )
+    # x-labels: year only (top line), crisis name via annotation (bottom)
     _md_bars = [
-        {"label": "1999<br>(Dotcom)",        "pct": 6.5,         "color": "#ef5350"},
-        {"label": "2007<br>(Finanzkrise)",   "pct": 5.8,         "color": "#ef9a9a"},
-        {"label": "2021<br>(Post-COVID)",    "pct": 4.5,         "color": "#ff9800"},
-        {"label": f"Aktuell<br>({_md_cur_date})", "pct": _md_cur_pct, "color": _md_cur_color},
+        {"x": "1999",    "sub": "Dotcom",      "pct": 6.5,         "color": "#ef5350"},
+        {"x": "2007",    "sub": "Finanzkrise", "pct": 5.8,         "color": "#ef9a9a"},
+        {"x": "2021",    "sub": "Post-COVID",  "pct": 4.5,         "color": "#ff9800"},
+        {"x": "Aktuell", "sub": _md_cur_date,  "pct": _md_cur_pct, "color": _md_cur_color},
     ]
     _md_col1, _md_col2 = st.columns([3, 2])
     with _md_col1:
         _md_fig = go.Figure(go.Bar(
-            x=[b["label"] for b in _md_bars],
-            y=[b["pct"]   for b in _md_bars],
+            x=[b["x"]   for b in _md_bars],
+            y=[b["pct"] for b in _md_bars],
             marker_color=[b["color"] for b in _md_bars],
             marker_line_width=0,
             text=[f"<b>{b['pct']}%</b>" for b in _md_bars],
             textposition="outside",
             textfont=dict(size=13, color="#ffffff"),
-            hovertemplate="<b>%{x}</b><br>Margin Debt / Mktcap: <b>%{y:.1f}%</b><extra></extra>",
+            customdata=[[b["sub"]] for b in _md_bars],
+            hovertemplate="<b>%{x}</b> (%{customdata[0]})<br>%{y:.2f}% der Mktcap<extra></extra>",
         ))
+        # Subtitle annotations below each bar
+        for _b in _md_bars:
+            _md_fig.add_annotation(
+                x=_b["x"], y=-0.9, text=f"<i>{_b['sub']}</i>",
+                xref="x", yref="y",
+                showarrow=False,
+                font=dict(size=9, color=_C_TEXT_MUTED),
+                xanchor="center",
+            )
         _md_fig.add_hline(
             y=4.0, line_color="#ef5350", line_width=1.5, line_dash="dash",
             annotation_text="  Gefahrenzone (>4%)",
@@ -8610,17 +8649,18 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
         _md_fig.update_layout(
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color=_C_TEXT_PRIMARY, size=11),
-            xaxis=dict(gridcolor="rgba(0,0,0,0)", zeroline=False, tickfont=dict(size=11)),
+            xaxis=dict(gridcolor="rgba(0,0,0,0)", zeroline=False,
+                       tickfont=dict(size=12), tickangle=0),
             yaxis=dict(gridcolor=_C_BORDER, zeroline=False, ticksuffix="%",
-                       title="% der Marktkapitalisierung", range=[0, 8.5]),
-            margin=dict(t=30, b=10, l=60, r=10),
-            height=320, showlegend=False,
+                       title="% der Marktkapitalisierung", range=[-1.2, 8.5]),
+            margin=dict(t=30, b=30, l=60, r=10),
+            height=340, showlegend=False,
         )
         st.plotly_chart(_md_fig, use_container_width=True, config={"displayModeBar": False})
-        _md_src = "FRED / FINRA (WIMFSL) + Wilshire Total Mktcap" if _md_is_live else "Approximiert (FINRA, Stand: ca. 2024)"
+        _md_src_label = f"FINRA / {_md_live.get('src','?')}" if _md_is_live else "Approximiert (FINRA, Stand: ca. 2024)"
         st.caption(
-            f"Margin Debt relativ zur US-Marktkapitalisierung. Quelle: {_md_src}. "
-            f"Historische Peaks (1999–2021) sind Referenzwerte; Aktuell-Wert wird täglich aktualisiert."
+            f"Margin Debt relativ zur US-Marktkapitalisierung. Quelle: {_md_src_label}. "
+            f"Historische Peaks (1999–2021) sind Referenzwerte; Aktuell-Wert täglich gecacht."
         )
     with _md_col2:
         st.markdown(
@@ -8635,10 +8675,11 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
             f"beschleunigen.</div></div>",
             unsafe_allow_html=True,
         )
+        _md_src_name = _md_live.get("src", "FINRA")
         _md_live_badge = (
             f"<span style='background:#1b3a2a;color:{_C_POSITIVE};font-size:0.60rem;"
             f"font-weight:700;padding:1px 6px;border-radius:6px;margin-left:6px;'>"
-            f"LIVE</span>" if _md_is_live else
+            f"LIVE · {_md_src_name}</span>" if _md_is_live else
             f"<span style='background:#2a2a1a;color:#ffee58;font-size:0.60rem;"
             f"font-weight:700;padding:1px 6px;border-radius:6px;margin-left:6px;'>"
             f"APPROX.</span>"
