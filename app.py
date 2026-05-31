@@ -2973,6 +2973,71 @@ def _fred_last(series_id: str, n: int = 1) -> list[float]:
         return []
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _load_margin_debt_live() -> dict:
+    """
+    Margin Debt / US-Marktkapitalisierung via FRED (kein API-Key nötig, täglich gecacht).
+    Margin Debt: FRED WIMFSL (FINRA debit balances, Mio. USD) oder WRMFSL als Fallback.
+    Marktkapitalisierung: FRED WCAUSAMKTCAP (Wilshire US Total Mktcap, Mrd. USD).
+    Gibt {"pct": float, "date": str, "live": bool} zurück.
+    """
+    def _fred_val_date(sid):
+        try:
+            r = requests.get(
+                f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={sid}",
+                timeout=8,
+            )
+            if not r.ok:
+                return None, None
+            for line in reversed(r.text.strip().split("\n")[1:]):
+                p = line.split(",")
+                if len(p) == 2 and p[1].strip() not in (".", ""):
+                    try:
+                        return float(p[1].strip()), p[0].strip()
+                    except ValueError:
+                        pass
+        except Exception:
+            pass
+        return None, None
+
+    # Margin debt (Mio. USD) — try multiple FRED series IDs
+    md_val, md_date = None, None
+    for _sid in ("WIMFSL", "WRMFSL"):
+        md_val, md_date = _fred_val_date(_sid)
+        if md_val:
+            break
+
+    if not md_val:
+        return {"pct": 1.25, "date": "ca. 2024", "live": False}
+
+    # US total equity market cap (Mrd. USD)
+    mc_val, _ = _fred_val_date("WCAUSAMKTCAP")
+
+    # Fallback: SPY total assets als S&P-500-Proxy
+    if not mc_val:
+        try:
+            _spy_ta = yf.Ticker("SPY").info.get("totalAssets") or 0
+            if _spy_ta > 1e10:
+                mc_val = (_spy_ta / 1e9) * 82  # SPY AUM ×82 ≈ S&P-500-Gesamtmktcap
+        except Exception:
+            pass
+
+    if not mc_val or mc_val <= 0:
+        return {"pct": 1.25, "date": "ca. 2024", "live": False}
+
+    pct = (md_val / 1000.0) / mc_val * 100  # Mio→Mrd, dann % von Mrd
+    if not (0.1 < pct < 15):  # Plausibilitätsprüfung
+        return {"pct": 1.25, "date": "ca. 2024", "live": False}
+
+    try:
+        import datetime as _dtmd
+        date_label = _dtmd.datetime.strptime(md_date, "%Y-%m-%d").strftime("%b %Y")
+    except Exception:
+        date_label = md_date or "aktuell"
+
+    return {"pct": round(pct, 2), "date": date_label, "live": True}
+
+
 @st.cache_data(ttl=14400, show_spinner=False)
 def _load_yield_curve_data() -> dict:
     """US-Zinsstrukturkurve: heute + vor 6M + vor 1J + T10Y2Y Spread-Zeitreihe (5J)."""
@@ -8506,11 +8571,23 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown("<div class='section-header'>📊 Margin Debt — Hebelrisiko im Markt</div>", unsafe_allow_html=True)
 
+    with st.spinner("Lade Margin-Debt-Daten…"):
+        _md_live = _load_margin_debt_live()
+
+    _md_cur_pct  = _md_live["pct"]
+    _md_cur_date = _md_live["date"]
+    _md_is_live  = _md_live["live"]
+    _md_cur_color = (
+        "#ef5350" if _md_cur_pct > 5
+        else "#ff9800" if _md_cur_pct > 3
+        else "#ffee58" if _md_cur_pct > 2
+        else "#66bb6a"
+    )
     _md_bars = [
-        {"label": "1999<br>(Dotcom)",        "pct": 6.5,  "color": "#ef5350"},
-        {"label": "2007<br>(Finanzkrise)",   "pct": 5.8,  "color": "#ef9a9a"},
-        {"label": "2021<br>(Post-COVID)",    "pct": 4.5,  "color": "#ff9800"},
-        {"label": "Aktuell<br>(ca. 2024)",   "pct": 1.25, "color": "#66bb6a"},
+        {"label": "1999<br>(Dotcom)",        "pct": 6.5,         "color": "#ef5350"},
+        {"label": "2007<br>(Finanzkrise)",   "pct": 5.8,         "color": "#ef9a9a"},
+        {"label": "2021<br>(Post-COVID)",    "pct": 4.5,         "color": "#ff9800"},
+        {"label": f"Aktuell<br>({_md_cur_date})", "pct": _md_cur_pct, "color": _md_cur_color},
     ]
     _md_col1, _md_col2 = st.columns([3, 2])
     with _md_col1:
@@ -8540,9 +8617,10 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
             height=320, showlegend=False,
         )
         st.plotly_chart(_md_fig, use_container_width=True, config={"displayModeBar": False})
+        _md_src = "FRED / FINRA (WIMFSL) + Wilshire Total Mktcap" if _md_is_live else "Approximiert (FINRA, Stand: ca. 2024)"
         st.caption(
-            "Margin Debt relativ zur S&P-500-Marktkapitalisierung. Quelle: FINRA / Wilshire 5000. "
-            "Historische Peaks; Aktuell-Wert approximiert (Stand: ca. 2024)."
+            f"Margin Debt relativ zur US-Marktkapitalisierung. Quelle: {_md_src}. "
+            f"Historische Peaks (1999–2021) sind Referenzwerte; Aktuell-Wert wird täglich aktualisiert."
         )
     with _md_col2:
         st.markdown(
@@ -8557,17 +8635,28 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
             f"beschleunigen.</div></div>",
             unsafe_allow_html=True,
         )
+        _md_live_badge = (
+            f"<span style='background:#1b3a2a;color:{_C_POSITIVE};font-size:0.60rem;"
+            f"font-weight:700;padding:1px 6px;border-radius:6px;margin-left:6px;'>"
+            f"LIVE</span>" if _md_is_live else
+            f"<span style='background:#2a2a1a;color:#ffee58;font-size:0.60rem;"
+            f"font-weight:700;padding:1px 6px;border-radius:6px;margin-left:6px;'>"
+            f"APPROX.</span>"
+        )
         st.markdown(
             f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
             f"border-radius:10px;padding:14px 16px;margin-bottom:10px;'>"
-            f"<div style='color:{_C_POSITIVE};font-size:0.82rem;font-weight:700;"
-            f"margin-bottom:6px;'>✅ Heutige Realität (~1.25%)</div>"
+            f"<div style='color:{_md_cur_color};font-size:0.82rem;font-weight:700;"
+            f"margin-bottom:6px;'>📌 Aktuell: {_md_cur_pct:.2f}% ({_md_cur_date}){_md_live_badge}</div>"
             f"<div style='color:{_C_TEXT_MUTED};font-size:0.76rem;line-height:1.55;'>"
             f"Der zentrale Liquidationsmechanismus fehlt aktuell. Das System ist deutlich "
             f"weniger gehebelt als 1999 oder 2007 — das reduziert das Risiko erzwungener "
             f"Kaskadenverkäufe.</div></div>",
             unsafe_allow_html=True,
         )
+        def _md_tier_label(tier_max, tier_min=0):
+            is_active = tier_min < _md_cur_pct <= tier_max
+            return " ← <b>aktuell</b>" if is_active else ""
         st.markdown(
             f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
             f"border-radius:10px;padding:14px 16px;'>"
@@ -8575,13 +8664,13 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
             f"margin-bottom:7px;'>📊 Risikoampel</div>"
             f"<div style='color:{_C_TEXT_MUTED};font-size:0.73rem;line-height:1.9;'>"
             f"<span style='color:#ef5350;font-weight:700;'>● &gt;5 %</span>"
-            f" — Extremes Risiko (1999 / 2007)<br>"
+            f" — Extremes Risiko (1999 / 2007){_md_tier_label(99, 5)}<br>"
             f"<span style='color:#ff9800;font-weight:700;'>● 3–5 %</span>"
-            f" — Erhöhtes Risiko (2021)<br>"
+            f" — Erhöhtes Risiko (2021){_md_tier_label(5, 3)}<br>"
             f"<span style='color:#ffee58;font-weight:700;'>● 2–3 %</span>"
-            f" — Moderates Risiko<br>"
+            f" — Moderates Risiko{_md_tier_label(3, 2)}<br>"
             f"<span style='color:{_C_POSITIVE};font-weight:700;'>● &lt;2 %</span>"
-            f" — Niedriges Risiko <b>(aktuell)</b></div></div>",
+            f" — Niedriges Risiko{_md_tier_label(2, 0)}</div></div>",
             unsafe_allow_html=True,
         )
 
