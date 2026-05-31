@@ -8502,6 +8502,89 @@ Konkrete Asset-Allocation-Empfehlung: Was über-/untergewichten und warum? Unter
         st.warning("Faktor-ETF Daten konnten nicht geladen werden.")
 
 
+    # ── Margin Debt ───────────────────────────────────────────────────────
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>📊 Margin Debt — Hebelrisiko im Markt</div>", unsafe_allow_html=True)
+
+    _md_bars = [
+        {"label": "1999<br>(Dotcom)",        "pct": 6.5,  "color": "#ef5350"},
+        {"label": "2007<br>(Finanzkrise)",   "pct": 5.8,  "color": "#ef9a9a"},
+        {"label": "2021<br>(Post-COVID)",    "pct": 4.5,  "color": "#ff9800"},
+        {"label": "Aktuell<br>(ca. 2024)",   "pct": 1.25, "color": "#66bb6a"},
+    ]
+    _md_col1, _md_col2 = st.columns([3, 2])
+    with _md_col1:
+        _md_fig = go.Figure(go.Bar(
+            x=[b["label"] for b in _md_bars],
+            y=[b["pct"]   for b in _md_bars],
+            marker_color=[b["color"] for b in _md_bars],
+            marker_line_width=0,
+            text=[f"<b>{b['pct']}%</b>" for b in _md_bars],
+            textposition="outside",
+            textfont=dict(size=13, color="#ffffff"),
+            hovertemplate="<b>%{x}</b><br>Margin Debt / Mktcap: <b>%{y:.1f}%</b><extra></extra>",
+        ))
+        _md_fig.add_hline(
+            y=4.0, line_color="#ef5350", line_width=1.5, line_dash="dash",
+            annotation_text="  Gefahrenzone (>4%)",
+            annotation_font=dict(color="#ef9a9a", size=10),
+            annotation_position="top right",
+        )
+        _md_fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=_C_TEXT_PRIMARY, size=11),
+            xaxis=dict(gridcolor="rgba(0,0,0,0)", zeroline=False, tickfont=dict(size=11)),
+            yaxis=dict(gridcolor=_C_BORDER, zeroline=False, ticksuffix="%",
+                       title="% der Marktkapitalisierung", range=[0, 8.5]),
+            margin=dict(t=30, b=10, l=60, r=10),
+            height=320, showlegend=False,
+        )
+        st.plotly_chart(_md_fig, use_container_width=True, config={"displayModeBar": False})
+        st.caption(
+            "Margin Debt relativ zur S&P-500-Marktkapitalisierung. Quelle: FINRA / Wilshire 5000. "
+            "Historische Peaks; Aktuell-Wert approximiert (Stand: ca. 2024)."
+        )
+    with _md_col2:
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+            f"border-radius:10px;padding:14px 16px;margin-bottom:10px;'>"
+            f"<div style='color:{_C_TEXT_PRIMARY};font-size:0.82rem;font-weight:700;"
+            f"margin-bottom:6px;'>⚙️ Die Mechanik eines Crashs</div>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.76rem;line-height:1.55;'>"
+            f"Echte Blasen platzen, wenn kreditfinanzierte Anleger zu massiven Notverkäufen "
+            f"(Margin Calls) gezwungen werden. Hohe Margin-Debt = systemisches Hebel-Risiko "
+            f"— eine Abwärtsbewegung löst Zwangsverkäufe aus, die weitere Kursrückgänge "
+            f"beschleunigen.</div></div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+            f"border-radius:10px;padding:14px 16px;margin-bottom:10px;'>"
+            f"<div style='color:{_C_POSITIVE};font-size:0.82rem;font-weight:700;"
+            f"margin-bottom:6px;'>✅ Heutige Realität (~1.25%)</div>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.76rem;line-height:1.55;'>"
+            f"Der zentrale Liquidationsmechanismus fehlt aktuell. Das System ist deutlich "
+            f"weniger gehebelt als 1999 oder 2007 — das reduziert das Risiko erzwungener "
+            f"Kaskadenverkäufe.</div></div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+            f"border-radius:10px;padding:14px 16px;'>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.72rem;font-weight:600;"
+            f"margin-bottom:7px;'>📊 Risikoampel</div>"
+            f"<div style='color:{_C_TEXT_MUTED};font-size:0.73rem;line-height:1.9;'>"
+            f"<span style='color:#ef5350;font-weight:700;'>● &gt;5 %</span>"
+            f" — Extremes Risiko (1999 / 2007)<br>"
+            f"<span style='color:#ff9800;font-weight:700;'>● 3–5 %</span>"
+            f" — Erhöhtes Risiko (2021)<br>"
+            f"<span style='color:#ffee58;font-weight:700;'>● 2–3 %</span>"
+            f" — Moderates Risiko<br>"
+            f"<span style='color:{_C_POSITIVE};font-weight:700;'>● &lt;2 %</span>"
+            f" — Niedriges Risiko <b>(aktuell)</b></div></div>",
+            unsafe_allow_html=True,
+        )
+
     # ── Momentum-Radar ────────────────────────────────────────────────────
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown("<div class='section-header'>📡 Momentum-Radar — USA &amp; Europa</div>", unsafe_allow_html=True)
