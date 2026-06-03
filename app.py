@@ -13878,6 +13878,9 @@ if st.session_state.get("show_portfolio"):
 
         with tab_pos:
           try:
+            import datetime as _dt_pos
+            _today = _dt_pos.date.today()
+
             # Sparklines: nur anzeigen wenn bereits im Session-/Prozess-Cache, niemals auto-laden.
             # Kein Button — Button-Click triggert Rerun → blockiert alle Tabs gleichermaßen.
 
