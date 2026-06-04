@@ -21285,7 +21285,12 @@ elif _at == 2:
     _gc_growth_pct    = _gc_combined_cagr * 100
     _gc_fair_mult     = (max(10.0, min(60.0, _gc_growth_pct)) if _gc_use_eps
                          else max(1.5, min(30.0, _gc_rev_cagr * 100)))
-    _gc_fcst_cagr     = _gc_eps_cagr if _gc_use_eps else _gc_rev_cagr
+
+    # Cap forecast CAGR: when a company only recently turned profitable the
+    # EPS CAGR from a near-zero base can be 500–2000 %, which projects
+    # astronomical IV values.  Clamp to max(revenue_cagr × 1.5, 40 %).
+    _gc_raw_fcst   = _gc_eps_cagr if _gc_use_eps else _gc_rev_cagr
+    _gc_fcst_cagr  = min(_gc_raw_fcst, max(_gc_rev_cagr * 1.5, 0.40))
 
     if len(_gc_metric) >= 2 and not _gc_hist.empty:
         _gc_today = pd.Timestamp.now().normalize()
@@ -21452,13 +21457,19 @@ elif _at == 2:
             return "#26a69a" if v > 15 else "#66bb6a" if v > 5 else "#ffa726" if v > 0 else "#ef5350"
 
         _gc_mc1, _gc_mc2, _gc_mc3, _gc_mc4 = st.columns(4)
+        _gc_capped = _gc_raw_fcst > _gc_fcst_cagr
+        _gc_capped_note = (
+            f"<div style='color:#ffee58;font-size:0.65rem;margin-top:3px;'>"
+            f"⚠️ Prognose gecappt auf {_gc_fcst_cagr*100:.0f}%</div>"
+            if _gc_capped else ""
+        )
         with _gc_mc1:
             if _gc_use_eps:
                 st.markdown(f"""
                 <div class="metric-card" style="text-align:center;">
                     <div class="metric-label">Gewinn-Wachstum</div>
                     <div class="metric-value" style="color:{_gc_col(_gc_eps_pct)};font-size:1.45rem;">{_gc_eps_pct:+.1f}%</div>
-                    <div style="color:{_C_TEXT_MUTED};font-size:0.72rem;">EPS CAGR ({len(_gc_eps_sorted)}J)</div>
+                    <div style="color:{_C_TEXT_MUTED};font-size:0.72rem;">EPS CAGR hist. ({len(_gc_eps_sorted)}J){_gc_capped_note}</div>
                 </div>""", unsafe_allow_html=True)
             else:
                 st.markdown(f"""
