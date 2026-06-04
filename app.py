@@ -1607,6 +1607,28 @@ def load_extended_financials(ticker: str, api_key: str = ""):
     return rev, net, eps, fcf, shares, price_annual, ebitda_ext
 
 @st.cache_data(ttl=86400, show_spinner=False)
+def _load_fmp_segments(ticker: str, api_key: str = "") -> dict:
+    """FMP Produkt- und Geo-Umsatzsegmente für den Unternehmens-Profil-Tab."""
+    out = {"product": {}, "geo": {}}
+    if not api_key:
+        return out
+    for key, endpoint in (
+        ("product", f"https://financialmodelingprep.com/api/v4/revenue-product-segmentation?symbol={ticker}&structure=flat&period=annual&apikey={api_key}"),
+        ("geo",     f"https://financialmodelingprep.com/api/v4/revenue-geographic-segmentation?symbol={ticker}&structure=flat&period=annual&apikey={api_key}"),
+    ):
+        try:
+            r = requests.get(endpoint, timeout=10)
+            if r.ok:
+                data = r.json()
+                if isinstance(data, list) and data:
+                    row = data[0]
+                    out[key] = {k: v for k, v in row.items() if k != "date" and isinstance(v, (int, float)) and v}
+        except Exception:
+            pass
+    return out
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
 def _load_disruption_data(ticker: str) -> dict:
     """Fetch R&D, gross profit, and asset-tangibility history for disruption scoring."""
     out = {"rnd": pd.Series(dtype=float), "gross_profit": pd.Series(dtype=float),
@@ -20410,7 +20432,7 @@ def _render_expanded_chart(tkr: str, metric: str, title: str,
 _TABS = [
     "📊 Kennzahlen", "📈 Wachstum", "🔮 Prognose", "📋 Fundamental", "⚖️ Bewertung",
     "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden",
-    "📐 Faktor-Profil", "🧮 Altman Z-Score", "🔄 ARR & Kunden",
+    "📐 Faktor-Profil", "🧮 Altman Z-Score", "🔄 ARR & Kunden", "🏢 Unternehmens-Profil",
 ]
 _at = st.session_state.get("active_tab", 0)
 st.markdown(
@@ -20418,7 +20440,7 @@ st.markdown(
     f"letter-spacing:.09em;margin-bottom:4px;'>Analyse-Bereich wählen</div>",
     unsafe_allow_html=True,
 )
-_nav_row1 = st.columns(7)
+_nav_row1 = st.columns(8)
 _nav_row2 = st.columns(7)
 _nav_cols = _nav_row1 + _nav_row2
 for _ni, _nlabel in enumerate(_TABS):
@@ -25280,6 +25302,392 @@ elif _at == 13:
         f"NRR = GRR + Upsell/Cross-Sell Wachstum bestehender Kunden.</div>",
         unsafe_allow_html=True,
     )
+
+elif _at == 14:
+    # ==================== UNTERNEHMENS-PROFIL ====================
+    _up_summary   = yf_info.get("longBusinessSummary", "")
+    _up_employees = yf_info.get("fullTimeEmployees")
+    _up_country   = yf_info.get("country", "")
+    _up_city      = yf_info.get("city", "")
+    _up_website   = yf_info.get("website", "") or ""
+    _up_founded   = yf_info.get("incorporationDate", "") or ""
+
+    # ── Header-Karten ─────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🏢 Unternehmens-Profil</div>", unsafe_allow_html=True)
+    _upc1, _upc2, _upc3, _upc4 = st.columns(4)
+    with _upc1:
+        st.markdown(
+            f"<div class='metric-card'><div class='metric-label'>Sektor</div>"
+            f"<div class='metric-value' style='font-size:0.95rem;'>{sector or '—'}</div></div>",
+            unsafe_allow_html=True)
+    with _upc2:
+        st.markdown(
+            f"<div class='metric-card'><div class='metric-label'>Branche</div>"
+            f"<div class='metric-value' style='font-size:0.92rem;'>{industry or '—'}</div></div>",
+            unsafe_allow_html=True)
+    with _upc3:
+        _up_loc = ", ".join(x for x in [_up_city, _up_country] if x) or "—"
+        st.markdown(
+            f"<div class='metric-card'><div class='metric-label'>Standort</div>"
+            f"<div class='metric-value' style='font-size:0.95rem;'>{_up_loc}</div></div>",
+            unsafe_allow_html=True)
+    with _upc4:
+        _up_emp_str = f"{_up_employees:,}".replace(",", ".") if _up_employees else "—"
+        st.markdown(
+            f"<div class='metric-card'><div class='metric-label'>Mitarbeiter</div>"
+            f"<div class='metric-value'>{_up_emp_str}</div></div>",
+            unsafe_allow_html=True)
+
+    if _up_website:
+        st.markdown(
+            f"<div style='margin:4px 0 14px;'>"
+            f"<a href='{_up_website}' target='_blank' rel='noopener' "
+            f"style='color:#64b5f6;font-size:0.82rem;'>🌐 {_up_website}</a></div>",
+            unsafe_allow_html=True)
+
+    # ── Unternehmensbeschreibung ────────────────────────────────────────────
+    st.markdown("<div class='section-header'>📝 Geschäftsmodell & Beschreibung</div>", unsafe_allow_html=True)
+    if _up_summary:
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};border-radius:12px;"
+            f"padding:20px 22px;color:{_C_TEXT_PRIMARY};font-size:0.88rem;line-height:1.75;"
+            f"white-space:pre-wrap;'>{_up_summary}</div>",
+            unsafe_allow_html=True)
+    else:
+        st.info("Keine Unternehmensbeschreibung verfügbar.")
+
+    # ── Kapitalintensität ──────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>⚙️ Kapitalintensität</div>", unsafe_allow_html=True)
+    _up_dis = _load_disruption_data(ticker)
+    _up_ppe   = _up_dis.get("ppe", pd.Series(dtype=float))
+    _up_ta    = _up_dis.get("total_assets_s", pd.Series(dtype=float))
+    _up_rev_s = _up_dis.get("revenue_s", pd.Series(dtype=float))
+
+    _up_ppe_ratio   = None
+    _up_capex_ratio = None
+    if not _up_ppe.empty and not _up_ta.empty:
+        _ci = _up_ppe.index.intersection(_up_ta.index)
+        if len(_ci) > 0:
+            _up_ppe_ratio = float(_up_ppe[_ci[-1]] / _up_ta[_ci[-1]] * 100) if _up_ta[_ci[-1]] > 0 else None
+    if not a_capex.empty and not _up_rev_s.empty:
+        _ci2 = a_capex.index.intersection(_up_rev_s.index)
+        if len(_ci2) > 0 and _up_rev_s[_ci2[-1]] > 0:
+            _up_capex_ratio = float(abs(a_capex[_ci2[-1]]) / _up_rev_s[_ci2[-1]] * 100)
+
+    if _up_ppe_ratio is not None or _up_capex_ratio is not None:
+        _ppe_r  = _up_ppe_ratio  if _up_ppe_ratio  is not None else 0.0
+        _capex_r = _up_capex_ratio if _up_capex_ratio is not None else 0.0
+        _up_score = (_ppe_r + _capex_r * 3) / 2
+        if _up_score < 10:
+            _up_label, _up_color, _up_icon, _up_desc = "Asset-Light", _C_POSITIVE, "🪶", \
+                "Kaum Sachvermögen nötig — hohe Kapitalrendite und freier Cash-Flow typisch (z. B. Software, Plattformen)."
+        elif _up_score < 25:
+            _up_label, _up_color, _up_icon, _up_desc = "Moderat", _C_NEUTRAL, "⚖️", \
+                "Mittlerer Kapitalbedarf — Mix aus Sach- und immateriellen Vermögenswerten (z. B. Konsumgüter, Medien)."
+        else:
+            _up_label, _up_color, _up_icon, _up_desc = "Kapitalintensiv", _C_NEGATIVE, "🏭", \
+                "Hoher Bedarf an physischem Anlagevermögen — CapEx und Abschreibungen drücken FCF (z. B. Industrie, Energie)."
+
+        _up_ki1, _up_ki2, _up_ki3 = st.columns(3)
+        with _up_ki1:
+            st.markdown(
+                f"<div class='metric-card' style='text-align:center;'>"
+                f"<div class='metric-label'>PPE / Total Assets</div>"
+                f"<div class='metric-value' style='color:{_up_color};'>"
+                f"{'N/A' if _up_ppe_ratio is None else f'{_up_ppe_ratio:.1f}%'}</div>"
+                f"<div class='metric-sub'>Anlagevermögen-Quote</div></div>",
+                unsafe_allow_html=True)
+        with _up_ki2:
+            st.markdown(
+                f"<div class='metric-card' style='text-align:center;'>"
+                f"<div class='metric-label'>CapEx / Umsatz</div>"
+                f"<div class='metric-value' style='color:{_up_color};'>"
+                f"{'N/A' if _up_capex_ratio is None else f'{_up_capex_ratio:.1f}%'}</div>"
+                f"<div class='metric-sub'>Investitionsintensität</div></div>",
+                unsafe_allow_html=True)
+        with _up_ki3:
+            st.markdown(
+                f"<div class='metric-card' style='text-align:center;'>"
+                f"<div class='metric-label'>Klassifikation</div>"
+                f"<div class='metric-value' style='color:{_up_color};'>{_up_icon} {_up_label}</div>"
+                f"<div class='metric-sub' style='font-size:0.75rem;line-height:1.5;'>{_up_desc}</div></div>",
+                unsafe_allow_html=True)
+
+        # Trend PPE-Ratio über Jahre
+        if not _up_ppe.empty and not _up_ta.empty and len(_up_ppe.index.intersection(_up_ta.index)) >= 2:
+            _up_ci_all = _up_ppe.index.intersection(_up_ta.index)
+            _up_ppe_ts = (_up_ppe[_up_ci_all] / _up_ta[_up_ci_all] * 100).dropna()
+            if len(_up_ppe_ts) >= 2:
+                _up_fig_ki = go.Figure()
+                _up_fig_ki.add_trace(go.Scatter(
+                    x=[str(d.year) for d in _up_ppe_ts.index],
+                    y=_up_ppe_ts.values,
+                    mode="lines+markers+text",
+                    line=dict(color=_up_color, width=2),
+                    marker=dict(size=7),
+                    text=[f"{v:.1f}%" for v in _up_ppe_ts.values],
+                    textposition="top center",
+                    textfont=dict(size=10, color=_C_TEXT_MUTED),
+                    name="PPE/Assets %",
+                ))
+                _up_fig_ki.update_layout(
+                    template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
+                    plot_bgcolor=_C_CHART_PLOT, height=220,
+                    margin=dict(l=10, r=10, t=20, b=10),
+                    showlegend=False,
+                    xaxis=dict(showgrid=False),
+                    yaxis=dict(showgrid=True, gridcolor="#1e2d45", ticksuffix="%"),
+                )
+                st.plotly_chart(_up_fig_ki, use_container_width=True)
+    else:
+        st.info("Keine Bilanzdaten für Kapitalintensitätsberechnung verfügbar.")
+
+    # ── Forschung & Entwicklung ─────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🔬 Forschung & Entwicklung (R&D)</div>", unsafe_allow_html=True)
+    _up_rnd  = _up_dis.get("rnd", pd.Series(dtype=float))
+    _up_gp   = _up_dis.get("gross_profit", pd.Series(dtype=float))
+
+    if not _up_rnd.empty:
+        _up_rnd_col1, _up_rnd_col2 = st.columns([2, 1])
+        with _up_rnd_col1:
+            _up_fig_rnd = go.Figure()
+            _up_fig_rnd.add_trace(go.Bar(
+                x=[str(d.year) for d in _up_rnd.index],
+                y=[v / 1e9 for v in _up_rnd.values],
+                marker_color="#7c4dff",
+                name="R&D (Mrd.)",
+                text=[f"{v/1e9:.2f}" for v in _up_rnd.values],
+                textposition="outside",
+                textfont=dict(size=10, color=_C_TEXT_MUTED),
+            ))
+            if not _up_gp.empty:
+                _up_ci_rnd = _up_rnd.index.intersection(_up_gp.index)
+                if len(_up_ci_rnd) >= 2:
+                    _up_rnd_pct = (_up_rnd[_up_ci_rnd] / _up_gp[_up_ci_rnd] * 100).dropna()
+                    _up_fig_rnd.add_trace(go.Scatter(
+                        x=[str(d.year) for d in _up_rnd_pct.index],
+                        y=_up_rnd_pct.values,
+                        mode="lines+markers",
+                        line=dict(color=_C_NEUTRAL, width=2),
+                        marker=dict(size=6),
+                        name="R&D / Bruttogewinn %",
+                        yaxis="y2",
+                    ))
+            _up_fig_rnd.update_layout(
+                template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
+                plot_bgcolor=_C_CHART_PLOT, height=280,
+                margin=dict(l=10, r=60, t=20, b=10),
+                legend=dict(orientation="h", y=1.08, font=dict(size=10)),
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor="#1e2d45", ticksuffix=" Mrd."),
+                yaxis2=dict(overlaying="y", side="right", ticksuffix="%",
+                            showgrid=False, title_text="% Bruttogewinn",
+                            title_font=dict(color=_C_NEUTRAL, size=10)),
+            )
+            st.plotly_chart(_up_fig_rnd, use_container_width=True)
+
+        with _up_rnd_col2:
+            _up_rnd_last = float(_up_rnd.iloc[-1]) if not _up_rnd.empty else None
+            _up_gp_last  = float(_up_gp.iloc[-1])  if not _up_gp.empty  else None
+            _up_rnd_pct_last = (_up_rnd_last / _up_gp_last * 100) if (_up_rnd_last and _up_gp_last and _up_gp_last > 0) else None
+            st.markdown(
+                f"<div class='metric-card' style='text-align:center;'>"
+                f"<div class='metric-label'>R&D (aktuell)</div>"
+                f"<div class='metric-value' style='color:#7c4dff;'>"
+                f"{'N/A' if _up_rnd_last is None else fmt_large(_up_rnd_last)}</div>"
+                f"<div class='metric-sub'>{'N/A' if _up_rnd_pct_last is None else f'{_up_rnd_pct_last:.1f}% d. Bruttogewinns'}</div></div>",
+                unsafe_allow_html=True)
+            if _up_rnd_pct_last is not None:
+                if _up_rnd_pct_last >= 40:
+                    _up_rnd_tier = ("🔬 Sehr hoch", _C_POSITIVE, "Forschungsintensiv — typisch für Pharma, Biotech, Halbleiter.")
+                elif _up_rnd_pct_last >= 20:
+                    _up_rnd_tier = ("🧪 Hoch", "#64b5f6", "Starker Innovationsfokus — Software, Medtech.")
+                elif _up_rnd_pct_last >= 8:
+                    _up_rnd_tier = ("⚙️ Moderat", _C_NEUTRAL, "Kontinuierliche Produktentwicklung.")
+                else:
+                    _up_rnd_tier = ("📦 Gering", _C_TEXT_MUTED, "Kaum Forschungsausgaben — reifes Geschäftsmodell.")
+                st.markdown(
+                    f"<div class='metric-card' style='text-align:center;margin-top:8px;'>"
+                    f"<div class='metric-value' style='font-size:1rem;color:{_up_rnd_tier[1]};'>{_up_rnd_tier[0]}</div>"
+                    f"<div class='metric-sub' style='font-size:0.75rem;line-height:1.5;'>{_up_rnd_tier[2]}</div></div>",
+                    unsafe_allow_html=True)
+    else:
+        st.info("Keine R&D-Daten verfügbar (üblich für Finanz-, Konsum- und Industrieunternehmen ohne eigene Forschungsabteilung).")
+
+    # ── Geschäftssegmente (FMP) ─────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🥧 Geschäftssegmente</div>", unsafe_allow_html=True)
+    _up_segs = _load_fmp_segments(ticker, FMP_API_KEY)
+    _up_prod  = _up_segs.get("product", {})
+    _up_geo   = _up_segs.get("geo", {})
+
+    if _up_prod or _up_geo:
+        _up_sc1, _up_sc2 = st.columns(2)
+        for _up_col, _up_seg_data, _up_seg_title, _up_seg_icon in [
+            (_up_sc1, _up_prod, "Produkt- / Dienstleistungssegmente", "🛠️"),
+            (_up_sc2, _up_geo,  "Geografische Segmente", "🌍"),
+        ]:
+            with _up_col:
+                if _up_seg_data:
+                    _up_seg_total = sum(_up_seg_data.values())
+                    _up_seg_labels = list(_up_seg_data.keys())
+                    _up_seg_vals   = [v / _up_seg_total * 100 for v in _up_seg_data.values()]
+                    _up_seg_fig = go.Figure(go.Pie(
+                        labels=_up_seg_labels,
+                        values=_up_seg_vals,
+                        hole=0.45,
+                        textinfo="label+percent",
+                        textfont=dict(size=11, color="#cfd8dc"),
+                        marker=dict(line=dict(color=_C_CHART_PLOT, width=2)),
+                        direction="clockwise",
+                    ))
+                    _up_seg_fig.update_layout(
+                        template=_C_CHART_THEME, paper_bgcolor=_C_CHART_PAPER,
+                        plot_bgcolor=_C_CHART_PLOT, height=300,
+                        margin=dict(l=10, r=10, t=30, b=10),
+                        showlegend=False,
+                        title=dict(text=f"{_up_seg_icon} {_up_seg_title}",
+                                   font=dict(color=_C_TEXT_PRIMARY, size=13), x=0.5),
+                    )
+                    st.plotly_chart(_up_seg_fig, use_container_width=True)
+                else:
+                    st.markdown(
+                        f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+                        f"border-radius:10px;padding:20px;text-align:center;"
+                        f"color:{_C_TEXT_MUTED};font-size:0.82rem;'>"
+                        f"{_up_seg_icon} Keine Segmentdaten verfügbar"
+                        f"{'  (FMP API Key erforderlich)' if not FMP_API_KEY else ''}</div>",
+                        unsafe_allow_html=True)
+    else:
+        _up_no_seg_reason = "Bitte FMP_API_KEY in Railway-Umgebungsvariablen eintragen." if not FMP_API_KEY else \
+            f"Für {ticker} sind keine Segmentdaten bei FMP verfügbar."
+        st.markdown(
+            f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
+            f"border-radius:10px;padding:20px;text-align:center;"
+            f"color:{_C_TEXT_MUTED};font-size:0.82rem;'>🥧 {_up_no_seg_reason}</div>",
+            unsafe_allow_html=True)
+
+    # ── KI-Tiefenanalyse ────────────────────────────────────────────────────
+    st.markdown("<div class='section-header'>🤖 KI-Unternehmensanalyse</div>", unsafe_allow_html=True)
+
+    if st.session_state.get("_up_ticker_last") != ticker:
+        st.session_state["_up_ticker_last"] = ticker
+        st.session_state["_up_ki_result"] = ""
+        st.session_state["_up_ki_provider"] = ""
+
+    st.markdown('<div class="ki-cta-wrap">', unsafe_allow_html=True)
+    _up_btn_col, _up_hint_col = st.columns([2, 3])
+    with _up_btn_col:
+        _run_up_ki = st.button(
+            "🤖 Unternehmensanalyse starten", key="btn_up_ki",
+            use_container_width=True,
+            help="KI erstellt ausführliche Unternehmensanalyse: Geschäftsmodell, Patente, Zukunft, Risiken")
+    with _up_hint_col:
+        if not GEMINI_API_KEY:
+            st.caption("⚠️ Kein KI-Key gesetzt — GEMINI_API_KEY in Railway-Umgebungsvariablen eintragen.")
+        else:
+            st.caption("Powered by Gemini · Analyse dauert ca. 10–20 Sekunden")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    if _run_up_ki:
+        _up_sys = (
+            "Du bist ein erfahrener Aktienanalyst und erstellst ausführliche Unternehmensprofile "
+            "auf Deutsch. Deine Analyse ist faktenbasiert, präzise und für private Investoren verständlich. "
+            "Strukturiere deine Antwort klar mit den folgenden Abschnitten: "
+            "GESCHÄFTSMODELL, PRODUKTE & DIENSTLEISTUNGEN, GESCHÄFTSBEREICHE, "
+            "WETTBEWERBSVORTEILE & PATENTE, FORSCHUNG & ENTWICKLUNG, "
+            "KAPITALINTENSITÄT, ZUKUNFTSAUSSICHTEN & RISIKEN. "
+            "Verwende konkrete Beispiele und nenne wo möglich Zahlen."
+        )
+        _up_seg_context = ""
+        if _up_prod:
+            _up_seg_context += f"\nProdukt-Segmente (Umsatzanteile): {', '.join(f'{k}: {v/sum(_up_prod.values())*100:.1f}%' for k, v in _up_prod.items())}"
+        if _up_geo:
+            _up_seg_context += f"\nGeo-Segmente: {', '.join(f'{k}: {v/sum(_up_geo.values())*100:.1f}%' for k, v in _up_geo.items())}"
+        _up_rnd_ctx = ""
+        if not _up_rnd.empty:
+            _up_rnd_ctx = f"\nR&D-Ausgaben (letzte Jahre): {', '.join(f'{d.year}: {v/1e9:.2f} Mrd.' for d, v in _up_rnd.items())}"
+        _up_capex_ctx = ""
+        if not a_capex.empty:
+            _up_capex_ctx = f"\nCapEx (letzte Jahre): {', '.join(f'{d.year}: {v/1e9:.2f} Mrd.' for d, v in a_capex.items())}"
+
+        _up_usr = (
+            f"Erstelle ein ausführliches Unternehmensprofil für {company_name} (Ticker: {ticker}).\n\n"
+            f"Sektor: {sector} | Branche: {industry}\n"
+            f"Land: {_up_country} | Mitarbeiter: {_up_employees or 'k.A.'}\n"
+            f"Marktkapitalisierung: {fmt_large(market_cap) if market_cap else 'k.A.'}\n"
+            f"Aktueller Kurs: {price:.2f} {_currency}\n\n"
+            f"Unternehmensbeschreibung (yfinance):\n{_up_summary or 'Keine Beschreibung verfügbar.'}\n"
+            f"{_up_seg_context}\n{_up_rnd_ctx}\n{_up_capex_ctx}\n\n"
+            f"Erstelle eine strukturierte, ausführliche Unternehmensanalyse auf Deutsch. "
+            f"Gehe besonders auf folgende Punkte ein:\n"
+            f"1. Kerngeschäft und Wertschöpfungsmodell\n"
+            f"2. Wichtigste Produkte/Dienstleistungen und deren Marktposition\n"
+            f"3. Geschäftsbereiche und geografische Präsenz\n"
+            f"4. Patente, geistiges Eigentum, Innovationsstärke\n"
+            f"5. F&E-Strategie und Zukunftsinvestitionen\n"
+            f"6. Asset-light vs. kapitalintensiv — Implikationen für Investoren\n"
+            f"7. Zukunftsaussichten: Wachstumstreiber und strategische Risiken"
+        )
+        with st.spinner("KI analysiert das Unternehmen…"):
+            _up_ki_text, _up_ki_prov = call_ki_api(_up_sys, _up_usr, GEMINI_API_KEY, max_tokens=4000)
+        st.session_state["_up_ki_result"] = _up_ki_text
+        st.session_state["_up_ki_provider"] = _up_ki_prov
+
+    if st.session_state.get("_up_ki_result"):
+        _up_raw = st.session_state["_up_ki_result"]
+        if _up_raw.startswith("⚠️"):
+            st.warning(_up_raw)
+        else:
+            _up_prov_label = st.session_state.get("_up_ki_provider") or "KI"
+            _up_sections = {
+                "GESCHÄFTSMODELL":            ("🏢", "#64b5f6"),
+                "PRODUKTE & DIENSTLEISTUNGEN": ("🛠️", "#4db6ac"),
+                "GESCHÄFTSBEREICHE":           ("🥧", "#ffb74d"),
+                "WETTBEWERBSVORTEILE & PATENTE": ("🏰", _C_POSITIVE),
+                "FORSCHUNG & ENTWICKLUNG":     ("🔬", "#7c4dff"),
+                "KAPITALINTENSITÄT":           ("⚙️", _C_NEUTRAL),
+                "ZUKUNFTSAUSSICHTEN & RISIKEN": ("🔮", "#ce93d8"),
+            }
+            _up_html = [
+                f"<div class='grok-box'>"
+                f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:14px;'>"
+                f"<span style='font-size:1.4rem;'>🤖</span>"
+                f"<div><div style='color:#a78bfa;font-size:1.0rem;font-weight:700;'>"
+                f"Unternehmensanalyse · {company_name}</div>"
+                f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;'>Powered by {_up_prov_label}</div>"
+                f"</div></div>"
+            ]
+            _up_cur_sec  = None
+            _up_cur_lines = []
+            def _up_flush(sec, lines, parts, secs):
+                if sec and lines:
+                    icon, color = secs.get(sec, ("📌", "#64b5f6"))
+                    parts.append(f"<div class='grok-section-title'>{icon} {sec}</div>")
+                    txt = "\n".join(lines).strip()
+                    if txt.startswith("-"):
+                        items = [l.lstrip("- ").strip() for l in txt.split("\n") if l.strip()]
+                        parts.append("<ul style='margin:4px 0 10px 16px;padding:0;'>")
+                        for itm in items:
+                            parts.append(f"<li style='color:{_C_TEXT_PRIMARY};font-size:0.86rem;"
+                                         f"line-height:1.65;margin-bottom:3px;'>{itm}</li>")
+                        parts.append("</ul>")
+                    else:
+                        for ln in txt.split("\n"):
+                            ln = ln.strip()
+                            if ln:
+                                parts.append(f"<p style='color:{_C_TEXT_PRIMARY};font-size:0.86rem;"
+                                             f"line-height:1.65;margin:0 0 6px;'>{ln}</p>")
+            for _up_line in _up_raw.split("\n"):
+                _up_stripped = _up_line.strip().upper().rstrip(":")
+                if _up_stripped in _up_sections:
+                    _up_flush(_up_cur_sec, _up_cur_lines, _up_html, _up_sections)
+                    _up_cur_sec   = _up_stripped
+                    _up_cur_lines = []
+                else:
+                    _up_cur_lines.append(_up_line)
+            _up_flush(_up_cur_sec, _up_cur_lines, _up_html, _up_sections)
+            _up_html.append("</div>")
+            st.markdown("\n".join(_up_html), unsafe_allow_html=True)
 
 # ==================== INSIGHTS ====================
 st.markdown("<div class='section-header'>💡 Investor Insights</div>", unsafe_allow_html=True)
