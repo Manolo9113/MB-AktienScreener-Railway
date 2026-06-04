@@ -1628,26 +1628,136 @@ def _load_fmp_segments(ticker: str, api_key: str = "") -> dict:
     return out
 
 
+@st.cache_data(ttl=86400 * 7, show_spinner=False)
+def _sec_cik_lookup() -> dict:
+    """Lädt SEC-Ticker→CIK-Mapping einmal pro Woche."""
+    try:
+        r = requests.get(
+            "https://www.sec.gov/files/company_tickers.json",
+            headers={"User-Agent": "MB-AktienScreener research@example.com"},
+            timeout=15)
+        if r.ok:
+            return {v["ticker"].upper(): str(v["cik_str"]) for v in r.json().values()}
+    except Exception:
+        pass
+    return {}
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _load_sec_segments(ticker: str) -> dict:
+    """Segmentdaten via SEC EDGAR XBRL-Company-Facts (kostenlos, offiziell)."""
+    out = {"product": {}, "geo": {}}
+    try:
+        import re as _re_sec
+        cik_map = _sec_cik_lookup()
+        cik = cik_map.get(ticker.upper())
+        if not cik:
+            return out
+        r = requests.get(
+            f"https://data.sec.gov/api/xbrl/companyfacts/CIK{int(cik):010d}.json",
+            headers={"User-Agent": "MB-AktienScreener research@example.com"},
+            timeout=20)
+        if not r.ok:
+            return out
+        facts = r.json()
+        all_facts = facts.get("facts", {})
+
+        # ── Geo-Segmente aus us-gaap mit Dim-Selektion ────────────────────
+        _usgaap = all_facts.get("us-gaap", {})
+        _geo_concepts = [
+            "RevenueFromContractWithCustomerExcludingAssessedTax",
+            "Revenues", "SalesRevenueNet",
+        ]
+        for _gc in _geo_concepts:
+            _cd = _usgaap.get(_gc, {})
+            _usd = _cd.get("units", {}).get("USD", [])
+            # find entries with a geographic dimension (srt:StatementGeographicalAxis)
+            _geo_vals = {}
+            for _e in _usd:
+                if _e.get("form") != "10-K":
+                    continue
+                _accn = _e.get("accn", "")
+                _dim  = str(_e.get("segment", "") or "")
+                if not _dim or "Geographical" not in _dim and "Geography" not in _dim and "Region" not in _dim:
+                    continue
+                # member name = last part after ":"
+                _member = _dim.split(":")[-1].replace("Member", "").replace("Segment", "")
+                _member = _re_sec.sub(r'([A-Z])', r' \1', _member).strip()
+                _val = _e.get("val", 0)
+                _end = _e.get("end", "")
+                if _val > 0 and _end > _geo_vals.get(_member, ("", 0))[0]:
+                    _geo_vals[_member] = (_end, _val)
+            if len(_geo_vals) >= 2:
+                out["geo"] = {k: v[1] for k, v in _geo_vals.items()}
+                break
+
+        # ── Produkt-Segmente aus Unternehmens-Namespace ───────────────────
+        _skip_ns = {"dei", "us-gaap", "srt", "invest", "ecd"}
+        for _ns, _ns_data in all_facts.items():
+            if _ns in _skip_ns:
+                continue
+            _rev_facts = {}
+            for _concept, _cdata in _ns_data.items():
+                if "revenue" not in _concept.lower() and "sales" not in _concept.lower():
+                    continue
+                _usd = _cdata.get("units", {}).get("USD", [])
+                _annual = [x for x in _usd
+                           if x.get("form") == "10-K" and x.get("fp") == "FY"
+                           and not x.get("segment")]  # no dimension = top-level
+                if not _annual:
+                    continue
+                _annual.sort(key=lambda x: x.get("end", ""), reverse=True)
+                _val = _annual[0].get("val", 0)
+                if _val > 0:
+                    # prettify concept name: strip namespace prefix, camelCase → spaces
+                    _name = _re_sec.sub(r'([A-Z])', r' \1', _concept).strip()
+                    _name = _re_sec.sub(r'\s+', ' ', _name)
+                    _rev_facts[_name] = _val
+
+            # only keep if we have ≥2 distinct segments (not just total + one)
+            if len(_rev_facts) >= 2:
+                out["product"] = _rev_facts
+                break
+    except Exception:
+        pass
+    return out
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def _load_sa_segments(ticker: str) -> dict:
-    """Scrape Geschäftssegmente von stockanalysis.com (kostenloser Fallback)."""
+    """Scrape Geschäftssegmente von stockanalysis.com mit Cloudflare-Bypass-Headers."""
     out = {"product": {}, "geo": {}}
     try:
         from bs4 import BeautifulSoup
         import json as _sajson
-        _sa_headers = {
+        # Full browser-like header set — helps bypass Cloudflare basic challenges
+        _sa_sess = requests.Session()
+        _sa_sess.headers.update({
             "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
+                "Chrome/124.0.6367.208 Safari/537.36"
             ),
-            "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-        }
-        r = requests.get(
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                      "image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"macOS"',
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1",
+        })
+        r = _sa_sess.get(
             f"https://stockanalysis.com/stocks/{ticker.lower()}/financials/segments/",
-            headers=_sa_headers, timeout=15)
+            timeout=15, allow_redirects=True)
         if not r.ok:
+            return out
+        # Cloudflare challenge detection
+        if "just a moment" in r.text.lower() or "cf-mitigated" in r.headers.get("cf-mitigated", ""):
             return out
         soup = BeautifulSoup(r.text, "html.parser")
 
@@ -1655,76 +1765,67 @@ def _load_sa_segments(ticker: str) -> dict:
         _nd_tag = soup.find("script", {"id": "__NEXT_DATA__"})
         if _nd_tag and _nd_tag.string:
             try:
-                _nd = _sajson.loads(_nd_tag.string)
-                _pp = (_nd.get("props") or {}).get("pageProps") or {}
-                # drill to the first dict that has "headers" and "data"
-                def _find_fin(node, depth=0):
-                    if depth > 6 or not isinstance(node, dict):
-                        return None
+                _nd  = _sajson.loads(_nd_tag.string)
+                _pp  = (_nd.get("props") or {}).get("pageProps") or {}
+
+                def _find_nodes(node, depth=0):
+                    """Yield every dict that has 'headers' + 'data'."""
+                    if depth > 8 or not isinstance(node, dict):
+                        return
                     if "headers" in node and "data" in node:
-                        return node
+                        yield node
                     for v in node.values():
-                        res = _find_fin(v, depth + 1)
-                        if res:
-                            return res
-                    return None
-                _fin = _find_fin(_pp)
-                if _fin:
-                    _hdrs = _fin.get("headers", [])
-                    # find first non-TTM year column index
-                    _col = next((i for i, h in enumerate(_hdrs) if str(h).isdigit()), 0)
-                    _raw_data = _fin.get("data") or {}
+                        yield from _find_nodes(v, depth + 1)
 
-                    def _seg_from_block(block):
-                        result = {}
-                        if isinstance(block, dict):
-                            for seg_name, vals in block.items():
-                                if seg_name.lower() in ("total", "revenue", ""):
-                                    continue
-                                if isinstance(vals, list) and len(vals) > _col:
-                                    try:
-                                        v = float(str(vals[_col]).replace(",", ""))
-                                        if v > 0:
-                                            result[seg_name] = v
-                                    except (ValueError, TypeError):
-                                        pass
-                        return result
+                def _parse_val(raw):
+                    try:
+                        return float(str(raw).replace(",", "").replace("$", "").replace("B", "e9").replace("M", "e6"))
+                    except (ValueError, TypeError):
+                        return None
 
-                    # stockanalysis may have top-level keys like
-                    # "Revenue by Segment" / "Revenue by Geography"
-                    for _k, _v in _raw_data.items():
-                        _kl = _k.lower()
-                        _extracted = _seg_from_block(_v)
-                        if not _extracted:
-                            continue
-                        if any(w in _kl for w in ("geo", "region", "country", "geographic")):
-                            out["geo"] = _extracted
-                        elif any(w in _kl for w in ("segment", "product", "service", "business", "revenue")):
-                            out["product"] = _extracted
+                def _seg_from_block(block, col):
+                    result = {}
+                    d = block.get("data") or {}
+                    if isinstance(d, dict):
+                        for seg_name, vals in d.items():
+                            if str(seg_name).lower() in ("total", "revenue", "net revenue", ""):
+                                continue
+                            if isinstance(vals, list) and len(vals) > col:
+                                v = _parse_val(vals[col])
+                                if v and v > 0:
+                                    result[seg_name] = v
+                    elif isinstance(d, list):
+                        for row in d:
+                            if isinstance(row, list) and len(row) > col + 1:
+                                v = _parse_val(row[col + 1])
+                                if v and v > 0:
+                                    result[str(row[0])] = v
+                    return result
 
-                    # if still empty, first non-trivial block → product, second → geo
-                    if not out["product"] and not out["geo"]:
-                        _blocks = [_seg_from_block(v) for v in _raw_data.values() if isinstance(v, dict)]
-                        _blocks = [b for b in _blocks if len(b) >= 2]
-                        if len(_blocks) >= 1:
-                            out["product"] = _blocks[0]
-                        if len(_blocks) >= 2:
-                            out["geo"] = _blocks[1]
+                _candidates = list(_find_nodes(_pp))
+                for _node in _candidates:
+                    _hdrs = _node.get("headers", [])
+                    _col  = next((i for i, h in enumerate(_hdrs) if str(h).isdigit()), 0)
+                    _title = str(_node.get("title", _node.get("name", ""))).lower()
+                    _segs = _seg_from_block(_node, _col)
+                    if len(_segs) < 2:
+                        continue
+                    if any(w in _title for w in ("geo", "region", "country", "geographic")):
+                        out["geo"] = _segs
+                    else:
+                        out["product"] = _segs
             except Exception:
                 pass
 
         # ── Versuch 2: HTML-Tabellen ──────────────────────────────────────
         if not out["product"] and not out["geo"]:
-            _tables = soup.find_all("table")
-            _geo_keywords = {"geo", "geograph", "region", "country"}
-            for _ti, _tbl in enumerate(_tables):
-                # look for a preceding heading to classify geo vs product
+            _geo_kw = {"geo", "geograph", "region", "country"}
+            for _ti, _tbl in enumerate(soup.find_all("table")):
                 _heading = ""
-                for _prev in _tbl.find_all_previous(["h2", "h3", "h4"], limit=3):
-                    _heading = _prev.get_text(strip=True).lower()
+                for _ph in _tbl.find_all_previous(["h2", "h3", "h4"], limit=2):
+                    _heading = _ph.get_text(strip=True).lower()
                     break
-                _is_geo = any(w in _heading for w in _geo_keywords)
-
+                _is_geo = any(w in _heading for w in _geo_kw)
                 _rows = _tbl.find_all("tr")
                 if len(_rows) < 3:
                     continue
@@ -1736,21 +1837,18 @@ def _load_sa_segments(ticker: str) -> dict:
                     _name = _cells[0].get_text(strip=True)
                     if not _name or _name.lower() in ("total", "ttm", "-"):
                         continue
-                    # first data column = most recent year
-                    _val_str = _cells[1].get_text(strip=True).replace(",", "").replace("$", "")
+                    _raw = _cells[1].get_text(strip=True).replace(",", "").replace("$", "")
                     try:
-                        _val = float(_val_str)
-                        if _val > 0:
-                            _seg_dict[_name] = _val
+                        _v = float(_raw)
+                        if _v > 0:
+                            _seg_dict[_name] = _v
                     except (ValueError, TypeError):
                         pass
                 if len(_seg_dict) >= 2:
                     if _is_geo or _ti == 1:
-                        if not out["geo"]:
-                            out["geo"] = _seg_dict
+                        out["geo"] = out["geo"] or _seg_dict
                     else:
-                        if not out["product"]:
-                            out["product"] = _seg_dict
+                        out["product"] = out["product"] or _seg_dict
     except Exception:
         pass
     return out
@@ -25654,6 +25752,12 @@ elif _at == 14:
         _up_prod    = _up_sa.get("product", {})
         _up_geo     = _up_sa.get("geo", {})
         _up_seg_src = "stockanalysis.com" if (_up_prod or _up_geo) else None
+
+    if not _up_prod and not _up_geo:
+        _up_sec = _load_sec_segments(ticker)
+        _up_prod    = _up_sec.get("product", {})
+        _up_geo     = _up_sec.get("geo", {})
+        _up_seg_src = "SEC EDGAR XBRL" if (_up_prod or _up_geo) else None
 
     if _up_prod or _up_geo:
         if _up_seg_src:
