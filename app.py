@@ -2825,7 +2825,7 @@ def compute_fibonacci(high: float, low: float):
 # ==================== QUALITY SCORE ====================
 def compute_score(rev_growth, fcf_yield, gross_margin, roic_val,
                   profit_margin, rule_of_40, peg_ratio, debt, operating_margin,
-                  use_rule_of_40=True):
+                  use_rule_of_40=True, sector=""):
     score = 0
     max_score = 0
 
@@ -2839,14 +2839,47 @@ def compute_score(rev_growth, fcf_yield, gross_margin, roic_val,
         else:
             score += weight if val >= good else (weight * 0.5 if val >= ok else 0)
 
-    if use_rule_of_40:
+    # ── Sektor-Gruppe bestimmen ────────────────────────────────────────────
+    _s = (sector or "").lower()
+    if any(w in _s for w in ("financial", "bank", "insurance", "asset management")):
+        _grp = "financial"
+    elif any(w in _s for w in ("industrial", "basic material", "energy", "utilities", "real estate")):
+        _grp = "industrial"
+    elif any(w in _s for w in ("healthcare", "pharma", "biotech", "medical")):
+        _grp = "healthcare"
+    elif any(w in _s for w in ("consumer", "retail", "food", "beverage")):
+        _grp = "consumer"
+    else:
+        _grp = "tech"   # Technology, Communication Services, Software → alte Thresholds
+
+    # ── Thresholds je Gruppe ──────────────────────────────────────────────
+    # (gm_good, gm_ok, roic_good, roic_ok, rev_good, rev_ok,
+    #  fcf_good, fcf_ok, pm_good, pm_ok, om_good, om_ok)
+    _t = {
+        "tech":       (60, 40,   20, 10,   15, 5,   5, 2,   15, 5,   20, 10),
+        "industrial": (30, 18,   15, 8,     8, 3,   4, 2,    8, 3,   12, 6),
+        "financial":  (None, None, 15, 8,   8, 3,   5, 2,   15, 8,   None, None),
+        "healthcare": (55, 38,   15, 8,    10, 4,   4, 2,   12, 4,   15, 7),
+        "consumer":   (32, 20,   15, 8,     6, 2,   4, 2,    7, 3,   10, 5),
+    }[_grp]
+    gm_g, gm_o, rc_g, rc_o, rg_g, rg_o, fy_g, fy_o, pm_g, pm_o, om_g, om_o = _t
+
+    # Rule of 40 — nur sinnvoll für Tech/SaaS
+    if use_rule_of_40 and _grp == "tech":
         add(rule_of_40, 40, 20, 20)
-    add(gross_margin, 60, 40, 15)
-    add(roic_val, 20, 10, 15)
-    add(rev_growth, 15, 5, 12)
-    add(fcf_yield, 5, 2, 12)
-    add(profit_margin, 15, 5, 10)
-    add(operating_margin, 20, 10, 8)
+
+    # Bruttomarge (Financial: ROE statt Bruttomarge)
+    if _grp == "financial":
+        add(roic_val, rc_g, rc_o, 20)   # ROE trägt mehr Gewicht bei Financials
+    else:
+        add(gross_margin, gm_g, gm_o, 15)
+        add(roic_val,     rc_g, rc_o, 15)
+
+    add(rev_growth,      rg_g, rg_o, 12)
+    add(fcf_yield,       fy_g, fy_o, 12)
+    add(profit_margin,   pm_g, pm_o, 10)
+    if om_g is not None:
+        add(operating_margin, om_g, om_o, 8)
     add(peg_ratio, 1.5, 2.5, 8, inverse=True)
 
     if max_score == 0:
@@ -20013,7 +20046,7 @@ else:
 
 quality_score = compute_score(rev_growth, fcf_yield, gross_margin, roic_val,
                                profit_margin, rule_of_40, peg_ratio, debt, operating_margin,
-                               use_rule_of_40=show_rule_of_40)
+                               use_rule_of_40=show_rule_of_40, sector=sector)
 
 moat = compute_moat(sector, industry, gross_margin, roic_val, operating_margin,
                     profit_margin, rev_growth, market_cap, debt,
@@ -20185,11 +20218,23 @@ with col_score:
     sc = quality_score
     sc_color = score_color(sc)
     sc_lbl = score_label(sc)
+    _s_lc = sector.lower() if sector else ""
+    if any(w in _s_lc for w in ("financial", "bank", "insurance", "asset management")):
+        _sc_norm = "Finanzen-Norm"
+    elif any(w in _s_lc for w in ("industrial", "basic material", "energy", "utilities", "real estate")):
+        _sc_norm = "Industrie-Norm"
+    elif any(w in _s_lc for w in ("healthcare", "pharma", "biotech", "medical")):
+        _sc_norm = "Healthcare-Norm"
+    elif any(w in _s_lc for w in ("consumer", "retail", "food", "beverage")):
+        _sc_norm = "Konsum-Norm"
+    else:
+        _sc_norm = "Tech-Norm"
     st.markdown(f"""
     <div class="score-section">
         <div class="score-title">Qualitäts-Score</div>
         <div class="score-num" style="color:{sc_color};">{sc}</div>
         <div class="score-label">{sc_lbl}</div>
+        <div style="font-size:0.68rem;color:{_C_TEXT_MUTED};margin-top:4px;">⚖️ {_sc_norm}</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -20202,7 +20247,7 @@ _METRIC_TOOLTIPS = {
     "PEG Ratio":         "Price/Earnings-to-Growth — KGV geteilt durch Gewinnwachstum. <1 = günstig, 1–2 = fair, >2 = teuer relativ zum Wachstum.",
     "Op. Margin":        "Operative Marge — Operatives Ergebnis / Umsatz. Misst die Effizienz des Kerngeschäfts. >20% = stark.",
     "Net Margin":        "Gewinnmarge — Nettogewinn / Umsatz. Zeigt, wie viel vom Umsatz als Reingewinn bleibt. >15% = ausgezeichnet.",
-    "Qualitäts-Score":   "Gesamtbewertung basierend auf Marge, ROIC, Wachstum, FCF Yield und Bewertungskennzahlen. 0–100.",
+    "Qualitäts-Score":   "Gesamtbewertung basierend auf Marge, ROIC, Wachstum, FCF Yield und Bewertungskennzahlen. 0–100. Thresholds werden sektorspezifisch angepasst (Tech / Industrie / Finanzen / Healthcare / Konsum).",
     "P/E (trailing)":    "Kurs-Gewinn-Verhältnis (trailing) — Aktueller Kurs / Gewinn der letzten 12 Monate. Vergleich: S&P-500-Median ~22x.",
     "P/E (forward)":     "Kurs-Gewinn-Verhältnis (forward) — Aktueller Kurs / Gewinnschätzung nächstes Jahr. Niedriger als trailing = Gewinnwachstum erwartet.",
     "EV/EBITDA":         "Enterprise Value / EBITDA — Bewertungsmultiple unabhängig von Kapitalstruktur. <10x = günstig, >20x = teuer.",
