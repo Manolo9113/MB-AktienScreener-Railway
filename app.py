@@ -1170,6 +1170,112 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
     return info
 
 
+def _fmp_yf_info(ticker: str, key: str) -> tuple:
+    """FMP → yf_info-kompatibler dict + OHLCV-DataFrame (Fallback wenn Yahoo blockt)."""
+    info: dict = {}
+    hist = pd.DataFrame()
+    if not key:
+        return info, hist
+    try:
+        _fh = {"User-Agent": "MB-AktienScreener/1.0"}
+        # ── Profil ────────────────────────────────────────────────────────
+        rp = requests.get(f"https://financialmodelingprep.com/api/v3/profile/{ticker}",
+                          params={"apikey": key}, headers=_fh, timeout=10)
+        if rp.ok:
+            d = rp.json()
+            p = d[0] if isinstance(d, list) and d else {}
+            info.update({
+                "longName":              p.get("companyName", ticker),
+                "shortName":             p.get("companyName", ticker),
+                "currentPrice":          p.get("price"),
+                "regularMarketPrice":    p.get("price"),
+                "marketCap":             p.get("mktCap"),
+                "currency":              p.get("currency", "USD") or "USD",
+                "longBusinessSummary":   p.get("description", ""),
+                "sector":                p.get("sector", ""),
+                "industry":              p.get("industry", ""),
+                "country":               p.get("country", ""),
+                "city":                  p.get("city", ""),
+                "fullTimeEmployees":     p.get("fullTimeEmployees"),
+                "website":               p.get("website", ""),
+                "beta":                  p.get("beta"),
+                "exchange":              p.get("exchangeShortName", ""),
+                "_fmp_fallback":         True,
+            })
+        # ── Quote (Kurs + 52W) ────────────────────────────────────────────
+        rq = requests.get(f"https://financialmodelingprep.com/api/v3/quote/{ticker}",
+                          params={"apikey": key}, headers=_fh, timeout=10)
+        if rq.ok:
+            d = rq.json()
+            q = d[0] if isinstance(d, list) and d else {}
+            info.update({
+                "previousClose":                 q.get("previousClose"),
+                "regularMarketPreviousClose":    q.get("previousClose"),
+                "fiftyTwoWeekHigh":              q.get("yearHigh"),
+                "fiftyTwoWeekLow":               q.get("yearLow"),
+                "averageVolume":                 q.get("avgVolume"),
+                "sharesOutstanding":             q.get("sharesOutstanding"),
+                "enterpriseValue":               q.get("enterpriseValue"),
+                "forwardPE":                     q.get("pe"),
+            })
+        # ── Ratios TTM ────────────────────────────────────────────────────
+        rr = requests.get(f"https://financialmodelingprep.com/api/v3/ratios-ttm/{ticker}",
+                          params={"apikey": key}, headers=_fh, timeout=10)
+        if rr.ok:
+            d = rr.json()
+            r = d[0] if isinstance(d, list) and d else {}
+            info.update({
+                "trailingPE":                    r.get("peRatioTTM"),
+                "priceToBook":                   r.get("priceToBookRatioTTM"),
+                "dividendYield":                 r.get("dividendYieldTTM"),
+                "returnOnEquity":                r.get("returnOnEquityTTM"),
+                "returnOnAssets":                r.get("returnOnAssetsTTM"),
+                "grossMargins":                  r.get("grossProfitMarginTTM"),
+                "profitMargins":                 r.get("netProfitMarginTTM"),
+                "operatingMargins":              r.get("operatingProfitMarginTTM"),
+                "priceToSalesTrailing12Months":  r.get("priceSalesRatioTTM"),
+                "revenueGrowth":                 r.get("revenueGrowthTTM"),
+                "earningsGrowth":                r.get("epsgrowthTTM"),
+                "debtToEquity":                  r.get("debtEquityRatioTTM"),
+                "currentRatio":                  r.get("currentRatioTTM"),
+                "totalRevenue":                  r.get("revenuePerShareTTM"),
+            })
+        # ── Kennzahlen TTM (ROIC, FCF, Short) ────────────────────────────
+        rk = requests.get(f"https://financialmodelingprep.com/api/v3/key-metrics-ttm/{ticker}",
+                          params={"apikey": key}, headers=_fh, timeout=10)
+        if rk.ok:
+            d = rk.json()
+            k = d[0] if isinstance(d, list) and d else {}
+            mcap = info.get("marketCap")
+            fcf_ps = k.get("freeCashFlowPerShareTTM")
+            shares = info.get("sharesOutstanding")
+            info.update({
+                "freeCashflow":          (fcf_ps * shares) if fcf_ps and shares else None,
+                "shortPercentOfFloat":   k.get("shortRatioTTM"),
+                "heldPercentInsiders":   k.get("buybackYieldTTM"),
+            })
+    except Exception:
+        pass
+    # ── Historische Kurse ─────────────────────────────────────────────────
+    try:
+        rh = requests.get(
+            f"https://financialmodelingprep.com/api/v3/historical-price-full/{ticker}",
+            params={"timeseries": 1825, "apikey": key}, headers=_fh, timeout=15)
+        if rh.ok:
+            rows = rh.json().get("historical", [])
+            if rows:
+                df = pd.DataFrame(rows)
+                df["date"] = pd.to_datetime(df["date"])
+                df = df.set_index("date").sort_index()
+                df = df.rename(columns={
+                    "open": "Open", "high": "High", "low": "Low",
+                    "close": "Close", "adjClose": "Adj Close", "volume": "Volume"})
+                hist = df[["Open", "High", "Low", "Close", "Volume"]].copy()
+    except Exception:
+        pass
+    return info, hist
+
+
 @st.cache_data(ttl=300)   # 5 min — kurze TTL damit Kurs + Earnings-Reaktionen aktuell sind
 def load_yfinance(ticker: str):
     stock = yf.Ticker(ticker)
@@ -1193,6 +1299,13 @@ def load_yfinance(ticker: str):
         insider = stock.insider_transactions
     except:
         pass
+    # FMP fallback when Yahoo Finance is blocked (403 on Railway servers)
+    if (hist.empty or not info) and FMP_API_KEY:
+        _fb_info, _fb_hist = _fmp_yf_info(ticker, FMP_API_KEY)
+        if not info:
+            info = _fb_info
+        if hist.empty and not _fb_hist.empty:
+            hist = _fb_hist
     return info, hist, insider
 
 @st.cache_data(ttl=3600)
@@ -1306,6 +1419,55 @@ def load_quarterly_financials(ticker: str):
     return rev, net, eps_q
 
 @st.cache_data(ttl=86400)
+def _fmp_annual_financials(ticker: str, key: str):
+    """FMP-Fallback für load_annual_financials wenn yfinance geblockt ist."""
+    _e = pd.Series(dtype=float)
+    rev = net = eps = fcf = shares_ann = ebitda_s = capex_s = goodwill_s = debt_s = cash_s = _e
+    if not key:
+        return rev, net, eps, fcf, shares_ann, ebitda_s, capex_s, goodwill_s, debt_s, cash_s
+    try:
+        _fh = {"User-Agent": "MB-AktienScreener/1.0"}
+        def _fmp_series(rows, field):
+            vals, dates = [], []
+            for r in rows:
+                try:
+                    v = r.get(field)
+                    if v is not None:
+                        dates.append(pd.Timestamp(r["date"]))
+                        vals.append(float(v))
+                except Exception:
+                    pass
+            return pd.Series(vals, index=dates).sort_index() if dates else pd.Series(dtype=float)
+
+        ri = requests.get(f"https://financialmodelingprep.com/api/v3/income-statement/{ticker}",
+                          params={"limit": 5, "apikey": key}, headers=_fh, timeout=12)
+        if ri.ok:
+            rows = ri.json() if isinstance(ri.json(), list) else []
+            rev       = _fmp_series(rows, "revenue")
+            net       = _fmp_series(rows, "netIncome")
+            eps       = _fmp_series(rows, "epsdiluted")
+            ebitda_s  = _fmp_series(rows, "ebitda")
+            shares_ann = _fmp_series(rows, "weightedAverageShsOutDil")
+
+        rc = requests.get(f"https://financialmodelingprep.com/api/v3/cash-flow-statement/{ticker}",
+                          params={"limit": 5, "apikey": key}, headers=_fh, timeout=12)
+        if rc.ok:
+            rows = rc.json() if isinstance(rc.json(), list) else []
+            fcf      = _fmp_series(rows, "freeCashFlow")
+            capex_s  = _fmp_series(rows, "capitalExpenditure").abs()
+
+        rb = requests.get(f"https://financialmodelingprep.com/api/v3/balance-sheet-statement/{ticker}",
+                          params={"limit": 5, "apikey": key}, headers=_fh, timeout=12)
+        if rb.ok:
+            rows = rb.json() if isinstance(rb.json(), list) else []
+            goodwill_s = _fmp_series(rows, "goodwill")
+            debt_s     = _fmp_series(rows, "totalDebt").abs()
+            cash_s     = _fmp_series(rows, "cashAndCashEquivalents")
+    except Exception:
+        pass
+    return rev, net, eps, fcf, shares_ann, ebitda_s, capex_s, goodwill_s, debt_s, cash_s
+
+
 def load_annual_financials(ticker: str):
     """Jahresabschluss: Umsatz, Nettogewinn, EPS, FCF, EBITDA, CapEx, Goodwill, Debt, Cash (5 Jahre)."""
     stock = yf.Ticker(ticker)
@@ -1370,6 +1532,10 @@ def load_annual_financials(ticker: str):
                     cash_s = bs.loc[row].dropna().sort_index(); break
     except Exception:
         pass
+    # FMP fallback when Yahoo Finance is blocked
+    if rev.empty and FMP_API_KEY:
+        rev, net, eps, fcf, shares_ann, ebitda_s, capex_s, goodwill_s, debt_s, cash_s = \
+            _fmp_annual_financials(ticker, FMP_API_KEY)
     return rev, net, eps, fcf, shares_ann, ebitda_s, capex_s, goodwill_s, debt_s, cash_s
 
 @st.cache_data(ttl=86400)
