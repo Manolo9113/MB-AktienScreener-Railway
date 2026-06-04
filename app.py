@@ -25829,46 +25829,38 @@ elif _at == 14:
 
     if _run_up_ki:
         _up_sys = (
-            "Du bist ein erfahrener Aktienanalyst und erstellst ausführliche Unternehmensprofile "
-            "auf Deutsch. Deine Analyse ist faktenbasiert, präzise und für private Investoren verständlich. "
-            "Strukturiere deine Antwort klar mit den folgenden Abschnitten: "
-            "GESCHÄFTSMODELL, PRODUKTE & DIENSTLEISTUNGEN, GESCHÄFTSBEREICHE, "
-            "WETTBEWERBSVORTEILE & PATENTE, FORSCHUNG & ENTWICKLUNG, "
-            "KAPITALINTENSITÄT, ZUKUNFTSAUSSICHTEN & RISIKEN. "
-            "Verwende konkrete Beispiele und nenne wo möglich Zahlen."
+            "Du bist ein erfahrener Aktienanalyst. Erstelle ein kompaktes Unternehmensprofil auf Deutsch "
+            "für private Investoren. Halte dich EXAKT an diese 8 Abschnittsüberschriften — "
+            "schreibe sie als einfache Zeile ohne ##, Nummerierung oder Doppelpunkt:\n\n"
+            "GESCHÄFTSMODELL\n"
+            "PRODUKTE & DIENSTLEISTUNGEN\n"
+            "GESCHÄFTSBEREICHE\n"
+            "WETTBEWERBSVORTEILE & PATENTE\n"
+            "FORSCHUNG & ENTWICKLUNG\n"
+            "KAPITALINTENSITÄT\n"
+            "ZUKUNFTSAUSSICHTEN & RISIKEN\n"
+            "FAZIT\n\n"
+            "Regeln: Keine Unterabschnitte, keine Nummerierungen innerhalb der Abschnitte. "
+            "Pro Abschnitt 3–5 prägnante Bullet-Points (mit '- ' beginnend). "
+            "Zahlen und Fakten wo möglich. Kurz und präzise."
         )
         _up_seg_context = ""
         if _up_prod:
-            _up_seg_context += f"\nProdukt-Segmente (Umsatzanteile): {', '.join(f'{k}: {v/sum(_up_prod.values())*100:.1f}%' for k, v in _up_prod.items())}"
+            _up_seg_context += f"\nProdukt-Segmente: {', '.join(f'{k}: {v/sum(_up_prod.values())*100:.1f}%' for k, v in _up_prod.items())}"
         if _up_geo:
             _up_seg_context += f"\nGeo-Segmente: {', '.join(f'{k}: {v/sum(_up_geo.values())*100:.1f}%' for k, v in _up_geo.items())}"
-        _up_rnd_ctx = ""
-        if not _up_rnd.empty:
-            _up_rnd_ctx = f"\nR&D-Ausgaben (letzte Jahre): {', '.join(f'{d.year}: {v/1e9:.2f} Mrd.' for d, v in _up_rnd.items())}"
-        _up_capex_ctx = ""
-        if not a_capex.empty:
-            _up_capex_ctx = f"\nCapEx (letzte Jahre): {', '.join(f'{d.year}: {v/1e9:.2f} Mrd.' for d, v in a_capex.items())}"
+        _up_rnd_ctx = f"\nR&D: {', '.join(f'{d.year}: {v/1e9:.1f}B' for d, v in _up_rnd.items())}" if not _up_rnd.empty else ""
+        _up_capex_ctx = f"\nCapEx: {', '.join(f'{d.year}: {v/1e9:.1f}B' for d, v in a_capex.items())}" if not a_capex.empty else ""
 
         _up_usr = (
-            f"Erstelle ein ausführliches Unternehmensprofil für {company_name} (Ticker: {ticker}).\n\n"
-            f"Sektor: {sector} | Branche: {industry}\n"
-            f"Land: {_up_country} | Mitarbeiter: {_up_employees or 'k.A.'}\n"
-            f"Marktkapitalisierung: {fmt_large(market_cap) if market_cap else 'k.A.'}\n"
-            f"Aktueller Kurs: {price:.2f} {_currency}\n\n"
-            f"Unternehmensbeschreibung (yfinance):\n{_up_summary or 'Keine Beschreibung verfügbar.'}\n"
-            f"{_up_seg_context}\n{_up_rnd_ctx}\n{_up_capex_ctx}\n\n"
-            f"Erstelle eine strukturierte, ausführliche Unternehmensanalyse auf Deutsch. "
-            f"Gehe besonders auf folgende Punkte ein:\n"
-            f"1. Kerngeschäft und Wertschöpfungsmodell\n"
-            f"2. Wichtigste Produkte/Dienstleistungen und deren Marktposition\n"
-            f"3. Geschäftsbereiche und geografische Präsenz\n"
-            f"4. Patente, geistiges Eigentum, Innovationsstärke\n"
-            f"5. F&E-Strategie und Zukunftsinvestitionen\n"
-            f"6. Asset-light vs. kapitalintensiv — Implikationen für Investoren\n"
-            f"7. Zukunftsaussichten: Wachstumstreiber und strategische Risiken"
+            f"Unternehmen: {company_name} ({ticker})\n"
+            f"Sektor: {sector} | Branche: {industry} | Land: {_up_country}\n"
+            f"Mitarbeiter: {_up_employees or 'k.A.'} | MarktKap: {fmt_large(market_cap) if market_cap else 'k.A.'}\n"
+            f"{_up_seg_context}{_up_rnd_ctx}{_up_capex_ctx}\n\n"
+            f"Beschreibung: {(_up_summary or '')[:800]}"
         )
         with st.spinner("KI analysiert das Unternehmen…"):
-            _up_ki_text, _up_ki_prov = call_ki_api(_up_sys, _up_usr, GEMINI_API_KEY, max_tokens=4000)
+            _up_ki_text, _up_ki_prov = call_ki_api(_up_sys, _up_usr, GEMINI_API_KEY, max_tokens=6000)
         st.session_state["_up_ki_result"] = _up_ki_text
         st.session_state["_up_ki_provider"] = _up_ki_prov
 
@@ -25879,13 +25871,14 @@ elif _at == 14:
         else:
             _up_prov_label = st.session_state.get("_up_ki_provider") or "KI"
             _up_sections = {
-                "GESCHÄFTSMODELL":            ("🏢", "#64b5f6"),
-                "PRODUKTE & DIENSTLEISTUNGEN": ("🛠️", "#4db6ac"),
-                "GESCHÄFTSBEREICHE":           ("🥧", "#ffb74d"),
+                "GESCHÄFTSMODELL":               ("🏢", "#64b5f6"),
+                "PRODUKTE & DIENSTLEISTUNGEN":   ("🛠️", "#4db6ac"),
+                "GESCHÄFTSBEREICHE":             ("🥧", "#ffb74d"),
                 "WETTBEWERBSVORTEILE & PATENTE": ("🏰", _C_POSITIVE),
-                "FORSCHUNG & ENTWICKLUNG":     ("🔬", "#7c4dff"),
-                "KAPITALINTENSITÄT":           ("⚙️", _C_NEUTRAL),
-                "ZUKUNFTSAUSSICHTEN & RISIKEN": ("🔮", "#ce93d8"),
+                "FORSCHUNG & ENTWICKLUNG":       ("🔬", "#7c4dff"),
+                "KAPITALINTENSITÄT":             ("⚙️", _C_NEUTRAL),
+                "ZUKUNFTSAUSSICHTEN & RISIKEN":  ("🔮", "#ce93d8"),
+                "FAZIT":                         ("💡", "#ffb74d"),
             }
             _up_html = [
                 f"<div class='grok-box'>"
@@ -25915,6 +25908,9 @@ elif _at == 14:
                 "ZUKUNFT":         "ZUKUNFTSAUSSICHTEN & RISIKEN",
                 "RISIK":           "ZUKUNFTSAUSSICHTEN & RISIKEN",
                 "STRATEG":         "ZUKUNFTSAUSSICHTEN & RISIKEN",
+                "FAZIT":           "FAZIT",
+                "ZUSAMMENFASSUNG": "FAZIT",
+                "INVESTMENT":      "FAZIT",
             }
             def _up_detect_sec(line):
                 # strip markdown: ##, **, __, leading/trailing whitespace and colons
