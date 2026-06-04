@@ -1629,6 +1629,134 @@ def _load_fmp_segments(ticker: str, api_key: str = "") -> dict:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
+def _load_sa_segments(ticker: str) -> dict:
+    """Scrape Geschäftssegmente von stockanalysis.com (kostenloser Fallback)."""
+    out = {"product": {}, "geo": {}}
+    try:
+        from bs4 import BeautifulSoup
+        import json as _sajson
+        _sa_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+        }
+        r = requests.get(
+            f"https://stockanalysis.com/stocks/{ticker.lower()}/financials/segments/",
+            headers=_sa_headers, timeout=15)
+        if not r.ok:
+            return out
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        # ── Versuch 1: __NEXT_DATA__ JSON ────────────────────────────────
+        _nd_tag = soup.find("script", {"id": "__NEXT_DATA__"})
+        if _nd_tag and _nd_tag.string:
+            try:
+                _nd = _sajson.loads(_nd_tag.string)
+                _pp = (_nd.get("props") or {}).get("pageProps") or {}
+                # drill to the first dict that has "headers" and "data"
+                def _find_fin(node, depth=0):
+                    if depth > 6 or not isinstance(node, dict):
+                        return None
+                    if "headers" in node and "data" in node:
+                        return node
+                    for v in node.values():
+                        res = _find_fin(v, depth + 1)
+                        if res:
+                            return res
+                    return None
+                _fin = _find_fin(_pp)
+                if _fin:
+                    _hdrs = _fin.get("headers", [])
+                    # find first non-TTM year column index
+                    _col = next((i for i, h in enumerate(_hdrs) if str(h).isdigit()), 0)
+                    _raw_data = _fin.get("data") or {}
+
+                    def _seg_from_block(block):
+                        result = {}
+                        if isinstance(block, dict):
+                            for seg_name, vals in block.items():
+                                if seg_name.lower() in ("total", "revenue", ""):
+                                    continue
+                                if isinstance(vals, list) and len(vals) > _col:
+                                    try:
+                                        v = float(str(vals[_col]).replace(",", ""))
+                                        if v > 0:
+                                            result[seg_name] = v
+                                    except (ValueError, TypeError):
+                                        pass
+                        return result
+
+                    # stockanalysis may have top-level keys like
+                    # "Revenue by Segment" / "Revenue by Geography"
+                    for _k, _v in _raw_data.items():
+                        _kl = _k.lower()
+                        _extracted = _seg_from_block(_v)
+                        if not _extracted:
+                            continue
+                        if any(w in _kl for w in ("geo", "region", "country", "geographic")):
+                            out["geo"] = _extracted
+                        elif any(w in _kl for w in ("segment", "product", "service", "business", "revenue")):
+                            out["product"] = _extracted
+
+                    # if still empty, first non-trivial block → product, second → geo
+                    if not out["product"] and not out["geo"]:
+                        _blocks = [_seg_from_block(v) for v in _raw_data.values() if isinstance(v, dict)]
+                        _blocks = [b for b in _blocks if len(b) >= 2]
+                        if len(_blocks) >= 1:
+                            out["product"] = _blocks[0]
+                        if len(_blocks) >= 2:
+                            out["geo"] = _blocks[1]
+            except Exception:
+                pass
+
+        # ── Versuch 2: HTML-Tabellen ──────────────────────────────────────
+        if not out["product"] and not out["geo"]:
+            _tables = soup.find_all("table")
+            _geo_keywords = {"geo", "geograph", "region", "country"}
+            for _ti, _tbl in enumerate(_tables):
+                # look for a preceding heading to classify geo vs product
+                _heading = ""
+                for _prev in _tbl.find_all_previous(["h2", "h3", "h4"], limit=3):
+                    _heading = _prev.get_text(strip=True).lower()
+                    break
+                _is_geo = any(w in _heading for w in _geo_keywords)
+
+                _rows = _tbl.find_all("tr")
+                if len(_rows) < 3:
+                    continue
+                _seg_dict = {}
+                for _row in _rows[1:]:
+                    _cells = _row.find_all(["th", "td"])
+                    if len(_cells) < 2:
+                        continue
+                    _name = _cells[0].get_text(strip=True)
+                    if not _name or _name.lower() in ("total", "ttm", "-"):
+                        continue
+                    # first data column = most recent year
+                    _val_str = _cells[1].get_text(strip=True).replace(",", "").replace("$", "")
+                    try:
+                        _val = float(_val_str)
+                        if _val > 0:
+                            _seg_dict[_name] = _val
+                    except (ValueError, TypeError):
+                        pass
+                if len(_seg_dict) >= 2:
+                    if _is_geo or _ti == 1:
+                        if not out["geo"]:
+                            out["geo"] = _seg_dict
+                    else:
+                        if not out["product"]:
+                            out["product"] = _seg_dict
+    except Exception:
+        pass
+    return out
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
 def _load_disruption_data(ticker: str) -> dict:
     """Fetch R&D, gross profit, and asset-tangibility history for disruption scoring."""
     out = {"rnd": pd.Series(dtype=float), "gross_profit": pd.Series(dtype=float),
@@ -25514,13 +25642,22 @@ elif _at == 14:
     else:
         st.info("Keine R&D-Daten verfügbar (üblich für Finanz-, Konsum- und Industrieunternehmen ohne eigene Forschungsabteilung).")
 
-    # ── Geschäftssegmente (FMP) ─────────────────────────────────────────────
+    # ── Geschäftssegmente (FMP → stockanalysis.com Fallback) ────────────────
     st.markdown("<div class='section-header'>🥧 Geschäftssegmente</div>", unsafe_allow_html=True)
-    _up_segs = _load_fmp_segments(ticker, FMP_API_KEY)
-    _up_prod  = _up_segs.get("product", {})
-    _up_geo   = _up_segs.get("geo", {})
+    _up_segs     = _load_fmp_segments(ticker, FMP_API_KEY)
+    _up_prod     = _up_segs.get("product", {})
+    _up_geo      = _up_segs.get("geo", {})
+    _up_seg_src  = "FMP" if (_up_prod or _up_geo) else None
+
+    if not _up_prod and not _up_geo:
+        _up_sa = _load_sa_segments(ticker)
+        _up_prod    = _up_sa.get("product", {})
+        _up_geo     = _up_sa.get("geo", {})
+        _up_seg_src = "stockanalysis.com" if (_up_prod or _up_geo) else None
 
     if _up_prod or _up_geo:
+        if _up_seg_src:
+            st.caption(f"Quelle: {_up_seg_src}")
         _up_sc1, _up_sc2 = st.columns(2)
         for _up_col, _up_seg_data, _up_seg_title, _up_seg_icon in [
             (_up_sc1, _up_prod, "Produkt- / Dienstleistungssegmente", "🛠️"),
@@ -25554,16 +25691,14 @@ elif _at == 14:
                         f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
                         f"border-radius:10px;padding:20px;text-align:center;"
                         f"color:{_C_TEXT_MUTED};font-size:0.82rem;'>"
-                        f"{_up_seg_icon} Keine Segmentdaten verfügbar"
-                        f"{'  (FMP API Key erforderlich)' if not FMP_API_KEY else ''}</div>",
+                        f"{_up_seg_icon} Keine {_up_seg_title.split()[0]}-Daten verfügbar</div>",
                         unsafe_allow_html=True)
     else:
-        _up_no_seg_reason = "Bitte FMP_API_KEY in Railway-Umgebungsvariablen eintragen." if not FMP_API_KEY else \
-            f"Für {ticker} sind keine Segmentdaten bei FMP verfügbar."
         st.markdown(
             f"<div style='background:{_C_CARD_BG};border:1px solid {_C_BORDER};"
             f"border-radius:10px;padding:20px;text-align:center;"
-            f"color:{_C_TEXT_MUTED};font-size:0.82rem;'>🥧 {_up_no_seg_reason}</div>",
+            f"color:{_C_TEXT_MUTED};font-size:0.82rem;'>"
+            f"🥧 Keine Segmentdaten verfügbar (weder FMP noch stockanalysis.com)</div>",
             unsafe_allow_html=True)
 
     # ── KI-Tiefenanalyse ────────────────────────────────────────────────────
