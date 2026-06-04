@@ -25792,31 +25792,78 @@ elif _at == 14:
                 f"<div style='color:{_C_TEXT_MUTED};font-size:0.75rem;'>Powered by {_up_prov_label}</div>"
                 f"</div></div>"
             ]
-            _up_cur_sec  = None
-            _up_cur_lines = []
+            import re as _up_re
+            # keyword → canonical section key (partial match, case-insensitive)
+            _up_kw_map = {
+                "GESCHÄFTSMOD":    "GESCHÄFTSMODELL",
+                "PRODUKTE":        "PRODUKTE & DIENSTLEISTUNGEN",
+                "DIENSTLEISTUNG":  "PRODUKTE & DIENSTLEISTUNGEN",
+                "GESCHÄFTSBEREIC": "GESCHÄFTSBEREICHE",
+                "WETTBEWERB":      "WETTBEWERBSVORTEILE & PATENTE",
+                "PATENT":          "WETTBEWERBSVORTEILE & PATENTE",
+                "INNOVATION":      "WETTBEWERBSVORTEILE & PATENTE",
+                "FORSCHUNG":       "FORSCHUNG & ENTWICKLUNG",
+                "F&E":             "FORSCHUNG & ENTWICKLUNG",
+                "R&D":             "FORSCHUNG & ENTWICKLUNG",
+                "KAPITALINTENS":   "KAPITALINTENSITÄT",
+                "ASSET-LIGHT":     "KAPITALINTENSITÄT",
+                "ASSET LIGHT":     "KAPITALINTENSITÄT",
+                "ZUKUNFT":         "ZUKUNFTSAUSSICHTEN & RISIKEN",
+                "RISIK":           "ZUKUNFTSAUSSICHTEN & RISIKEN",
+                "STRATEG":         "ZUKUNFTSAUSSICHTEN & RISIKEN",
+            }
+            def _up_detect_sec(line):
+                # strip markdown: ##, **, __, leading/trailing whitespace and colons
+                cleaned = _up_re.sub(r'^[#*_\-\s]+|[#*_\s:]+$', '', line).strip()
+                up = cleaned.upper()
+                if up in _up_sections:
+                    return up
+                for kw, sec in _up_kw_map.items():
+                    if kw in up:
+                        return sec
+                return None
+
             def _up_flush(sec, lines, parts, secs):
-                if sec and lines:
+                content_lines = [l for l in lines if l.strip()]
+                if not content_lines:
+                    return
+                if sec:
                     icon, color = secs.get(sec, ("📌", "#64b5f6"))
                     parts.append(f"<div class='grok-section-title'>{icon} {sec}</div>")
-                    txt = "\n".join(lines).strip()
-                    if txt.startswith("-"):
-                        items = [l.lstrip("- ").strip() for l in txt.split("\n") if l.strip()]
-                        parts.append("<ul style='margin:4px 0 10px 16px;padding:0;'>")
-                        for itm in items:
-                            parts.append(f"<li style='color:{_C_TEXT_PRIMARY};font-size:0.86rem;"
-                                         f"line-height:1.65;margin-bottom:3px;'>{itm}</li>")
-                        parts.append("</ul>")
+                # render lines — support markdown bullets (* or -) and plain paragraphs
+                _in_list = False
+                for ln in content_lines:
+                    ls = ln.strip()
+                    # skip leftover markdown headers
+                    if _up_re.match(r'^#{1,4}\s', ls):
+                        continue
+                    is_bullet = _up_re.match(r'^[\*\-•]\s+', ls)
+                    if is_bullet:
+                        if not _in_list:
+                            parts.append("<ul style='margin:4px 0 10px 16px;padding:0;'>")
+                            _in_list = True
+                        item = _up_re.sub(r'^[\*\-•]\s+', '', ls)
+                        # strip inline bold (**text** → text)
+                        item = _up_re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', item)
+                        parts.append(f"<li style='color:{_C_TEXT_PRIMARY};font-size:0.86rem;"
+                                     f"line-height:1.65;margin-bottom:3px;'>{item}</li>")
                     else:
-                        for ln in txt.split("\n"):
-                            ln = ln.strip()
-                            if ln:
-                                parts.append(f"<p style='color:{_C_TEXT_PRIMARY};font-size:0.86rem;"
-                                             f"line-height:1.65;margin:0 0 6px;'>{ln}</p>")
+                        if _in_list:
+                            parts.append("</ul>")
+                            _in_list = False
+                        display = _up_re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', ls)
+                        parts.append(f"<p style='color:{_C_TEXT_PRIMARY};font-size:0.86rem;"
+                                     f"line-height:1.65;margin:0 0 6px;'>{display}</p>")
+                if _in_list:
+                    parts.append("</ul>")
+
+            _up_cur_sec   = None
+            _up_cur_lines = []
             for _up_line in _up_raw.split("\n"):
-                _up_stripped = _up_line.strip().upper().rstrip(":")
-                if _up_stripped in _up_sections:
+                _up_sec_match = _up_detect_sec(_up_line)
+                if _up_sec_match:
                     _up_flush(_up_cur_sec, _up_cur_lines, _up_html, _up_sections)
-                    _up_cur_sec   = _up_stripped
+                    _up_cur_sec   = _up_sec_match
                     _up_cur_lines = []
                 else:
                     _up_cur_lines.append(_up_line)
