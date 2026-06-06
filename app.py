@@ -5648,6 +5648,13 @@ Gib deine Analyse gemäß der vorgegebenen Struktur. Schließe mit dem Abschnitt
     return system, user_msg
 
 
+# ==================== AKTIENSPIEL HTML (loaded once at module level) ====================
+try:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "aktienspiel.html"), "r", encoding="utf-8") as _f:
+        _AKTIENSPIEL_HTML = _f.read()
+except Exception:
+    _AKTIENSPIEL_HTML = "<p style='color:red'>aktienspiel.html nicht gefunden</p>"
+
 # ==================== SESSION ====================
 if "ticker" not in st.session_state:
     st.session_state["ticker"] = ""
@@ -7062,59 +7069,64 @@ with st.sidebar:
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     if not st.session_state["show_landing"] and st.button("🏠 Startseite", use_container_width=True):
-        for _k in ("show_portfolio","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
+        for _k in ("show_portfolio","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
             st.session_state[_k] = False
         st.session_state["show_landing"] = True
         st.rerun()
     if not st.session_state.get("show_market_overview") and st.button("🌍 Marktüberblick", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
             st.session_state[_k] = False
         st.session_state["show_market_overview"] = True
         st.rerun()
     if not st.session_state.get("show_stocks") and st.button("💡 Aktienideen", use_container_width=True):
-        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
+        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
             st.session_state[_k] = False
         st.session_state["show_stocks"] = True
         st.rerun()
     if not st.session_state.get("show_screener") and st.button("🔬 Aktien-Screener", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
             st.session_state[_k] = False
         st.session_state["show_screener"] = True
         st.rerun()
     if not st.session_state.get("show_compare") and st.button("⚖️ Aktien-Vergleich", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
             st.session_state[_k] = False
         st.session_state["show_compare"] = True
         st.rerun()
     if st.button("🔎 ETF-Analyzer", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
             st.session_state[_k] = False
         st.session_state["show_etf_analyzer"] = True
         st.rerun()
     if not st.session_state.get("show_wissen") and st.button("📚 Wissenswertes", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_crypto","show_rohstoffe","show_marktbewertung"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
             st.session_state[_k] = False
         st.session_state["show_wissen"] = True
         st.rerun()
     if not st.session_state.get("show_crypto") and st.button("₿ Krypto", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_rohstoffe","show_marktbewertung"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
             st.session_state[_k] = False
         st.session_state["show_crypto"] = True
         st.rerun()
     if not st.session_state.get("show_rohstoffe") and st.button("⛏️ Rohstoffe", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_marktbewertung"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_marktbewertung","show_aktienspiel"):
             st.session_state[_k] = False
         st.session_state["show_rohstoffe"] = True
         st.rerun()
     if not st.session_state.get("show_marktbewertung") and st.button("📈 Indizes Analyse", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_aktienspiel"):
             st.session_state[_k] = False
         st.session_state["show_marktbewertung"] = True
         st.rerun()
     if st.button("📁 Mein Portfolio", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung"):
+        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
             st.session_state[_k] = False
         st.session_state["show_portfolio"] = True
+        st.rerun()
+    if not st.session_state.get("show_aktienspiel") and st.button("🎮 Aktienspiel", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
+            st.session_state[_k] = False
+        st.session_state["show_aktienspiel"] = True
         st.rerun()
 
     st.markdown("<div class='section-header'>⚙️ Einstellungen</div>", unsafe_allow_html=True)
@@ -7261,7 +7273,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
     # ── Schnellnavigation ───────────────────────────────────────────
     st.markdown("<div class='section-header'>⚡ Zur Übersicht navigieren</div>", unsafe_allow_html=True)
     _nav_c1, _nav_c2 = st.columns(2)
-    _all_pages = ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung")
+    _all_pages = ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel")  # noqa: E501
     with _nav_c1:
         if st.button("🌍 Marktüberblick", use_container_width=True, type="primary", key="land_nav_markt"):
             for _k in _all_pages: st.session_state[_k] = False
@@ -7305,8 +7317,26 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_marktbewertung"] = True
             st.rerun()
+    _nav_c9, _nav_c10 = st.columns(2)
+    with _nav_c9:
+        if st.button("🎮 Aktienspiel", use_container_width=True, key="land_nav_spiel", type="primary"):
+            for _k in _all_pages: st.session_state[_k] = False
+            st.session_state["show_aktienspiel"] = True
+            st.rerun()
 
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    st.stop()
+
+# ==================== AKTIENSPIEL PAGE ====================
+elif st.session_state.get("show_aktienspiel"):
+    import streamlit.components.v1 as _stc_spiel
+    st.markdown("<div class='section-header'>🎮 Aktienspiel — Musterportfolio</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='color:#6b7a99;font-size:0.82rem;margin-bottom:12px;'>"
+        "Baue ein virtuelles Depot auf. Kurse via Yahoo Finance direkt im Browser — kein Login, kein API-Key. "
+        "Dein Depot wird im Browser gespeichert (localStorage) und bleibt über Sessions erhalten.</div>",
+        unsafe_allow_html=True)
+    _stc_spiel.html(_AKTIENSPIEL_HTML, height=860, scrolling=True)
     st.stop()
 
 # ==================== MARKTÜBERBLICK PAGE ====================
@@ -20960,6 +20990,7 @@ _TABS = [
     "📊 Kennzahlen", "📈 Wachstum", "🔮 Prognose", "📋 Fundamental", "⚖️ Bewertung",
     "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden",
     "📐 Faktor-Profil", "🧮 Altman Z-Score", "🔄 ARR & Kunden", "🏢 Unternehmens-Profil",
+    "🎮 Aktienspiel",
 ]
 _at = st.session_state.get("active_tab", 0)
 st.markdown(
@@ -20968,7 +20999,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 _nav_row1 = st.columns(8)
-_nav_row2 = st.columns(7)
+_nav_row2 = st.columns(8)
 _nav_cols = _nav_row1 + _nav_row2
 for _ni, _nlabel in enumerate(_TABS):
     _is_active = (_ni == _at)
@@ -26271,6 +26302,343 @@ elif _at == 14:
             _up_flush(_up_cur_sec, _up_cur_lines, _up_html, _up_sections)
             _up_html.append("</div>")
             st.markdown("\n".join(_up_html), unsafe_allow_html=True)
+
+# ==================== TAB 15: AKTIENSPIEL ====================
+elif _at == 15:
+    _aktienspiel_html_PLACEHOLDER = """<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0f1e;color:#dde4f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px 12px;min-height:100vh}
+.card{background:#111827;border:1px solid #1e2d47;border-radius:12px;padding:18px}
+.btn{border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;padding:7px 14px;transition:all .15s;white-space:nowrap}
+.btn-primary{background:linear-gradient(135deg,#0e7a63,#00c9a7);color:#fff}
+.btn-primary:hover{filter:brightness(1.1)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-ghost{background:transparent;border:1px solid #2a3854;color:#8a9bb5}
+.btn-ghost:hover{border-color:#00c9a7;color:#00c9a7}
+.btn-icon{background:transparent;border:1px solid #1e2d47;border-radius:6px;color:#6b7a99;cursor:pointer;font-size:13px;padding:4px 8px;transition:all .15s}
+.btn-icon:hover{border-color:#00c9a7;color:#00c9a7}
+.btn-del{background:transparent;border:1px solid #1e2d47;border-radius:6px;color:#6b7a99;cursor:pointer;font-size:13px;padding:4px 8px;transition:all .15s}
+.btn-del:hover{border-color:#ff4757;color:#ff4757}
+input,select{background:#0a0f1e;border:1px solid #2a3854;border-radius:8px;color:#dde4f0;font-size:13px;padding:8px 10px;width:100%;transition:.15s}
+input:focus,select:focus{border-color:#00c9a7;outline:none;box-shadow:0 0 0 3px rgba(0,201,167,.1)}
+input::placeholder{color:#3a4a60}
+label{color:#6b7a99;display:block;font-size:11px;letter-spacing:.5px;margin-bottom:5px;text-transform:uppercase}
+.green{color:#00c9a7}
+.red{color:#ff4757}
+.muted{color:#6b7a99}
+.overlay{align-items:center;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);bottom:0;display:flex;justify-content:center;left:0;position:fixed;right:0;top:0;z-index:50}
+.modal{background:#111827;border:1px solid #1e2d47;border-radius:16px;max-height:92vh;overflow-y:auto;padding:24px;width:min(380px,94vw)}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:18px}
+.fg{margin-bottom:12px}
+table{border-collapse:collapse;font-size:12px;width:100%}
+th{border-bottom:1px solid #1e2d47;color:#566380;font-size:10px;font-weight:700;letter-spacing:.6px;padding:8px 10px;text-align:right;text-transform:uppercase;white-space:nowrap}
+th:first-child{text-align:left}
+td{border-bottom:1px solid #0f1626;padding:10px;text-align:right;vertical-align:middle}
+td:first-child{text-align:left}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.015)}
+.badge{background:#1a2844;border-radius:5px;color:#00c9a7;display:inline-block;font-family:'SF Mono',SFMono-Regular,Consolas,monospace;font-size:12px;font-weight:700;padding:2px 7px}
+.sumcard{background:#111827;border:1px solid #1e2d47;border-radius:10px;padding:14px 16px}
+.sum-label{color:#566380;font-size:10px;font-weight:700;letter-spacing:.6px;margin-bottom:5px;text-transform:uppercase}
+.sum-val{font-size:20px;font-weight:700;line-height:1}
+.bar-track{background:#1a2844;border-radius:3px;height:3px;margin-top:4px;overflow:hidden;width:56px}
+.bar-fill{background:#00c9a7;border-radius:3px;height:100%;transition:width .4s}
+.spinner{animation:spin 1s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{padding:40px 0;text-align:center}
+.err{color:#ff4757;font-size:12px;margin-top:6px}
+.tag{background:#182234;border-radius:4px;color:#8a9bb5;font-size:10px;padding:2px 6px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useCallback,useRef}=React;
+const SK='spiel_depot_v2';
+
+/* ── Formatierung ── */
+const de=(n,d=2)=>n==null||isNaN(n)?'–':Number(n).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
+const pct=(n)=>n==null||isNaN(n)?'–':`${n>=0?'+':''}${de(n)}%`;
+const diff=(n,c='€')=>n==null||isNaN(n)?'–':`${n>=0?'+':''}${de(n)} ${c}`;
+const abs=(n,c='€')=>n==null||isNaN(n)?'–':`${de(n)} ${c}`;
+const cls=(n)=>!n||isNaN(n)?'muted':n>0?'green':'red';
+const uid=()=>Math.random().toString(36).slice(2,9);
+
+/* ── Yahoo Finance v8 Chart Fetch ── */
+async function getQuote(ticker){
+  const t=ticker.trim().toUpperCase();
+  const urls=[
+    `https://query1.finance.yahoo.com/v8/finance/chart/${t}?interval=1d&range=5d`,
+    `https://query2.finance.yahoo.com/v8/finance/chart/${t}?interval=1d&range=5d`,
+  ];
+  let lastErr=null;
+  for(const url of urls){
+    try{
+      const r=await fetch(url,{headers:{Accept:'application/json'}});
+      if(!r.ok) continue;
+      const j=await r.json();
+      const res=(j.chart?.result||[])[0];
+      if(!res?.meta) continue;
+      const m=res.meta;
+      const p=m.regularMarketPrice??m.chartPreviousClose;
+      if(!p) continue;
+      return{
+        ticker:t,price:p,
+        prev:m.chartPreviousClose||m.regularMarketPreviousClose||p,
+        currency:m.currency||'USD',
+        name:m.longName||m.shortName||t,
+      };
+    }catch(e){lastErr=e;}
+  }
+  throw new Error(lastErr?.message||'Kurs nicht verfügbar');
+}
+
+/* ── Modal: Position hinzufügen / bearbeiten ── */
+function PosModal({initial,onSave,onClose}){
+  const edit=!!initial?.id;
+  const[f,setF]=useState({
+    ticker:initial?.ticker||'',
+    shares:initial?.shares!=null?String(initial.shares):'',
+    buyPrice:initial?.buyPrice!=null?String(initial.buyPrice):'',
+    buyDate:initial?.buyDate||new Date().toISOString().slice(0,10),
+  });
+  const[busy,setBusy]=useState(false);
+  const[err,setErr]=useState('');
+  const set=(k)=>(e)=>setF(p=>({...p,[k]:e.target.value}));
+
+  async function submit(e){
+    e.preventDefault();
+    const shares=parseFloat(f.shares.replace(',','.'));
+    const buyPrice=parseFloat(f.buyPrice.replace(',','.'));
+    if(!f.ticker.trim()){setErr('Ticker eingeben.');return;}
+    if(!shares||shares<=0){setErr('Anzahl ungültig.');return;}
+    if(!buyPrice||buyPrice<=0){setErr('Kaufkurs ungültig.');return;}
+    if(!f.buyDate){setErr('Kaufdatum wählen.');return;}
+    setBusy(true);setErr('');
+    try{
+      const q=await getQuote(f.ticker);
+      onSave({id:initial?.id||uid(),ticker:q.ticker,name:q.name,shares,buyPrice,
+              buyDate:f.buyDate,currentPrice:q.price,currency:q.currency,ts:Date.now()});
+      onClose();
+    }catch(e){setErr(`"${f.ticker}" nicht gefunden. Ticker prüfen (z.B. AAPL, SAP.DE).`);}
+    setBusy(false);
+  }
+
+  return(
+    <div className="overlay" onMouseDown={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal">
+        <div className="modal-title">{edit?'✏️ Position bearbeiten':'➕ Position hinzufügen'}</div>
+        <form onSubmit={submit}>
+          <div className="fg"><label>Ticker-Symbol</label>
+            <input placeholder="z.B. AAPL · MSFT · SAP.DE · NOVO-B.CO" value={f.ticker}
+              onChange={set('ticker')} autoFocus disabled={edit} />
+          </div>
+          <div className="fg"><label>Anzahl Aktien</label>
+            <input type="number" placeholder="10" min="0.0001" step="any"
+              value={f.shares} onChange={set('shares')} /></div>
+          <div className="fg"><label>Kaufkurs</label>
+            <input type="number" placeholder="150.00" min="0.0001" step="any"
+              value={f.buyPrice} onChange={set('buyPrice')} /></div>
+          <div className="fg"><label>Kaufdatum</label>
+            <input type="date" value={f.buyDate} onChange={set('buyDate')} /></div>
+          {err&&<div className="err">{err}</div>}
+          <div style={{display:'flex',gap:'8px',marginTop:'14px'}}>
+            <button className="btn btn-primary" style={{flex:1}} disabled={busy}>
+              {busy?<span><span className="spinner">↻</span> Prüfe…</span>:(edit?'Speichern':'Hinzufügen')}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Abbrechen</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ── Haupt-App ── */
+function App(){
+  const[pos,setPos]=useState([]);
+  const[modal,setModal]=useState(null);
+  const[refreshing,setRefreshing]=useState(false);
+  const[upd,setUpd]=useState(null);
+
+  /* Load from localStorage */
+  useEffect(()=>{
+    try{const s=localStorage.getItem(SK);if(s){const d=JSON.parse(s);if(Array.isArray(d))setPos(d);}}
+    catch(e){}
+  },[]);
+
+  /* Save to localStorage */
+  useEffect(()=>{localStorage.setItem(SK,JSON.stringify(pos));},[pos]);
+
+  /* Refresh all prices */
+  const refresh=useCallback(async(current)=>{
+    if(!current.length) return;
+    setRefreshing(true);
+    const next=await Promise.all(current.map(async p=>{
+      try{const q=await getQuote(p.ticker);
+        return{...p,currentPrice:q.price,currency:q.currency,name:q.name,ts:Date.now()};}
+      catch(e){return p;}
+    }));
+    setPos(next);setUpd(new Date());setRefreshing(false);
+  },[]);
+
+  /* Auto-refresh on mount + every 60s */
+  const posRef=useRef(pos);
+  useEffect(()=>{posRef.current=pos;},[pos]);
+  useEffect(()=>{
+    if(pos.length) refresh(pos);
+    const t=setInterval(()=>refresh(posRef.current),60000);
+    return()=>clearInterval(t);
+  },[]);
+
+  function upsert(p){
+    setPos(prev=>{const i=prev.findIndex(x=>x.id===p.id);
+      if(i>=0){const n=[...prev];n[i]=p;return n;}return[...prev,p];});
+  }
+  function del(id){setPos(p=>p.filter(x=>x.id!==id));}
+
+  /* Totals */
+  const totalBuy=pos.reduce((s,p)=>s+p.buyPrice*p.shares,0);
+  const totalCur=pos.reduce((s,p)=>s+(p.currentPrice??p.buyPrice)*p.shares,0);
+  const gain=totalCur-totalBuy;
+  const gainPct=totalBuy>0?gain/totalBuy*100:0;
+  const sorted=[...pos].sort((a,b)=>(b.currentPrice??b.buyPrice)*b.shares-(a.currentPrice??a.buyPrice)*a.shares);
+
+  return(
+    <>
+    {/* ── Summary-Karten ── */}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'10px',marginBottom:'14px'}}>
+      {[
+        {l:'Depot-Wert',v:abs(totalCur),c:''},
+        {l:'Einstand',v:abs(totalBuy),c:''},
+        {l:'Gewinn / Verlust',v:diff(gain),c:cls(gain)},
+        {l:'Performance',v:pct(gainPct),c:cls(gainPct)},
+      ].map(({l,v,c})=>(
+        <div className="sumcard" key={l}>
+          <div className="sum-label">{l}</div>
+          <div className={`sum-val ${c}`}>{v}</div>
+        </div>
+      ))}
+    </div>
+
+    {/* ── Toolbar ── */}
+    <div style={{alignItems:'center',display:'flex',gap:'8px',justifyContent:'space-between',marginBottom:'12px'}}>
+      <span className="muted" style={{fontSize:'11px'}}>
+        {upd?`↺ ${upd.toLocaleTimeString('de-DE')}`:''}
+        {pos.length>0&&<span className="tag" style={{marginLeft:'8px'}}>{pos.length} Position{pos.length!==1?'en':''}</span>}
+      </span>
+      <div style={{display:'flex',gap:'8px'}}>
+        {pos.length>0&&(
+          <button className="btn btn-ghost" onClick={()=>refresh(pos)} disabled={refreshing}
+            style={{fontSize:'12px',padding:'6px 12px'}}>
+            <span className={refreshing?'spinner':''}
+              style={{display:'inline-block',marginRight:'4px'}}>↻</span>
+            {refreshing?'Lädt…':'Aktualisieren'}
+          </button>
+        )}
+        <button className="btn btn-primary" onClick={()=>setModal('new')}
+          style={{fontSize:'12px',padding:'6px 12px'}}>＋ Position</button>
+      </div>
+    </div>
+
+    {/* ── Tabelle ── */}
+    <div className="card" style={{overflowX:'auto',padding:'0'}}>
+      {pos.length===0?(
+        <div className="empty">
+          <div style={{fontSize:'32px',marginBottom:'10px',opacity:.25}}>📊</div>
+          <div className="muted" style={{marginBottom:'16px',fontSize:'13px'}}>Noch kein Depot aufgebaut</div>
+          <button className="btn btn-primary" onClick={()=>setModal('new')}>Erste Position hinzufügen</button>
+        </div>
+      ):(
+        <table>
+          <thead><tr>
+            <th style={{textAlign:'left',paddingLeft:'16px'}}>Aktie</th>
+            <th>Datum</th>
+            <th>Stück</th>
+            <th>Kaufkurs</th>
+            <th>Einstand</th>
+            <th>Kurs</th>
+            <th>Wert</th>
+            <th>+/– €</th>
+            <th>+/– %</th>
+            <th>Anteil</th>
+            <th style={{paddingRight:'16px'}}></th>
+          </tr></thead>
+          <tbody>
+          {sorted.map(p=>{
+            const cur=p.currentPrice??p.buyPrice;
+            const buyCost=p.buyPrice*p.shares;
+            const curVal=cur*p.shares;
+            const g=curVal-buyCost;
+            const gPct=(curVal/buyCost-1)*100;
+            const wt=totalCur>0?curVal/totalCur*100:0;
+            const ccy=p.currency==='USD'?'$':p.currency==='GBP'?'£':'€';
+            return(
+              <tr key={p.id}>
+                <td style={{paddingLeft:'16px'}}>
+                  <span className="badge">{p.ticker}</span>
+                  <div style={{color:'#566380',fontSize:'10px',marginTop:'2px',maxWidth:'110px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name||''}</div>
+                </td>
+                <td><span className="muted" style={{fontSize:'11px'}}>{p.buyDate}</span></td>
+                <td>{de(p.shares,p.shares%1===0?0:3)}</td>
+                <td>{de(p.buyPrice)} {ccy}</td>
+                <td>{de(buyCost)} {ccy}</td>
+                <td style={{fontWeight:600}}>{de(cur)} {ccy}</td>
+                <td style={{fontWeight:600}}>{de(curVal)} {ccy}</td>
+                <td className={cls(g)}>{diff(g,ccy)}</td>
+                <td className={cls(gPct)} style={{fontWeight:600}}>{pct(gPct)}</td>
+                <td>
+                  <div style={{alignItems:'flex-end',display:'flex',flexDirection:'column',gap:'3px'}}>
+                    <span style={{fontSize:'11px'}}>{de(wt,1)}%</span>
+                    <div className="bar-track"><div className="bar-fill" style={{width:`${Math.min(wt,100)}%`}}/></div>
+                  </div>
+                </td>
+                <td style={{paddingRight:'16px'}}>
+                  <div style={{display:'flex',gap:'5px',justifyContent:'flex-end'}}>
+                    <button className="btn-icon" title="Bearbeiten"
+                      onClick={()=>setModal({...p,shares:String(p.shares),buyPrice:String(p.buyPrice)})}>✎</button>
+                    <button className="btn-del" title="Löschen" onClick={()=>del(p.id)}>✕</button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+          </tbody>
+        </table>
+      )}
+    </div>
+
+    {/* ── Hinweis ── */}
+    <div style={{color:'#384459',fontSize:'10px',marginTop:'12px',textAlign:'center'}}>
+      Kurse via Yahoo Finance · Daten im Browser gespeichert (localStorage) · Keine Anlageberatung
+    </div>
+
+    {/* ── Modal ── */}
+    {modal&&(
+      <PosModal
+        initial={modal==='new'?null:modal}
+        onSave={upsert}
+        onClose={()=>setModal(null)}
+      />
+    )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>"""
+    import streamlit.components.v1 as _stc
+    _stc.html(_AKTIENSPIEL_HTML, height=820, scrolling=True)  # uses module-level _AKTIENSPIEL_HTML
 
 # ==================== INSIGHTS ====================
 st.markdown("<div class='section-header'>💡 Investor Insights</div>", unsafe_allow_html=True)
