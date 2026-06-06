@@ -1170,7 +1170,7 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
     return info
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300)
 def _fmp_yf_info(ticker: str, key: str) -> tuple:
     """FMP → yf_info-kompatibler dict + OHLCV-DataFrame (Fallback wenn Yahoo blockt)."""
     info: dict = {}
@@ -1304,11 +1304,14 @@ def load_yfinance(ticker: str):
     # FMP fallback when Yahoo Finance is blocked (403 on Railway servers)
     _yf_usable = bool(info and info.get("currentPrice"))
     if (hist.empty or not _yf_usable) and FMP_API_KEY:
-        _fb_info, _fb_hist = _fmp_yf_info(ticker, FMP_API_KEY)
-        if not _yf_usable:
-            info = _fb_info
-        if hist.empty and not _fb_hist.empty:
-            hist = _fb_hist
+        try:
+            _fb_info, _fb_hist = _fmp_yf_info(ticker, FMP_API_KEY)
+            if not _yf_usable and _fb_info:
+                info = _fb_info
+            if hist.empty and not _fb_hist.empty:
+                hist = _fb_hist
+        except Exception:
+            pass
     return info, hist, insider
 
 @st.cache_data(ttl=3600)
@@ -19878,7 +19881,7 @@ with st.spinner(f"Lade Daten für {ticker}..."):
         "geo":     _secapi_seg["geo"]     or _fmp_seg["geo"],
     }
 
-if hist.empty or not yf_info:
+if not yf_info or not (yf_info.get("currentPrice") or yf_info.get("longName")):
     st.markdown(f"""
     <div style="background:{_C_SURFACE}; border:1px solid #ff5252; border-radius:14px; padding:32px 36px; margin:32px 0; text-align:center;">
         <div style="font-size:2.5rem; margin-bottom:12px;">🔍</div>
@@ -19888,7 +19891,8 @@ if hist.empty or not yf_info:
             • Ticker falsch geschrieben (z.B. <strong>AAPL</strong> statt <em>Apple</em>)<br>
             • Europäische Aktien benötigen Börsen-Suffix: <strong>SAP.DE</strong>, <strong>NOVN.SW</strong>, <strong>ASML.AS</strong><br>
             • Japanische Aktien: 4-stellige Nummer + <strong>.T</strong> (z.B. <strong>7203.T</strong> für Toyota, <strong>6758.T</strong> für Sony)<br>
-            • Delisted oder OTC-Aktie — yFinance hat keine Daten
+            • Delisted oder OTC-Aktie — yFinance hat keine Daten<br>
+            {"• <strong>Railway-Server-IP blockiert von Yahoo Finance</strong> — bitte <code>FMP_API_KEY</code> in Railway-Umgebungsvariablen setzen" if not FMP_API_KEY else "• Datenabruf fehlgeschlagen — bitte kurz warten und erneut versuchen"}
         </div>
     </div>
     """, unsafe_allow_html=True)
