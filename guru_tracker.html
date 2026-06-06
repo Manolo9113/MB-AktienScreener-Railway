@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0f1e;color:#dde4f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:14px;min-height:100vh;font-size:13px}
+.hdr{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.title{font-size:17px;font-weight:700;color:#f0f4ff;letter-spacing:-.3px}
+.subtitle{color:#6b7a99;font-size:10px;margin-top:1px}
+.badge{border-radius:5px;font-size:9px;font-weight:700;padding:2px 7px;letter-spacing:.6px;text-transform:uppercase;flex-shrink:0}
+.badge-live{background:#0d2b20;color:#00e6b8;border:1px solid #0e4030}
+.badge-mock{background:#1a2844;color:#4a6080;border:1px solid #2a3854}
+.sel-wrap{position:relative;flex:1;min-width:200px;max-width:340px}
+.sel-wrap select{appearance:none;background:#111827;border:1px solid #2a3854;border-radius:8px;color:#dde4f0;font-size:13px;padding:8px 32px 8px 12px;width:100%;cursor:pointer;outline:none;transition:.15s}
+.sel-wrap select:focus{border-color:#00c9a7}
+.sel-wrap::after{content:'▾';position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#6b7a99;pointer-events:none;font-size:12px}
+.btn{border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;padding:7px 14px;transition:all .15s;white-space:nowrap}
+.btn-primary{background:linear-gradient(135deg,#0e7a63,#00c9a7);color:#fff}
+.btn-primary:hover{filter:brightness(1.1)}
+.btn-primary:disabled{opacity:.45;cursor:not-allowed}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px}
+.card{background:#111827;border:1px solid #1e2d47;border-radius:10px;padding:11px 13px}
+.card-lbl{color:#566380;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:3px}
+.card-val{color:#f0f4ff;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-sub{color:#6b7a99;font-size:10px;margin-top:2px}
+.layout{display:grid;grid-template-columns:1fr 210px;gap:12px;align-items:start}
+@media(max-width:660px){.layout{grid-template-columns:1fr}}
+.tbl-wrap{background:#111827;border:1px solid #1e2d47;border-radius:12px;overflow:hidden}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th{border-bottom:1px solid #1e2d47;color:#566380;font-size:9px;font-weight:700;letter-spacing:.5px;padding:7px 9px;text-align:right;white-space:nowrap;text-transform:uppercase;cursor:pointer;user-select:none}
+th.left{text-align:left}
+th:hover{color:#00c9a7}
+th.sorted{color:#00c9a7}
+td{border-bottom:1px solid #0f1626;padding:8px 9px;text-align:right;vertical-align:middle}
+td.left{text-align:left}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.018)}
+.tkr{background:#1a2844;border-radius:4px;color:#00c9a7;font-family:'SF Mono',monospace;font-size:10px;font-weight:700;padding:2px 6px;display:inline-block;white-space:nowrap}
+.dot{display:inline-block;border-radius:50%;vertical-align:middle;flex-shrink:0}
+.sidebar{display:flex;flex-direction:column;gap:10px}
+.panel{background:#111827;border:1px solid #1e2d47;border-radius:12px;padding:13px}
+.panel-ttl{color:#566380;font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;margin-bottom:9px}
+.legend{list-style:none}
+.legend li{display:flex;align-items:center;gap:5px;padding:3px 0;color:#8a9bb5;font-size:11px}
+.legend-pct{margin-left:auto;color:#dde4f0;font-weight:600;font-size:10px}
+.irow{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #0f1626;font-size:11px}
+.irow:last-child{border-bottom:none}
+.ik{color:#566380}
+.iv{color:#dde4f0;font-weight:600;text-align:right;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spin{border:2px solid #1e2d47;border-top-color:#00c9a7;border-radius:50%;width:26px;height:26px;animation:sp .7s linear infinite;margin:44px auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+.err{background:#150808;border:1px solid #3a1a1a;border-radius:8px;color:#ff8a80;font-size:11px;padding:10px 14px;margin:8px 0;line-height:1.5}
+.warn{background:#15120a;border:1px solid #3a2a0a;border-radius:8px;color:#ffa726;font-size:11px;padding:8px 12px;margin:0 0 10px;line-height:1.5}
+.chg-new{color:#00e6b8;font-weight:700;font-size:10px}
+.chg-inc{color:#00c9a7;font-size:10px}
+.chg-hld{color:#3a4a60;font-size:10px}
+.chg-red{color:#ffa726;font-size:10px}
+.chg-sold{color:#ff4757;font-size:10px}
+.disc{color:#2a3a50;font-size:9px;text-align:center;margin-top:12px;line-height:1.6}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+'use strict';
+const {useState,useEffect,useMemo}=React;
+
+const INVESTORS=[
+  {id:'berkshire',name:'Berkshire Hathaway',mgr:'Warren Buffett',cik:'0001067983',color:'#f59e0b',style:'Value / Konglomerat'},
+  {id:'himalaya',name:'Himalaya Capital',mgr:'Li Lu',cik:'0001709189',color:'#3b82f6',style:'Concentrated Value'},
+  {id:'pershing',name:'Pershing Square',mgr:'Bill Ackman',cik:'0001336528',color:'#8b5cf6',style:'Activist Value'},
+  {id:'baupost',name:'Baupost Group',mgr:'Seth Klarman',cik:'0000908984',color:'#10b981',style:'Margin of Safety'},
+  {id:'fairfax',name:'Fairfax Financial',mgr:'Prem Watsa',cik:'0001042046',color:'#f97316',style:'Insurance / Value'},
+  {id:'sek',name:'SEK Investing',mgr:'SEK',cik:'0001750154',color:'#ec4899',style:'Value',mockOnly:true},
+  {id:'ark',name:'ARK Invest',mgr:'Cathie Wood',cik:'0001579982',color:'#06b6d4',style:'Disruptive Innovation'},
+];
+
+const SC={
+  'Technologie':'#00c9a7','Finanzen':'#4a9eff','Energie':'#ffa726',
+  'Konsumgüter':'#66bb6a','Gesundheit':'#ab47bc','Kommunikation':'#ef5350',
+  'Industrie':'#26c6da','Immobilien':'#ec407a','Sonstiges':'#78909c',
+};
+
+const MOCK={
+  berkshire:{period:'Q3 2024',filingDate:'2024-11-14',totalValue:266030,
+    holdings:[
+      {ticker:'AAPL',name:'Apple Inc.',sector:'Technologie',value:69900,shares:300000,chg:'reduced',chgPct:67},
+      {ticker:'AXP',name:'American Express',sector:'Finanzen',value:41100,shares:151640,chg:'hold'},
+      {ticker:'BAC',name:'Bank of America',sector:'Finanzen',value:35200,shares:903777,chg:'reduced',chgPct:23},
+      {ticker:'KO',name:'Coca-Cola',sector:'Konsumgüter',value:28600,shares:400000,chg:'hold'},
+      {ticker:'CVX',name:'Chevron Corp.',sector:'Energie',value:17500,shares:118610,chg:'reduced',chgPct:5},
+      {ticker:'OXY',name:'Occidental Petroleum',sector:'Energie',value:13100,shares:264200,chg:'hold'},
+      {ticker:'MCO',name:"Moody's Corp.",sector:'Finanzen',value:10300,shares:24669,chg:'hold'},
+      {ticker:'KHC',name:'Kraft Heinz',sector:'Konsumgüter',value:8300,shares:325634,chg:'hold'},
+      {ticker:'DVA',name:'DaVita Inc.',sector:'Gesundheit',value:5900,shares:43144,chg:'hold'},
+      {ticker:'VRSN',name:'Verisign Inc.',sector:'Technologie',value:3500,shares:13000,chg:'hold'},
+      {ticker:'ULTA',name:'Ulta Beauty',sector:'Konsumgüter',value:1850,shares:690,chg:'new'},
+      {ticker:'SIRI',name:'Sirius XM',sector:'Kommunikation',value:1200,shares:3600,chg:'new'},
+    ]},
+  himalaya:{period:'Q2 2024',filingDate:'2024-08-14',totalValue:6450,
+    holdings:[
+      {ticker:'GOOGL',name:'Alphabet Inc.',sector:'Kommunikation',value:4200,shares:26000,chg:'hold'},
+      {ticker:'BAC',name:'Bank of America',sector:'Finanzen',value:1100,shares:32000,chg:'hold'},
+      {ticker:'MU',name:'Micron Technology',sector:'Technologie',value:780,shares:7800,chg:'increased',chgPct:15},
+      {ticker:'BABA',name:'Alibaba Group',sector:'Kommunikation',value:370,shares:4400,chg:'reduced',chgPct:30},
+    ]},
+  pershing:{period:'Q3 2024',filingDate:'2024-11-13',totalValue:16800,
+    holdings:[
+      {ticker:'GOOGL',name:'Alphabet Inc.',sector:'Kommunikation',value:3100,shares:19000,chg:'hold'},
+      {ticker:'HLT',name:'Hilton Worldwide',sector:'Konsumgüter',value:2900,shares:14400,chg:'hold'},
+      {ticker:'CMG',name:'Chipotle Mexican Grill',sector:'Konsumgüter',value:2600,shares:44000,chg:'reduced',chgPct:12},
+      {ticker:'QSR',name:'Restaurant Brands',sector:'Konsumgüter',value:2100,shares:32000,chg:'hold'},
+      {ticker:'BN',name:'Brookfield Corp.',sector:'Finanzen',value:1900,shares:35000,chg:'increased',chgPct:20},
+      {ticker:'CP',name:'Canadian Pacific Rwy.',sector:'Industrie',value:1600,shares:17000,chg:'hold'},
+      {ticker:'NKE',name:'Nike Inc.',sector:'Konsumgüter',value:1700,shares:19000,chg:'new'},
+      {ticker:'HHH',name:'Howard Hughes Holdings',sector:'Immobilien',value:900,shares:12000,chg:'hold'},
+    ]},
+  baupost:{period:'Q3 2024',filingDate:'2024-11-14',totalValue:8200,
+    holdings:[
+      {ticker:'LBTYA',name:'Liberty Global',sector:'Kommunikation',value:980,shares:78000,chg:'hold'},
+      {ticker:'EPAM',name:'EPAM Systems',sector:'Technologie',value:780,shares:4200,chg:'hold'},
+      {ticker:'PARA',name:'Paramount Global',sector:'Kommunikation',value:620,shares:51000,chg:'reduced',chgPct:18},
+      {ticker:'TDOC',name:'Teladoc Health',sector:'Gesundheit',value:390,shares:56000,chg:'increased',chgPct:25},
+      {ticker:'EXPE',name:'Expedia Group',sector:'Konsumgüter',value:580,shares:4200,chg:'new'},
+      {ticker:'IQ',name:'iQIYI Inc.',sector:'Kommunikation',value:280,shares:55000,chg:'hold'},
+      {ticker:'IHRT',name:'iHeartMedia',sector:'Kommunikation',value:210,shares:44000,chg:'reduced',chgPct:10},
+    ]},
+  fairfax:{period:'Q3 2024',filingDate:'2024-11-14',totalValue:5800,
+    holdings:[
+      {ticker:'BKNG',name:'Booking Holdings',sector:'Konsumgüter',value:820,shares:160,chg:'new'},
+      {ticker:'FFH',name:'Fairfax India Holdings',sector:'Finanzen',value:650,shares:30000,chg:'hold'},
+      {ticker:'IIFL',name:'IIFL Finance',sector:'Finanzen',value:490,shares:22000,chg:'increased',chgPct:10},
+      {ticker:'BDT',name:'Brit Limited',sector:'Finanzen',value:420,shares:5000,chg:'hold'},
+      {ticker:'ATCO',name:'Atlas Corp.',sector:'Industrie',value:310,shares:42000,chg:'hold'},
+      {ticker:'TCI',name:'Thomas Cook India',sector:'Konsumgüter',value:280,shares:180000,chg:'hold'},
+    ]},
+  sek:{period:'Q3 2024',filingDate:'2024-11-14',totalValue:2400,
+    holdings:[
+      {ticker:'BRK.B',name:'Berkshire Hathaway B',sector:'Finanzen',value:580,shares:1400,chg:'hold'},
+      {ticker:'MSFT',name:'Microsoft Corp.',sector:'Technologie',value:420,shares:960,chg:'hold'},
+      {ticker:'AMZN',name:'Amazon.com Inc.',sector:'Technologie',value:390,shares:2200,chg:'increased',chgPct:12},
+      {ticker:'META',name:'Meta Platforms',sector:'Kommunikation',value:310,shares:580,chg:'new'},
+      {ticker:'V',name:'Visa Inc.',sector:'Finanzen',value:280,shares:840,chg:'hold'},
+      {ticker:'JNJ',name:'Johnson & Johnson',sector:'Gesundheit',value:220,shares:1500,chg:'hold'},
+    ]},
+  ark:{period:'Q3 2024',filingDate:'2024-11-14',totalValue:14200,
+    holdings:[
+      {ticker:'TSLA',name:'Tesla Inc.',sector:'Technologie',value:3200,shares:14000,chg:'reduced',chgPct:8},
+      {ticker:'COIN',name:'Coinbase Global',sector:'Finanzen',value:1900,shares:9800,chg:'increased',chgPct:22},
+      {ticker:'ROKU',name:'Roku Inc.',sector:'Technologie',value:1100,shares:16000,chg:'hold'},
+      {ticker:'PATH',name:'UiPath Inc.',sector:'Technologie',value:980,shares:56000,chg:'hold'},
+      {ticker:'CRSP',name:'CRISPR Therapeutics',sector:'Gesundheit',value:870,shares:12000,chg:'increased',chgPct:15},
+      {ticker:'EXAS',name:'Exact Sciences',sector:'Gesundheit',value:750,shares:14000,chg:'hold'},
+      {ticker:'SQ',name:'Block Inc.',sector:'Finanzen',value:890,shares:10000,chg:'increased',chgPct:18},
+      {ticker:'BEAM',name:'Beam Therapeutics',sector:'Gesundheit',value:580,shares:28000,chg:'hold'},
+      {ticker:'TWLO',name:'Twilio Inc.',sector:'Technologie',value:520,shares:7200,chg:'new'},
+      {ticker:'PACB',name:'Pacific Biosciences',sector:'Gesundheit',value:440,shares:82000,chg:'hold'},
+    ]},
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+function fmv(n){
+  if(n==null)return'–';
+  if(n>=1000)return`$${(n/1000).toFixed(1)}B`;
+  if(n>=100)return`$${n.toFixed(0)}M`;
+  return`$${n.toFixed(1)}M`;
+}
+function fsh(n){
+  if(n==null||n===0)return'–';
+  if(n>=1000000)return`${(n/1000000).toFixed(1)}Mrd`;
+  if(n>=1000)return`${(n/1000).toFixed(0)}T`;
+  return`${n}`;
+}
+function fperiod(s){
+  if(!s)return'–';
+  try{const d=new Date(s);const q=Math.ceil((d.getMonth()+1)/3);return`Q${q} ${d.getFullYear()}`;}
+  catch{return s;}
+}
+
+// ── Donut Chart ───────────────────────────────────────────────────────────
+function DonutChart({sectors}){
+  if(!sectors||sectors.length===0)return null;
+  const cx=90,cy=90,r=72,ir=46;
+  const total=sectors.reduce((s,x)=>s+x.value,0);
+  const slices=[];
+  let ang=-Math.PI/2;
+  sectors.forEach((s,i)=>{
+    const frac=s.value/total;
+    const a=frac*2*Math.PI;
+    if(a<0.001)return;
+    const x1=cx+r*Math.cos(ang),y1=cy+r*Math.sin(ang);
+    const na=ang+a;
+    const x2=cx+r*Math.cos(na),y2=cy+r*Math.sin(na);
+    const ix2=cx+ir*Math.cos(na),iy2=cy+ir*Math.sin(na);
+    const ix1=cx+ir*Math.cos(ang),iy1=cy+ir*Math.sin(ang);
+    const large=a>Math.PI?1:0;
+    slices.push(
+      <path key={i}
+        d={`M${x1},${y1}A${r},${r},0,${large},1,${x2},${y2}L${ix2},${iy2}A${ir},${ir},0,${large},0,${ix1},${iy1}Z`}
+        fill={s.color} stroke="#111827" strokeWidth="2"/>
+    );
+    ang=na;
+  });
+  return(
+    <svg viewBox="0 0 180 180" width="160" height="160" style={{display:'block',margin:'0 auto'}}>
+      {slices}
+      <circle cx={cx} cy={cy} r={ir-1} fill="#0a0f1e"/>
+    </svg>
+  );
+}
+
+// ── Change tag ────────────────────────────────────────────────────────────
+function Chg({chg,pct}){
+  if(chg==='new')return <span className="chg-new">★ Neu</span>;
+  if(chg==='increased')return <span className="chg-inc">▲{pct?` +${pct}%`:''}</span>;
+  if(chg==='reduced')return <span className="chg-red">▼{pct?` ${pct}%`:''}</span>;
+  if(chg==='sold')return <span className="chg-sold">✕ Verk.</span>;
+  return <span className="chg-hld">—</span>;
+}
+
+// ── SEC live fetch ────────────────────────────────────────────────────────
+async function fetchSEC(cik){
+  const padded=cik.replace(/\D/g,'').padStart(10,'0');
+  const numeric=String(parseInt(padded,10));
+  const sig=AbortSignal.timeout(12000);
+
+  const subRes=await fetch(`https://data.sec.gov/submissions/CIK${padded}.json`,{signal:sig});
+  if(!subRes.ok)throw new Error(`Submissions HTTP ${subRes.status}`);
+  const sub=await subRes.json();
+
+  const rec=sub.filings?.recent;
+  if(!rec?.form)throw new Error('Keine Filings in der Antwort');
+  const forms=rec.form;
+  let idx=-1;
+  for(let i=0;i<forms.length;i++){if(forms[i]==='13F-HR'){idx=i;break;}}
+  if(idx<0)throw new Error('Kein 13F-HR Filing gefunden');
+
+  const accNum=rec.accessionNumber[idx];
+  const accFlat=accNum.replace(/-/g,'');
+  const period=rec.reportDate?.[idx]||'';
+  const filingDate=rec.filingDate?.[idx]||'';
+
+  const idxRes=await fetch(
+    `https://www.sec.gov/Archives/edgar/data/${numeric}/${accFlat}/index.json`,
+    {signal:AbortSignal.timeout(12000)}
+  );
+  if(!idxRes.ok)throw new Error(`Filing-Index HTTP ${idxRes.status}`);
+  const idxData=await idxRes.json();
+
+  const items=idxData.directory?.item||[];
+  const xmlItem=
+    items.find(it=>it.name.toLowerCase().includes('infotable')&&it.name.toLowerCase().endsWith('.xml'))||
+    items.find(it=>it.name.toLowerCase().endsWith('.xml')&&!it.name.toLowerCase().startsWith('primary'));
+  if(!xmlItem)throw new Error('InfoTable-XML nicht im Filing gefunden');
+
+  const xmlRes=await fetch(
+    `https://www.sec.gov/Archives/edgar/data/${numeric}/${accFlat}/${xmlItem.name}`,
+    {signal:AbortSignal.timeout(20000)}
+  );
+  if(!xmlRes.ok)throw new Error(`XML HTTP ${xmlRes.status}`);
+  const xmlText=await xmlRes.text();
+
+  const doc=new DOMParser().parseFromString(xmlText,'application/xml');
+  const rows=doc.querySelectorAll('infoTable');
+  if(!rows.length)throw new Error('Keine Holdings im XML');
+
+  const map={};
+  rows.forEach(r=>{
+    const name=(r.querySelector('nameOfIssuer')?.textContent||'').trim();
+    const val=parseInt(r.querySelector('value')?.textContent||'0',10);
+    const shr=parseInt(r.querySelector('sshPrnamt')?.textContent||'0',10);
+    if(!name||val<=0)return;
+    const key=name.toUpperCase();
+    if(map[key]){map[key].value+=val/1000;map[key].shares+=shr;}
+    else{map[key]={name,value:val/1000,shares:shr,sector:'Sonstiges',chg:'hold',chgPct:null,ticker:''};}
+  });
+  const all=Object.values(map).sort((a,b)=>b.value-a.value);
+  const totalValue=all.reduce((s,h)=>s+h.value,0);
+  return{period:fperiod(period),filingDate,totalValue,holdings:all.slice(0,20),source:'live'};
+}
+
+// ── App ───────────────────────────────────────────────────────────────────
+function App(){
+  const[selId,setSelId]=useState('berkshire');
+  const[data,setData]=useState(null);
+  const[loading,setLoading]=useState(false);
+  const[liveErr,setLiveErr]=useState('');
+  const[isLive,setIsLive]=useState(false);
+  const[sortCol,setSortCol]=useState('value');
+  const[sortAsc,setSortAsc]=useState(false);
+
+  const inv=INVESTORS.find(x=>x.id===selId)||INVESTORS[0];
+
+  useEffect(()=>{
+    setData({...MOCK[selId],source:'mock'});
+    setIsLive(false);setLiveErr('');
+  },[selId]);
+
+  async function loadLive(){
+    if(inv.mockOnly){setLiveErr('Für diesen Investor ist kein bestätigtes SEC-CIK hinterlegt — Mock-Daten werden angezeigt.');return;}
+    setLoading(true);setLiveErr('');
+    try{
+      const res=await fetchSEC(inv.cik);
+      setData(res);setIsLive(true);
+    }catch(e){
+      setLiveErr(`Live-Daten nicht verfügbar: ${e.message}. Mock-Daten werden verwendet.`);
+    }finally{setLoading(false);}
+  }
+
+  const sectors=useMemo(()=>{
+    if(!data?.holdings)return[];
+    const m={};
+    data.holdings.forEach(h=>{if(h.chg!=='sold'){const s=h.sector||'Sonstiges';m[s]=(m[s]||0)+h.value;}});
+    return Object.entries(m).map(([n,v])=>({name:n,value:v,color:SC[n]||SC['Sonstiges']})).sort((a,b)=>b.value-a.value);
+  },[data]);
+
+  const sorted=useMemo(()=>{
+    if(!data?.holdings)return[];
+    return[...data.holdings].sort((a,b)=>{
+      let va=a[sortCol]??0,vb=b[sortCol]??0;
+      if(typeof va==='string'){va=va.toLowerCase();vb=vb.toLowerCase();}
+      return sortAsc?(va>vb?1:va<vb?-1:0):(va<vb?1:va>vb?-1:0);
+    });
+  },[data,sortCol,sortAsc]);
+
+  function sort(col){if(sortCol===col)setSortAsc(!sortAsc);else{setSortCol(col);setSortAsc(false);}}
+  function sArrow(col){if(sortCol!==col)return'';return sortAsc?' ↑':' ↓';}
+
+  const active=sorted.filter(h=>h.chg!=='sold');
+  const tv=data?.totalValue||0;
+  const top1=active[0];
+
+  return(
+    <div>
+      {/* Header */}
+      <div className="hdr">
+        <div>
+          <div className="title">📊 Guru Portfolio Tracker</div>
+          <div className="subtitle">Basierend auf SEC 13F-HR Filings · EDGAR</div>
+        </div>
+        <div className="sel-wrap">
+          <select value={selId} onChange={e=>setSelId(e.target.value)}>
+            {INVESTORS.map(x=>(
+              <option key={x.id} value={x.id}>{x.name} — {x.mgr}</option>
+            ))}
+          </select>
+        </div>
+        <button className="btn btn-primary" onClick={loadLive} disabled={loading} aria-label="Live-Daten laden">
+          {loading?'Lädt…':'🔄 Live laden'}
+        </button>
+        <span className={`badge ${isLive?'badge-live':'badge-mock'}`}>{isLive?'LIVE':'MOCK'}</span>
+      </div>
+
+      {liveErr&&<div className="warn">⚠️ {liveErr}</div>}
+      {isLive&&<div className="warn" style={{background:'#0d1a10',borderColor:'#0e4030',color:'#6b9b6b'}}>
+        ℹ️ Live-Daten enthalten keine Vorquartals-Vergleiche (▲▼) — Veränderungen nur in Mock-Daten verfügbar.
+      </div>}
+
+      {loading&&<div className="spin"/>}
+
+      {!loading&&data&&(
+        <>
+          {/* Summary cards */}
+          <div className="cards">
+            <div className="card">
+              <div className="card-lbl">Portfolio-Wert</div>
+              <div className="card-val">{fmv(tv)}</div>
+              <div className="card-sub">{data.period||'–'}</div>
+            </div>
+            <div className="card">
+              <div className="card-lbl">Positionen</div>
+              <div className="card-val">{active.length}</div>
+              <div className="card-sub">im 13F gemeldet</div>
+            </div>
+            <div className="card">
+              <div className="card-lbl">Größte Position</div>
+              <div className="card-val" style={{fontSize:'13px'}}>{top1?.ticker||top1?.name?.split(' ')[0]||'–'}</div>
+              <div className="card-sub">{tv&&top1?(top1.value/tv*100).toFixed(1)+'%':''} des Portfolios</div>
+            </div>
+            <div className="card">
+              <div className="card-lbl">Strategie</div>
+              <div className="card-val" style={{fontSize:'12px'}}>{inv.style}</div>
+              <div className="card-sub">Filing: {data.filingDate||data.period||'–'}</div>
+            </div>
+          </div>
+
+          {/* Layout */}
+          <div className="layout">
+            {/* Table */}
+            <div className="tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th className={`left${sortCol==='ticker'?' sorted':''}`} onClick={()=>sort('ticker')}>
+                      Ticker{sArrow('ticker')}
+                    </th>
+                    <th className={`left${sortCol==='name'?' sorted':''}`} onClick={()=>sort('name')}>
+                      Unternehmen{sArrow('name')}
+                    </th>
+                    <th className={`left${sortCol==='sector'?' sorted':''}`} onClick={()=>sort('sector')}>
+                      Sektor{sArrow('sector')}
+                    </th>
+                    <th className={sortCol==='value'?'sorted':''} onClick={()=>sort('value')}>
+                      Wert{sArrow('value')}
+                    </th>
+                    <th>Anteil</th>
+                    <th className={sortCol==='shares'?'sorted':''} onClick={()=>sort('shares')}>
+                      Aktien{sArrow('shares')}
+                    </th>
+                    <th>Veränd.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((h,i)=>(
+                    <tr key={i} style={h.chg==='sold'?{opacity:.45}:{}}>
+                      <td className="left">
+                        <span className="tkr">{h.ticker||'—'}</span>
+                      </td>
+                      <td className="left" style={{maxWidth:'170px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'#c4cfe0'}}>
+                        {h.name}
+                      </td>
+                      <td className="left">
+                        <span className="dot" style={{background:SC[h.sector]||SC['Sonstiges'],width:'6px',height:'6px',marginRight:'5px'}}/>
+                        {h.sector}
+                      </td>
+                      <td style={{fontWeight:600,color:'#e8eeff'}}>{fmv(h.value)}</td>
+                      <td style={{color:'#8a9bb5'}}>{tv?(h.value/tv*100).toFixed(1)+'%':'–'}</td>
+                      <td style={{color:'#6b7a99'}}>{fsh(h.shares)}</td>
+                      <td><Chg chg={h.chg} pct={h.chgPct}/></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Sidebar */}
+            <div className="sidebar">
+              <div className="panel">
+                <div className="panel-ttl">Sektorverteilung</div>
+                <DonutChart sectors={sectors}/>
+                <ul className="legend" style={{marginTop:'8px'}}>
+                  {sectors.map((s,i)=>{
+                    const stotal=sectors.reduce((a,x)=>a+x.value,0);
+                    return(
+                      <li key={i}>
+                        <span className="dot" style={{background:s.color,width:'7px',height:'7px'}}/>
+                        <span>{s.name}</span>
+                        <span className="legend-pct">{(s.value/stotal*100).toFixed(0)}%</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+              <div className="panel">
+                <div className="panel-ttl">Investor Info</div>
+                <div className="irow"><span className="ik">Manager</span><span className="iv">{inv.mgr}</span></div>
+                <div className="irow"><span className="ik">Fonds</span><span className="iv">{inv.name}</span></div>
+                <div className="irow"><span className="ik">Strategie</span><span className="iv">{inv.style}</span></div>
+                <div className="irow">
+                  <span className="ik">SEC CIK</span>
+                  <span className="iv" style={{fontFamily:'monospace',fontSize:'10px'}}>{inv.cik}</span>
+                </div>
+                <div className="irow"><span className="ik">Periode</span><span className="iv">{data.period||'–'}</span></div>
+                <div className="irow"><span className="ik">Quelle</span><span className="iv">{isLive?'SEC EDGAR Live':'Mock-Daten'}</span></div>
+              </div>
+              {/* Legend */}
+              <div className="panel" style={{fontSize:'10px',color:'#3a4a60',lineHeight:'1.6'}}>
+                <span className="chg-new">★ Neu</span> neue Position &nbsp;
+                <span className="chg-inc">▲</span> aufgestockt &nbsp;
+                <span className="chg-hld">—</span> unverändert &nbsp;
+                <span className="chg-red">▼</span> reduziert
+              </div>
+            </div>
+          </div>
+
+          <div className="disc">
+            13F-Filings erfassen nur US-börsennotierte Wertpapiere mit einem Meldepflicht-Schwellenwert ab $100M.
+            Verzug: bis zu 45 Tage nach Quartalsende. Keine Shorts, Anleihen oder internationale Positionen.
+            Keine Anlageberatung.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

@@ -5682,6 +5682,13 @@ try:
 except Exception:
     _AKTIENSPIEL_HTML = "<p style='color:red'>aktienspiel.html nicht gefunden</p>"
 
+# ==================== GURU TRACKER HTML (loaded once at module level) ====================
+try:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "guru_tracker.html"), "r", encoding="utf-8") as _f:
+        _GURU_TRACKER_HTML = _f.read()
+except Exception:
+    _GURU_TRACKER_HTML = "<p style='color:red'>guru_tracker.html nicht gefunden</p>"
+
 # ==================== SESSION ====================
 if "ticker" not in st.session_state:
     st.session_state["ticker"] = ""
@@ -7096,64 +7103,69 @@ with st.sidebar:
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     if not st.session_state["show_landing"] and st.button("🏠 Startseite", use_container_width=True):
-        for _k in ("show_portfolio","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
+        for _k in ("show_portfolio","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel","show_guru_tracker"):
             st.session_state[_k] = False
         st.session_state["show_landing"] = True
         st.rerun()
     if not st.session_state.get("show_market_overview") and st.button("🌍 Marktüberblick", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel","show_guru_tracker"):
             st.session_state[_k] = False
         st.session_state["show_market_overview"] = True
         st.rerun()
     if not st.session_state.get("show_stocks") and st.button("💡 Aktienideen", use_container_width=True):
-        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
+        for _k in ("show_landing","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel","show_guru_tracker"):
             st.session_state[_k] = False
         st.session_state["show_stocks"] = True
         st.rerun()
     if not st.session_state.get("show_screener") and st.button("🔬 Aktien-Screener", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel","show_guru_tracker"):
             st.session_state[_k] = False
         st.session_state["show_screener"] = True
         st.rerun()
     if not st.session_state.get("show_compare") and st.button("⚖️ Aktien-Vergleich", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel","show_guru_tracker"):
             st.session_state[_k] = False
         st.session_state["show_compare"] = True
         st.rerun()
     if st.button("🔎 ETF-Analyzer", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel","show_guru_tracker"):
             st.session_state[_k] = False
         st.session_state["show_etf_analyzer"] = True
         st.rerun()
     if not st.session_state.get("show_wissen") and st.button("📚 Wissenswertes", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel","show_guru_tracker"):
             st.session_state[_k] = False
         st.session_state["show_wissen"] = True
         st.rerun()
     if not st.session_state.get("show_crypto") and st.button("₿ Krypto", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_rohstoffe","show_marktbewertung","show_aktienspiel","show_guru_tracker"):
             st.session_state[_k] = False
         st.session_state["show_crypto"] = True
         st.rerun()
     if not st.session_state.get("show_rohstoffe") and st.button("⛏️ Rohstoffe", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_marktbewertung","show_aktienspiel"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_marktbewertung","show_aktienspiel","show_guru_tracker"):
             st.session_state[_k] = False
         st.session_state["show_rohstoffe"] = True
         st.rerun()
     if not st.session_state.get("show_marktbewertung") and st.button("📈 Indizes Analyse", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_aktienspiel"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_aktienspiel","show_guru_tracker"):
             st.session_state[_k] = False
         st.session_state["show_marktbewertung"] = True
         st.rerun()
     if st.button("📁 Mein Portfolio", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
+        for _k in ("show_landing","show_stocks","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel","show_guru_tracker"):
             st.session_state[_k] = False
         st.session_state["show_portfolio"] = True
         st.rerun()
     if not st.session_state.get("show_aktienspiel") and st.button("🎮 Aktienspiel", use_container_width=True):
-        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel"):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel","show_guru_tracker"):
             st.session_state[_k] = False
         st.session_state["show_aktienspiel"] = True
+        st.rerun()
+    if not st.session_state.get("show_guru_tracker") and st.button("📊 Guru-Tracker", use_container_width=True):
+        for _k in ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel","show_guru_tracker"):
+            st.session_state[_k] = False
+        st.session_state["show_guru_tracker"] = True
         st.rerun()
 
     st.markdown("<div class='section-header'>⚙️ Einstellungen</div>", unsafe_allow_html=True)
@@ -7300,7 +7312,7 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
     # ── Schnellnavigation ───────────────────────────────────────────
     st.markdown("<div class='section-header'>⚡ Zur Übersicht navigieren</div>", unsafe_allow_html=True)
     _nav_c1, _nav_c2 = st.columns(2)
-    _all_pages = ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel")  # noqa: E501
+    _all_pages = ("show_landing","show_stocks","show_portfolio","show_etf_analyzer","show_market_overview","show_compare","show_screener","show_wissen","show_crypto","show_rohstoffe","show_marktbewertung","show_aktienspiel","show_guru_tracker")  # noqa: E501
     with _nav_c1:
         if st.button("🌍 Marktüberblick", use_container_width=True, type="primary", key="land_nav_markt"):
             for _k in _all_pages: st.session_state[_k] = False
@@ -7350,6 +7362,11 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_aktienspiel"] = True
             st.rerun()
+    with _nav_c10:
+        if st.button("📊 Guru-Tracker", use_container_width=True, key="land_nav_guru", type="primary"):
+            for _k in _all_pages: st.session_state[_k] = False
+            st.session_state["show_guru_tracker"] = True
+            st.rerun()
 
     st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
     st.stop()
@@ -7383,6 +7400,18 @@ elif st.session_state.get("show_aktienspiel"):
         1
     )
     _stc_spiel.html(_spiel_html, height=860, scrolling=True)
+    st.stop()
+
+# ==================== GURU TRACKER PAGE ====================
+elif st.session_state.get("show_guru_tracker"):
+    import streamlit.components.v1 as _stc_guru
+    st.markdown("<div class='section-header'>📊 Guru Portfolio Tracker</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='color:#6b7a99;font-size:0.82rem;margin-bottom:12px;'>"
+        "Portfolios bekannter Investoren basierend auf SEC 13F-HR Filings. "
+        "Live-Daten via SEC EDGAR API — kein API-Key erforderlich.</div>",
+        unsafe_allow_html=True)
+    _stc_guru.html(_GURU_TRACKER_HTML, height=900, scrolling=True)
     st.stop()
 
 # ==================== MARKTÜBERBLICK PAGE ====================
@@ -21036,7 +21065,7 @@ _TABS = [
     "📊 Kennzahlen", "📈 Wachstum", "🔮 Prognose", "📋 Fundamental", "⚖️ Bewertung",
     "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden",
     "📐 Faktor-Profil", "🧮 Altman Z-Score", "🔄 ARR & Kunden", "🏢 Unternehmens-Profil",
-    "🎮 Aktienspiel",
+    "🎮 Aktienspiel", "📊 Guru-Tracker",
 ]
 _at = st.session_state.get("active_tab", 0)
 st.markdown(
@@ -21044,7 +21073,7 @@ st.markdown(
     f"letter-spacing:.09em;margin-bottom:4px;'>Analyse-Bereich wählen</div>",
     unsafe_allow_html=True,
 )
-_nav_row1 = st.columns(8)
+_nav_row1 = st.columns(9)
 _nav_row2 = st.columns(8)
 _nav_cols = _nav_row1 + _nav_row2
 for _ni, _nlabel in enumerate(_TABS):
@@ -26374,6 +26403,11 @@ elif _at == 15:
     )
     import streamlit.components.v1 as _stc
     _stc.html(_sp_html, height=860, scrolling=True)
+
+# ==================== TAB 16: GURU TRACKER ====================
+elif _at == 16:
+    import streamlit.components.v1 as _stc_gt
+    _stc_gt.html(_GURU_TRACKER_HTML, height=900, scrolling=True)
 
 # ==================== INSIGHTS ====================
 insights = []
