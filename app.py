@@ -1364,6 +1364,8 @@ def _fmp_yf_info(ticker: str, key: str) -> tuple:
                 hist = df[["Open", "High", "Low", "Close", "Volume"]].copy()
     except Exception:
         pass
+    if not info and hist.empty:
+        raise RuntimeError("FMP returned no usable data — skipping cache")
     return info, hist
 
 
@@ -1391,7 +1393,7 @@ def load_yfinance(ticker: str):
     except:
         pass
     # Fallback chain: yfinance library → Yahoo direct API → FMP
-    _yf_usable = bool(info and info.get("currentPrice"))
+    _yf_usable = bool(info) and info.get("currentPrice") is not None
     if not _yf_usable or hist.empty:
         try:
             _d_info, _d_hist = _yf_direct_quote(ticker)
@@ -7394,9 +7396,10 @@ elif st.session_state.get("show_aktienspiel"):
         "Dein Depot wird im Browser gespeichert (localStorage) und bleibt über Sessions erhalten.</div>",
         unsafe_allow_html=True)
     _spiel_server_data = _load_aktienspiel()
+    _spiel_json = _json.dumps(_spiel_server_data).replace("</", "<\\/")
     _spiel_html = _AKTIENSPIEL_HTML.replace(
         "window.__SPIEL_INIT__",
-        f"window.__SPIEL_INIT__ = {_json.dumps(_spiel_server_data)}",
+        f"window.__SPIEL_INIT__ = {_spiel_json}",
         1
     )
     _stc_spiel.html(_spiel_html, height=860, scrolling=True)
@@ -20092,6 +20095,10 @@ price_prev = (yf_info.get("regularMarketPreviousClose")
               or (float(hist["Close"].iloc[-2]) if len(hist) > 1 else price))
 price_change = price - price_prev
 price_change_pct = (price_change / price_prev * 100) if price_prev != 0 else 0
+if not price and hist.empty:
+    st.warning(f"⚠️ Für **{ticker}** konnte kein aktueller Kurs ermittelt werden. "
+               "Kennzahlen und Charts sind nicht verfügbar.")
+    st.stop()
 
 fcf = yf_info.get("freeCashflow")
 market_cap = yf_info.get("marketCap")
@@ -23217,6 +23224,7 @@ elif _at == 7:
         chart_data = hist.copy()
         title_suffix = "Tageskerzen"
 
+    close = pd.Series(dtype=float)  # fallback; properly assigned below when chart_data is not empty
     if chart_data.empty:
         st.warning("Keine Daten für diesen Zeitrahmen verfügbar.")
     else:
@@ -26396,9 +26404,10 @@ elif _at == 15:
         st.query_params.clear()
     # ── Render component with server-side initial data ────────────────────
     _sp_server = _load_aktienspiel()
+    _sp_json = _json_sp.dumps(_sp_server).replace("</", "<\\/")
     _sp_html = _AKTIENSPIEL_HTML.replace(
         "window.__SPIEL_INIT__",
-        f"window.__SPIEL_INIT__ = {_json_sp.dumps(_sp_server)}",
+        f"window.__SPIEL_INIT__ = {_sp_json}",
         1
     )
     import streamlit.components.v1 as _stc

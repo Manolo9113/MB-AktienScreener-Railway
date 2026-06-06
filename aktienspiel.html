@@ -85,7 +85,7 @@ async function getQuote(ticker){
       const m=(j.chart?.result||[])[0]?.meta;
       if(!m) continue;
       const p=m.regularMarketPrice??m.chartPreviousClose;
-      if(!p) continue;
+      if(p==null) continue;
       return{ticker:t,price:p,prev:m.chartPreviousClose||m.regularMarketPreviousClose||p,
         currency:m.currency||'USD',name:m.longName||m.shortName||t};
     }catch(e){}

@@ -299,6 +299,7 @@ function App(){
   useEffect(()=>{
     setData({...MOCK[selId],source:'mock'});
     setIsLive(false);setLiveErr('');
+    setSortCol('value');setSortAsc(false);
   },[selId]);
 
   async function loadLive(){
@@ -444,16 +445,13 @@ function App(){
                 <div className="panel-ttl">Sektorverteilung</div>
                 <DonutChart sectors={sectors}/>
                 <ul className="legend" style={{marginTop:'8px'}}>
-                  {sectors.map((s,i)=>{
-                    const stotal=sectors.reduce((a,x)=>a+x.value,0);
-                    return(
+                  {(()=>{const stotal=sectors.reduce((a,x)=>a+x.value,0);return sectors.map((s,i)=>(
                       <li key={i}>
                         <span className="dot" style={{background:s.color,width:'7px',height:'7px'}}/>
                         <span>{s.name}</span>
                         <span className="legend-pct">{(s.value/stotal*100).toFixed(0)}%</span>
                       </li>
-                    );
-                  })}
+                    ));})()}
                 </ul>
               </div>
               <div className="panel">
