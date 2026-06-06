@@ -1171,6 +1171,68 @@ def _patch_info_from_statements(stock: "yf.Ticker", info: dict) -> dict:
 
 
 @st.cache_data(ttl=300)
+def _yf_direct_quote(ticker: str) -> tuple:
+    """Direct Yahoo Finance v8/chart API — no library, no API key needed.
+    Used as intermediate fallback between yfinance library and FMP."""
+    info: dict = {}
+    hist = pd.DataFrame()
+    _fh = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": f"https://finance.yahoo.com/quote/{ticker}/",
+    }
+    for base in ("query1", "query2"):
+        try:
+            r = requests.get(
+                f"https://{base}.finance.yahoo.com/v8/finance/chart/{ticker}",
+                params={"interval": "1d", "range": "5y"},
+                headers=_fh, timeout=15,
+            )
+            if not r.ok:
+                continue
+            data = r.json()
+            result = (data.get("chart", {}).get("result") or [None])[0]
+            if not result:
+                continue
+            meta = result.get("meta", {})
+            price = meta.get("regularMarketPrice")
+            if not price:
+                continue
+            info.update({
+                "currentPrice":                 price,
+                "regularMarketPrice":           price,
+                "regularMarketPreviousClose":   meta.get("chartPreviousClose") or meta.get("regularMarketPreviousClose"),
+                "previousClose":                meta.get("chartPreviousClose") or meta.get("regularMarketPreviousClose"),
+                "currency":                     meta.get("currency", "USD") or "USD",
+                "marketCap":                    meta.get("marketCap"),
+                "longName":                     meta.get("longName") or meta.get("shortName") or ticker,
+                "shortName":                    meta.get("shortName") or ticker,
+                "fiftyTwoWeekHigh":             meta.get("fiftyTwoWeekHigh"),
+                "fiftyTwoWeekLow":              meta.get("fiftyTwoWeekLow"),
+                "exchangeName":                 meta.get("exchangeName", ""),
+                "exchange":                     meta.get("exchangeName", ""),
+                "_yf_direct":                   True,
+            })
+            # Parse OHLCV history
+            timestamps = result.get("timestamp", [])
+            ohlcv = (result.get("indicators", {}).get("quote") or [{}])[0]
+            if timestamps and ohlcv:
+                df = pd.DataFrame({
+                    "Open":   ohlcv.get("open", []),
+                    "High":   ohlcv.get("high", []),
+                    "Low":    ohlcv.get("low", []),
+                    "Close":  ohlcv.get("close", []),
+                    "Volume": ohlcv.get("volume", []),
+                }, index=pd.to_datetime(timestamps, unit="s"))
+                hist = df.dropna(subset=["Close"])
+            break
+        except Exception:
+            continue
+    return info, hist
+
+
+@st.cache_data(ttl=300)
 def _fmp_yf_info(ticker: str, key: str) -> tuple:
     """FMP → yf_info-kompatibler dict + OHLCV-DataFrame (Fallback wenn Yahoo blockt)."""
     info: dict = {}
@@ -1301,9 +1363,19 @@ def load_yfinance(ticker: str):
         insider = stock.insider_transactions
     except:
         pass
-    # FMP fallback when Yahoo Finance is blocked (403 on Railway servers)
+    # Fallback chain: yfinance library → Yahoo direct API → FMP
     _yf_usable = bool(info and info.get("currentPrice"))
-    if (hist.empty or not _yf_usable) and FMP_API_KEY:
+    if not _yf_usable or hist.empty:
+        try:
+            _d_info, _d_hist = _yf_direct_quote(ticker)
+            if not _yf_usable and _d_info:
+                info = _d_info
+                _yf_usable = bool(info.get("currentPrice"))
+            if hist.empty and not _d_hist.empty:
+                hist = _d_hist
+        except Exception:
+            pass
+    if (not _yf_usable or hist.empty) and FMP_API_KEY:
         try:
             _fb_info, _fb_hist = _fmp_yf_info(ticker, FMP_API_KEY)
             if not _yf_usable and _fb_info:
