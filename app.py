@@ -7170,6 +7170,11 @@ with st.sidebar:
         st.session_state["show_guru_tracker"] = True
         st.rerun()
 
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    if st.button("🔄 App aktualisieren", use_container_width=True, help="Cachedaten leeren und App neu laden"):
+        st.cache_data.clear()
+        st.rerun()
+
     st.markdown("<div class='section-header'>⚙️ Einstellungen</div>", unsafe_allow_html=True)
     show_peers = st.toggle("Peer-Vergleich anzeigen", value=True)
     show_insider = st.toggle("Insider-Transaktionen", value=True)
