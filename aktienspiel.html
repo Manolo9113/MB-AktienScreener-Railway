@@ -339,33 +339,60 @@ function PosModal({initial,onSave,onClose}){
   const[resolvedName,setResolvedName]=useState('');
   const[resolvedCcy,setResolvedCcy]=useState('');
   const[fmpData,setFmpData]=useState(null);
+  const[suggs,setSuggs]=useState([]);
   const[err,setErr]=useState('');
+  const searchTimer=useRef(null);
   const set=(k)=>(e)=>setF(p=>({...p,[k]:e.target.value}));
 
-  /* Close on ESC */
-  useEffect(()=>{
-    const h=(e)=>{if(e.key==='Escape')onClose();};
-    window.addEventListener('keydown',h);
-    return()=>window.removeEventListener('keydown',h);
-  },[onClose]);
+  /* Autocomplete: Suche nach Firmennamen oder Ticker */
+  function onTickerInput(e){
+    const val=e.target.value;
+    setF(p=>({...p,ticker:val}));
+    clearTimeout(searchTimer.current);
+    const q=val.trim();
+    if(!q||q.length<2||!window.__FMP_KEY__){setSuggs([]);return;}
+    searchTimer.current=setTimeout(async()=>{
+      try{
+        const r=await fetch(
+          `https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(q)}&limit=8&apikey=${window.__FMP_KEY__}`,
+          {signal:mkSignal(5000)});
+        if(!r.ok)return;
+        const data=await r.json();
+        setSuggs((data||[])
+          .filter(x=>x.symbol&&x.name&&!['CRYPTO','FOREX','COMMODITY'].includes(x.exchangeShortName))
+          .slice(0,6));
+      }catch(e){}
+    },350);
+  }
 
-  /* Auto-fetch price when ticker loses focus */
-  async function onTickerBlur(){
-    const t=f.ticker.trim();
-    if(!t||isEdit) return;
-    setFetching(true);setErr('');setResolvedName('');
+  /* Kursdaten + FMP-Profil laden */
+  async function doFetchPrice(t){
+    if(!t||isEdit)return;
+    setSuggs([]);
+    setFetching(true);setErr('');setResolvedName('');setFmpData(null);
     try{
       const q=await getQuote(t);
       const typeErr=checkQuoteType(q.quoteType,q.name);
       if(typeErr){setErr(typeErr);setFetching(false);return;}
       setResolvedCcy(q.currency);
       setF(prev=>({...prev,ticker:q.ticker,buyPrice:prev.buyPrice||String(q.price)}));
-      /* FMP Profil: ISIN / WKN / vollständiger Name */
       const fmp=await fetchFmpProfile(q.ticker);
       setFmpData(fmp);
       setResolvedName(fmp?.name||q.name);
     }catch(e){setErr(String(e.message||e));}
     setFetching(false);
+  }
+
+  /* Suggestion ausgewählt */
+  function selectSugg(sym){
+    setF(p=>({...p,ticker:sym}));
+    setSuggs([]);
+    doFetchPrice(sym);
+  }
+
+  function onTickerBlur(){
+    setSuggs([]);
+    doFetchPrice(f.ticker.trim());
   }
 
   async function submit(e){
@@ -400,11 +427,28 @@ function PosModal({initial,onSave,onClose}){
       <div className="modal" role="dialog" aria-modal="true" aria-label={isEdit?'Position bearbeiten':'Position hinzufügen'}>
         <div className="modal-title">{isEdit?'✏️ Position bearbeiten':'➕ Position hinzufügen'}</div>
         <form onSubmit={submit}>
-          <div className="fg">
-            <label>Ticker-Symbol</label>
-            <input placeholder="z.B. AAPL · MSFT · SAP.DE · NOVO-B.CO"
-              value={f.ticker} onChange={set('ticker')} onBlur={onTickerBlur}
+          <div className="fg" style={{position:'relative'}}>
+            <label>Ticker oder Firmenname</label>
+            <input placeholder="z.B. Apple, AAPL, SAP, servicenow …"
+              value={f.ticker} onChange={onTickerInput} onBlur={onTickerBlur}
               autoFocus disabled={isEdit} style={isEdit?{opacity:.5}:{}} />
+            {suggs.length>0&&(
+              <div style={{background:'#0d1525',border:'1px solid #2a3854',borderRadius:'8px',
+                           boxShadow:'0 6px 18px rgba(0,0,0,.6)',left:0,marginTop:'3px',
+                           overflow:'hidden',position:'absolute',right:0,zIndex:10}}>
+                {suggs.map(s=>(
+                  <button key={s.symbol} type="button"
+                    onMouseDown={e=>{e.preventDefault();selectSugg(s.symbol);}}
+                    style={{alignItems:'center',background:'transparent',border:'none',
+                            borderBottom:'1px solid #1a2440',color:'#dde4f0',cursor:'pointer',
+                            display:'flex',gap:'8px',padding:'9px 12px',textAlign:'left',width:'100%'}}>
+                    <span style={{color:'#00c9a7',fontFamily:'monospace',fontWeight:700,minWidth:'70px'}}>{s.symbol}</span>
+                    <span style={{color:'#8a9bb5',fontSize:'11px',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.name}</span>
+                    <span style={{color:'#3a4860',fontSize:'10px',flexShrink:0}}>{s.exchangeShortName}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             {fetching&&<div style={{fontSize:'11px',color:'#00c9a7',marginTop:'4px'}}>
               <span className="spinner" style={{display:'inline-block',marginRight:'5px'}}>↻</span>Kurs wird abgerufen…
             </div>}
