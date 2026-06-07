@@ -23,11 +23,25 @@ body{background:#0a0f1e;color:#dde4f0;font-family:-apple-system,BlinkMacSystemFo
 .btn-primary{background:linear-gradient(135deg,#0e7a63,#00c9a7);color:#fff}
 .btn-primary:hover{filter:brightness(1.1)}
 .btn-primary:disabled{opacity:.45;cursor:not-allowed}
+.btn-chart{border:1px solid #2a3854;background:transparent;color:#6b7a99;border-radius:8px;font-size:11px;font-weight:600;padding:6px 12px;cursor:pointer;transition:.15s;white-space:nowrap}
+.btn-chart:hover,.btn-chart.active{border-color:#00c9a7;color:#00c9a7;background:rgba(0,201,167,.08)}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px}
 .card{background:#111827;border:1px solid #1e2d47;border-radius:10px;padding:11px 13px}
 .card-lbl{color:#566380;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:3px}
 .card-val{color:#f0f4ff;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card-sub{color:#6b7a99;font-size:10px;margin-top:2px}
+.fil-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:9px 12px;background:#0d1626;border:1px solid #1e2d47;border-radius:8px}
+.fil-lbl{color:#566380;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap}
+.fil-sel{appearance:none;background:#111827;border:1px solid #2a3854;border-radius:6px;color:#dde4f0;font-size:11px;padding:5px 10px;cursor:pointer;outline:none}
+.fil-sel:focus{border-color:#00c9a7}
+.fil-count{color:#3a4a60;font-size:10px}
+.chart-wrap{background:#111827;border:1px solid #1e2d47;border-radius:12px;padding:14px;margin-bottom:14px}
+.chart-hdr{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chart-ttl{color:#8a9bb5;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.rng-btns{display:flex;gap:4px}
+.rng-btn{border:1px solid #2a3854;background:transparent;color:#6b7a99;border-radius:5px;font-size:10px;padding:3px 9px;cursor:pointer;transition:.15s}
+.rng-btn.active{background:rgba(0,201,167,.15);border-color:#00c9a7;color:#00c9a7}
+.rng-btn:hover{border-color:#00c9a7;color:#00c9a7}
 .layout{display:grid;grid-template-columns:1fr 210px;gap:12px;align-items:start}
 @media(max-width:660px){.layout{grid-template-columns:1fr}}
 .tbl-wrap{background:#111827;border:1px solid #1e2d47;border-radius:12px;overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -58,6 +72,7 @@ tr:hover td{background:rgba(255,255,255,.018)}
 .ik{color:#566380}
 .iv{color:#dde4f0;font-weight:600;text-align:right;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .spin{border:2px solid #1e2d47;border-top-color:#00c9a7;border-radius:50%;width:26px;height:26px;animation:sp .7s linear infinite;margin:44px auto}
+.spin-sm{border:2px solid #1e2d47;border-top-color:#00c9a7;border-radius:50%;width:18px;height:18px;animation:sp .7s linear infinite;display:inline-block;vertical-align:middle}
 @keyframes sp{to{transform:rotate(360deg)}}
 .err{background:#150808;border:1px solid #3a1a1a;border-radius:8px;color:#ff8a80;font-size:11px;padding:10px 14px;margin:8px 0;line-height:1.5}
 .warn{background:#15120a;border:1px solid #3a2a0a;border-radius:8px;color:#ffa726;font-size:11px;padding:8px 12px;margin:0 0 10px;line-height:1.5}
@@ -146,7 +161,7 @@ const MOCK={
     ]},
   sek:{period:'Q3 2024',filingDate:'2024-11-14',totalValue:2400,
     holdings:[
-      {ticker:'BRK.B',name:'Berkshire Hathaway B',sector:'Finanzen',value:580,shares:1400,chg:'hold'},
+      {ticker:'BRK-B',name:'Berkshire Hathaway B',sector:'Finanzen',value:580,shares:1400,chg:'hold'},
       {ticker:'MSFT',name:'Microsoft Corp.',sector:'Technologie',value:420,shares:960,chg:'hold'},
       {ticker:'AMZN',name:'Amazon.com Inc.',sector:'Technologie',value:390,shares:2200,chg:'increased',chgPct:12},
       {ticker:'META',name:'Meta Platforms',sector:'Kommunikation',value:310,shares:580,chg:'new'},
@@ -168,7 +183,6 @@ const MOCK={
     ]},
 };
 
-// ── Helpers ──────────────────────────────────────────────────────────────
 function fmv(n){
   if(n==null)return'–';
   if(n>=1000)return`$${(n/1000).toFixed(1)}B`;
@@ -183,7 +197,7 @@ function fsh(n){
 }
 function fperiod(s){
   if(!s)return'–';
-  try{const d=new Date(s);const q=Math.ceil((d.getMonth()+1)/3);return`Q${q} ${d.getFullYear()}`;}
+  try{const d=new Date(s+'T00:00:00');const q=Math.ceil((d.getMonth()+1)/3);return`Q${q} ${d.getFullYear()}`;}
   catch{return s;}
 }
 
@@ -228,31 +242,38 @@ function Chg({chg,pct}){
   return <span className="chg-hld">—</span>;
 }
 
-// ── SEC live fetch ────────────────────────────────────────────────────────
-async function fetchSEC(cik){
+// ── SEC: get list of all 13F-HR filings ───────────────────────────────────
+async function fetchFilingsList(cik){
+  const padded=cik.replace(/\D/g,'').padStart(10,'0');
+  const res=await fetch(`https://data.sec.gov/submissions/CIK${padded}.json`,
+    {signal:AbortSignal.timeout(18000)});
+  if(!res.ok)throw new Error(`SEC HTTP ${res.status}`);
+  const sub=await res.json();
+  const rec=sub.filings?.recent;
+  if(!rec?.form)throw new Error('Keine Filings-Daten von SEC');
+  const out=[];
+  for(let i=0;i<rec.form.length;i++){
+    if(rec.form[i]==='13F-HR'){
+      out.push({
+        accNum:rec.accessionNumber[i],
+        period:rec.reportDate?.[i]||'',
+        filingDate:rec.filingDate?.[i]||'',
+      });
+    }
+  }
+  if(!out.length)throw new Error('Kein 13F-HR Filing gefunden');
+  return out; // newest first
+}
+
+// ── SEC: fetch holdings for one specific filing ───────────────────────────
+async function fetchFilingData(cik,f){
   const padded=cik.replace(/\D/g,'').padStart(10,'0');
   const numeric=String(parseInt(padded,10));
-  const sig=AbortSignal.timeout(12000);
-
-  const subRes=await fetch(`https://data.sec.gov/submissions/CIK${padded}.json`,{signal:sig});
-  if(!subRes.ok)throw new Error(`Submissions HTTP ${subRes.status}`);
-  const sub=await subRes.json();
-
-  const rec=sub.filings?.recent;
-  if(!rec?.form)throw new Error('Keine Filings in der Antwort');
-  const forms=rec.form;
-  let idx=-1;
-  for(let i=0;i<forms.length;i++){if(forms[i]==='13F-HR'){idx=i;break;}}
-  if(idx<0)throw new Error('Kein 13F-HR Filing gefunden');
-
-  const accNum=rec.accessionNumber[idx];
-  const accFlat=accNum.replace(/-/g,'');
-  const period=rec.reportDate?.[idx]||'';
-  const filingDate=rec.filingDate?.[idx]||'';
+  const accFlat=f.accNum.replace(/-/g,'');
 
   const idxRes=await fetch(
     `https://www.sec.gov/Archives/edgar/data/${numeric}/${accFlat}/index.json`,
-    {signal:AbortSignal.timeout(12000)}
+    {signal:AbortSignal.timeout(18000)}
   );
   if(!idxRes.ok)throw new Error(`Filing-Index HTTP ${idxRes.status}`);
   const idxData=await idxRes.json();
@@ -265,7 +286,7 @@ async function fetchSEC(cik){
 
   const xmlRes=await fetch(
     `https://www.sec.gov/Archives/edgar/data/${numeric}/${accFlat}/${xmlItem.name}`,
-    {signal:AbortSignal.timeout(20000)}
+    {signal:AbortSignal.timeout(28000)}
   );
   if(!xmlRes.ok)throw new Error(`XML HTTP ${xmlRes.status}`);
   const xmlText=await xmlRes.text();
@@ -282,11 +303,175 @@ async function fetchSEC(cik){
     if(!name||val<=0)return;
     const key=name.toUpperCase();
     if(map[key]){map[key].value+=val/1000;map[key].shares+=shr;}
-    else{map[key]={name,value:val/1000,shares:shr,sector:'Sonstiges',chg:'hold',chgPct:null,ticker:''};}
+    else map[key]={name,value:val/1000,shares:shr,sector:'Sonstiges',chg:'hold',chgPct:null,ticker:''};
   });
   const all=Object.values(map).sort((a,b)=>b.value-a.value);
-  const totalValue=all.reduce((s,h)=>s+h.value,0);
-  return{period:fperiod(period),filingDate,totalValue,holdings:all.slice(0,20),source:'live'};
+  return{
+    period:fperiod(f.period),
+    filingDate:f.filingDate,
+    totalValue:all.reduce((s,h)=>s+h.value,0),
+    holdings:all.slice(0,25),
+    source:'live',
+  };
+}
+
+// ── Yahoo Finance chart data ──────────────────────────────────────────────
+async function fetchYahooChart(ticker,yRange){
+  const res=await fetch(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1mo&range=${yRange}`,
+    {signal:AbortSignal.timeout(12000)}
+  );
+  if(!res.ok)throw new Error(`${ticker}: HTTP ${res.status}`);
+  const j=await res.json();
+  const result=j.chart?.result?.[0];
+  if(!result)throw new Error(`${ticker}: keine Daten`);
+  const timestamps=(result.timestamp||[]).map(t=>t*1000);
+  const prices=result.indicators?.adjclose?.[0]?.adjclose||result.indicators?.quote?.[0]?.close||[];
+  return{ticker,timestamps,prices};
+}
+
+// ── Performance Chart ─────────────────────────────────────────────────────
+function PerfChart({selId,range}){
+  const [st,setSt]=useState({loading:false,err:'',series:null});
+
+  useEffect(()=>{
+    const holdings=(MOCK[selId]?.holdings||[]).filter(h=>h.ticker&&h.chg!=='sold');
+    if(!holdings.length){setSt({loading:false,err:'Keine Ticker für diesen Investor',series:null});return;}
+    let cancelled=false;
+    setSt({loading:true,err:'',series:null});
+
+    const topH=holdings.slice(0,10);
+    const totalVal=topH.reduce((s,h)=>s+h.value,0);
+    const yRange={'6m':'6mo','1y':'1y','2y':'2y','5y':'5y'}[range]||'1y';
+    const tickers=[...topH.map(h=>h.ticker),'^GSPC'];
+
+    function normalize(timestamps,prices){
+      const valid=[];
+      for(let i=0;i<timestamps.length;i++){
+        const p=prices[i];
+        if(p!=null&&!isNaN(p)&&p>0)valid.push({t:timestamps[i],p});
+      }
+      if(valid.length<2)return null;
+      const base=valid[0].p;
+      return valid.map(x=>({t:x.t,ret:(x.p/base-1)*100}));
+    }
+
+    Promise.allSettled(tickers.map(t=>fetchYahooChart(t,yRange))).then(results=>{
+      if(cancelled)return;
+      const spxR=results[results.length-1];
+      if(spxR.status!=='fulfilled'){
+        setSt({loading:false,err:'S&P 500 Daten nicht verfügbar',series:null});
+        return;
+      }
+      const spxNorm=normalize(spxR.value.timestamps,spxR.value.prices);
+      if(!spxNorm){setSt({loading:false,err:'S&P 500 Daten leer',series:null});return;}
+
+      const holdNorm=[];
+      for(let i=0;i<topH.length;i++){
+        if(results[i].status!=='fulfilled')continue;
+        const ns=normalize(results[i].value.timestamps,results[i].value.prices);
+        if(!ns)continue;
+        holdNorm.push({ns,weight:topH[i].value/totalVal});
+      }
+      if(!holdNorm.length){setSt({loading:false,err:'Keine Kursdaten verfügbar',series:null});return;}
+
+      // Build portfolio series aligned to SPX timestamps
+      const portSeries=spxNorm.map(({t})=>{
+        let sumR=0,sumW=0;
+        holdNorm.forEach(({ns,weight})=>{
+          let best=ns[0];
+          for(const p of ns){if(Math.abs(p.t-t)<Math.abs(best.t-t))best=p;}
+          sumR+=best.ret*weight;
+          sumW+=weight;
+        });
+        return sumW>0.05?{t,ret:sumR/sumW}:null;
+      }).filter(Boolean);
+
+      // Re-anchor portfolio to 0% at first point
+      if(portSeries.length>0){
+        const base=portSeries[0].ret;
+        portSeries.forEach(p=>{p.ret-=base;});
+      }
+
+      setSt({loading:false,err:'',series:{port:portSeries,spx:spxNorm}});
+    }).catch(e=>{
+      if(!cancelled)setSt({loading:false,err:String(e.message||e),series:null});
+    });
+
+    return()=>{cancelled=true;};
+  },[selId,range]);
+
+  const {loading,err,series}=st;
+
+  if(loading)return(
+    <div style={{display:'flex',alignItems:'center',gap:8,padding:'18px 0',color:'#566380',fontSize:'11px'}}>
+      <span className="spin-sm"/><span>Kursdaten werden geladen…</span>
+    </div>
+  );
+  if(err)return <div className="err">⚠️ {err}</div>;
+  if(!series)return null;
+
+  const {port,spx}=series;
+  if(port.length<2||spx.length<2)return <div className="err">Zu wenige Datenpunkte</div>;
+
+  const allRets=[...port.map(p=>p.ret),...spx.map(p=>p.ret)].filter(r=>!isNaN(r));
+  const minR=Math.min(...allRets),maxR=Math.max(...allRets);
+  const pad=(maxR-minR)*0.12+2;
+  const yMin=minR-pad,yMax=maxR+pad;
+
+  const W=460,H=185,mx=42,my=12,mr=14,mb=26;
+  const cW=W-mx-mr,cH=H-my-mb;
+
+  const allTs=[...new Set([...port,...spx].map(p=>p.t))].sort((a,b)=>a-b);
+  const tMin=allTs[0],tMax=allTs[allTs.length-1],tRange=tMax-tMin||1;
+
+  const tx=t=>mx+(t-tMin)/tRange*cW;
+  const ty=r=>my+cH-(r-yMin)/(yMax-yMin)*cH;
+  const mkPath=pts=>pts.filter(p=>!isNaN(p.ret)).map((p,i)=>`${i?'L':'M'}${tx(p.t).toFixed(1)},${ty(p.ret).toFixed(1)}`).join('');
+
+  const portFinal=port[port.length-1]?.ret??0;
+  const spxFinal=spx[spx.length-1]?.ret??0;
+  const portColor=portFinal>=0?'#00c9a7':'#ff4757';
+  const fmtR=r=>(r>=0?'+':'')+r.toFixed(1)+'%';
+  const fmtDt=t=>new Date(t).toLocaleDateString('de-DE',{month:'short',year:'2-digit'});
+
+  const nxt=5;
+  const xTicks=Array.from({length:nxt},(_,i)=>{
+    const idx=Math.round(i*(allTs.length-1)/(nxt-1));
+    const t=allTs[Math.min(idx,allTs.length-1)];
+    return{t,x:tx(t)};
+  });
+  const yTicks=Array.from({length:5},(_,i)=>{
+    const r=yMin+i*(yMax-yMin)/4;
+    return{r,y:ty(r)};
+  });
+  const zY=ty(0);
+
+  return(
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',height:'auto',display:'block'}}>
+        {yTicks.map(({r,y},i)=>(
+          <g key={i}>
+            <line x1={mx} y1={y} x2={mx+cW} y2={y} stroke="#1a2440" strokeWidth="1"/>
+            <text x={mx-4} y={y+3.5} textAnchor="end" fill="#566380" fontSize="9">{r>=0?'+':''}{r.toFixed(0)}%</text>
+          </g>
+        ))}
+        {zY>=my&&zY<=my+cH&&(
+          <line x1={mx} y1={zY} x2={mx+cW} y2={zY} stroke="#2a3854" strokeWidth="1.5" strokeDasharray="4,3"/>
+        )}
+        {xTicks.map(({t,x},i)=>(
+          <text key={i} x={x} y={H-5} textAnchor="middle" fill="#566380" fontSize="8.5">{fmtDt(t)}</text>
+        ))}
+        <path d={mkPath(spx)} fill="none" stroke="#566380" strokeWidth="1.5" opacity=".85"/>
+        <path d={mkPath(port)} fill="none" stroke={portColor} strokeWidth="2"/>
+        <circle cx={mx+cW-105} cy={my+7} r="4" fill={portColor}/>
+        <text x={mx+cW-97} y={my+11} fill="#c4cfe0" fontSize="9.5">Portfolio {fmtR(portFinal)}</text>
+        <circle cx={mx+cW-105} cy={my+22} r="4" fill="#566380"/>
+        <text x={mx+cW-97} y={my+26} fill="#8a9bb5" fontSize="9.5">S&amp;P 500 {fmtR(spxFinal)}</text>
+      </svg>
+      <div style={{color:'#3a4a60',fontSize:'9px',textAlign:'right',marginTop:4}}>Basis: Mock-Ticker · Kursentwicklung kumuliert ab Startdatum</div>
+    </div>
+  );
 }
 
 // ── App ───────────────────────────────────────────────────────────────────
@@ -298,6 +483,10 @@ function App(){
   const[isLive,setIsLive]=useState(false);
   const[sortCol,setSortCol]=useState('value');
   const[sortAsc,setSortAsc]=useState(false);
+  const[filings,setFilings]=useState([]);
+  const[filIdx,setFilIdx]=useState(0);
+  const[showChart,setShowChart]=useState(false);
+  const[chartRange,setChartRange]=useState('1y');
 
   const inv=INVESTORS.find(x=>x.id===selId)||INVESTORS[0];
 
@@ -305,16 +494,32 @@ function App(){
     setData({...MOCK[selId],source:'mock'});
     setIsLive(false);setLiveErr('');
     setSortCol('value');setSortAsc(false);
+    setFilings([]);setFilIdx(0);
   },[selId]);
 
   async function loadLive(){
-    if(inv.mockOnly){setLiveErr('Für diesen Investor ist kein bestätigtes SEC-CIK hinterlegt — Mock-Daten werden angezeigt.');return;}
+    if(inv.mockOnly){setLiveErr('Für diesen Investor ist kein bestätigtes SEC-CIK hinterlegt.');return;}
     setLoading(true);setLiveErr('');
     try{
-      const res=await fetchSEC(inv.cik);
+      const flist=await fetchFilingsList(inv.cik);
+      setFilings(flist);
+      setFilIdx(0);
+      const res=await fetchFilingData(inv.cik,flist[0]);
       setData(res);setIsLive(true);
     }catch(e){
       setLiveErr(`Live-Daten nicht verfügbar: ${e.message}. Mock-Daten werden verwendet.`);
+    }finally{setLoading(false);}
+  }
+
+  async function onFilingChange(e){
+    const idx=Number(e.target.value);
+    setFilIdx(idx);
+    setLoading(true);setLiveErr('');
+    try{
+      const res=await fetchFilingData(inv.cik,filings[idx]);
+      setData(res);
+    }catch(e){
+      setLiveErr(`Fehler: ${e.message}`);
     }finally{setLoading(false);}
   }
 
@@ -356,16 +561,49 @@ function App(){
             ))}
           </select>
         </div>
-        <button className="btn btn-primary" onClick={loadLive} disabled={loading} aria-label="Live-Daten laden">
+        <button className="btn btn-primary" onClick={loadLive} disabled={loading}>
           {loading?'Lädt…':'🔄 Live laden'}
+        </button>
+        <button className={`btn-chart${showChart?' active':''}`} onClick={()=>setShowChart(!showChart)}>
+          {showChart?'⬆ Chart':'📈 Performance'}
         </button>
         <span className={`badge ${isLive?'badge-live':'badge-mock'}`}>{isLive?'LIVE':'MOCK'}</span>
       </div>
 
       {liveErr&&<div className="warn">⚠️ {liveErr}</div>}
-      {isLive&&<div className="warn" style={{background:'#0d1a10',borderColor:'#0e4030',color:'#6b9b6b'}}>
-        ℹ️ Live-Daten enthalten keine Vorquartals-Vergleiche (▲▼) — Veränderungen nur in Mock-Daten verfügbar.
+      {isLive&&<div className="warn" style={{background:'#0d1a10',borderColor:'#0e4030',color:'#5a8a6a'}}>
+        ℹ️ Live-Daten enthalten keine Quartals-Vergleiche (▲▼). SEC-Filings melden keine Tickers — Holdings nach Firmenname.
       </div>}
+
+      {/* Filing selector (live mode, multiple filings) */}
+      {isLive&&filings.length>1&&(
+        <div className="fil-row">
+          <span className="fil-lbl">📅 Quartal</span>
+          <select className="fil-sel" value={filIdx} onChange={onFilingChange} disabled={loading}>
+            {filings.map((f,i)=>(
+              <option key={i} value={i}>{fperiod(f.period)} · {f.filingDate}</option>
+            ))}
+          </select>
+          <span className="fil-count">{filings.length} Filings verfügbar</span>
+        </div>
+      )}
+
+      {/* Performance chart */}
+      {showChart&&(
+        <div className="chart-wrap">
+          <div className="chart-hdr">
+            <span className="chart-ttl">📈 Portfolio vs. S&P 500</span>
+            <div className="rng-btns">
+              {['6m','1y','2y','5y'].map(r=>(
+                <button key={r} className={`rng-btn${chartRange===r?' active':''}`} onClick={()=>setChartRange(r)}>
+                  {r.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+          <PerfChart selId={selId} range={chartRange}/>
+        </div>
+      )}
 
       {loading&&<div className="spin"/>}
 
@@ -397,7 +635,6 @@ function App(){
 
           {/* Layout */}
           <div className="layout">
-            {/* Table */}
             <div className="tbl-wrap">
               <table>
                 <thead>
@@ -444,19 +681,18 @@ function App(){
               </table>
             </div>
 
-            {/* Sidebar */}
             <div className="sidebar">
               <div className="panel">
                 <div className="panel-ttl">Sektorverteilung</div>
                 <DonutChart sectors={sectors}/>
                 <ul className="legend" style={{marginTop:'8px'}}>
-                  {(()=>{const stotal=sectors.reduce((a,x)=>a+x.value,0);return sectors.map((s,i)=>(
-                      <li key={i}>
-                        <span className="dot" style={{background:s.color,width:'7px',height:'7px'}}/>
-                        <span>{s.name}</span>
-                        <span className="legend-pct">{(s.value/stotal*100).toFixed(0)}%</span>
-                      </li>
-                    ));})()}
+                  {(()=>{const st=sectors.reduce((a,x)=>a+x.value,0);return sectors.map((s,i)=>(
+                    <li key={i}>
+                      <span className="dot" style={{background:s.color,width:'7px',height:'7px'}}/>
+                      <span>{s.name}</span>
+                      <span className="legend-pct">{(s.value/st*100).toFixed(0)}%</span>
+                    </li>
+                  ));})()}
                 </ul>
               </div>
               <div className="panel">
@@ -471,7 +707,6 @@ function App(){
                 <div className="irow"><span className="ik">Periode</span><span className="iv">{data.period||'–'}</span></div>
                 <div className="irow"><span className="ik">Quelle</span><span className="iv">{isLive?'SEC EDGAR Live':'Mock-Daten'}</span></div>
               </div>
-              {/* Legend */}
               <div className="panel" style={{fontSize:'10px',color:'#3a4a60',lineHeight:'1.6'}}>
                 <span className="chg-new">★ Neu</span> neue Position &nbsp;
                 <span className="chg-inc">▲</span> aufgestockt &nbsp;
@@ -482,7 +717,7 @@ function App(){
           </div>
 
           <div className="disc">
-            13F-Filings erfassen nur US-börsennotierte Wertpapiere mit einem Meldepflicht-Schwellenwert ab $100M.
+            13F-Filings erfassen nur US-börsennotierte Wertpapiere ab $100M Meldepflicht-Schwellenwert.
             Verzug: bis zu 45 Tage nach Quartalsende. Keine Shorts, Anleihen oder internationale Positionen.
             Keine Anlageberatung.
           </div>
