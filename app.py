@@ -7584,12 +7584,8 @@ elif st.session_state.get("show_aktienspiel"):
     _ai_port_data = _load_ai_portfolio()
     _ai_port_json = _json.dumps(_ai_port_data).replace("</", "<\\/")
     _spiel_html = _AKTIENSPIEL_HTML.replace(
-        "window.__SPIEL_INIT__",
-        f"window.__SPIEL_INIT__ = {_spiel_json}",
-        1
-    ).replace(
-        "window.__AI_PORTFOLIO__",
-        f"window.__AI_PORTFOLIO__ = {_ai_port_json}",
+        "/* Server-injected data (replaced by Python/Streamlit) */",
+        f"window.__SPIEL_INIT__={_spiel_json};\nwindow.__AI_PORTFOLIO__={_ai_port_json};",
         1
     )
     _stc_spiel.html(_spiel_html, height=900, scrolling=True)
