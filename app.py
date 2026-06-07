@@ -1065,7 +1065,7 @@ def _load_ai_portfolio() -> dict:
 
 def _gen_ai_portfolio() -> dict:
     """Generate a Quality+Value portfolio via Gemini API."""
-    import os, json, re, time, urllib.request
+    import os, json, re, time, urllib.request, urllib.error
     from datetime import date
 
     api_key = os.getenv("GEMINI_API_KEY", "")
@@ -1094,12 +1094,33 @@ def _gen_ai_portfolio() -> dict:
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1500},
     }).encode("utf-8")
-    req = urllib.request.Request(
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
-        data=body, headers={"Content-Type": "application/json"}, method="POST"
-    )
-    with urllib.request.urlopen(req, timeout=45) as r:
-        resp = json.loads(r.read())
+
+    _models = [
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-exp",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash",
+    ]
+    resp, used_model, last_err = None, None, ""
+    for _m in _models:
+        try:
+            req = urllib.request.Request(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{_m}:generateContent?key={api_key}",
+                data=body, headers={"Content-Type": "application/json"}, method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=45) as r:
+                resp = json.loads(r.read())
+            used_model = _m
+            break
+        except urllib.error.HTTPError as _he:
+            last_err = f"{_m}: HTTP {_he.code} {_he.reason}"
+            continue
+        except Exception as _ex:
+            last_err = f"{_m}: {_ex}"
+            continue
+    if resp is None:
+        raise ValueError(f"Gemini nicht erreichbar — {last_err}")
+
     text = resp["candidates"][0]["content"]["parts"][0]["text"]
 
     m = re.search(r"\[[\s\S]*\]", text)
@@ -1156,7 +1177,7 @@ def _gen_ai_portfolio() -> dict:
         "positions": positions,
         "generated_at": today,
         "budget": 50_000,
-        "model": "gemini-1.5-flash",
+        "model": used_model or "gemini-2.0-flash",
     }
 
 
