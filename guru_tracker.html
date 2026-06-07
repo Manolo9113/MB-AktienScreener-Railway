@@ -317,17 +317,23 @@ async function fetchFilingData(cik,f){
 
 // ── Yahoo Finance chart data ──────────────────────────────────────────────
 async function fetchYahooChart(ticker,yRange){
-  const res=await fetch(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1mo&range=${yRange}`,
-    {signal:AbortSignal.timeout(12000)}
-  );
-  if(!res.ok)throw new Error(`${ticker}: HTTP ${res.status}`);
-  const j=await res.json();
-  const result=j.chart?.result?.[0];
-  if(!result)throw new Error(`${ticker}: keine Daten`);
-  const timestamps=(result.timestamp||[]).map(t=>t*1000);
-  const prices=result.indicators?.adjclose?.[0]?.adjclose||result.indicators?.quote?.[0]?.close||[];
-  return{ticker,timestamps,prices};
+  const t=ticker.trim().toUpperCase();
+  for(const base of['query1','query2']){
+    try{
+      const res=await fetch(
+        `https://${base}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?interval=1mo&range=${yRange}`,
+        {headers:{Accept:'application/json'},signal:AbortSignal.timeout(12000)}
+      );
+      if(!res.ok)continue;
+      const j=await res.json();
+      const result=j.chart?.result?.[0];
+      if(!result)continue;
+      const timestamps=(result.timestamp||[]).map(ts=>ts*1000);
+      const prices=result.indicators?.adjclose?.[0]?.adjclose||result.indicators?.quote?.[0]?.close||[];
+      return{ticker:t,timestamps,prices};
+    }catch(e){}
+  }
+  throw new Error(`${t}: Kursverlauf nicht abrufbar`);
 }
 
 // ── Performance Chart ─────────────────────────────────────────────────────
