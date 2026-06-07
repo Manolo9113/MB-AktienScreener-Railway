@@ -104,6 +104,9 @@ function PosModal({initial,onSave,onClose}){
     note:initial?.note||'',
   });
   const[busy,setBusy]=useState(false);
+  const[fetching,setFetching]=useState(false);
+  const[resolvedName,setResolvedName]=useState('');
+  const[resolvedCcy,setResolvedCcy]=useState('');
   const[err,setErr]=useState('');
   const set=(k)=>(e)=>setF(p=>({...p,[k]:e.target.value}));
 
@@ -114,17 +117,34 @@ function PosModal({initial,onSave,onClose}){
     return()=>window.removeEventListener('keydown',h);
   },[onClose]);
 
+  /* Auto-fetch price when ticker loses focus */
+  async function onTickerBlur(){
+    const t=f.ticker.trim();
+    if(!t||isEdit) return;
+    setFetching(true);setErr('');setResolvedName('');
+    try{
+      const q=await getQuote(t);
+      setResolvedName(q.name);
+      setResolvedCcy(q.currency);
+      /* Pre-fill buyPrice only if user hasn't typed one yet */
+      setF(prev=>({...prev,
+        ticker:q.ticker,
+        buyPrice:prev.buyPrice||String(q.price),
+      }));
+    }catch(e){setErr(String(e.message||e));}
+    setFetching(false);
+  }
+
   async function submit(e){
     e.preventDefault();
     const shares=parseFloat(f.shares);
     const buyPrice=parseFloat(f.buyPrice);
     if(!f.ticker.trim()&&!isEdit){setErr('Ticker eingeben.');return;}
-    if(!shares||shares<=0){setErr('Anzahl muss größer 0 sein.');return;}
-    if(!buyPrice||buyPrice<=0){setErr('Kaufkurs muss größer 0 sein.');return;}
+    if(isNaN(shares)||shares<=0){setErr('Anzahl muss größer 0 sein.');return;}
+    if(isNaN(buyPrice)||buyPrice<=0){setErr('Kaufkurs muss größer 0 sein.');return;}
     if(!f.buyDate){setErr('Kaufdatum wählen.');return;}
     setBusy(true);setErr('');
     if(isEdit){
-      /* Edit: only update mutable fields, keep existing currentPrice */
       onSave({...initial,shares,buyPrice,buyDate:f.buyDate,note:f.note,ts:Date.now()});
       onClose();setBusy(false);return;
     }
@@ -145,8 +165,14 @@ function PosModal({initial,onSave,onClose}){
           <div className="fg">
             <label>Ticker-Symbol</label>
             <input placeholder="z.B. AAPL · MSFT · SAP.DE · NOVO-B.CO"
-              value={f.ticker} onChange={set('ticker')} autoFocus disabled={isEdit}
-              style={isEdit?{opacity:.5}:{}} />
+              value={f.ticker} onChange={set('ticker')} onBlur={onTickerBlur}
+              autoFocus disabled={isEdit} style={isEdit?{opacity:.5}:{}} />
+            {fetching&&<div style={{fontSize:'11px',color:'#00c9a7',marginTop:'4px'}}>
+              <span className="spinner" style={{display:'inline-block',marginRight:'5px'}}>↻</span>Kurs wird abgerufen…
+            </div>}
+            {resolvedName&&!fetching&&<div style={{fontSize:'11px',color:'#566380',marginTop:'4px'}}>
+              ✓ {resolvedName}{resolvedCcy?` · ${resolvedCcy}`:''}
+            </div>}
           </div>
           <div className="fg">
             <label>Anzahl Aktien</label>
@@ -154,7 +180,7 @@ function PosModal({initial,onSave,onClose}){
               value={f.shares} onChange={set('shares')} />
           </div>
           <div className="fg">
-            <label>Kaufkurs</label>
+            <label>Kaufkurs {resolvedCcy&&!isEdit?<span style={{color:'#566380',fontWeight:400,textTransform:'none'}}>· aktuell vorausgefüllt, überschreibbar</span>:''}</label>
             <input type="number" placeholder="150.00" min="0.0001" step="any"
               value={f.buyPrice} onChange={set('buyPrice')} />
           </div>
@@ -168,8 +194,9 @@ function PosModal({initial,onSave,onClose}){
           </div>
           {err&&<div className="err">{err}</div>}
           <div style={{display:'flex',gap:'8px',marginTop:'14px'}}>
-            <button className="btn btn-primary" style={{flex:1}} disabled={busy}>
+            <button className="btn btn-primary" style={{flex:1}} disabled={busy||fetching}>
               {busy?<><span className="spinner">↻</span> Prüfe Kurs…</>
+                  :fetching?<><span className="spinner">↻</span> Lädt…</>
                   :(isEdit?'Speichern':'Hinzufügen')}
             </button>
             <button type="button" className="btn btn-ghost" onClick={onClose}>Abbrechen</button>
@@ -355,30 +382,33 @@ function App(){
     )}
 
     {/* Toolbar */}
-    <div style={{alignItems:'center',display:'flex',flexWrap:'wrap',gap:'8px',justifyContent:'space-between',marginBottom:'12px'}}>
+    <div style={{alignItems:'center',display:'flex',flexWrap:'wrap',gap:'8px',justifyContent:'space-between',marginBottom:'8px'}}>
       <span className="muted" style={{fontSize:'11px'}}>
         {upd&&`↺ ${upd.toLocaleTimeString('de-DE')}  `}
         {pos.length>0&&<span className="tag">{pos.length} Position{pos.length!==1?'en':''}</span>}
       </span>
       <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
-        {pos.length>0&&<>
+        {pos.length>0&&(
           <button className="btn btn-ghost" onClick={()=>refresh(pos)} disabled={refreshing}
             style={{fontSize:'12px',padding:'6px 12px'}} aria-label="Kurse aktualisieren">
             <span className={refreshing?'spinner':''} style={{display:'inline-block',marginRight:'5px'}}>↻</span>
             {refreshing?'Lädt…':'Kurse'}
           </button>
-          <button className="btn btn-save" onClick={saveToServer}
-            style={{fontSize:'12px',padding:'6px 12px'}} aria-label="Auf Server speichern">
-            ☁️ Speichern
-          </button>
-        </>}
+        )}
         <button className="btn btn-primary" onClick={()=>setModal('new')}
           style={{fontSize:'12px',padding:'6px 12px'}} aria-label="Position hinzufügen">
           ＋ Position
         </button>
       </div>
     </div>
-
+    {pos.length>0&&(
+      <button className="btn btn-save" onClick={saveToServer}
+        style={{width:'100%',padding:'9px',fontSize:'13px',marginBottom:'12px',borderRadius:'9px',
+                background:'linear-gradient(135deg,#0a2a1e,#0e3528)',borderColor:'#00c9a7'}}
+        aria-label="Depot auf Railway-Server speichern">
+        ☁️ Depot auf Server speichern
+      </button>
+    )}
     {/* Table */}
     <div className="card" style={{overflowX:'auto'}}>
       {pos.length===0?(
