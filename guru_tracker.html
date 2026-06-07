@@ -30,7 +30,7 @@ body{background:#0a0f1e;color:#dde4f0;font-family:-apple-system,BlinkMacSystemFo
 .card-sub{color:#6b7a99;font-size:10px;margin-top:2px}
 .layout{display:grid;grid-template-columns:1fr 210px;gap:12px;align-items:start}
 @media(max-width:660px){.layout{grid-template-columns:1fr}}
-.tbl-wrap{background:#111827;border:1px solid #1e2d47;border-radius:12px;overflow:hidden}
+.tbl-wrap{background:#111827;border:1px solid #1e2d47;border-radius:12px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 table{border-collapse:collapse;width:100%;font-size:12px}
 th{border-bottom:1px solid #1e2d47;color:#566380;font-size:9px;font-weight:700;letter-spacing:.5px;padding:7px 9px;text-align:right;white-space:nowrap;text-transform:uppercase;cursor:pointer;user-select:none}
 th.left{text-align:left}
@@ -38,6 +38,11 @@ th:hover{color:#00c9a7}
 th.sorted{color:#00c9a7}
 td{border-bottom:1px solid #0f1626;padding:8px 9px;text-align:right;vertical-align:middle}
 td.left{text-align:left}
+@media(max-width:540px){
+  .col-sector,.col-shares,.col-pct{display:none}
+  td.col-name{max-width:110px!important}
+  td,th{padding:7px 6px}
+}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(255,255,255,.018)}
 .tkr{background:#1a2844;border-radius:4px;color:#00c9a7;font-family:'SF Mono',monospace;font-size:10px;font-weight:700;padding:2px 6px;display:inline-block;white-space:nowrap}
@@ -403,14 +408,14 @@ function App(){
                     <th className={`left${sortCol==='name'?' sorted':''}`} onClick={()=>sort('name')}>
                       Unternehmen{sArrow('name')}
                     </th>
-                    <th className={`left${sortCol==='sector'?' sorted':''}`} onClick={()=>sort('sector')}>
+                    <th className={`left col-sector${sortCol==='sector'?' sorted':''}`} onClick={()=>sort('sector')}>
                       Sektor{sArrow('sector')}
                     </th>
                     <th className={sortCol==='value'?'sorted':''} onClick={()=>sort('value')}>
                       Wert{sArrow('value')}
                     </th>
-                    <th>Anteil</th>
-                    <th className={sortCol==='shares'?'sorted':''} onClick={()=>sort('shares')}>
+                    <th className="col-pct">Anteil</th>
+                    <th className={`col-shares${sortCol==='shares'?' sorted':''}`} onClick={()=>sort('shares')}>
                       Aktien{sArrow('shares')}
                     </th>
                     <th>Veränd.</th>
@@ -422,16 +427,16 @@ function App(){
                       <td className="left">
                         <span className="tkr">{h.ticker||'—'}</span>
                       </td>
-                      <td className="left" style={{maxWidth:'170px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'#c4cfe0'}}>
+                      <td className="left col-name" style={{maxWidth:'170px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'#c4cfe0'}}>
                         {h.name}
                       </td>
-                      <td className="left">
+                      <td className="left col-sector">
                         <span className="dot" style={{background:SC[h.sector]||SC['Sonstiges'],width:'6px',height:'6px',marginRight:'5px'}}/>
                         {h.sector}
                       </td>
                       <td style={{fontWeight:600,color:'#e8eeff'}}>{fmv(h.value)}</td>
-                      <td style={{color:'#8a9bb5'}}>{tv?(h.value/tv*100).toFixed(1)+'%':'–'}</td>
-                      <td style={{color:'#6b7a99'}}>{fsh(h.shares)}</td>
+                      <td className="col-pct" style={{color:'#8a9bb5'}}>{tv?(h.value/tv*100).toFixed(1)+'%':'–'}</td>
+                      <td className="col-shares" style={{color:'#6b7a99'}}>{fsh(h.shares)}</td>
                       <td><Chg chg={h.chg} pct={h.chgPct}/></td>
                     </tr>
                   ))}
