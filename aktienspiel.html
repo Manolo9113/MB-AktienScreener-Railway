@@ -71,6 +71,7 @@ tr:hover td{background:rgba(255,255,255,.015)}
 /* Server-injected data (replaced by Python/Streamlit) */
 if(typeof window.__SPIEL_INIT__==='undefined') window.__SPIEL_INIT__=[];
 if(typeof window.__AI_PORTFOLIO__==='undefined') window.__AI_PORTFOLIO__={"positions":[],"generated_at":null,"budget":50000};
+if(typeof window.__FMP_KEY__==='undefined') window.__FMP_KEY__='';
 
 const{useState,useEffect,useCallback,useRef,useMemo}=React;
 const SK='spiel_depot_v2';
@@ -84,13 +85,19 @@ const clr=(n)=>!n||isNaN(n)?'muted':n>0?'green':'red';
 const uid=()=>Math.random().toString(36).slice(2,9);
 const ccySym=(c)=>c==='GBP'?'£':c==='USD'?'$':'€';
 
-/* ── Yahoo Finance v8 Chart ── */
+/* ── AbortSignal.timeout Polyfill (iOS < 15.4) ── */
+function mkSignal(ms){
+  if(typeof AbortSignal!=='undefined'&&AbortSignal.timeout)return AbortSignal.timeout(ms);
+  const c=new AbortController();setTimeout(()=>c.abort(),ms);return c.signal;
+}
+
+/* ── Yahoo Finance v8 + FMP Fallback ── */
 async function getQuote(ticker){
   const t=ticker.trim().toUpperCase();
   for(const base of['query1','query2']){
     try{
-      const r=await fetch(`https://${base}.finance.yahoo.com/v8/finance/chart/${t}?interval=1d&range=5d`,
-        {headers:{Accept:'application/json'},signal:AbortSignal.timeout(8000)});
+      const r=await fetch(`https://${base}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?interval=1d&range=5d`,
+        {headers:{Accept:'application/json'},signal:mkSignal(8000)});
       if(!r.ok) continue;
       const j=await r.json();
       const m=(j.chart?.result||[])[0]?.meta;
@@ -102,7 +109,42 @@ async function getQuote(ticker){
         quoteType:(m.instrumentType||m.quoteType||'').toUpperCase()};
     }catch(e){}
   }
+  /* FMP Fallback */
+  const fk=window.__FMP_KEY__||'';
+  if(fk){
+    try{
+      const r=await fetch(
+        `https://financialmodelingprep.com/api/v3/quote/${encodeURIComponent(t)}?apikey=${fk}`,
+        {signal:mkSignal(10000)});
+      if(r.ok){
+        const data=await r.json();
+        const q=data[0];
+        if(q&&q.price){
+          return{ticker:t,price:q.price,prev:q.previousClose||q.price,
+            currency:q.currency||'USD',name:q.name||t,quoteType:'EQUITY'};
+        }
+      }
+    }catch(e){}
+  }
   throw new Error(`${t}: Kurs nicht abrufbar`);
+}
+
+/* ── FMP Profil: ISIN / WKN / Name ── */
+async function fetchFmpProfile(ticker){
+  const fk=window.__FMP_KEY__||'';
+  if(!fk)return null;
+  try{
+    const r=await fetch(
+      `https://financialmodelingprep.com/api/v3/profile/${encodeURIComponent(ticker)}?apikey=${fk}`,
+      {signal:mkSignal(10000)});
+    if(!r.ok)return null;
+    const data=await r.json();
+    const p=data[0];
+    if(!p)return null;
+    const isin=p.isin||'';
+    const wkn=isin.startsWith('DE')&&isin.length===12?isin.slice(5,11):'';
+    return{isin,wkn,name:p.companyName||''};
+  }catch(e){return null;}
 }
 
 /* ── Instrument-Typ Validierung ── */
@@ -296,6 +338,7 @@ function PosModal({initial,onSave,onClose}){
   const[fetching,setFetching]=useState(false);
   const[resolvedName,setResolvedName]=useState('');
   const[resolvedCcy,setResolvedCcy]=useState('');
+  const[fmpData,setFmpData]=useState(null);
   const[err,setErr]=useState('');
   const set=(k)=>(e)=>setF(p=>({...p,[k]:e.target.value}));
 
@@ -315,13 +358,12 @@ function PosModal({initial,onSave,onClose}){
       const q=await getQuote(t);
       const typeErr=checkQuoteType(q.quoteType,q.name);
       if(typeErr){setErr(typeErr);setFetching(false);return;}
-      setResolvedName(q.name);
       setResolvedCcy(q.currency);
-      /* Pre-fill buyPrice only if user hasn't typed one yet */
-      setF(prev=>({...prev,
-        ticker:q.ticker,
-        buyPrice:prev.buyPrice||String(q.price),
-      }));
+      setF(prev=>({...prev,ticker:q.ticker,buyPrice:prev.buyPrice||String(q.price)}));
+      /* FMP Profil: ISIN / WKN / vollständiger Name */
+      const fmp=await fetchFmpProfile(q.ticker);
+      setFmpData(fmp);
+      setResolvedName(fmp?.name||q.name);
     }catch(e){setErr(String(e.message||e));}
     setFetching(false);
   }
@@ -343,8 +385,11 @@ function PosModal({initial,onSave,onClose}){
       const q=await getQuote(f.ticker);
       const typeErr=checkQuoteType(q.quoteType,q.name);
       if(typeErr){setErr(typeErr);setBusy(false);return;}
-      onSave({id:uid(),ticker:q.ticker,name:q.name,shares,buyPrice,buyDate:f.buyDate,
-              note:f.note,currentPrice:q.price,currency:q.currency,ts:Date.now()});
+      onSave({id:uid(),ticker:q.ticker,
+        name:fmpData?.name||q.name,
+        isin:fmpData?.isin||'',wkn:fmpData?.wkn||'',
+        shares,buyPrice,buyDate:f.buyDate,
+        note:f.note,currentPrice:q.price,currency:q.currency,ts:Date.now()});
       onClose();
     }catch(e){setErr(String(e.message||e));}
     setBusy(false);
@@ -365,6 +410,9 @@ function PosModal({initial,onSave,onClose}){
             </div>}
             {resolvedName&&!fetching&&<div style={{fontSize:'11px',color:'#566380',marginTop:'4px'}}>
               ✓ {resolvedName}{resolvedCcy?` · ${resolvedCcy}`:''}
+              {fmpData?.isin&&<div style={{fontFamily:'monospace',fontSize:'10px',marginTop:'2px',color:'#4a5e7a'}}>
+                ISIN {fmpData.isin}{fmpData.wkn?` · WKN ${fmpData.wkn}`:''}
+              </div>}
             </div>}
           </div>
           <div className="fg">
@@ -692,8 +740,11 @@ function App(){
               <tr key={p.id}>
                 <td className="left" style={{paddingLeft:'14px'}}>
                   <span className="badge">{p.ticker}</span>
-                  {p.note&&<div style={{color:'#3a6050',fontSize:'10px',marginTop:'2px'}}>{p.note}</div>}
-                  {!p.note&&<div style={{color:'#566380',fontSize:'10px',marginTop:'2px',maxWidth:'100px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name||''}</div>}
+                  <div style={{color:'#566380',fontSize:'10px',marginTop:'2px',maxWidth:'120px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name||''}</div>
+                  {p.note&&<div style={{color:'#3a6050',fontSize:'10px'}}>{p.note}</div>}
+                  {p.isin&&<div style={{color:'#3a4860',fontSize:'9px',fontFamily:'monospace',marginTop:'1px',whiteSpace:'nowrap'}}>
+                    {p.isin}{p.wkn?` · WKN ${p.wkn}`:''}
+                  </div>}
                 </td>
                 <td><span className="muted" style={{fontSize:'11px'}}>{p.buyDate}</span></td>
                 <td>{de(p.shares, Number.isInteger(p.shares)?0:p.shares<10?3:2)}</td>
