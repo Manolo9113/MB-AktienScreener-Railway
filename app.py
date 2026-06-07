@@ -1025,6 +1025,141 @@ def _load_aktienspiel() -> list:
         pass
     return []
 
+# ── AI Portfolio (Gemini) ──────────────────────────────────────────────────
+_AI_UNI_US = [
+    "AAPL","MSFT","NVDA","AMZN","GOOGL","META","BRK-B","JPM","V","MA",
+    "UNH","JNJ","PG","KO","PEP","COST","WMT","HD","ABBV","LLY","MRK",
+    "TMO","AVGO","QCOM","TXN","AMD","WM","ODFL",
+]
+_AI_UNI_EU = [
+    "SAP.DE","SIE.DE","ALV.DE","BAS.DE","BMW.DE","DTE.DE",
+    "MC.PA","AI.PA","TTE.PA","OR.PA",
+    "NESN.SW","NOVN.SW","ROG.SW",
+    "ASML.AS","PHIA.AS",
+    "AZN.L","SHEL.L","NOVO-B.CO",
+]
+
+def _save_ai_portfolio(data: dict) -> bool:
+    try:
+        import os, json
+        data_dir = "/data" if os.path.isdir("/data") else "/tmp"
+        with open(os.path.join(data_dir, "ai_portfolio.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        return True
+    except Exception:
+        return False
+
+def _load_ai_portfolio() -> dict:
+    try:
+        import os, json
+        data_dir = "/data" if os.path.isdir("/data") else "/tmp"
+        path = os.path.join(data_dir, "ai_portfolio.json")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict) and "positions" in data:
+                return data
+    except Exception:
+        pass
+    return {"positions": [], "generated_at": None, "budget": 50000}
+
+def _gen_ai_portfolio() -> dict:
+    """Generate a Quality+Value portfolio via Gemini API."""
+    import os, json, re, time, urllib.request
+    from datetime import date
+
+    api_key = os.getenv("GEMINI_API_KEY", "")
+    if not api_key:
+        raise ValueError(
+            "GEMINI_API_KEY nicht konfiguriert. "
+            "In Railway: Settings \u2192 Variables \u2192 GEMINI_API_KEY hinzuf\u00fcgen."
+        )
+
+    prompt = (
+        "Du bist ein erfahrener Value- und Quality-Investor (Graham, Greenblatt, Buffett).\n"
+        "Erstelle ein diversifiziertes Portfolio mit genau 15 Aktien. Budget: 50.000\u20ac, Horizont: 3\u20135 Jahre.\n\n"
+        "Kriterien (Quality + Value):\n"
+        "- G\u00fcnstige Bewertung: KGV/KBV/EV-EBIT unter Branchenmittel\n"
+        "- Hohe Qualit\u00e4t: ROE > 15%, stabile Margen, gesunde Bilanz\n"
+        "- Burggraben: Markenpower, Netzwerkeffekte oder Switching Costs\n"
+        "- Mindestens 4 Sektoren, max. 3 Aktien/Sektor, mind. 3 EU-Titel\n\n"
+        f"Universum US: {', '.join(_AI_UNI_US)}\n"
+        f"Universum EU: {', '.join(_AI_UNI_EU)}\n\n"
+        "Antworte NUR mit JSON-Array (kein Markdown, kein Flie\u00dftext):\n"
+        '[{"ticker":"AAPL","pct":8,"reason":"Burggraben + faire Bewertung"},...]\n'
+        "Regeln: genau 15 Eintr\u00e4ge, pct summiert auf 100, reason max. 55 Zeichen Deutsch."
+    )
+
+    body = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1500},
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
+        data=body, headers={"Content-Type": "application/json"}, method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=45) as r:
+        resp = json.loads(r.read())
+    text = resp["candidates"][0]["content"]["parts"][0]["text"]
+
+    m = re.search(r"\[[\s\S]*\]", text)
+    if not m:
+        raise ValueError(f"Gemini-Antwort enth\u00e4lt kein JSON: {text[:300]}")
+    picks = json.loads(m.group())[:15]
+
+    positions = []
+    today = date.today().isoformat()
+    for pick in picks:
+        ticker = str(pick.get("ticker", "")).strip().upper()
+        pct = float(pick.get("pct", 0))
+        reason = str(pick.get("reason", "KI-Auswahl"))
+        if not ticker or pct <= 0:
+            continue
+        alloc = 50_000 * pct / 100
+        price, currency, name = None, "USD", ticker
+        for base in ("query1", "query2"):
+            try:
+                yurl = f"https://{base}.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d"
+                yr = urllib.request.Request(yurl, headers={"Accept": "application/json",
+                                                            "User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(yr, timeout=10) as r2:
+                    j = json.loads(r2.read())
+                meta = (j.get("chart", {}).get("result") or [{}])[0].get("meta", {})
+                p = meta.get("regularMarketPrice") or meta.get("chartPreviousClose")
+                if p:
+                    price = p
+                    currency = meta.get("currency", "USD")
+                    name = meta.get("longName") or meta.get("shortName") or ticker
+                    break
+            except Exception:
+                continue
+        if not price:
+            continue
+        shares = alloc / price
+        positions.append({
+            "id": f"ai_{ticker}_{int(time.time()*1000)}",
+            "ticker": ticker,
+            "name": name,
+            "shares": round(shares, 4),
+            "buyPrice": round(price, 4),
+            "buyDate": today,
+            "note": reason,
+            "currentPrice": round(price, 4),
+            "currency": currency,
+            "ts": int(time.time() * 1000),
+        })
+
+    if not positions:
+        raise ValueError("Konnte keine Kurse abrufen \u2014 bitte erneut versuchen.")
+
+    return {
+        "positions": positions,
+        "generated_at": today,
+        "budget": 50_000,
+        "model": "gemini-1.5-flash",
+    }
+
+
 def _load_isin_sector_cache() -> dict:
     """ISIN → {quote_type, sector, recommendation} aus Railway Volume. Überlebt Deploys."""
     try:
@@ -7175,6 +7310,29 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
+    st.markdown("<div class='section-header'>🤖 KI-Portfolio</div>", unsafe_allow_html=True)
+    _ai_meta = _load_ai_portfolio()
+    if _ai_meta.get("generated_at"):
+        st.markdown(
+            f"<div style='color:#566380;font-size:0.78rem;margin-bottom:6px;'>"
+            f"Gemini · {_ai_meta['generated_at']} · {len(_ai_meta['positions'])} Positionen</div>",
+            unsafe_allow_html=True,
+        )
+    _ai_btn_lbl = "🤖 KI-Portfolio erstellen" if not _ai_meta.get("generated_at") else "🔄 KI-Portfolio neu generieren"
+    if st.button(_ai_btn_lbl, use_container_width=True):
+        _gmk = os.getenv("GEMINI_API_KEY", "")
+        if not _gmk:
+            st.error("❌ GEMINI_API_KEY fehlt — in Railway: Settings → Variables")
+        else:
+            with st.spinner("🤖 Gemini wählt Aktien… (10–30 Sek.)"):
+                try:
+                    _ai_result = _gen_ai_portfolio()
+                    _save_ai_portfolio(_ai_result)
+                    st.success(f"✅ {len(_ai_result['positions'])} Positionen erstellt — Aktienspiel öffnen")
+                    st.rerun()
+                except Exception as _e_ai:
+                    st.error(f"❌ {_e_ai}")
+
     st.markdown("<div class='section-header'>⚙️ Einstellungen</div>", unsafe_allow_html=True)
     show_peers = st.toggle("Peer-Vergleich anzeigen", value=True)
     show_insider = st.toggle("Insider-Transaktionen", value=True)
@@ -7402,12 +7560,18 @@ elif st.session_state.get("show_aktienspiel"):
         unsafe_allow_html=True)
     _spiel_server_data = _load_aktienspiel()
     _spiel_json = _json.dumps(_spiel_server_data).replace("</", "<\\/")
+    _ai_port_data = _load_ai_portfolio()
+    _ai_port_json = _json.dumps(_ai_port_data).replace("</", "<\\/")
     _spiel_html = _AKTIENSPIEL_HTML.replace(
         "window.__SPIEL_INIT__",
         f"window.__SPIEL_INIT__ = {_spiel_json}",
         1
+    ).replace(
+        "window.__AI_PORTFOLIO__",
+        f"window.__AI_PORTFOLIO__ = {_ai_port_json}",
+        1
     )
-    _stc_spiel.html(_spiel_html, height=860, scrolling=True)
+    _stc_spiel.html(_spiel_html, height=900, scrolling=True)
     st.stop()
 
 # ==================== GURU TRACKER PAGE ====================
@@ -26410,13 +26574,19 @@ elif _at == 15:
     # ── Render component with server-side initial data ────────────────────
     _sp_server = _load_aktienspiel()
     _sp_json = _json_sp.dumps(_sp_server).replace("</", "<\\/")
+    _sp_ai_data = _load_ai_portfolio()
+    _sp_ai_json = _json_sp.dumps(_sp_ai_data).replace("</", "<\\/")
     _sp_html = _AKTIENSPIEL_HTML.replace(
         "window.__SPIEL_INIT__",
         f"window.__SPIEL_INIT__ = {_sp_json}",
         1
+    ).replace(
+        "window.__AI_PORTFOLIO__",
+        f"window.__AI_PORTFOLIO__ = {_sp_ai_json}",
+        1
     )
     import streamlit.components.v1 as _stc
-    _stc.html(_sp_html, height=860, scrolling=True)
+    _stc.html(_sp_html, height=900, scrolling=True)
 
 # ==================== TAB 16: GURU TRACKER ====================
 elif _at == 16:
