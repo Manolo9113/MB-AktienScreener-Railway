@@ -417,10 +417,32 @@ function PosModal({initial,onSave,onClose}){
   function onTickerBlur(){
     setSuggs([]);
     const t=f.ticker.trim();
-    /* Only auto-fetch when input looks like a ticker symbol, not a company name */
-    if(t&&t.length<=7&&/^[A-Z0-9.\-\^]+$/i.test(t)&&!/\s/.test(t)){
+    if(!t||isEdit)return;
+    /* Short alphanumeric → treat as ticker, fetch price directly */
+    if(t.length<=7&&/^[A-Z0-9.\-\^]+$/i.test(t)&&!/\s/.test(t)){
       doFetchPrice(t);
+      return;
     }
+    /* Looks like company name → search FMP and auto-resolve */
+    const fk=window.__FMP_KEY__||'';
+    if(!fk)return;
+    fetch(`https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(t)}&limit=5&apikey=${fk}`,
+      {signal:mkSignal(5000)})
+      .then(r=>r.ok?r.json():null)
+      .then(data=>{
+        const items=(data||[])
+          .filter(x=>x.symbol&&x.name&&!['CRYPTO','FOREX','COMMODITY'].includes(x.exchangeShortName))
+          .slice(0,5);
+        if(items.length===1){
+          /* Eindeutiger Treffer → automatisch auswählen und Kurs laden */
+          setF(p=>({...p,ticker:items[0].symbol}));
+          doFetchPrice(items[0].symbol);
+        }else if(items.length>1){
+          /* Mehrere Treffer → Dropdown anzeigen */
+          setSuggs(items);
+        }
+      })
+      .catch(()=>{});
   }
 
   async function submit(e){
