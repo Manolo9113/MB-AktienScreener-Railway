@@ -1123,10 +1123,17 @@ def _gen_ai_portfolio() -> dict:
 
     text = resp["candidates"][0]["content"]["parts"][0]["text"]
 
-    m = re.search(r"\[[\s\S]*\]", text)
+    # Strip markdown code fences (Gemini 2.5 wraps output in ```json ... ```)
+    clean = re.sub(r"```(?:json)?\s*", "", text, flags=re.IGNORECASE).strip()
+    m = re.search(r"\[[\s\S]*\]", clean, re.DOTALL)
     if not m:
         raise ValueError(f"Gemini-Antwort enth\u00e4lt kein JSON: {text[:300]}")
-    picks = json.loads(m.group())[:15]
+    try:
+        picks = json.loads(m.group())[:15]
+    except (json.JSONDecodeError, ValueError) as _je:
+        raise ValueError(f"Gemini JSON nicht parsierbar: {m.group()[:200]}") from _je
+
+    _fmp_key = os.getenv("FMP_API_KEY", "")
 
     positions = []
     today = date.today().isoformat()
@@ -1138,22 +1145,38 @@ def _gen_ai_portfolio() -> dict:
             continue
         alloc = 50_000 * pct / 100
         price, currency, name = None, "USD", ticker
-        for base in ("query1", "query2"):
+        # FMP primary
+        if _fmp_key:
             try:
-                yurl = f"https://{base}.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d"
-                yr = urllib.request.Request(yurl, headers={"Accept": "application/json",
-                                                            "User-Agent": "Mozilla/5.0"})
-                with urllib.request.urlopen(yr, timeout=10) as r2:
-                    j = json.loads(r2.read())
-                meta = (j.get("chart", {}).get("result") or [{}])[0].get("meta", {})
-                p = meta.get("regularMarketPrice") or meta.get("chartPreviousClose")
-                if p:
-                    price = p
-                    currency = meta.get("currency", "USD")
-                    name = meta.get("longName") or meta.get("shortName") or ticker
-                    break
+                _fr = urllib.request.Request(
+                    f"https://financialmodelingprep.com/api/v3/quote/{ticker}?apikey={_fmp_key}",
+                    headers={"Accept": "application/json"})
+                with urllib.request.urlopen(_fr, timeout=10) as _rf:
+                    _fj = json.loads(_rf.read())
+                if _fj and _fj[0].get("price"):
+                    price = _fj[0]["price"]
+                    currency = _fj[0].get("currency", "USD") or "USD"
+                    name = _fj[0].get("name", ticker) or ticker
             except Exception:
-                continue
+                pass
+        # Yahoo Finance fallback
+        if not price:
+            for base in ("query1", "query2"):
+                try:
+                    yurl = f"https://{base}.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d"
+                    yr = urllib.request.Request(yurl, headers={"Accept": "application/json",
+                                                                "User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(yr, timeout=10) as r2:
+                        j = json.loads(r2.read())
+                    meta = (j.get("chart", {}).get("result") or [{}])[0].get("meta", {})
+                    p = meta.get("regularMarketPrice") or meta.get("chartPreviousClose")
+                    if p:
+                        price = p
+                        currency = meta.get("currency", "USD")
+                        name = meta.get("longName") or meta.get("shortName") or ticker
+                        break
+                except Exception:
+                    continue
         if not price:
             continue
         shares = alloc / price
