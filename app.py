@@ -20340,6 +20340,7 @@ enterprise_value = yf_info.get("enterpriseValue")
 ebitda = yf_info.get("ebitda")
 ebitda_margin = (ebitda / revenue * 100) if (ebitda and revenue and revenue > 0) else None
 ev_ebitda = (enterprise_value / ebitda) if (enterprise_value and ebitda and ebitda > 0) else None
+ps_ratio = yf_info.get("priceToSalesTrailing12Months")
 week52_high = yf_info.get("fiftyTwoWeekHigh")
 week52_low = yf_info.get("fiftyTwoWeekLow")
 target_mean = yf_info.get("targetMeanPrice")
@@ -21313,7 +21314,7 @@ if _at == 0:
 
     # ── Bewertungs-Multiples ──────────────────────────────────────────
     st.markdown("<div class='section-header'>📊 Bewertung</div>", unsafe_allow_html=True)
-    _kgv_c1, _kgv_c2, _kgv_c3 = st.columns(3)
+    _kgv_c1, _kgv_c2, _kgv_c3, _kgv_c4 = st.columns(4)
     with _kgv_c1:
         st.markdown(mini_card("KGV (TTM)", trailing_pe, 15, 25, ".1f", "x", inverse=True,
                               tooltip="Kurs-Gewinn-Verhältnis (letzte 12 Monate). <15x günstig, 15–25x fair, >25x teuer."), unsafe_allow_html=True)
@@ -21323,6 +21324,9 @@ if _at == 0:
     with _kgv_c3:
         st.markdown(mini_card("PEG Ratio", peg_ratio, 1, 2, ".2f", "x", inverse=True,
                               tooltip="Price/Earnings to Growth. <1 = günstig relativ zum Wachstum, >2 = teuer."), unsafe_allow_html=True)
+    with _kgv_c4:
+        st.markdown(mini_card("KUV (TTM)", ps_ratio, 5, 10, ".1f", "x", inverse=True,
+                              tooltip="Kurs-Umsatz-Verhältnis (letzte 12 Monate). <5x günstig, 5–10x fair, >10x teuer — gilt als Warnsignal bei fehlender Profitabilität."), unsafe_allow_html=True)
 
     st.markdown("<div class='section-header'>Margen</div>", unsafe_allow_html=True)
     c1, c2, c3, c4, c5 = st.columns(5)
