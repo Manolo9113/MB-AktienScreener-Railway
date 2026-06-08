@@ -91,26 +91,11 @@ function mkSignal(ms){
   const c=new AbortController();setTimeout(()=>c.abort(),ms);return c.signal;
 }
 
-/* ── Yahoo Finance v8 + FMP Fallback ── */
+/* ── FMP Primary + Yahoo Finance Fallback ── */
 async function getQuote(ticker){
   const t=ticker.trim().toUpperCase();
-  for(const base of['query1','query2']){
-    try{
-      const r=await fetch(`https://${base}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?interval=1d&range=5d`,
-        {headers:{Accept:'application/json'},signal:mkSignal(8000)});
-      if(!r.ok) continue;
-      const j=await r.json();
-      const m=(j.chart?.result||[])[0]?.meta;
-      if(!m) continue;
-      const p=m.regularMarketPrice??m.chartPreviousClose;
-      if(p==null) continue;
-      return{ticker:t,price:p,prev:m.chartPreviousClose||m.regularMarketPreviousClose||p,
-        currency:m.currency||'USD',name:m.longName||m.shortName||t,
-        quoteType:(m.instrumentType||m.quoteType||'').toUpperCase()};
-    }catch(e){}
-  }
-  /* FMP Fallback */
   const fk=window.__FMP_KEY__||'';
+  /* FMP Primary */
   if(fk){
     try{
       const r=await fetch(
@@ -120,13 +105,31 @@ async function getQuote(ticker){
         const data=await r.json();
         const q=data[0];
         if(q&&q.price){
+          const _qtMap={'stock':'EQUITY','etf':'ETF','mutual fund':'MUTUALFUND','fund':'FUND','reit':'REIT','trust':'REIT'};
+          const qt=(_qtMap[(q.type||'').toLowerCase()]||'EQUITY');
           return{ticker:t,price:q.price,prev:q.previousClose||q.price,
-            currency:q.currency||'USD',name:q.name||t,quoteType:'EQUITY'};
+            currency:q.currency||'USD',name:q.name||t,quoteType:qt};
         }
       }
     }catch(e){}
   }
-  throw new Error(`${t}: Kurs nicht abrufbar`);
+  /* Yahoo Finance Fallback */
+  for(const base of['query1','query2']){
+    try{
+      const r=await fetch(`https://${base}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?interval=1d&range=5d`,
+        {headers:{Accept:'application/json'},signal:mkSignal(8000)});
+      if(!r.ok)continue;
+      const j=await r.json();
+      const m=(j.chart?.result||[])[0]?.meta;
+      if(!m)continue;
+      const p=m.regularMarketPrice??m.chartPreviousClose;
+      if(p==null)continue;
+      return{ticker:t,price:p,prev:m.chartPreviousClose||m.regularMarketPreviousClose||p,
+        currency:m.currency||'USD',name:m.longName||m.shortName||t,
+        quoteType:(m.instrumentType||m.quoteType||'').toUpperCase()};
+    }catch(e){}
+  }
+  throw new Error(`${t}: Kurs nicht abrufbar — bitte Ticker aus der Vorschlagsliste wählen`);
 }
 
 /* ── FMP Profil: ISIN / WKN / Name ── */
@@ -344,7 +347,7 @@ function PosModal({initial,onSave,onClose}){
   const searchTimer=useRef(null);
   const set=(k)=>(e)=>setF(p=>({...p,[k]:e.target.value}));
 
-  /* Autocomplete: Yahoo Finance Search (kein Key) + FMP Fallback */
+  /* Autocomplete: FMP Primary + Yahoo Finance Fallback */
   function onTickerInput(e){
     const val=e.target.value;
     setF(p=>({...p,ticker:val}));
@@ -352,7 +355,23 @@ function PosModal({initial,onSave,onClose}){
     const q=val.trim();
     if(!q||q.length<2){setSuggs([]);return;}
     searchTimer.current=setTimeout(async()=>{
-      /* Yahoo Finance Search — kein API-Key erforderlich */
+      /* FMP Primary */
+      const fk=window.__FMP_KEY__||'';
+      if(fk){
+        try{
+          const r=await fetch(
+            `https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(q)}&limit=8&apikey=${fk}`,
+            {signal:mkSignal(5000)});
+          if(r.ok){
+            const data=await r.json();
+            const items=(data||[])
+              .filter(x=>x.symbol&&x.name&&!['CRYPTO','FOREX','COMMODITY'].includes(x.exchangeShortName))
+              .slice(0,6);
+            if(items.length){setSuggs(items);return;}
+          }
+        }catch(e){}
+      }
+      /* Yahoo Finance Fallback */
       for(const base of['query1','query2']){
         try{
           const r=await fetch(
@@ -367,19 +386,6 @@ function PosModal({initial,onSave,onClose}){
           if(items.length){setSuggs(items);return;}
         }catch(e){}
       }
-      /* FMP Fallback (braucht Key) */
-      const fk=window.__FMP_KEY__||'';
-      if(!fk)return;
-      try{
-        const r=await fetch(
-          `https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(q)}&limit=8&apikey=${fk}`,
-          {signal:mkSignal(5000)});
-        if(!r.ok)return;
-        const data=await r.json();
-        setSuggs((data||[])
-          .filter(x=>x.symbol&&x.name&&!['CRYPTO','FOREX','COMMODITY'].includes(x.exchangeShortName))
-          .slice(0,6));
-      }catch(e){}
     },350);
   }
 
@@ -410,7 +416,11 @@ function PosModal({initial,onSave,onClose}){
 
   function onTickerBlur(){
     setSuggs([]);
-    doFetchPrice(f.ticker.trim());
+    const t=f.ticker.trim();
+    /* Only auto-fetch when input looks like a ticker symbol, not a company name */
+    if(t&&t.length<=7&&/^[A-Z0-9.\-\^]+$/i.test(t)&&!/\s/.test(t)){
+      doFetchPrice(t);
+    }
   }
 
   async function submit(e){

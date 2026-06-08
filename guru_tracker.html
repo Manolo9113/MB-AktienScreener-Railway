@@ -322,26 +322,11 @@ async function fetchFilingData(cik,f){
   };
 }
 
-// ── Yahoo Finance chart data ──────────────────────────────────────────────
+// ── FMP Primary + Yahoo Finance Fallback ─────────────────────────────────
 async function fetchYahooChart(ticker,yRange){
   const t=ticker.trim().toUpperCase();
-  for(const base of['query1','query2']){
-    try{
-      const res=await fetch(
-        `https://${base}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?interval=1mo&range=${yRange}`,
-        {headers:{Accept:'application/json'},signal:mkSignal(12000)}
-      );
-      if(!res.ok)continue;
-      const j=await res.json();
-      const result=j.chart?.result?.[0];
-      if(!result)continue;
-      const timestamps=(result.timestamp||[]).map(ts=>ts*1000);
-      const prices=result.indicators?.adjclose?.[0]?.adjclose||result.indicators?.quote?.[0]?.close||[];
-      if(timestamps.length>1)return{ticker:t,timestamps,prices};
-    }catch(e){}
-  }
-  /* FMP Fallback — monthly historical */
   const fk=window.__FMP_KEY__||'';
+  /* FMP Primary — monthly historical */
   if(fk){
     try{
       const fmpT=t==='^GSPC'?'SPY':t;
@@ -355,6 +340,22 @@ async function fetchYahooChart(ticker,yRange){
           return{ticker:t,timestamps:sorted.map(d=>new Date(d.date).getTime()),prices:sorted.map(d=>d.close)};
         }
       }
+    }catch(e){}
+  }
+  /* Yahoo Finance Fallback */
+  for(const base of['query1','query2']){
+    try{
+      const res=await fetch(
+        `https://${base}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?interval=1mo&range=${yRange}`,
+        {headers:{Accept:'application/json'},signal:mkSignal(12000)}
+      );
+      if(!res.ok)continue;
+      const j=await res.json();
+      const result=j.chart?.result?.[0];
+      if(!result)continue;
+      const timestamps=(result.timestamp||[]).map(ts=>ts*1000);
+      const prices=result.indicators?.adjclose?.[0]?.adjclose||result.indicators?.quote?.[0]?.close||[];
+      if(timestamps.length>1)return{ticker:t,timestamps,prices};
     }catch(e){}
   }
   throw new Error(`${t}: Kursverlauf nicht abrufbar`);
