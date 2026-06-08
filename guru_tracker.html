@@ -242,11 +242,16 @@ function Chg({chg,pct}){
   return <span className="chg-hld">—</span>;
 }
 
+function mkSignal(ms){
+  if(typeof AbortSignal!=='undefined'&&AbortSignal.timeout)return AbortSignal.timeout(ms);
+  const c=new AbortController();setTimeout(()=>c.abort(),ms);return c.signal;
+}
+
 // ── SEC: get list of all 13F-HR filings ───────────────────────────────────
 async function fetchFilingsList(cik){
   const padded=cik.replace(/\D/g,'').padStart(10,'0');
   const res=await fetch(`https://data.sec.gov/submissions/CIK${padded}.json`,
-    {signal:AbortSignal.timeout(18000)});
+    {signal:mkSignal(18000)});
   if(!res.ok)throw new Error(`SEC HTTP ${res.status}`);
   const sub=await res.json();
   const rec=sub.filings?.recent;
@@ -273,7 +278,7 @@ async function fetchFilingData(cik,f){
 
   const idxRes=await fetch(
     `https://www.sec.gov/Archives/edgar/data/${numeric}/${accFlat}/index.json`,
-    {signal:AbortSignal.timeout(18000)}
+    {signal:mkSignal(18000)}
   );
   if(!idxRes.ok)throw new Error(`Filing-Index HTTP ${idxRes.status}`);
   const idxData=await idxRes.json();
@@ -286,7 +291,7 @@ async function fetchFilingData(cik,f){
 
   const xmlRes=await fetch(
     `https://www.sec.gov/Archives/edgar/data/${numeric}/${accFlat}/${xmlItem.name}`,
-    {signal:AbortSignal.timeout(28000)}
+    {signal:mkSignal(28000)}
   );
   if(!xmlRes.ok)throw new Error(`XML HTTP ${xmlRes.status}`);
   const xmlText=await xmlRes.text();
@@ -322,7 +327,7 @@ async function fetchYahooChart(ticker,yRange){
     try{
       const res=await fetch(
         `https://${base}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?interval=1mo&range=${yRange}`,
-        {headers:{Accept:'application/json'},signal:AbortSignal.timeout(12000)}
+        {headers:{Accept:'application/json'},signal:mkSignal(12000)}
       );
       if(!res.ok)continue;
       const j=await res.json();
@@ -365,12 +370,9 @@ function PerfChart({selId,range}){
     Promise.allSettled(tickers.map(t=>fetchYahooChart(t,yRange))).then(results=>{
       if(cancelled)return;
       const spxR=results[results.length-1];
-      if(spxR.status!=='fulfilled'){
-        setSt({loading:false,err:'S&P 500 Daten nicht verfügbar',series:null});
-        return;
-      }
-      const spxNorm=normalize(spxR.value.timestamps,spxR.value.prices);
-      if(!spxNorm){setSt({loading:false,err:'S&P 500 Daten leer',series:null});return;}
+      const spxNorm=spxR.status==='fulfilled'
+        ?normalize(spxR.value.timestamps,spxR.value.prices)
+        :null;
 
       const holdNorm=[];
       for(let i=0;i<topH.length;i++){
@@ -399,7 +401,7 @@ function PerfChart({selId,range}){
         portSeries.forEach(p=>{p.ret-=base;});
       }
 
-      setSt({loading:false,err:'',series:{port:portSeries,spx:spxNorm}});
+      setSt({loading:false,err:'',series:{port:portSeries,spx:spxNorm||[]}});
     }).catch(e=>{
       if(!cancelled)setSt({loading:false,err:String(e.message||e),series:null});
     });
@@ -418,9 +420,10 @@ function PerfChart({selId,range}){
   if(!series)return null;
 
   const {port,spx}=series;
-  if(port.length<2||spx.length<2)return <div className="err">Zu wenige Datenpunkte</div>;
+  const hasSpx=spx&&spx.length>=2;
+  if(port.length<2)return <div className="err">Zu wenige Datenpunkte</div>;
 
-  const allRets=[...port.map(p=>p.ret),...spx.map(p=>p.ret)].filter(r=>!isNaN(r));
+  const allRets=[...port.map(p=>p.ret),...(hasSpx?spx.map(p=>p.ret):[])].filter(r=>!isNaN(r));
   const minR=Math.min(...allRets),maxR=Math.max(...allRets);
   const pad=(maxR-minR)*0.12+2;
   const yMin=minR-pad,yMax=maxR+pad;
@@ -428,7 +431,7 @@ function PerfChart({selId,range}){
   const W=460,H=185,mx=42,my=12,mr=14,mb=26;
   const cW=W-mx-mr,cH=H-my-mb;
 
-  const allTs=[...new Set([...port,...spx].map(p=>p.t))].sort((a,b)=>a-b);
+  const allTs=[...new Set([...port,...(hasSpx?spx:[])].map(p=>p.t))].sort((a,b)=>a-b);
   const tMin=allTs[0],tMax=allTs[allTs.length-1],tRange=tMax-tMin||1;
 
   const tx=t=>mx+(t-tMin)/tRange*cW;
@@ -436,7 +439,7 @@ function PerfChart({selId,range}){
   const mkPath=pts=>pts.filter(p=>!isNaN(p.ret)).map((p,i)=>`${i?'L':'M'}${tx(p.t).toFixed(1)},${ty(p.ret).toFixed(1)}`).join('');
 
   const portFinal=port[port.length-1]?.ret??0;
-  const spxFinal=spx[spx.length-1]?.ret??0;
+  const spxFinal=hasSpx?spx[spx.length-1]?.ret??0:null;
   const portColor=portFinal>=0?'#00c9a7':'#ff4757';
   const fmtR=r=>(r>=0?'+':'')+r.toFixed(1)+'%';
   const fmtDt=t=>new Date(t).toLocaleDateString('de-DE',{month:'short',year:'2-digit'});
@@ -468,12 +471,12 @@ function PerfChart({selId,range}){
         {xTicks.map(({t,x},i)=>(
           <text key={i} x={x} y={H-5} textAnchor="middle" fill="#566380" fontSize="8.5">{fmtDt(t)}</text>
         ))}
-        <path d={mkPath(spx)} fill="none" stroke="#566380" strokeWidth="1.5" opacity=".85"/>
+        {hasSpx&&<path d={mkPath(spx)} fill="none" stroke="#566380" strokeWidth="1.5" opacity=".85"/>}
         <path d={mkPath(port)} fill="none" stroke={portColor} strokeWidth="2"/>
         <circle cx={mx+cW-105} cy={my+7} r="4" fill={portColor}/>
         <text x={mx+cW-97} y={my+11} fill="#c4cfe0" fontSize="9.5">Portfolio {fmtR(portFinal)}</text>
-        <circle cx={mx+cW-105} cy={my+22} r="4" fill="#566380"/>
-        <text x={mx+cW-97} y={my+26} fill="#8a9bb5" fontSize="9.5">S&amp;P 500 {fmtR(spxFinal)}</text>
+        {hasSpx&&<><circle cx={mx+cW-105} cy={my+22} r="4" fill="#566380"/>
+        <text x={mx+cW-97} y={my+26} fill="#8a9bb5" fontSize="9.5">S&amp;P 500 {fmtR(spxFinal)}</text></>}
       </svg>
       <div style={{color:'#3a4a60',fontSize:'9px',textAlign:'right',marginTop:4}}>Basis: Mock-Ticker · Kursentwicklung kumuliert ab Startdatum</div>
     </div>
