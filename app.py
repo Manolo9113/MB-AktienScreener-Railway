@@ -1096,12 +1096,12 @@ def _gen_ai_portfolio() -> dict:
     }).encode("utf-8")
 
     _models = [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
         "gemini-2.0-flash",
-        "gemini-2.0-flash-exp",
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-flash",
+        "gemini-2.0-flash-lite",
     ]
-    resp, used_model, last_err = None, None, ""
+    resp, used_model, _errors = None, None, []
     for _m in _models:
         try:
             req = urllib.request.Request(
@@ -1113,13 +1113,13 @@ def _gen_ai_portfolio() -> dict:
             used_model = _m
             break
         except urllib.error.HTTPError as _he:
-            last_err = f"{_m}: HTTP {_he.code} {_he.reason}"
+            _errors.append(f"{_m}: HTTP {_he.code}")
             continue
         except Exception as _ex:
-            last_err = f"{_m}: {_ex}"
+            _errors.append(f"{_m}: {type(_ex).__name__}")
             continue
     if resp is None:
-        raise ValueError(f"Gemini nicht erreichbar — {last_err}")
+        raise ValueError(f"Gemini nicht erreichbar — {'; '.join(_errors)}")
 
     text = resp["candidates"][0]["content"]["parts"][0]["text"]
 
