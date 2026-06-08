@@ -88,6 +88,8 @@ tr:hover td{background:rgba(255,255,255,.018)}
 <div id="root"></div>
 <script type="text/babel">
 'use strict';
+/* GURU_DATA_INJECT */
+if(typeof window.__FMP_KEY__==='undefined') window.__FMP_KEY__='';
 const {useState,useEffect,useMemo}=React;
 
 const INVESTORS=[
@@ -335,7 +337,24 @@ async function fetchYahooChart(ticker,yRange){
       if(!result)continue;
       const timestamps=(result.timestamp||[]).map(ts=>ts*1000);
       const prices=result.indicators?.adjclose?.[0]?.adjclose||result.indicators?.quote?.[0]?.close||[];
-      return{ticker:t,timestamps,prices};
+      if(timestamps.length>1)return{ticker:t,timestamps,prices};
+    }catch(e){}
+  }
+  /* FMP Fallback — monthly historical */
+  const fk=window.__FMP_KEY__||'';
+  if(fk){
+    try{
+      const fmpT=t==='^GSPC'?'SPY':t;
+      const res=await fetch(
+        `https://financialmodelingprep.com/api/v3/historical-chart/1month/${encodeURIComponent(fmpT)}?apikey=${fk}`,
+        {signal:mkSignal(12000)});
+      if(res.ok){
+        const data=await res.json();
+        if(Array.isArray(data)&&data.length>1){
+          const sorted=data.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+          return{ticker:t,timestamps:sorted.map(d=>new Date(d.date).getTime()),prices:sorted.map(d=>d.close)};
+        }
+      }
     }catch(e){}
   }
   throw new Error(`${t}: Kursverlauf nicht abrufbar`);
@@ -383,8 +402,9 @@ function PerfChart({selId,range}){
       }
       if(!holdNorm.length){setSt({loading:false,err:'Keine Kursdaten verfügbar',series:null});return;}
 
-      // Build portfolio series aligned to SPX timestamps
-      const portSeries=spxNorm.map(({t})=>{
+      // Build portfolio series — align to SPX timeline if available, else use own timestamps
+      const refTs=spxNorm?spxNorm.map(p=>p.t):holdNorm[0].ns.map(p=>p.t);
+      const portSeries=refTs.map(t=>{
         let sumR=0,sumW=0;
         holdNorm.forEach(({ns,weight})=>{
           let best=ns[0];

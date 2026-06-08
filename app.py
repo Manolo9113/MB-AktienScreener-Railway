@@ -7601,7 +7601,12 @@ elif st.session_state.get("show_guru_tracker"):
         "Portfolios bekannter Investoren basierend auf SEC 13F-HR Filings. "
         "Live-Daten via SEC EDGAR API — kein API-Key erforderlich.</div>",
         unsafe_allow_html=True)
-    _stc_guru.html(_GURU_TRACKER_HTML, height=900, scrolling=True)
+    _guru_html = _GURU_TRACKER_HTML.replace(
+        "/* GURU_DATA_INJECT */",
+        f"window.__FMP_KEY__={_json.dumps(FMP_API_KEY or '')};",
+        1
+    )
+    _stc_guru.html(_guru_html, height=900, scrolling=True)
     st.stop()
 
 # ==================== MARKTÜBERBLICK PAGE ====================
@@ -26613,7 +26618,12 @@ elif _at == 15:
 # ==================== TAB 16: GURU TRACKER ====================
 elif _at == 16:
     import streamlit.components.v1 as _stc_gt
-    _stc_gt.html(_GURU_TRACKER_HTML, height=900, scrolling=True)
+    _guru_html2 = _GURU_TRACKER_HTML.replace(
+        "/* GURU_DATA_INJECT */",
+        f"window.__FMP_KEY__={_json.dumps(FMP_API_KEY or '')};",
+        1
+    )
+    _stc_gt.html(_guru_html2, height=900, scrolling=True)
 
 # ==================== INSIGHTS ====================
 insights = []
