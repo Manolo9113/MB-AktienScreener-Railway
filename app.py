@@ -7609,10 +7609,10 @@ elif st.session_state.get("show_aktienspiel"):
         "Dein Depot wird im Browser gespeichert (localStorage) und bleibt über Sessions erhalten.</div>",
         unsafe_allow_html=True)
     _spiel_server_data = _load_aktienspiel()
-    _spiel_json = _json.dumps(_spiel_server_data).replace("</", "<\\/")
+    _spiel_json = json.dumps(_spiel_server_data).replace("</", "<\\/")
     _ai_port_data = _load_ai_portfolio()
-    _ai_port_json = _json.dumps(_ai_port_data).replace("</", "<\\/")
-    _fmp_key_json = _json.dumps(FMP_API_KEY or "")
+    _ai_port_json = json.dumps(_ai_port_data).replace("</", "<\\/")
+    _fmp_key_json = json.dumps(FMP_API_KEY or "")
     _spiel_html = _AKTIENSPIEL_HTML.replace(
         "/* Server-injected data (replaced by Python/Streamlit) */",
         f"window.__SPIEL_INIT__={_spiel_json};\nwindow.__AI_PORTFOLIO__={_ai_port_json};\nwindow.__FMP_KEY__={_fmp_key_json};",
@@ -7632,7 +7632,7 @@ elif st.session_state.get("show_guru_tracker"):
         unsafe_allow_html=True)
     _guru_html = _GURU_TRACKER_HTML.replace(
         "/* GURU_DATA_INJECT */",
-        f"window.__FMP_KEY__={_json.dumps(FMP_API_KEY or '')};",
+        f"window.__FMP_KEY__={json.dumps(FMP_API_KEY or '')};",
         1
     )
     _stc_guru.html(_guru_html, height=900, scrolling=True)
