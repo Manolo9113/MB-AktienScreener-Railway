@@ -26626,13 +26626,10 @@ elif _at == 15:
     _sp_json = _json_sp.dumps(_sp_server).replace("</", "<\\/")
     _sp_ai_data = _load_ai_portfolio()
     _sp_ai_json = _json_sp.dumps(_sp_ai_data).replace("</", "<\\/")
+    _sp_fmp_json = _json_sp.dumps(FMP_API_KEY or "")
     _sp_html = _AKTIENSPIEL_HTML.replace(
-        "window.__SPIEL_INIT__",
-        f"window.__SPIEL_INIT__ = {_sp_json}",
-        1
-    ).replace(
-        "window.__AI_PORTFOLIO__",
-        f"window.__AI_PORTFOLIO__ = {_sp_ai_json}",
+        "/* Server-injected data (replaced by Python/Streamlit) */",
+        f"window.__SPIEL_INIT__={_sp_json};\nwindow.__AI_PORTFOLIO__={_sp_ai_json};\nwindow.__FMP_KEY__={_sp_fmp_json};",
         1
     )
     import streamlit.components.v1 as _stc
