@@ -377,13 +377,15 @@ function PosModal({initial,onSave,onClose}){
         try{
           const r=await fetch(
             `https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(q)}&limit=8&apikey=${fk}`,
-            {signal:mkSignal(5000)});
+            {signal:mkSignal(8000)});
           if(r.ok){
             const data=await r.json();
-            const items=(data||[])
-              .filter(x=>x.symbol&&x.name&&!['CRYPTO','FOREX','COMMODITY'].includes(x.exchangeShortName))
-              .slice(0,6);
-            if(items.length){setSuggs(items);return;}
+            if(Array.isArray(data)){
+              const items=data
+                .filter(x=>x.symbol&&x.name&&!['CRYPTO','FOREX','COMMODITY'].includes(x.exchangeShortName))
+                .slice(0,6);
+              if(items.length){setSuggs(items);return;}
+            }
           }
         }catch(e){}
       }
@@ -402,7 +404,10 @@ function PosModal({initial,onSave,onClose}){
           if(items.length){setSuggs(items);return;}
         }catch(e){}
       }
-      setSuggs([]);setSuggHint('Keine Treffer — anderen Begriff oder Ticker versuchen');
+      setSuggs([]);
+      setSuggHint(fk
+        ?'Keine Treffer — anderen Begriff versuchen oder Ticker direkt eingeben (z.B. NOW)'
+        :'Ticker direkt eingeben (z.B. NOW für ServiceNow, AAPL für Apple)');
     },350);
   }
 
@@ -441,10 +446,10 @@ function PosModal({initial,onSave,onClose}){
     /* Looks like company name → search FMP and auto-resolve */
     const fk=window.__FMP_KEY__||'';
     if(!fk){doFetchPrice(t);return;}
-    fetch(`https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(t)}&limit=5&apikey=${fk}`,{signal:mkSignal(5000)})
+    fetch(`https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(t)}&limit=5&apikey=${fk}`,{signal:mkSignal(8000)})
       .then(r=>r.ok?r.json():null)
       .then(data=>{
-        const items=(data||[]).filter(x=>x.symbol&&x.name&&!['CRYPTO','FOREX','COMMODITY'].includes(x.exchangeShortName)).slice(0,5);
+        const items=Array.isArray(data)?data.filter(x=>x.symbol&&x.name&&!['CRYPTO','FOREX','COMMODITY'].includes(x.exchangeShortName)).slice(0,5):[];
         if(items.length===1){setF(p=>({...p,ticker:items[0].symbol}));doFetchPrice(items[0].symbol);}
         else if(items.length>1){setSuggs(items);}
         else{doFetchPrice(t);}
