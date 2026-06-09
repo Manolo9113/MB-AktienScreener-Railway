@@ -1100,6 +1100,8 @@ def _gen_ai_portfolio() -> dict:
         "gemini-2.5-pro",
         "gemini-2.0-flash",
         "gemini-2.0-flash-lite",
+        "gemini-1.5-flash-8b",
+        "gemini-1.5-flash",
     ]
     resp, used_model, _errors = None, None, []
     for _m in _models:
@@ -1108,12 +1110,16 @@ def _gen_ai_portfolio() -> dict:
                 f"https://generativelanguage.googleapis.com/v1beta/models/{_m}:generateContent?key={api_key}",
                 data=body, headers={"Content-Type": "application/json"}, method="POST"
             )
-            with urllib.request.urlopen(req, timeout=45) as r:
+            with urllib.request.urlopen(req, timeout=35) as r:
                 resp = json.loads(r.read())
             used_model = _m
             break
         except urllib.error.HTTPError as _he:
             _errors.append(f"{_m}: HTTP {_he.code}")
+            if _he.code == 429:
+                time.sleep(3)   # brief pause lets quota window reset
+            elif _he.code == 503:
+                time.sleep(2)   # server overloaded — wait before next model
             continue
         except Exception as _ex:
             _errors.append(f"{_m}: {type(_ex).__name__}")
