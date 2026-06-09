@@ -164,23 +164,34 @@ function checkQuoteType(quoteType,name){
   return`❌ ${name||'Dieses Instrument'} ist ein ${label}. Im Aktienspiel sind nur Aktien und ETFs erlaubt.`;
 }
 
-/* ── Yahoo monthly chart data ── */
+/* ── Monthly chart: FMP Primary + Yahoo Fallback ── */
 async function fetchYahooChart(ticker,range){
   const yRange={'6m':'6mo','1y':'1y','2y':'2y','5y':'5y'}[range]||'1y';
   const t=ticker.trim().toUpperCase();
+  const fk=window.__FMP_KEY__||'';
+  if(fk){
+    try{
+      const fmpT=t==='^GSPC'?'SPY':t;
+      const res=await fetch(`https://financialmodelingprep.com/api/v3/historical-chart/1month/${encodeURIComponent(fmpT)}?apikey=${fk}`,{signal:mkSignal(12000)});
+      if(res.ok){
+        const data=await res.json();
+        if(Array.isArray(data)&&data.length>1){
+          const sorted=data.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+          return{ticker:t,timestamps:sorted.map(d=>new Date(d.date).getTime()),prices:sorted.map(d=>d.close)};
+        }
+      }
+    }catch(e){}
+  }
   for(const base of['query1','query2']){
     try{
-      const res=await fetch(
-        `https://${base}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?interval=1mo&range=${yRange}`,
-        {headers:{Accept:'application/json'},signal:AbortSignal.timeout(10000)}
-      );
+      const res=await fetch(`https://${base}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?interval=1mo&range=${yRange}`,{headers:{Accept:'application/json'},signal:mkSignal(12000)});
       if(!res.ok)continue;
       const j=await res.json();
       const result=j.chart?.result?.[0];
       if(!result)continue;
       const timestamps=(result.timestamp||[]).map(ts=>ts*1000);
       const prices=result.indicators?.adjclose?.[0]?.adjclose||result.indicators?.quote?.[0]?.close||[];
-      return{ticker:t,timestamps,prices};
+      if(timestamps.length>1)return{ticker:t,timestamps,prices};
     }catch(e){}
   }
   throw new Error(`${t}: Kursverlauf nicht abrufbar`);
@@ -243,11 +254,13 @@ function PortPerfChart({myPositions,aiPositions,range}){
       if(done)return;
       const td={};allT.forEach((t,i)=>{if(rs[i].status==='fulfilled')td[t]=rs[i].value;});
       const spxData=td['^GSPC'];
-      if(!spxData){setSt({loading:false,err:'S&P 500 nicht verfügbar',series:null});return;}
-      const spxS=norm(spxData.timestamps,spxData.prices);
-      if(!spxS){setSt({loading:false,err:'S&P 500 Daten leer',series:null});return;}
-      const myS=myH.length?build(myH,spxS,td):null;
-      const aiS=aiH.length?build(aiH,spxS,td):null;
+      const spxS=spxData?norm(spxData.timestamps,spxData.prices):null;
+      /* If S&P unavailable, use first available holding as time-axis reference */
+      const refHolder=[...myH,...aiH].find(h=>td[h.ticker]);
+      const refS=spxS||(refHolder?norm(td[refHolder.ticker].timestamps,td[refHolder.ticker].prices):null);
+      if(!refS){setSt({loading:false,err:'Keine Kursdaten verfügbar',series:null});return;}
+      const myS=myH.length?build(myH,refS,td):null;
+      const aiS=aiH.length?build(aiH,refS,td):null;
       if(!myS&&!aiS){setSt({loading:false,err:'Keine Kursdaten für Portfolio-Positionen verfügbar',series:null});return;}
       setSt({loading:false,err:'',series:{myS,aiS,spxS}});
     }).catch(e=>{if(!done)setSt({loading:false,err:String(e.message||e),series:null});});
@@ -266,7 +279,7 @@ function PortPerfChart({myPositions,aiPositions,range}){
   if(!series)return null;
 
   const{myS,aiS,spxS}=series;
-  const allPts=[...(myS||[]),...(aiS||[]),...spxS];
+  const allPts=[...(myS||[]),...(aiS||[]),...(spxS||[])];
   const allRets=allPts.map(p=>p.ret).filter(r=>!isNaN(r));
   if(!allRets.length)return null;
   const minR=Math.min(...allRets),maxR=Math.max(...allRets);
@@ -294,7 +307,7 @@ function PortPerfChart({myPositions,aiPositions,range}){
   const legs=[];
   if(myS)legs.push({c:'#00c9a7',lbl:'Mein Depot',ret:myS[myS.length-1]?.ret});
   if(aiS)legs.push({c:'#8b5cf6',lbl:'KI-Depot',ret:aiS[aiS.length-1]?.ret});
-  legs.push({c:'#566380',lbl:'S&P 500',ret:spxS[spxS.length-1]?.ret});
+  if(spxS)legs.push({c:'#566380',lbl:'S&P 500',ret:spxS[spxS.length-1]?.ret});
   return(
     <div>
       <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',height:'auto',display:'block'}}>
@@ -308,7 +321,7 @@ function PortPerfChart({myPositions,aiPositions,range}){
         {xTicks.map(({t,x},i)=>(
           <text key={i} x={x} y={H-5} textAnchor="middle" fill="#566380" fontSize="8.5">{fmtDt(t)}</text>
         ))}
-        <path d={mkPath(spxS)} fill="none" stroke="#566380" strokeWidth="1.5" opacity=".8"/>
+        {spxS&&<path d={mkPath(spxS)} fill="none" stroke="#566380" strokeWidth="1.5" opacity=".8"/>}
         {aiS&&<path d={mkPath(aiS)} fill="none" stroke="#8b5cf6" strokeWidth="2"/>}
         {myS&&<path d={mkPath(myS)} fill="none" stroke="#00c9a7" strokeWidth="2"/>}
         {legs.map(({c,lbl,ret},i)=>(
@@ -343,17 +356,20 @@ function PosModal({initial,onSave,onClose}){
   const[resolvedCcy,setResolvedCcy]=useState('');
   const[fmpData,setFmpData]=useState(null);
   const[suggs,setSuggs]=useState([]);
+  const[suggHint,setSuggHint]=useState('');
   const[err,setErr]=useState('');
   const searchTimer=useRef(null);
+  const quoteCacheRef=useRef(null);
   const set=(k)=>(e)=>setF(p=>({...p,[k]:e.target.value}));
 
   /* Autocomplete: FMP Primary + Yahoo Finance Fallback */
   function onTickerInput(e){
     const val=e.target.value;
     setF(p=>({...p,ticker:val}));
+    setSuggHint('');
     clearTimeout(searchTimer.current);
     const q=val.trim();
-    if(!q||q.length<2){setSuggs([]);return;}
+    if(!q||q.length<2){setSuggs([]);setSuggHint('');return;}
     searchTimer.current=setTimeout(async()=>{
       /* FMP Primary */
       const fk=window.__FMP_KEY__||'';
@@ -386,20 +402,22 @@ function PosModal({initial,onSave,onClose}){
           if(items.length){setSuggs(items);return;}
         }catch(e){}
       }
+      setSuggs([]);setSuggHint('Keine Treffer — anderen Begriff oder Ticker versuchen');
     },350);
   }
 
   /* Kursdaten + FMP-Profil laden */
   async function doFetchPrice(t){
     if(!t||isEdit)return;
-    setSuggs([]);
+    setSuggs([]);setSuggHint('');
     setFetching(true);setErr('');setResolvedName('');setFmpData(null);
     try{
       const q=await getQuote(t);
       const typeErr=checkQuoteType(q.quoteType,q.name);
       if(typeErr){setErr(typeErr);setFetching(false);return;}
+      quoteCacheRef.current={ticker:q.ticker,quote:q};
       setResolvedCcy(q.currency);
-      setF(prev=>({...prev,ticker:q.ticker,buyPrice:prev.buyPrice||String(q.price)}));
+      setF(prev=>({...prev,ticker:q.ticker,buyPrice:String(q.price)}));
       const fmp=await fetchFmpProfile(q.ticker);
       setFmpData(fmp);
       setResolvedName(fmp?.name||q.name);
@@ -410,39 +428,28 @@ function PosModal({initial,onSave,onClose}){
   /* Suggestion ausgewählt */
   function selectSugg(sym){
     setF(p=>({...p,ticker:sym}));
-    setSuggs([]);
+    setSuggs([]);setSuggHint('');
     doFetchPrice(sym);
   }
 
   function onTickerBlur(){
-    setSuggs([]);
+    setSuggs([]);setSuggHint('');
     const t=f.ticker.trim();
     if(!t||isEdit)return;
-    /* Short alphanumeric → treat as ticker, fetch price directly */
-    if(t.length<=7&&/^[A-Z0-9.\-\^]+$/i.test(t)&&!/\s/.test(t)){
-      doFetchPrice(t);
-      return;
-    }
+    /* Short ticker-like input → fetch directly */
+    if(/^[A-Z0-9.\-\^]{1,7}$/i.test(t)&&!/\s/.test(t)){doFetchPrice(t);return;}
     /* Looks like company name → search FMP and auto-resolve */
     const fk=window.__FMP_KEY__||'';
-    if(!fk)return;
-    fetch(`https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(t)}&limit=5&apikey=${fk}`,
-      {signal:mkSignal(5000)})
+    if(!fk){doFetchPrice(t);return;}
+    fetch(`https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(t)}&limit=5&apikey=${fk}`,{signal:mkSignal(5000)})
       .then(r=>r.ok?r.json():null)
       .then(data=>{
-        const items=(data||[])
-          .filter(x=>x.symbol&&x.name&&!['CRYPTO','FOREX','COMMODITY'].includes(x.exchangeShortName))
-          .slice(0,5);
-        if(items.length===1){
-          /* Eindeutiger Treffer → automatisch auswählen und Kurs laden */
-          setF(p=>({...p,ticker:items[0].symbol}));
-          doFetchPrice(items[0].symbol);
-        }else if(items.length>1){
-          /* Mehrere Treffer → Dropdown anzeigen */
-          setSuggs(items);
-        }
+        const items=(data||[]).filter(x=>x.symbol&&x.name&&!['CRYPTO','FOREX','COMMODITY'].includes(x.exchangeShortName)).slice(0,5);
+        if(items.length===1){setF(p=>({...p,ticker:items[0].symbol}));doFetchPrice(items[0].symbol);}
+        else if(items.length>1){setSuggs(items);}
+        else{doFetchPrice(t);}
       })
-      .catch(()=>{});
+      .catch(()=>doFetchPrice(t));
   }
 
   async function submit(e){
@@ -459,7 +466,9 @@ function PosModal({initial,onSave,onClose}){
       onClose();setBusy(false);return;
     }
     try{
-      const q=await getQuote(f.ticker);
+      const ticker=f.ticker.trim().toUpperCase();
+      const cached=quoteCacheRef.current;
+      const q=(cached&&cached.ticker===ticker)?cached.quote:await getQuote(ticker);
       const typeErr=checkQuoteType(q.quoteType,q.name);
       if(typeErr){setErr(typeErr);setBusy(false);return;}
       onSave({id:uid(),ticker:q.ticker,
@@ -499,6 +508,7 @@ function PosModal({initial,onSave,onClose}){
                 ))}
               </div>
             )}
+            {!suggs.length&&suggHint&&<div style={{fontSize:'11px',color:'#566380',marginTop:'4px'}}>{suggHint}</div>}
             {fetching&&<div style={{fontSize:'11px',color:'#00c9a7',marginTop:'4px'}}>
               <span className="spinner" style={{display:'inline-block',marginRight:'5px'}}>↻</span>Kurs wird abgerufen…
             </div>}
@@ -702,13 +712,13 @@ function App(){
     const vb=(b.currentPrice??b.buyPrice)*b.shares;
     return vb-va;
   });
-  const grandCur=pos.reduce((s,p)=>s+(p.currentPrice??p.buyPrice)*p.shares,0)||1;
+  const grandCur=pos.reduce((s,p)=>s+(p.currentPrice??p.buyPrice)*p.shares,0);
 
   /* ── Render ── */
   if(!ready) return <div className="muted" style={{padding:'32px',textAlign:'center'}}>Lädt…</div>;
 
   /* ── AI portfolio stats (used in compare view) ── */
-  const aiGrandCur=aiPos.reduce((s,p)=>s+(p.currentPrice??p.buyPrice)*p.shares,0)||1;
+  const aiGrandCur=aiPos.reduce((s,p)=>s+(p.currentPrice??p.buyPrice)*p.shares,0);
   const aiTotalBuyAll=aiPos.reduce((s,p)=>s+p.buyPrice*p.shares,0);
   const aiTotalCurAll=aiPos.reduce((s,p)=>s+(p.currentPrice??p.buyPrice)*p.shares,0);
   const aiTotalGain=aiTotalCurAll-aiTotalBuyAll;
@@ -874,7 +884,7 @@ function App(){
     </div>
 
     <div style={{color:'#2a3854',fontSize:'10px',marginTop:'10px',textAlign:'center'}}>
-      Kurse via Yahoo Finance · localStorage + Railway Volume · Keine Anlageberatung
+      Kurse via FMP &amp; Yahoo Finance · localStorage + Railway Volume · Keine Anlageberatung
     </div>
     </>}
 
@@ -959,7 +969,7 @@ function App(){
             </table>
           </div>
           <div style={{color:'#2a3854',fontSize:'10px',marginTop:'10px',textAlign:'center'}}>
-            KI-Depot ist schreibgeschützt · Kurse via Yahoo Finance · Keine Anlageberatung
+            KI-Depot ist schreibgeschützt · Kurse via FMP &amp; Yahoo Finance · Keine Anlageberatung
           </div>
         </>
       )}
