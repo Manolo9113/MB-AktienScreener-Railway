@@ -21294,16 +21294,15 @@ _TABS = [
     "📊 Kennzahlen", "📈 Wachstum", "🔮 Prognose", "📋 Fundamental", "⚖️ Bewertung",
     "🔬 Piotroski", "🏰 Burggraben", "📉 Chart", "🔍 Insider", "📰 News", "💰 Dividenden",
     "📐 Faktor-Profil", "🧮 Altman Z-Score", "🔄 ARR & Kunden", "🏢 Unternehmens-Profil",
-    "🎮 Aktienspiel", "📊 Guru-Tracker",
 ]
-_at = st.session_state.get("active_tab", 0)
+_at = min(st.session_state.get("active_tab", 0), len(_TABS) - 1)
 st.markdown(
     f"<div style='color:{_C_TEXT_MUTED};font-size:0.68rem;font-weight:600;text-transform:uppercase;"
     f"letter-spacing:.09em;margin-bottom:4px;'>Analyse-Bereich wählen</div>",
     unsafe_allow_html=True,
 )
-_nav_row1 = st.columns(9)
-_nav_row2 = st.columns(8)
+_nav_row1 = st.columns(8)
+_nav_row2 = st.columns(7)
 _nav_cols = _nav_row1 + _nav_row2
 for _ni, _nlabel in enumerate(_TABS):
     _is_active = (_ni == _at)
@@ -26610,46 +26609,6 @@ elif _at == 14:
             _up_flush(_up_cur_sec, _up_cur_lines, _up_html, _up_sections)
             _up_html.append("</div>")
             st.markdown("\n".join(_up_html), unsafe_allow_html=True)
-
-# ==================== TAB 15: AKTIENSPIEL ====================
-elif _at == 15:
-    # ── Handle save request from iframe ──────────────────────────────────
-    import json as _json_sp, base64 as _b64_sp
-    _sp_save = st.query_params.get("spiel_save")
-    if _sp_save:
-        try:
-            _sp_padded = _sp_save + "=" * (-len(_sp_save) % 4)
-            _sp_positions = _json_sp.loads(_b64_sp.b64decode(_sp_padded).decode("utf-8"))
-            if _save_aktienspiel(_sp_positions):
-                st.success(f"✅ Depot gespeichert ({len(_sp_positions)} Position(en))")
-            else:
-                st.error("❌ Speichern fehlgeschlagen (kein Railway Volume?)")
-        except Exception:
-            st.error("❌ Ungültige Depot-Daten")
-        st.query_params.clear()
-    # ── Render component with server-side initial data ────────────────────
-    _sp_server = _load_aktienspiel()
-    _sp_json = _json_sp.dumps(_sp_server).replace("</", "<\\/")
-    _sp_ai_data = _load_ai_portfolio()
-    _sp_ai_json = _json_sp.dumps(_sp_ai_data).replace("</", "<\\/")
-    _sp_fmp_json = _json_sp.dumps(FMP_API_KEY or "")
-    _sp_html = _AKTIENSPIEL_HTML.replace(
-        "/* Server-injected data (replaced by Python/Streamlit) */",
-        f"window.__SPIEL_INIT__={_sp_json};\nwindow.__AI_PORTFOLIO__={_sp_ai_json};\nwindow.__FMP_KEY__={_sp_fmp_json};",
-        1
-    )
-    import streamlit.components.v1 as _stc
-    _stc.html(_sp_html, height=900, scrolling=True)
-
-# ==================== TAB 16: GURU TRACKER ====================
-elif _at == 16:
-    import streamlit.components.v1 as _stc_gt
-    _guru_html2 = _GURU_TRACKER_HTML.replace(
-        "/* GURU_DATA_INJECT */",
-        f"window.__FMP_KEY__={_json.dumps(FMP_API_KEY or '')};",
-        1
-    )
-    _stc_gt.html(_guru_html2, height=900, scrolling=True)
 
 # ==================== INSIGHTS ====================
 insights = []
