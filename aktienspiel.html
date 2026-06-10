@@ -340,6 +340,95 @@ function PortPerfChart({myPositions,aiPositions,range}){
   );
 }
 
+/* ── Lokale Aktien-Datenbank für Autocomplete (kein API-Key nötig) ── */
+const STOCK_LIST=[
+  /* Magnificent 7 */
+  {symbol:'AAPL',name:'Apple',exchangeShortName:'NASDAQ'},{symbol:'MSFT',name:'Microsoft',exchangeShortName:'NASDAQ'},
+  {symbol:'GOOGL',name:'Alphabet (Google)',exchangeShortName:'NASDAQ'},{symbol:'GOOG',name:'Alphabet Class C',exchangeShortName:'NASDAQ'},
+  {symbol:'AMZN',name:'Amazon',exchangeShortName:'NASDAQ'},{symbol:'META',name:'Meta Platforms',exchangeShortName:'NASDAQ'},
+  {symbol:'NVDA',name:'NVIDIA',exchangeShortName:'NASDAQ'},{symbol:'TSLA',name:'Tesla',exchangeShortName:'NASDAQ'},
+  /* US Tech */
+  {symbol:'AVGO',name:'Broadcom',exchangeShortName:'NASDAQ'},{symbol:'AMD',name:'Advanced Micro Devices',exchangeShortName:'NASDAQ'},
+  {symbol:'INTC',name:'Intel',exchangeShortName:'NASDAQ'},{symbol:'QCOM',name:'Qualcomm',exchangeShortName:'NASDAQ'},
+  {symbol:'ORCL',name:'Oracle',exchangeShortName:'NYSE'},{symbol:'CRM',name:'Salesforce',exchangeShortName:'NYSE'},
+  {symbol:'NOW',name:'ServiceNow',exchangeShortName:'NYSE'},{symbol:'ADBE',name:'Adobe',exchangeShortName:'NASDAQ'},
+  {symbol:'INTU',name:'Intuit',exchangeShortName:'NASDAQ'},{symbol:'SNPS',name:'Synopsys',exchangeShortName:'NASDAQ'},
+  {symbol:'CDNS',name:'Cadence Design Systems',exchangeShortName:'NASDAQ'},{symbol:'PANW',name:'Palo Alto Networks',exchangeShortName:'NASDAQ'},
+  {symbol:'CRWD',name:'CrowdStrike',exchangeShortName:'NASDAQ'},{symbol:'ZS',name:'Zscaler',exchangeShortName:'NASDAQ'},
+  {symbol:'NET',name:'Cloudflare',exchangeShortName:'NYSE'},{symbol:'SNOW',name:'Snowflake',exchangeShortName:'NYSE'},
+  {symbol:'MDB',name:'MongoDB',exchangeShortName:'NASDAQ'},{symbol:'DDOG',name:'Datadog',exchangeShortName:'NASDAQ'},
+  {symbol:'SHOP',name:'Shopify',exchangeShortName:'NYSE'},{symbol:'SQ',name:'Block (Square)',exchangeShortName:'NYSE'},
+  {symbol:'PYPL',name:'PayPal',exchangeShortName:'NASDAQ'},{symbol:'UBER',name:'Uber',exchangeShortName:'NYSE'},
+  {symbol:'LYFT',name:'Lyft',exchangeShortName:'NASDAQ'},{symbol:'ABNB',name:'Airbnb',exchangeShortName:'NASDAQ'},
+  {symbol:'COIN',name:'Coinbase',exchangeShortName:'NASDAQ'},{symbol:'RBLX',name:'Roblox',exchangeShortName:'NYSE'},
+  {symbol:'U',name:'Unity Software',exchangeShortName:'NYSE'},{symbol:'TTD',name:'The Trade Desk',exchangeShortName:'NASDAQ'},
+  {symbol:'SPOT',name:'Spotify',exchangeShortName:'NYSE'},{symbol:'NFLX',name:'Netflix',exchangeShortName:'NASDAQ'},
+  {symbol:'DIS',name:'Walt Disney',exchangeShortName:'NYSE'},{symbol:'ROKU',name:'Roku',exchangeShortName:'NASDAQ'},
+  /* US Finanzen */
+  {symbol:'JPM',name:'JPMorgan Chase',exchangeShortName:'NYSE'},{symbol:'BAC',name:'Bank of America',exchangeShortName:'NYSE'},
+  {symbol:'WFC',name:'Wells Fargo',exchangeShortName:'NYSE'},{symbol:'GS',name:'Goldman Sachs',exchangeShortName:'NYSE'},
+  {symbol:'MS',name:'Morgan Stanley',exchangeShortName:'NYSE'},{symbol:'C',name:'Citigroup',exchangeShortName:'NYSE'},
+  {symbol:'BRK.B',name:'Berkshire Hathaway B',exchangeShortName:'NYSE'},{symbol:'V',name:'Visa',exchangeShortName:'NYSE'},
+  {symbol:'MA',name:'Mastercard',exchangeShortName:'NYSE'},{symbol:'AXP',name:'American Express',exchangeShortName:'NYSE'},
+  {symbol:'BLK',name:'BlackRock',exchangeShortName:'NYSE'},{symbol:'SCHW',name:'Charles Schwab',exchangeShortName:'NYSE'},
+  /* US Gesundheit */
+  {symbol:'JNJ',name:'Johnson & Johnson',exchangeShortName:'NYSE'},{symbol:'UNH',name:'UnitedHealth Group',exchangeShortName:'NYSE'},
+  {symbol:'PFE',name:'Pfizer',exchangeShortName:'NYSE'},{symbol:'MRK',name:'Merck & Co.',exchangeShortName:'NYSE'},
+  {symbol:'ABBV',name:'AbbVie',exchangeShortName:'NYSE'},{symbol:'LLY',name:'Eli Lilly',exchangeShortName:'NYSE'},
+  {symbol:'AMGN',name:'Amgen',exchangeShortName:'NASDAQ'},{symbol:'GILD',name:'Gilead Sciences',exchangeShortName:'NASDAQ'},
+  {symbol:'ISRG',name:'Intuitive Surgical',exchangeShortName:'NASDAQ'},{symbol:'DXCM',name:'DexCom',exchangeShortName:'NASDAQ'},
+  /* US Industrie/Energie */
+  {symbol:'BA',name:'Boeing',exchangeShortName:'NYSE'},{symbol:'GE',name:'GE Aerospace',exchangeShortName:'NYSE'},
+  {symbol:'CAT',name:'Caterpillar',exchangeShortName:'NYSE'},{symbol:'DE',name:'Deere & Company',exchangeShortName:'NYSE'},
+  {symbol:'HON',name:'Honeywell',exchangeShortName:'NASDAQ'},{symbol:'RTX',name:'RTX (Raytheon)',exchangeShortName:'NYSE'},
+  {symbol:'LMT',name:'Lockheed Martin',exchangeShortName:'NYSE'},{symbol:'NOC',name:'Northrop Grumman',exchangeShortName:'NYSE'},
+  {symbol:'XOM',name:'ExxonMobil',exchangeShortName:'NYSE'},{symbol:'CVX',name:'Chevron',exchangeShortName:'NYSE'},
+  {symbol:'COP',name:'ConocoPhillips',exchangeShortName:'NYSE'},{symbol:'NEE',name:'NextEra Energy',exchangeShortName:'NYSE'},
+  /* US Konsum */
+  {symbol:'WMT',name:'Walmart',exchangeShortName:'NYSE'},{symbol:'COST',name:'Costco',exchangeShortName:'NASDAQ'},
+  {symbol:'TGT',name:'Target',exchangeShortName:'NYSE'},{symbol:'HD',name:'Home Depot',exchangeShortName:'NYSE'},
+  {symbol:'LOW',name:"Lowe's",exchangeShortName:'NYSE'},{symbol:'MCD',name:"McDonald's",exchangeShortName:'NYSE'},
+  {symbol:'SBUX',name:'Starbucks',exchangeShortName:'NASDAQ'},{symbol:'NKE',name:'Nike',exchangeShortName:'NYSE'},
+  {symbol:'LULU',name:'Lululemon',exchangeShortName:'NASDAQ'},{symbol:'PG',name:'Procter & Gamble',exchangeShortName:'NYSE'},
+  {symbol:'KO',name:'Coca-Cola',exchangeShortName:'NYSE'},{symbol:'PEP',name:'PepsiCo',exchangeShortName:'NASDAQ'},
+  {symbol:'MDLZ',name:'Mondelez',exchangeShortName:'NASDAQ'},{symbol:'PM',name:'Philip Morris',exchangeShortName:'NYSE'},
+  /* DAX 40 */
+  {symbol:'SAP',name:'SAP',exchangeShortName:'XETRA'},{symbol:'SIE',name:'Siemens',exchangeShortName:'XETRA'},
+  {symbol:'ALV',name:'Allianz',exchangeShortName:'XETRA'},{symbol:'DTE',name:'Deutsche Telekom',exchangeShortName:'XETRA'},
+  {symbol:'BAYN',name:'Bayer',exchangeShortName:'XETRA'},{symbol:'BAS',name:'BASF',exchangeShortName:'XETRA'},
+  {symbol:'BMW',name:'BMW',exchangeShortName:'XETRA'},{symbol:'MBG',name:'Mercedes-Benz',exchangeShortName:'XETRA'},
+  {symbol:'VOW3',name:'Volkswagen (Vz.)',exchangeShortName:'XETRA'},{symbol:'RWE',name:'RWE',exchangeShortName:'XETRA'},
+  {symbol:'DB1',name:'Deutsche Börse',exchangeShortName:'XETRA'},{symbol:'DBK',name:'Deutsche Bank',exchangeShortName:'XETRA'},
+  {symbol:'MUV2',name:'Munich Re',exchangeShortName:'XETRA'},{symbol:'HNR1',name:'Hannover Rück',exchangeShortName:'XETRA'},
+  {symbol:'ADS',name:'adidas',exchangeShortName:'XETRA'},{symbol:'HEN3',name:'Henkel (Vz.)',exchangeShortName:'XETRA'},
+  {symbol:'EOAN',name:'E.ON',exchangeShortName:'XETRA'},{symbol:'ENR',name:'Siemens Energy',exchangeShortName:'XETRA'},
+  {symbol:'SHL',name:'Siemens Healthineers',exchangeShortName:'XETRA'},{symbol:'MRCG',name:'Merck KGaA',exchangeShortName:'XETRA'},
+  {symbol:'AIR',name:'Airbus',exchangeShortName:'XETRA'},{symbol:'FRE',name:'Fresenius',exchangeShortName:'XETRA'},
+  {symbol:'FME',name:'Fresenius Medical Care',exchangeShortName:'XETRA'},{symbol:'IFX',name:'Infineon Technologies',exchangeShortName:'XETRA'},
+  {symbol:'MTX',name:'MTU Aero Engines',exchangeShortName:'XETRA'},{symbol:'HLAG',name:'Hapag-Lloyd',exchangeShortName:'XETRA'},
+  {symbol:'DHL',name:'DHL Group',exchangeShortName:'XETRA'},{symbol:'VNA',name:'Vonovia',exchangeShortName:'XETRA'},
+  {symbol:'ZAL',name:'Zalando',exchangeShortName:'XETRA'},{symbol:'CON',name:'Continental',exchangeShortName:'XETRA'},
+  {symbol:'HEIG',name:'HeidelbergMaterials',exchangeShortName:'XETRA'},{symbol:'SY1',name:'Symrise',exchangeShortName:'XETRA'},
+  {symbol:'QIAG',name:'Qiagen',exchangeShortName:'XETRA'},{symbol:'P911',name:'Porsche AG',exchangeShortName:'XETRA'},
+  {symbol:'PAH3',name:'Porsche SE',exchangeShortName:'XETRA'},{symbol:'BEI',name:'Beiersdorf',exchangeShortName:'XETRA'},
+  /* Europäische Blue Chips */
+  {symbol:'ASML',name:'ASML Holding',exchangeShortName:'NASDAQ'},{symbol:'NVO',name:'Novo Nordisk',exchangeShortName:'NYSE'},
+  {symbol:'AZN',name:'AstraZeneca',exchangeShortName:'NASDAQ'},{symbol:'BP',name:'BP',exchangeShortName:'NYSE'},
+  {symbol:'SHEL',name:'Shell',exchangeShortName:'NYSE'},{symbol:'UL',name:'Unilever',exchangeShortName:'NYSE'},
+  {symbol:'RIO',name:'Rio Tinto',exchangeShortName:'NYSE'},{symbol:'BHP',name:'BHP Group',exchangeShortName:'NYSE'},
+  {symbol:'HSBC',name:'HSBC',exchangeShortName:'NYSE'},{symbol:'GSK',name:'GSK',exchangeShortName:'NYSE'},
+  /* ETFs */
+  {symbol:'SPY',name:'SPDR S&P 500 ETF',exchangeShortName:'ETF'},{symbol:'QQQ',name:'Invesco QQQ (NASDAQ-100)',exchangeShortName:'ETF'},
+  {symbol:'VTI',name:'Vanguard Total Stock Market ETF',exchangeShortName:'ETF'},{symbol:'IWM',name:'iShares Russell 2000 ETF',exchangeShortName:'ETF'},
+  {symbol:'EFA',name:'iShares MSCI EAFE ETF',exchangeShortName:'ETF'},{symbol:'EEM',name:'iShares MSCI Emerging Markets ETF',exchangeShortName:'ETF'},
+  {symbol:'GLD',name:'SPDR Gold Shares',exchangeShortName:'ETF'},{symbol:'TLT',name:'iShares 20+ Year Treasury Bond ETF',exchangeShortName:'ETF'},
+  {symbol:'XLK',name:'Technology Select Sector SPDR',exchangeShortName:'ETF'},{symbol:'XLF',name:'Financial Select Sector SPDR',exchangeShortName:'ETF'},
+  {symbol:'ARKK',name:'ARK Innovation ETF',exchangeShortName:'ETF'},{symbol:'SOXX',name:'iShares Semiconductor ETF',exchangeShortName:'ETF'},
+  {symbol:'SCHD',name:'Schwab US Dividend Equity ETF',exchangeShortName:'ETF'},{symbol:'VGT',name:'Vanguard IT ETF',exchangeShortName:'ETF'},
+  {symbol:'CSPX',name:'iShares Core S&P 500 UCITS ETF',exchangeShortName:'ETF'},{symbol:'IWDA',name:'iShares Core MSCI World UCITS ETF',exchangeShortName:'ETF'},
+  {symbol:'VWCE',name:'Vanguard FTSE All-World UCITS ETF',exchangeShortName:'ETF'},{symbol:'EUNL',name:'iShares Core MSCI World EUR',exchangeShortName:'ETF'},
+].filter((v,i,a)=>a.findIndex(t=>t.symbol===v.symbol)===i);
+
 /* ── Modal ── */
 function PosModal({initial,onSave,onClose}){
   const isEdit=!!initial?.id;
@@ -356,65 +445,29 @@ function PosModal({initial,onSave,onClose}){
   const[resolvedCcy,setResolvedCcy]=useState('');
   const[fmpData,setFmpData]=useState(null);
   const[suggs,setSuggs]=useState([]);
-  const[suggHint,setSuggHint]=useState('');
   const[err,setErr]=useState('');
-  const searchTimer=useRef(null);
   const quoteCacheRef=useRef(null);
   const set=(k)=>(e)=>setF(p=>({...p,[k]:e.target.value}));
 
-  /* Autocomplete: FMP Primary + Yahoo Finance Fallback */
   function onTickerInput(e){
     const val=e.target.value;
     setF(p=>({...p,ticker:val}));
-    setSuggHint('');
-    clearTimeout(searchTimer.current);
-    const q=val.trim();
-    if(!q||q.length<2){setSuggs([]);setSuggHint('');return;}
-    searchTimer.current=setTimeout(async()=>{
-      /* FMP Primary */
-      const fk=window.__FMP_KEY__||'';
-      if(fk){
-        try{
-          const r=await fetch(
-            `https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(q)}&limit=8&apikey=${fk}`,
-            {signal:mkSignal(8000)});
-          if(r.ok){
-            const data=await r.json();
-            if(Array.isArray(data)){
-              const items=data
-                .filter(x=>x.symbol&&x.name&&!['CRYPTO','FOREX','COMMODITY'].includes(x.exchangeShortName))
-                .slice(0,6);
-              if(items.length){setSuggs(items);return;}
-            }
-          }
-        }catch(e){}
-      }
-      /* Yahoo Finance Fallback */
-      for(const base of['query1','query2']){
-        try{
-          const r=await fetch(
-            `https://${base}.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=7&newsCount=0&listsCount=0`,
-            {headers:{Accept:'application/json'},signal:mkSignal(5000)});
-          if(!r.ok)continue;
-          const data=await r.json();
-          const items=(data.quotes||[])
-            .filter(x=>x.symbol&&(x.quoteType==='EQUITY'||x.quoteType==='ETF')&&x.exchDisp)
-            .slice(0,6)
-            .map(x=>({symbol:x.symbol,name:x.shortname||x.longname||x.symbol,exchangeShortName:x.exchDisp}));
-          if(items.length){setSuggs(items);return;}
-        }catch(e){}
-      }
-      setSuggs([]);
-      setSuggHint(fk
-        ?'Keine Treffer — anderen Begriff versuchen oder Ticker direkt eingeben (z.B. NOW)'
-        :'Ticker direkt eingeben (z.B. NOW für ServiceNow, AAPL für Apple)');
-    },350);
+    const q=val.trim().toLowerCase();
+    if(!q||q.length<2){setSuggs([]);return;}
+    const exact=[],prefix=[],fuzzy=[];
+    for(const s of STOCK_LIST){
+      const sym=s.symbol.toLowerCase(),nm=s.name.toLowerCase();
+      if(sym===q)exact.push(s);
+      else if(sym.startsWith(q)||nm.startsWith(q))prefix.push(s);
+      else if(sym.includes(q)||nm.includes(q))fuzzy.push(s);
+    }
+    setSuggs([...exact,...prefix,...fuzzy].slice(0,6));
   }
 
   /* Kursdaten + FMP-Profil laden */
   async function doFetchPrice(t){
     if(!t||isEdit)return;
-    setSuggs([]);setSuggHint('');
+    setSuggs([]);
     setFetching(true);setErr('');setResolvedName('');setFmpData(null);
     try{
       const q=await getQuote(t);
@@ -433,17 +486,22 @@ function PosModal({initial,onSave,onClose}){
   /* Suggestion ausgewählt */
   function selectSugg(sym){
     setF(p=>({...p,ticker:sym}));
-    setSuggs([]);setSuggHint('');
+    setSuggs([]);
     doFetchPrice(sym);
   }
 
   function onTickerBlur(){
-    setSuggs([]);setSuggHint('');
+    setSuggs([]);
     const t=f.ticker.trim();
     if(!t||isEdit)return;
     /* Short ticker-like input → fetch directly */
     if(/^[A-Z0-9.\-\^]{1,7}$/i.test(t)&&!/\s/.test(t)){doFetchPrice(t);return;}
-    /* Looks like company name → search FMP and auto-resolve */
+    /* Company name → resolve via local list first */
+    const q=t.toLowerCase();
+    const localHits=STOCK_LIST.filter(s=>s.name.toLowerCase().includes(q)||s.symbol.toLowerCase().includes(q)).slice(0,5);
+    if(localHits.length===1){setF(p=>({...p,ticker:localHits[0].symbol}));doFetchPrice(localHits[0].symbol);return;}
+    if(localHits.length>1){setSuggs(localHits);return;}
+    /* Unknown name → try FMP search as last resort */
     const fk=window.__FMP_KEY__||'';
     if(!fk){doFetchPrice(t);return;}
     fetch(`https://financialmodelingprep.com/api/v3/search?query=${encodeURIComponent(t)}&limit=5&apikey=${fk}`,{signal:mkSignal(8000)})
@@ -513,7 +571,7 @@ function PosModal({initial,onSave,onClose}){
                 ))}
               </div>
             )}
-            {!suggs.length&&suggHint&&<div style={{fontSize:'11px',color:'#566380',marginTop:'4px'}}>{suggHint}</div>}
+            {!suggs.length&&!fetching&&f.ticker.length>2&&<div style={{fontSize:'11px',color:'#566380',marginTop:'4px'}}>Ticker direkt eingeben (z.B. NOW für ServiceNow)</div>}
             {fetching&&<div style={{fontSize:'11px',color:'#00c9a7',marginTop:'4px'}}>
               <span className="spinner" style={{display:'inline-block',marginRight:'5px'}}>↻</span>Kurs wird abgerufen…
             </div>}
