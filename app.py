@@ -20362,6 +20362,7 @@ if _annual_div_rate and price and price > 0:
 if dividend_yield > 25:
     dividend_yield = 0.0
 _div_yield_suspicious = dividend_yield > 15  # flag for display
+_de_suspicious = debt is not None and debt > 50  # D/E >50 oft tangible-equity-Artefakt
 shares_outstanding = yf_info.get("sharesOutstanding")
 shares_float = yf_info.get("floatShares")
 shares_short = yf_info.get("sharesShort")
@@ -22442,10 +22443,13 @@ elif _at == 3:
             <div class="metric-value">{fmt_large(fcf, _cur_sym)}</div>
         </div>""", unsafe_allow_html=True)
     with c4:
+        _de_warn_html = ('<div style="font-size:0.65rem;color:#ffa726;margin-top:4px;">'
+                         '⚠️ Tangible-Equity-Artefakt möglich</div>') if _de_suspicious else ''
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-label">Debt/Equity</div>
+            <div class="metric-label">Debt/Equity{"  ⚠️" if _de_suspicious else ""}</div>
             <div class="metric-value">{safe_float(debt, 1)}</div>
+            {_de_warn_html}
         </div>""", unsafe_allow_html=True)
 
     # ── Aktienanzahl & Verwässerung ──
@@ -22912,8 +22916,11 @@ elif _at == 4:
         st.markdown(mini_card("P/E Forward", forward_pe, 15, 25, ".1f", "x", inverse=True), unsafe_allow_html=True)
     with c3:
         st.markdown(mini_card("PEG Ratio", peg_ratio, 1.5, 2.5, ".2f", "", inverse=True), unsafe_allow_html=True)
+    _de_label = "Debt/Equity ⚠️" if _de_suspicious else "Debt/Equity"
+    _de_tooltip = ("Wert >50 — wahrscheinlich Tangible-Equity-Basis (Goodwill abgezogen). "
+                   "Realer Verschuldungsgrad meist deutlich niedriger. Bitte Geschäftsbericht prüfen.") if _de_suspicious else None
     with c4:
-        st.markdown(mini_card("Debt/Equity", debt, 50, 100, ".1f", "", inverse=True), unsafe_allow_html=True)
+        st.markdown(mini_card(_de_label, debt, 50, 100, ".1f", "", inverse=True, tooltip=_de_tooltip), unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
