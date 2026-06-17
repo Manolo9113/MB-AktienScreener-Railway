@@ -7534,40 +7534,40 @@ border-radius:14px;padding:20px 24px;margin-bottom:28px;'>
             st.session_state["show_market_overview"] = True
             st.rerun()
     with _nav_c2:
-        if st.button("💡 Aktienideen & Screener", use_container_width=True, key="land_nav_stocks"):
+        if st.button("💡 Aktienideen & Screener", use_container_width=True, type="primary", key="land_nav_stocks"):
             for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_stocks"] = True
             st.rerun()
     _nav_c3, _nav_c4 = st.columns(2)
     with _nav_c3:
-        if st.button("📁 Mein Portfolio", use_container_width=True, key="land_nav_pf"):
+        if st.button("📁 Mein Portfolio", use_container_width=True, type="primary", key="land_nav_pf"):
             for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_portfolio"] = True
             st.rerun()
     with _nav_c4:
-        if st.button("🔎 ETF-Analyzer", use_container_width=True, key="land_nav_etf"):
+        if st.button("🔎 ETF-Analyzer", use_container_width=True, type="primary", key="land_nav_etf"):
             for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_etf_analyzer"] = True
             st.rerun()
     _nav_c5, _nav_c6 = st.columns(2)
     with _nav_c5:
-        if st.button("₿ Krypto-Markt", use_container_width=True, key="land_nav_crypto"):
+        if st.button("₿ Krypto-Markt", use_container_width=True, type="primary", key="land_nav_crypto"):
             for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_crypto"] = True
             st.rerun()
     with _nav_c6:
-        if st.button("⛏️ Rohstoffe & Edelmetalle", use_container_width=True, key="land_nav_rohstoffe"):
+        if st.button("⛏️ Rohstoffe & Edelmetalle", use_container_width=True, type="primary", key="land_nav_rohstoffe"):
             for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_rohstoffe"] = True
             st.rerun()
     _nav_c7, _nav_c8 = st.columns(2)
     with _nav_c7:
-        if st.button("🔬 Aktien-Screener", use_container_width=True, key="land_nav_scr"):
+        if st.button("🔬 Aktien-Screener", use_container_width=True, type="primary", key="land_nav_scr"):
             for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_screener"] = True
             st.rerun()
     with _nav_c8:
-        if st.button("📈 Indizes Analyse", use_container_width=True, key="land_nav_mktval"):
+        if st.button("📈 Indizes Analyse", use_container_width=True, type="primary", key="land_nav_mktval"):
             for _k in _all_pages: st.session_state[_k] = False
             st.session_state["show_marktbewertung"] = True
             st.rerun()
